@@ -4,7 +4,7 @@
   version="2.0"
 >
     <channel>
-        <title>GhostShell</title>
+        <title>Bonk</title>
         <item>
             <title>2026.0.1</title>
             <pubDate>Wed, 04 Jun 2026 03:20:00 +0000</pubDate>
@@ -13,7 +13,7 @@
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <description />
             <enclosure
-        url="https://github.com/iamJoyLiam/GhostShell/releases/download/v2026.0.1/GhostShell-v2026.0.1.dmg"
+        url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.1/Bonk-v2026.0.1.dmg"
         length="6205105"
         type="application/octet-stream"
         sparkle:edSignature="FKgknEXZCAiMprC2iNw26EgSWVvXcqwPxo9Bw4iJcpB608Vv5PX+9SXAAYJX+k4Eo7Yy4I/d6jmOkfskko1bAA=="
