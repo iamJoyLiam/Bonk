@@ -14,9 +14,9 @@
             <description />
             <enclosure
         url="https://github.com/iamJoyLiam/GhostShell/releases/download/v2026.0.1/GhostShell-v2026.0.1.dmg"
-        length="6179335"
+        length="6205105"
         type="application/octet-stream"
-        sparkle:edSignature="zXOlgMAwGuC2DIVUFqMeFIVyLDGh+6rt/jQGOTc1CHiUAEqLS9fk7rfDEXVSGlyZW2xBwsEFrzBjWp2ThcWSCw=="
+        sparkle:edSignature="FKgknEXZCAiMprC2iNw26EgSWVvXcqwPxo9Bw4iJcpB608Vv5PX+9SXAAYJX+k4Eo7Yy4I/d6jmOkfskko1bAA=="
       />
         </item>
     </channel>
