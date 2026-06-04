@@ -13,10 +13,10 @@
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <description />
             <enclosure
-        url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.1/Bonk-v2026.0.1.dmg"
-        length="6205105"
+        url="https://github.com/iamJoyLiam/GhostShell/releases/download/v2026.0.1/Bonk-v2026.0.1-arm64.dmg"
+        length="7487800"
         type="application/octet-stream"
-        sparkle:edSignature="FKgknEXZCAiMprC2iNw26EgSWVvXcqwPxo9Bw4iJcpB608Vv5PX+9SXAAYJX+k4Eo7Yy4I/d6jmOkfskko1bAA=="
+        sparkle:edSignature="ZeV0VAAXUDBKzpUbQWuGXG/Beqe46HlYY9fJ7au+WB1VGuyrEtN+q7EIaNg+Sf6EoDnsWlShk0q3fVvDSwp8BQ=="
       />
         </item>
     </channel>
