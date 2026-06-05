@@ -115,7 +115,8 @@ struct GroupEditSheet: View {
     private var isEditing: Bool { group != nil }
 
     private var filteredIcons: [String] {
-        iconSearch.isEmpty ? Self.commonIcons : Self.commonIcons.filter { $0.localizedCaseInsensitiveContains(iconSearch) }
+        if iconSearch.isEmpty { return Self.defaultIcons }
+        return SFSymbols.all.filter { $0.localizedCaseInsensitiveContains(iconSearch) }
     }
 
     var body: some View {
@@ -226,7 +227,8 @@ struct GroupEditSheet: View {
         dismiss()
     }
 
-    private static let commonIcons = [
+    /// Default icons shown when search is empty.
+    private static let defaultIcons = [
         "server.rack", "cloud", "shield", "globe", "terminal",
         "desktopcomputer", "laptopcomputer", "iphone", "network",
         "lock.shield", "key", "antenna.radiowaves.left.and.right",

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AE08640C2FD2A52D00C9EC5F /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = AE000006AAAA000000000006 /* Sparkle */; };
 		AEF73C8A2FC47AEE00F14E56 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = AE000002AAAA000000000002 /* Citadel */; };
 		AEF73C8B2FC47AEE00F14E57 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = AE000004AAAA000000000004 /* SwiftTerm */; };
 /* End PBXBuildFile section */
@@ -41,6 +42,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AE08640C2FD2A52D00C9EC5F /* Sparkle in Frameworks */,
 				AEF73C8A2FC47AEE00F14E56 /* Citadel in Frameworks */,
 				AEF73C8B2FC47AEE00F14E57 /* SwiftTerm in Frameworks */,
 			);
