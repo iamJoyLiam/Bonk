@@ -18,15 +18,7 @@ struct AIChatSidebarView: View {
 
     @State private var rotationAngle: Double = 0
 
-    private let aiColors: [Color] = [
-        Color(red: 1.0, green: 0.0, blue: 0.4),
-        Color(red: 1.0, green: 0.3, blue: 0.0),
-        Color(red: 1.0, green: 0.8, blue: 0.0),
-        Color(red: 0.2, green: 0.8, blue: 0.2),
-        Color(red: 0.0, green: 0.7, blue: 1.0),
-        Color(red: 0.4, green: 0.1, blue: 0.9),
-        Color(red: 1.0, green: 0.0, blue: 0.4),
-    ]
+    private var aiColors: [Color] { AppStyle.aiRainbowColors }
 
     enum AIMode: String, CaseIterable {
         case ask = "Ask"
@@ -109,7 +101,7 @@ struct AIChatSidebarView: View {
     private var historyPopover: some View {
         VStack(spacing: 0) {
             if conversationStore.conversations.isEmpty {
-                Text("No history")
+                Text(i18n.t(.aiNoHistory))
                     .font(.caption).foregroundStyle(.tertiary)
                     .padding(16)
             } else {
@@ -152,18 +144,18 @@ struct AIChatSidebarView: View {
             }
         }
         .frame(width: 220)
-        .alert("Delete conversation?", isPresented: Binding(
+        .alert(i18n.t(.aiDeleteConversation), isPresented: Binding(
             get: { pendingDeleteConversation != nil },
             set: { if !$0 { pendingDeleteConversation = nil } }
         )) {
-            Button("Delete", role: .destructive) {
+            Button(i18n.t(.delete), role: .destructive) {
                 if let id = pendingDeleteConversation {
                     conversationStore.deleteConversation(id)
                     if sidebarConversationID == id { sidebarConversationID = nil }
                 }
                 pendingDeleteConversation = nil
             }
-            Button("Cancel", role: .cancel) { pendingDeleteConversation = nil }
+            Button(i18n.t(.cancel), role: .cancel) { pendingDeleteConversation = nil }
         }
     }
 
@@ -187,10 +179,10 @@ struct AIChatSidebarView: View {
                 .padding(12)
             }
             .onChange(of: aiService.streamingResponse) { _, _ in
-                withAnimation(.easeOut(duration: 0.1)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                withAnimation(AppStyle.animationFast) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             .onChange(of: messages.count) { _, _ in
-                withAnimation(.easeOut(duration: 0.1)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                withAnimation(AppStyle.animationFast) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
         }
     }
@@ -213,15 +205,11 @@ struct AIChatSidebarView: View {
         HStack(alignment: .top, spacing: 8) {
             if msg.role == .assistant { avatar("sparkles") }
             VStack(alignment: msg.role == .user ? .trailing : .leading, spacing: 4) {
-                if let attr = try? AttributedString(markdown: msg.content) {
-                    Text(attr).font(.system(size: 13)).textSelection(.enabled)
-                } else {
-                    Text(msg.content).font(.system(size: 13)).textSelection(.enabled)
-                }
+                Text.markdown(msg.content).font(.system(size: 13)).textSelection(.enabled)
             }
             .padding(10)
             .background(msg.role == .user ? Color.accentColor.opacity(0.1) : Color(nsColor: .controlColor))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(.rect(cornerRadius: 10))
             if msg.role == .user { avatar("person.fill") }
         }
         .frame(maxWidth: .infinity, alignment: msg.role == .user ? .trailing : .leading)
@@ -234,7 +222,7 @@ struct AIChatSidebarView: View {
             Text(text).font(.system(size: 13))
                 .padding(10)
                 .background(Color(nsColor: .controlColor))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(.rect(cornerRadius: 10))
         }
     }
 
@@ -312,14 +300,13 @@ struct AIChatSidebarView: View {
     }
 
     private var modelMenu: some View {
-        let currentModel = activeProvider?.model ?? "No model"
+        let currentModel = activeProvider?.model ?? i18n.t(.aiNoModel)
         return Menu {
-            // Fetched models from active provider
             if isFetchingModels {
-                Text("Fetching models…")
+                Text(i18n.t(.aiFetchingModels))
             } else if fetchedModels.isEmpty {
                 Button { fetchModels() } label: {
-                    Label("Fetch models", systemImage: "arrow.clockwise")
+                    Label(i18n.t(.aiFetchModels), systemImage: "arrow.clockwise")
                 }
             } else {
                 ForEach(fetchedModels, id: \.self) { model in
@@ -353,17 +340,8 @@ struct AIChatSidebarView: View {
         .onAppear { fetchModels() }
     }
 
-    private var activeProvider: AIProviderConfig? {
-        guard let data = UserDefaults.standard.data(forKey: "ai_providers"),
-              let providers = try? JSONDecoder().decode([AIProviderConfig].self, from: data),
-              let activeId = UserDefaults.standard.string(forKey: "ai_active_provider_id") else { return nil }
-        return providers.first(where: { $0.id.uuidString == activeId })
-    }
-
-    private var allProviders: [AIProviderConfig] {
-        guard let data = UserDefaults.standard.data(forKey: "ai_providers") else { return [] }
-        return (try? JSONDecoder().decode([AIProviderConfig].self, from: data)) ?? []
-    }
+    private var activeProvider: AIProviderConfig? { AIProviderStore.activeProvider }
+    private var allProviders: [AIProviderConfig] { AIProviderStore.allProviders }
 
     // MARK: - Model Operations
 
@@ -389,14 +367,9 @@ struct AIChatSidebarView: View {
     }
 
     private func applyModel(_ model: String) {
-        guard let data = UserDefaults.standard.data(forKey: "ai_providers"),
-              var providers = try? JSONDecoder().decode([AIProviderConfig].self, from: data),
-              let activeId = UserDefaults.standard.string(forKey: "ai_active_provider_id"),
-              let idx = providers.firstIndex(where: { $0.id.uuidString == activeId }) else { return }
-        providers[idx].model = model.trimmingCharacters(in: .whitespaces)
-        if let updated = try? JSONEncoder().encode(providers) {
-            UserDefaults.standard.set(updated, forKey: "ai_providers")
-        }
+        guard var provider = activeProvider else { return }
+        provider.model = model.trimmingCharacters(in: .whitespaces)
+        AIProviderStore.updateProvider(provider)
     }
 
     // MARK: - Actions

@@ -29,16 +29,7 @@ struct AIAssistantPanel: View {
     // Rotation animation
     @State private var rotationAngle: Double = 0
 
-    // Apple Intelligence rainbow colors
-    private let aiColors: [Color] = [
-        Color(red: 1.0, green: 0.0, blue: 0.4),
-        Color(red: 1.0, green: 0.3, blue: 0.0),
-        Color(red: 1.0, green: 0.8, blue: 0.0),
-        Color(red: 0.2, green: 0.8, blue: 0.2),
-        Color(red: 0.0, green: 0.7, blue: 1.0),
-        Color(red: 0.4, green: 0.1, blue: 0.9),
-        Color(red: 1.0, green: 0.0, blue: 0.4)
-    ]
+    private var aiColors: [Color] { AppStyle.aiRainbowColors }
 
     /// Current conversation messages.
     private var messages: [AIMessage] {
@@ -89,14 +80,14 @@ struct AIAssistantPanel: View {
                     HStack(spacing: 4) {
                         ProgressView()
                             .controlSize(.mini)
-                        Text("Thinking...")
+                        Text(i18n.t(.aiThinking))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
                 }
             }
             .padding(.horizontal, 16)
-            .frame(width: 320, height: 44)
+            .frame(width: AppStyle.aiPanelWidth, height: 44)
             .background(.regularMaterial, in: Capsule())
             .background(
                 Capsule()
@@ -129,7 +120,7 @@ struct AIAssistantPanel: View {
                 }
                 .padding(12)
                 .background(Color(nsColor: .controlColor))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipShape(.rect(cornerRadius: 8))
             } else if let response = lastResponse {
                 VStack(alignment: .leading, spacing: 6) {
                     markdownText(response)
@@ -160,10 +151,10 @@ struct AIAssistantPanel: View {
                 }
                 .padding(12)
                 .background(Color(nsColor: .controlColor))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipShape(.rect(cornerRadius: 8))
             }
         }
-        .frame(width: 320)
+        .frame(width: AppStyle.aiPanelWidth)
         .offset(offset)
         .gesture(
             DragGesture()
@@ -203,13 +194,7 @@ struct AIAssistantPanel: View {
     /// Render text with basic markdown support (code blocks, bold, italic).
     @ViewBuilder
     private func markdownText(_ text: String) -> some View {
-        if let attributed = try? AttributedString(markdown: text) {
-            Text(attributed)
-                .font(.system(size: 13))
-        } else {
-            Text(text)
-                .font(.system(size: 13))
-        }
+        Text.markdown(text).font(.system(size: 13))
     }
 
     // MARK: - Submit
@@ -266,7 +251,7 @@ struct AIAssistantPanel: View {
 
     private var historyPopover: some View {
         VStack(spacing: 0) {
-            Text("History")
+            Text(i18n.t(.aiHistory))
                 .font(.system(size: 13, weight: .semibold))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
@@ -329,7 +314,7 @@ struct AIErrorDiagnosis: View {
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(nsColor: .controlColor))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .clipShape(.rect(cornerRadius: 6))
 
             if isProcessing {
                 HStack {
@@ -340,23 +325,13 @@ struct AIErrorDiagnosis: View {
                         .foregroundStyle(.secondary)
                 }
             } else if let diagnosis {
-                if let attributed = try? AttributedString(markdown: diagnosis) {
-                    Text(attributed)
-                        .font(.system(size: 12))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                        .background(Color(nsColor: .controlColor))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                } else {
-                    Text(diagnosis)
-                        .font(.system(size: 12))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                        .background(Color(nsColor: .controlColor))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
+                Text.markdown(diagnosis)
+                    .font(.system(size: 12))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .background(Color(nsColor: .controlColor))
+                    .clipShape(.rect(cornerRadius: 6))
 
                 HStack(spacing: 12) {
                     Button {
@@ -383,7 +358,7 @@ struct AIErrorDiagnosis: View {
             }
         }
         .padding(14)
-        .frame(width: 320)
+        .frame(width: AppStyle.aiPanelWidth)
         .background(
             RoundedRectangle(cornerRadius: 14)
                 .fill(.ultraThinMaterial)

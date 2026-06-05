@@ -181,7 +181,7 @@ struct GroupEditSheet: View {
                     Image(systemName: "magnifyingglass").foregroundStyle(.tertiary).font(.caption)
                     TextField("SF Symbols", text: $iconSearch).textFieldStyle(.plain).font(.caption)
                 }
-                .padding(6).background(Color(nsColor: .controlBackgroundColor)).clipShape(RoundedRectangle(cornerRadius: 6))
+                .padding(6).background(Color(nsColor: .controlBackgroundColor)).clipShape(.rect(cornerRadius: 6))
 
                 ScrollView {
                     LazyVGrid(columns: Array(repeating: GridItem(.fixed(32), spacing: 6), count: 10), spacing: 6) {
@@ -202,7 +202,7 @@ struct GroupEditSheet: View {
             Image(systemName: icon ?? "slash.circle")
                 .font(.system(size: 16)).frame(width: 32, height: 32)
                 .background(selectedIcon == icon ? Color.accentColor.opacity(0.15) : .clear)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .clipShape(.rect(cornerRadius: 6))
                 .foregroundStyle(icon == nil ? .tertiary : .primary)
         }
         .buttonStyle(.plain)

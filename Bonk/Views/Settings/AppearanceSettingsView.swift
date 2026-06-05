@@ -114,7 +114,7 @@ struct AppearanceSettingsView: View {
                                 Color.white.frame(width: 18)
                                 Color.black.frame(width: 18)
                             }
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .clipShape(.rect(cornerRadius: 6))
                         )
                 }
                 HStack {

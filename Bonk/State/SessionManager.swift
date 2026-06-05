@@ -86,13 +86,19 @@ final class SessionManager {
         do {
             Log.session.info(" Connecting to \(hostItem.host):\(hostItem.port)...")
             try await service.connect(config: config)
+            guard tabs.contains(where: { $0.id == tab.id }) else { return }
+
             Log.session.info(" Connected! Enabling reconnection...")
             await service.enableReconnection(attempts: 3)
+            guard tabs.contains(where: { $0.id == tab.id }) else { return }
+
             tab.connectionState = .connected
             tab.connectedAt = Date()
             Log.session.info(" Opening PTY...")
 
             let ptySession = try await service.openPTY()
+            guard tabs.contains(where: { $0.id == tab.id }) else { return }
+
             tab.ptySession = ptySession
             let streamResult = ptySession.makeOutputStream()
             tab.outputStream = streamResult.stream
@@ -124,6 +130,8 @@ final class SessionManager {
                 }
             }
         } catch {
+            // Don't show error if tab was closed during connection
+            guard tabs.contains(where: { $0.id == tab.id }) else { return }
             Log.session.info(" Error: \(error)")
             tab.connectionState = .disconnected
             tab.errorMessage = error.localizedDescription

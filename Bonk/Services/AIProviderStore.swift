@@ -9,8 +9,10 @@ final class AIProviderStore: ObservableObject {
     @Published var providers: [AIProviderConfig] = []
     @Published var activeProviderID: UUID?
 
-    private let providersKey = "ai_providers"
-    private let activeKey = "ai_active_provider_id"
+    private static let providersKey = "ai_providers"
+    private static let activeKey = "ai_active_provider_id"
+    private let providersKey = AIProviderStore.providersKey
+    private let activeKey = AIProviderStore.activeKey
 
     init() {
         load()
@@ -68,5 +70,31 @@ final class AIProviderStore: ObservableObject {
     func setActive(_ id: UUID?) {
         activeProviderID = id
         save()
+    }
+
+    // MARK: - Static Accessors (for non-ObservableObject contexts)
+
+    /// The currently active provider, read directly from UserDefaults.
+    static var activeProvider: AIProviderConfig? {
+        guard let data = UserDefaults.standard.data(forKey: providersKey),
+              let providers = try? JSONDecoder().decode([AIProviderConfig].self, from: data),
+              let activeId = UserDefaults.standard.string(forKey: activeKey) else { return nil }
+        return providers.first(where: { $0.id.uuidString == activeId })
+    }
+
+    /// All configured providers.
+    static var allProviders: [AIProviderConfig] {
+        guard let data = UserDefaults.standard.data(forKey: providersKey) else { return [] }
+        return (try? JSONDecoder().decode([AIProviderConfig].self, from: data)) ?? []
+    }
+
+    /// Update a specific provider by ID.
+    static func updateProvider(_ provider: AIProviderConfig) {
+        var providers = allProviders
+        guard let idx = providers.firstIndex(where: { $0.id == provider.id }) else { return }
+        providers[idx] = provider
+        if let data = try? JSONEncoder().encode(providers) {
+            UserDefaults.standard.set(data, forKey: providersKey)
+        }
     }
 }
