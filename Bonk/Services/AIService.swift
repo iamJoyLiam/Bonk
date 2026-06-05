@@ -17,30 +17,48 @@ final class AIService {
     func chat(_ message: String, context _: TerminalContext) async {
         let systemPrompt = """
         You are a terminal assistant embedded in an SSH client.
-        Answer concisely in plain text. If providing a command, show it on its own line.
+        Answer concisely in plain text. \
+        If providing a command, show it on its own line.
         No greetings or filler. Match the user's language.
         """
-        await execute(systemPrompt: systemPrompt, userPrompt: message, label: "chat")
+        await execute(
+            systemPrompt: systemPrompt,
+            userPrompt: message,
+            label: "chat"
+        )
     }
 
     func explainError(_ errorOutput: String, context _: TerminalContext) async {
         let systemPrompt = """
         You are a terminal error diagnoser embedded in an SSH client.
-        Explain the error briefly and suggest a fix. Reply in plain text, no markdown.
+        Explain the error briefly and suggest a fix. \
+        Reply in plain text, no markdown.
         Match the user's language.
         """
-        await execute(systemPrompt: systemPrompt, userPrompt: "Explain this terminal error:\n\n\(errorOutput)", label: "explainError")
+        let userPrompt = "Explain this terminal error:\n\n\(errorOutput)"
+        await execute(
+            systemPrompt: systemPrompt,
+            userPrompt: userPrompt,
+            label: "explainError"
+        )
     }
 
     // MARK: - Core
 
-    private func execute(systemPrompt: String, userPrompt: String, label: String) async {
+    private func execute(
+        systemPrompt: String,
+        userPrompt: String,
+        label: String
+    ) async {
         guard let (provider, apiKey) = resolveProvider() else { return }
 
         let modelLower = provider.model.lowercased()
         if modelLower.contains("safety") || modelLower.contains("classifier") {
-            lastError = "Model '\(provider.model)' is a safety classifier, not a chat model. Change it in Settings → AI."
-            Log.ai.error("\(label): safety classifier detected: \(provider.model)")
+            lastError = """
+            Model '\(provider.model)' is a safety classifier, \
+            not a chat model. Change it in Settings → AI.
+            """
+            Log.ai.error("\(label): safety classifier: \(provider.model)")
             return
         }
 
@@ -51,7 +69,12 @@ final class AIService {
         Log.ai.info("\(label): provider=\(provider.name) model=\(provider.model) msg=\(userPrompt.prefix(80))")
 
         do {
-            let response = try await streamRequest(provider: provider, apiKey: apiKey, systemPrompt: systemPrompt, userPrompt: userPrompt)
+            let response = try await streamRequest(
+                provider: provider,
+                apiKey: apiKey,
+                systemPrompt: systemPrompt,
+                userPrompt: userPrompt
+            )
             Log.ai.info("\(label): response(\(response.count) chars)=\(response.prefix(200))")
             if !Task.isCancelled { currentExplanation = response }
         } catch {
@@ -79,8 +102,16 @@ final class AIService {
     private static let anthropicVersion = "2023-06-01"
 
     /// Build URL, headers, and body for a provider API call.
-    private func buildRequest(provider: AIProviderConfig, apiKey: String, systemPrompt: String, userPrompt: String, stream: Bool) throws -> URLRequest {
-        let endpoint = provider.endpoint.isEmpty ? provider.type.defaultEndpoint : provider.endpoint
+    private func buildRequest(
+        provider: AIProviderConfig,
+        apiKey: String,
+        systemPrompt: String,
+        userPrompt: String,
+        stream: Bool
+    ) throws -> URLRequest {
+        let endpoint = provider.endpoint.isEmpty
+            ? provider.type.defaultEndpoint
+            : provider.endpoint
         guard !endpoint.isEmpty else { throw AIError.invalidEndpoint }
 
         let maxTokens = provider.maxOutputTokens ?? 500
@@ -90,39 +121,75 @@ final class AIService {
 
         switch provider.type {
         case .claude:
-            guard let u = URL(string: "\(endpoint)/v1/messages") else { throw AIError.invalidEndpoint }
-            url = u
-            headers = ["x-api-key": apiKey, "anthropic-version": Self.anthropicVersion, "content-type": "application/json"]
+            guard let endpointURL = URL(
+                string: "\(endpoint)/v1/messages"
+            ) else { throw AIError.invalidEndpoint }
+            url = endpointURL
+            headers = [
+                "x-api-key": apiKey,
+                "anthropic-version": Self.anthropicVersion,
+                "content-type": "application/json"
+            ]
             body = [
-                "model": provider.model, "max_tokens": maxTokens, "system": systemPrompt,
-                "messages": [["role": "user", "content": userPrompt]]
+                "model": provider.model,
+                "max_tokens": maxTokens,
+                "system": systemPrompt,
+                "messages": [
+                    ["role": "user", "content": userPrompt]
+                ]
             ].merging(stream ? ["stream": true] : [:]) { $1 }
 
         case .openAI, .openRouter, .copilot, .openCode, .custom:
-            guard let u = URL(string: "\(endpoint)/v1/chat/completions") else { throw AIError.invalidEndpoint }
-            url = u
-            headers = ["Authorization": "Bearer \(apiKey)", "content-type": "application/json"]
+            guard let endpointURL = URL(
+                string: "\(endpoint)/v1/chat/completions"
+            ) else { throw AIError.invalidEndpoint }
+            url = endpointURL
+            headers = [
+                "Authorization": "Bearer \(apiKey)",
+                "content-type": "application/json"
+            ]
             body = [
-                "model": provider.model, "max_tokens": maxTokens,
-                "messages": [["role": "system", "content": systemPrompt], ["role": "user", "content": userPrompt]]
+                "model": provider.model,
+                "max_tokens": maxTokens,
+                "messages": [
+                    ["role": "system", "content": systemPrompt],
+                    ["role": "user", "content": userPrompt]
+                ]
             ].merging(stream ? ["stream": true] : [:]) { $1 }
 
         case .gemini:
-            guard let u = URL(string: "\(endpoint)/v1beta/models/\(provider.model):generateContent") else { throw AIError.invalidEndpoint }
-            url = u
-            headers = ["x-goog-api-key": apiKey, "content-type": "application/json"]
+            let path = "\(endpoint)/v1beta/models/"
+                + "\(provider.model):generateContent"
+            guard let endpointURL = URL(string: path)
+            else { throw AIError.invalidEndpoint }
+            url = endpointURL
+            headers = [
+                "x-goog-api-key": apiKey,
+                "content-type": "application/json"
+            ]
             body = [
-                "contents": [["parts": [["text": "\(systemPrompt)\n\n\(userPrompt)"]]]],
-                "generationConfig": ["maxOutputTokens": maxTokens]
+                "contents": [
+                    ["parts": [
+                        ["text": "\(systemPrompt)\n\n\(userPrompt)"]
+                    ]]
+                ],
+                "generationConfig": [
+                    "maxOutputTokens": maxTokens
+                ]
             ]
 
         case .ollama:
-            guard let u = URL(string: "\(endpoint)/api/chat") else { throw AIError.invalidEndpoint }
-            url = u
+            guard let endpointURL = URL(
+                string: "\(endpoint)/api/chat"
+            ) else { throw AIError.invalidEndpoint }
+            url = endpointURL
             headers = ["content-type": "application/json"]
             body = [
                 "model": provider.model,
-                "messages": [["role": "system", "content": systemPrompt], ["role": "user", "content": userPrompt]],
+                "messages": [
+                    ["role": "system", "content": systemPrompt],
+                    ["role": "user", "content": userPrompt]
+                ],
                 "stream": stream
             ]
         }
@@ -131,40 +198,71 @@ final class AIService {
         request.httpMethod = "POST"
         request.timeoutInterval = stream ? 60 : 30
         headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.httpBody = try JSONSerialization.data(
+            withJSONObject: body
+        )
         return request
     }
 
     // MARK: - Streaming
 
-    private func streamRequest(provider: AIProviderConfig, apiKey: String, systemPrompt: String, userPrompt: String) async throws -> String {
-        // Gemini doesn't support SSE streaming
+    private func streamRequest(
+        provider: AIProviderConfig,
+        apiKey: String,
+        systemPrompt: String,
+        userPrompt: String
+    ) async throws -> String {
         if provider.type == .gemini {
-            return try await simpleRequest(provider: provider, apiKey: apiKey, systemPrompt: systemPrompt, userPrompt: userPrompt)
+            return try await simpleRequest(
+                provider: provider,
+                apiKey: apiKey,
+                systemPrompt: systemPrompt,
+                userPrompt: userPrompt
+            )
         }
 
-        let request = try buildRequest(provider: provider, apiKey: apiKey, systemPrompt: systemPrompt, userPrompt: userPrompt, stream: true)
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        let request = try buildRequest(
+            provider: provider,
+            apiKey: apiKey,
+            systemPrompt: systemPrompt,
+            userPrompt: userPrompt,
+            stream: true
+        )
+        let (bytes, response) = try await URLSession.shared.bytes(
+            for: request
+        )
 
-        guard let http = response as? HTTPURLResponse else { throw AIError.invalidResponse }
+        guard let http = response as? HTTPURLResponse else {
+            throw AIError.invalidResponse
+        }
         guard http.statusCode == 200 else {
             var errorData = Data()
-            for try await byte in bytes {
-                errorData.append(byte)
-            }
-            throw AIError.apiError(statusCode: http.statusCode, message: String(data: errorData, encoding: .utf8) ?? "Unknown error")
+            for try await byte in bytes { errorData.append(byte) }
+            let body = String(data: errorData, encoding: .utf8)
+                ?? "Unknown error"
+            throw AIError.apiError(
+                statusCode: http.statusCode,
+                message: body
+            )
         }
 
-        return try await parseStream(bytes: bytes, providerType: provider.type)
+        return try await parseStream(
+            bytes: bytes,
+            providerType: provider.type
+        )
     }
 
-    private func parseStream(bytes: URLSession.AsyncBytes, providerType: AIProviderType) async throws -> String {
+    private func parseStream(
+        bytes: URLSession.AsyncBytes,
+        providerType: AIProviderType
+    ) async throws -> String {
         var result = ""
         var buffer = ""
 
         for try await byte in bytes {
             guard !Task.isCancelled else { break }
-            guard let char = String(bytes: [byte], encoding: .utf8) else { continue }
+            guard let char = String(bytes: [byte], encoding: .utf8)
+            else { continue }
             buffer += char
 
             while let range = buffer.range(of: "\n") {
@@ -173,8 +271,12 @@ final class AIService {
 
                 guard line.hasPrefix("data: ") else { continue }
                 let json = String(line.dropFirst(6))
-                guard json != "[DONE]", let data = json.data(using: .utf8),
-                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+                guard json != "[DONE]",
+                      let data = json.data(using: .utf8),
+                      let obj = try? JSONSerialization.jsonObject(
+                          with: data
+                      ) as? [String: Any]
+                else { continue }
 
                 if let text = extractDelta(from: obj, type: providerType) {
                     result += text
@@ -186,31 +288,60 @@ final class AIService {
     }
 
     /// Extract incremental text from a streaming event.
-    private func extractDelta(from json: [String: Any], type _: AIProviderType) -> String? {
-        // OpenAI format: choices[0].delta.content
+    private func extractDelta(
+        from json: [String: Any],
+        type _: AIProviderType
+    ) -> String? {
+        // OpenAI: choices[0].delta.content
         if let choices = json["choices"] as? [[String: Any]],
-           let content = choices.first?["delta"] as? [String: Any],
-           let text = content["content"] as? String { return text }
-        // Claude format: type == "content_block_delta"
+           let delta = choices.first?["delta"] as? [String: Any],
+           let text = delta["content"] as? String {
+            return text
+        }
+        // Claude: type == "content_block_delta"
         if json["type"] as? String == "content_block_delta",
-           let text = (json["delta"] as? [String: Any])?["text"] as? String { return text }
-        // Ollama format: message.content
-        if let text = (json["message"] as? [String: Any])?["content"] as? String { return text }
+           let delta = json["delta"] as? [String: Any],
+           let text = delta["text"] as? String {
+            return text
+        }
+        // Ollama: message.content
+        if let message = json["message"] as? [String: Any],
+           let text = message["content"] as? String {
+            return text
+        }
         return nil
     }
 
     // MARK: - Non-Streaming (Gemini fallback)
 
-    private func simpleRequest(provider: AIProviderConfig, apiKey: String, systemPrompt: String, userPrompt: String) async throws -> String {
-        let request = try buildRequest(provider: provider, apiKey: apiKey, systemPrompt: systemPrompt, userPrompt: userPrompt, stream: false)
-        let (data, response) = try await URLSession.shared.data(for: request)
+    private func simpleRequest(
+        provider: AIProviderConfig,
+        apiKey: String,
+        systemPrompt: String,
+        userPrompt: String
+    ) async throws -> String {
+        let request = try buildRequest(
+            provider: provider,
+            apiKey: apiKey,
+            systemPrompt: systemPrompt,
+            userPrompt: userPrompt,
+            stream: false
+        )
+        let (data, response) = try await URLSession.shared.data(
+            for: request
+        )
 
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+        guard let http = response as? HTTPURLResponse,
+              http.statusCode == 200 else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            throw AIError.apiError(statusCode: code, message: String(data: data, encoding: .utf8) ?? "Unknown error")
+            let body = String(data: data, encoding: .utf8)
+                ?? "Unknown error"
+            throw AIError.apiError(statusCode: code, message: body)
         }
 
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let json = try JSONSerialization.jsonObject(
+            with: data
+        ) as? [String: Any] else {
             throw AIError.invalidResponse
         }
 
@@ -219,17 +350,25 @@ final class AIService {
             .flatMap({ $0["content"] as? [String: Any] })
             .flatMap({ $0["parts"] as? [[String: Any]] })
             .flatMap(\.first)
-            .flatMap({ $0["text"] as? String }) { return text }
+            .flatMap({ $0["text"] as? String }) {
+            return text
+        }
         // OpenAI: choices[0].message.content
         if let text = (json["choices"] as? [[String: Any]])?.first
             .flatMap({ $0["message"] as? [String: Any] })
-            .flatMap({ $0["content"] as? String }) { return text }
+            .flatMap({ $0["content"] as? String }) {
+            return text
+        }
         // Claude: content[0].text
         if let text = (json["content"] as? [[String: Any]])?.first
-            .flatMap({ $0["text"] as? String }) { return text }
+            .flatMap({ $0["text"] as? String }) {
+            return text
+        }
         // Ollama: message.content
         if let text = (json["message"] as? [String: Any])
-            .flatMap({ $0["content"] as? String }) { return text }
+            .flatMap({ $0["content"] as? String }) {
+            return text
+        }
 
         throw AIError.invalidResponse
     }
@@ -251,9 +390,12 @@ enum AIError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidEndpoint: "Invalid AI provider endpoint"
-        case .invalidResponse: "Invalid response from AI provider"
-        case let .apiError(code, msg): "AI API error (\(code)): \(msg)"
+        case .invalidEndpoint:
+            "Invalid AI provider endpoint"
+        case .invalidResponse:
+            "Invalid response from AI provider"
+        case let .apiError(code, msg):
+            "AI API error (\(code)): \(msg)"
         }
     }
 }

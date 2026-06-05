@@ -27,10 +27,14 @@ struct GroupSettingsView: View {
         .alert(i18n.t(.delete), isPresented: Binding(
             get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }
         )) {
-            Button(i18n.t(.delete), role: .destructive) { if let g = pendingDelete { deleteGroup(g) } }
+            Button(i18n.t(.delete), role: .destructive) {
+                if let target = pendingDelete { deleteGroup(target) }
+            }
             Button(i18n.t(.cancel), role: .cancel) { pendingDelete = nil }
         } message: {
-            if let g = pendingDelete { Text(i18n.tr(.deleteGroupConfirm, args: g.name)) }
+            if let target = pendingDelete {
+                Text(i18n.tr(.deleteGroupConfirm, args: target.name))
+            }
         }
     }
 
@@ -155,7 +159,9 @@ struct GroupEditSheet: View {
             }
             ColorPicker("", selection: $customColor, supportsOpacity: false)
                 .labelsHidden().frame(width: 28, height: 28)
-                .onChange(of: customColor) { _, c in selectedColor = c.hexString }
+                .onChange(of: customColor) { _, newColor in
+                    selectedColor = newColor.hexString
+                }
         }
         .padding(.vertical, 4)
     }
@@ -169,7 +175,10 @@ struct GroupEditSheet: View {
                     Image(systemName: icon).font(.system(size: 16)).frame(width: 24)
                     Text(icon).font(.caption).foregroundStyle(.secondary)
                 } else {
-                    Image(systemName: "slash.circle").font(.system(size: 16)).foregroundStyle(.tertiary).frame(width: 24)
+                    Image(systemName: "slash.circle")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 24)
                     Text(i18n.t(.noIcon)).font(.caption).foregroundStyle(.tertiary)
                 }
                 Spacer()
@@ -213,18 +222,30 @@ struct GroupEditSheet: View {
     // MARK: - Actions
 
     private func loadExisting() {
-        guard let g = group else { return }
-        name = g.name; selectedColor = g.colorHex; selectedIcon = g.icon
-        if let hex = g.colorHex { customColor = Color(hex: hex) }
+        guard let existing = group else { return }
+        name = existing.name
+        selectedColor = existing.colorHex
+        selectedIcon = existing.icon
+        if let hex = existing.colorHex {
+            customColor = Color(hex: hex)
+        }
     }
 
     private func save() {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
-        if let g = group {
-            g.name = trimmed; g.colorHex = selectedColor; g.icon = selectedIcon
+        if let existing = group {
+            existing.name = trimmed
+            existing.colorHex = selectedColor
+            existing.icon = selectedIcon
         } else {
-            modelContext.insert(HostGroup(name: trimmed, colorHex: selectedColor, icon: selectedIcon, sortOrder: existingNames.count))
+            let newGroup = HostGroup(
+                name: trimmed,
+                colorHex: selectedColor,
+                icon: selectedIcon,
+                sortOrder: existingNames.count
+            )
+            modelContext.insert(newGroup)
         }
         dismiss()
     }
@@ -238,6 +259,6 @@ struct GroupEditSheet: View {
         "house", "building.2", "cart", "hammer", "wrench",
         "star", "flag", "tag", "bookmark", "pin",
         "heart", "flame", "drop", "leaf", "sun.max",
-        "moon", "sparkles", "command", "atom",
+        "moon", "sparkles", "command", "atom"
     ]
 }

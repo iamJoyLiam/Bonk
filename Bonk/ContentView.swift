@@ -12,7 +12,7 @@ struct ContentView: View {
         @State private var showInspector = false
         @State private var inspectorMode: InspectorMode = .sftp
 
-        enum InspectorMode { case sftp, ai }
+        enum InspectorMode { case sftp, aiChat }
     #endif
 
     private var preferences: UserPreferences {
@@ -75,8 +75,14 @@ struct ContentView: View {
                     case .sftp:
                         if let tab = sessionManager.activeTab {
                             SFTPBrowserView(tab: tab)
+                        } else {
+                            ContentUnavailableView(
+                                i18n.t(.sftpBrowser),
+                                systemImage: "folder.fill",
+                                description: Text(i18n.t(.selectHost))
+                            )
                         }
-                    case .ai:
+                    case .aiChat:
                         AIChatSidebarView()
                     }
                 }
@@ -86,10 +92,10 @@ struct ContentView: View {
                 ToolbarItem(placement: .primaryAction) {
                     HStack(spacing: 6) {
                         Button {
-                            if showInspector, inspectorMode == .ai {
+                            if showInspector, inspectorMode == .aiChat {
                                 showInspector = false
                             } else {
-                                inspectorMode = .ai
+                                inspectorMode = .aiChat
                                 showInspector = true
                             }
                         } label: {

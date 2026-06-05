@@ -25,7 +25,7 @@ final class AIProviderStore: ObservableObject {
             do {
                 providers = try JSONDecoder().decode([AIProviderConfig].self, from: data)
             } catch {
-                Self.logger.error("Failed to decode AI providers (\(data.count) bytes): \(error.localizedDescription). Data may be corrupted — providers reset to empty.")
+                Self.logger.error("Failed to decode AI providers: \(error.localizedDescription)")
                 // Clear corrupted data to prevent repeated failures
                 UserDefaults.standard.removeObject(forKey: providersKey)
             }

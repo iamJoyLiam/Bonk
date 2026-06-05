@@ -109,16 +109,18 @@ struct AIChatSidebarView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 2) {
-                        ForEach(conversationStore.conversations) { c in
+                        ForEach(conversationStore.conversations) { conversation in
                             HStack(spacing: 8) {
                                 Button {
-                                    sidebarConversationID = c.id
+                                    sidebarConversationID = conversation.id
                                     showHistory = false
                                 } label: {
                                     HStack {
-                                        Text(c.title).font(.system(size: 12)).lineLimit(1)
+                                        Text(conversation.title)
+                                            .font(.system(size: 12))
+                                            .lineLimit(1)
                                         Spacer()
-                                        if sidebarConversationID == c.id {
+                                        if sidebarConversationID == conversation.id {
                                             Image(systemName: "checkmark")
                                                 .font(.system(size: 10))
                                                 .foregroundStyle(Color.accentColor)
@@ -130,7 +132,7 @@ struct AIChatSidebarView: View {
 
                                 // Delete button
                                 Button {
-                                    pendingDeleteConversation = c.id
+                                    pendingDeleteConversation = conversation.id
                                 } label: {
                                     Image(systemName: "xmark")
                                         .font(.system(size: 9, weight: .medium))
@@ -257,7 +259,14 @@ struct AIChatSidebarView: View {
             .background(.regularMaterial, in: Capsule())
             .background(
                 Capsule()
-                    .stroke(AngularGradient(gradient: Gradient(colors: aiColors), center: .center, angle: .degrees(rotationAngle)), lineWidth: isInputFocused ? 3 : 0)
+                    .stroke(
+                        AngularGradient(
+                            gradient: Gradient(colors: aiColors),
+                            center: .center,
+                            angle: .degrees(rotationAngle)
+                        ),
+                        lineWidth: isInputFocused ? 3 : 0
+                    )
                     .blur(radius: 6).opacity(isInputFocused ? 0.6 : 0)
             )
 
@@ -352,7 +361,11 @@ struct AIChatSidebarView: View {
 
     private func fetchModels() {
         guard let provider = activeProvider,
-              let url = AIProviderNetworking.modelsURL(endpoint: provider.endpoint, type: provider.type, apiKey: provider.apiKey) else { return }
+              let url = AIProviderNetworking.modelsURL(
+                  endpoint: provider.endpoint,
+                  type: provider.type,
+                  apiKey: provider.apiKey
+              ) else { return }
         isFetchingModels = true
         Task {
             do {
