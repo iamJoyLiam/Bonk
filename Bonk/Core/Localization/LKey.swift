@@ -156,6 +156,13 @@ enum LKey: String, CaseIterable {
     // File operations
     case open, download, delete
 
+    // Groups
+    case groups, addGroup = "add_group", editGroup = "edit_group"
+    case groupName = "group_name", groupColor = "group_color", groupIcon = "group_icon"
+    case noGroups = "no_groups", noGroupsHint = "no_groups_hint"
+    case noIcon = "no_icon", customColor = "custom_color"
+    case deleteGroupConfirm = "delete_group_confirm"
+
     // Search
     case search, system
 

@@ -25,6 +25,10 @@ struct SettingsView: View {
                 .tabItem { Label(i18n.t(.keyboard), systemImage: "keyboard") }
                 .tag("keyboard")
 
+            GroupSettingsView()
+                .tabItem { Label(i18n.t(.groups), systemImage: "folder") }
+                .tag("groups")
+
             AISettingsView()
                 .tabItem { Label(i18n.t(.ai), systemImage: "sparkles") }
                 .tag("ai")

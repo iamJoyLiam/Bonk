@@ -120,7 +120,7 @@ struct AIAssistantPanel: View {
             // AI Response - directly below input
             let streamingText = aiService.streamingResponse
             if isProcessing && !streamingText.isEmpty {
-                // Show streaming response
+                // Show streaming response (plain text during stream)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(streamingText)
                         .font(.system(size: 13))
@@ -132,8 +132,7 @@ struct AIAssistantPanel: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             } else if let response = lastResponse {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(response)
-                        .font(.system(size: 13))
+                    markdownText(response)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -196,6 +195,20 @@ struct AIAssistantPanel: View {
         .onKeyPress(.escape) {
             dismiss()
             return .handled
+        }
+    }
+
+    // MARK: - Markdown Rendering
+
+    /// Render text with basic markdown support (code blocks, bold, italic).
+    @ViewBuilder
+    private func markdownText(_ text: String) -> some View {
+        if let attributed = try? AttributedString(markdown: text) {
+            Text(attributed)
+                .font(.system(size: 13))
+        } else {
+            Text(text)
+                .font(.system(size: 13))
         }
     }
 
@@ -346,13 +359,23 @@ struct AIErrorDiagnosis: View {
                         .foregroundStyle(.secondary)
                 }
             } else if let diagnosis {
-                Text(diagnosis)
-                    .font(.system(size: 12))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(8)
-                    .background(Color(nsColor: .controlColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                if let attributed = try? AttributedString(markdown: diagnosis) {
+                    Text(attributed)
+                        .font(.system(size: 12))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                        .background(Color(nsColor: .controlColor))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                } else {
+                    Text(diagnosis)
+                        .font(.system(size: 12))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                        .background(Color(nsColor: .controlColor))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
 
                 HStack(spacing: 12) {
                     Button {

@@ -74,3 +74,8 @@ public.pem
 
 # Architecture doc (local reference)
 ARCHITECTURE.md
+
+# Planning files (local)
+task_plan.md
+findings.md
+progress.md

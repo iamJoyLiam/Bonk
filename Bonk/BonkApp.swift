@@ -22,8 +22,14 @@ struct BonkApp: App {
       HostItem.self,
       UserPreferences.self,
       Credential.self,
+      HostGroup.self,
     ])
-    let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+    #if DEBUG
+    let storeName = "Bonk-Dev"
+    #else
+    let storeName = "Bonk"
+    #endif
+    let config = ModelConfiguration(storeName, schema: schema, isStoredInMemoryOnly: false)
 
     do {
       return try ModelContainer(for: schema, configurations: [config])
@@ -31,9 +37,14 @@ struct BonkApp: App {
       // Schema migration failed — delete old store and retry
       Log.general.warning(" Migration failed, recreating store: \(error)")
       let storeURL = config.url
-      try? FileManager.default.removeItem(at: storeURL)
-      try? FileManager.default.removeItem(at: storeURL.appendingPathExtension("shm"))
-      try? FileManager.default.removeItem(at: storeURL.appendingPathExtension("wal"))
+      // Remove the store and all sidecar files (-shm, -wal, -journal)
+      let storeDir = storeURL.deletingLastPathComponent()
+      let storeName = storeURL.lastPathComponent
+      if let contents = try? FileManager.default.contentsOfDirectory(at: storeDir, includingPropertiesForKeys: nil) {
+        for file in contents where file.lastPathComponent.hasPrefix(storeName) {
+          try? FileManager.default.removeItem(at: file)
+        }
+      }
       do {
         return try ModelContainer(for: schema, configurations: [config])
       } catch {
@@ -86,6 +97,7 @@ struct BonkApp: App {
         SettingsContainerView()
           .environmentObject(i18n)
       }
+      .modelContainer(sharedModelContainer)
     #endif
   }
 

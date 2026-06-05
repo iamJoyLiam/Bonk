@@ -44,9 +44,12 @@ final class AIService {
         defer { isProcessing = false }
 
         let systemPrompt = """
-        You are a helpful terminal assistant. Answer the user's question concisely and accurately.
-        If they ask about a command, provide the command and brief explanation.
-        Keep responses short and practical.
+        You are a terminal assistant embedded in an SSH client. Rules:
+        - Reply in plain text only. No markdown, no code blocks, no bullet lists with symbols.
+        - Keep answers under 3 sentences unless the user asks for detail.
+        - If providing a command, show it on its own line with nothing else.
+        - Be direct. No greetings, no filler, no "Sure!", no "Here's".
+        - Match the user's language.
         """
 
         do {
@@ -59,7 +62,7 @@ final class AIService {
             )
 
             if !Task.isCancelled {
-                currentExplanation = response
+                currentExplanation = stripMarkdown(response)
             }
         } catch {
             lastError = error.localizedDescription
@@ -84,13 +87,11 @@ final class AIService {
         defer { isProcessing = false }
 
         let systemPrompt = """
-        You are a terminal error explainer. Analyze the error output and provide a clear, concise explanation.
-        Include:
-        1. What the error means
-        2. Likely cause
-        3. Suggested fix
-
-        Keep the explanation brief and actionable.
+        You are a terminal error diagnoser embedded in an SSH client. Rules:
+        - Reply in plain text only. No markdown formatting.
+        - Format: "问题: <one line>\n原因: <one line>\n修复: <command or one line>"
+        - Be direct and concise. No preamble, no "Sure!", no explanations of what an error is.
+        - Match the user's language.
         """
 
         let userPrompt = """
@@ -110,7 +111,7 @@ final class AIService {
             )
 
             if !Task.isCancelled {
-                currentExplanation = response
+                currentExplanation = stripMarkdown(response)
             }
         } catch {
             lastError = error.localizedDescription
@@ -118,6 +119,61 @@ final class AIService {
     }
 
     /// Get the active AI provider from UserDefaults.
+
+    /// Strip common markdown formatting from AI output.
+    /// Preserves content, removes only formatting markers.
+    private func stripMarkdown(_ text: String) -> String {
+        var result = text
+
+        // Remove code fences ``` ... ``` (keep inner content)
+        result = result.replacingOccurrences(
+            of: "```[a-zA-Z]*\\n?",
+            with: "", options: .regularExpression
+        )
+        result = result.replacingOccurrences(of: "```", with: "")
+
+        // Remove inline code backticks `...`
+        result = result.replacingOccurrences(of: "`([^`]+)`", with: "$1", options: .regularExpression)
+
+        // Remove bold **...** and __...__
+        result = result.replacingOccurrences(of: "\\*\\*(.+?)\\*\\*", with: "$1", options: .regularExpression)
+        result = result.replacingOccurrences(of: "__(.+?)__", with: "$1", options: .regularExpression)
+
+        // Remove italic *...* and _..._
+        result = result.replacingOccurrences(of: "\\*(.+?)\\*", with: "$1", options: .regularExpression)
+        result = result.replacingOccurrences(of: "_(.+?)_", with: "$1", options: .regularExpression)
+
+        // Remove links [text](url) → text
+        result = result.replacingOccurrences(of: "\\[([^\\]]+)\\]\\([^\\)]+\\)", with: "$1", options: .regularExpression)
+
+        // Process line-by-line for prefix markers (headings, lists, blockquotes)
+        let lines = result.components(separatedBy: .newlines)
+        let cleaned = lines.map { line -> String in
+            var l = line
+            // Remove heading markers # ## ### etc.
+            if let range = l.range(of: #"^#{1,6}\s+"#, options: .regularExpression) {
+                l.replaceSubrange(range, with: "")
+            }
+            // Remove list markers (-, *, +, 1.)
+            if let range = l.range(of: #"^\s*[-*+]\s+"#, options: .regularExpression) {
+                l.replaceSubrange(range, with: "")
+            }
+            if let range = l.range(of: #"^\s*\d+\.\s+"#, options: .regularExpression) {
+                l.replaceSubrange(range, with: "")
+            }
+            // Remove blockquotes >
+            if let range = l.range(of: #"^>\s?"#, options: .regularExpression) {
+                l.replaceSubrange(range, with: "")
+            }
+            return l
+        }
+        result = cleaned.joined(separator: "\n")
+
+        // Collapse multiple blank lines into one
+        result = result.replacingOccurrences(of: "\\n{3,}", with: "\n\n", options: .regularExpression)
+
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
     private var activeProvider: AIProviderConfig? {
         guard let data = UserDefaults.standard.data(forKey: "ai_providers"),
               let providers = try? JSONDecoder().decode([AIProviderConfig].self, from: data),

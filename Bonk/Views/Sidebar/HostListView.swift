@@ -13,6 +13,7 @@ struct HostListView: View {
     @EnvironmentObject var i18n: I18n
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \HostItem.createdAt) private var hosts: [HostItem]
+    @Query(sort: \HostGroup.sortOrder) private var hostGroups: [HostGroup]
 
     @Bindable var sessionManager: SessionManager
     let defaultPort: Int
@@ -45,20 +46,27 @@ struct HostListView: View {
         return grouped.sorted { $0.key < $1.key }
     }
 
+    /// Look up HostGroup by name.
+    private func groupModel(for name: String) -> HostGroup? {
+        hostGroups.first(where: { $0.name == name })
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Host list
             List(selection: $sessionManager.activeTabID) {
-                ForEach(groupedHosts, id: \.0) { group, items in
-                    Section(group) {
+                ForEach(groupedHosts, id: \.0) { groupName, items in
+                    Section {
                         ForEach(items) { host in
                             let tab = tabsByHostID[host.id]
-                            hostRow(host)
+                            hostRow(host, groupColor: groupModel(for: groupName)?.resolvedColor)
                                 .tag(tab?.id as UUID?)
                         }
                         .onDelete { indexSet in
                             if let idx = indexSet.first { pendingDeleteHost = items[idx] }
                         }
+                    } header: {
+                        groupHeader(groupName)
                     }
                 }
             }
@@ -155,10 +163,25 @@ struct HostListView: View {
         Binding(get: { pendingDeleteHost != nil }, set: { if !$0 { pendingDeleteHost = nil } })
     }
 
+    // MARK: - Group Header
+
+    @ViewBuilder
+    private func groupHeader(_ groupName: String) -> some View {
+        let g = groupModel(for: groupName)
+        HStack(spacing: 4) {
+            if let icon = g?.icon, !icon.isEmpty {
+                Image(systemName: icon)
+                    .font(.system(size: 10))
+                    .foregroundStyle(g?.resolvedColor ?? .secondary)
+            }
+            Text(groupName)
+        }
+    }
+
     // MARK: - Host Row
 
     @ViewBuilder
-    private func hostRow(_ host: HostItem) -> some View {
+    private func hostRow(_ host: HostItem, groupColor: Color? = nil) -> some View {
         let tab = sessionManager.tabs.first(where: { $0.hostItem.id == host.id })
         let state = tab?.connectionState ?? .disconnected
 
@@ -170,6 +193,13 @@ struct HostListView: View {
             }
         } label: {
             HStack(spacing: 10) {
+                // Group color indicator
+                if let color = groupColor {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(color)
+                        .frame(width: 3, height: 16)
+                }
+
                 statusDot(state)
 
                 VStack(alignment: .leading, spacing: 2) {

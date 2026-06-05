@@ -237,6 +237,18 @@
   "download": "下载",
   "delete": "删除",
 
+  "groups": "分组",
+  "add_group": "添加分组",
+  "edit_group": "编辑分组",
+  "group_name": "分组名称",
+  "group_color": "颜色",
+  "group_icon": "图标",
+  "no_groups": "暂无分组",
+  "no_groups_hint": "创建分组来在侧边栏中整理你的主机。",
+  "no_icon": "无图标",
+  "custom_color": "自定义…",
+  "delete_group_confirm": "确定删除分组「%@」？该分组下的主机将变为未分组。",
+
   "search": "搜索",
   "system": "跟随系统",
 

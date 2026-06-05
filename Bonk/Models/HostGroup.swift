@@ -1,0 +1,67 @@
+import Foundation
+import SwiftData
+import SwiftUI
+
+@Model
+final class HostGroup: Identifiable {
+    var id: UUID
+    var name: String
+    var colorHex: String?
+    var icon: String?
+    var sortOrder: Int
+    var createdAt: Date
+
+    init(name: String, colorHex: String? = nil, icon: String? = nil, sortOrder: Int = 0) {
+        self.id = UUID()
+        self.name = name
+        self.colorHex = colorHex
+        self.icon = icon
+        self.sortOrder = sortOrder
+        self.createdAt = Date()
+    }
+}
+
+// MARK: - Color
+
+extension HostGroup {
+    static let presetColors = [
+        "#FF6B6B", "#FF9F43", "#FECA57", "#48DBFB",
+        "#0ABDE3", "#5F27CD", "#FF6B9D", "#1DD1A1",
+    ]
+
+    var resolvedColor: Color? {
+        guard let hex = colorHex else { return nil }
+        return Color(hex: hex)
+    }
+}
+
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: .alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default: (a, r, g, b) = (255, 0, 0, 0)
+        }
+        self.init(.sRGB, red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255, opacity: Double(a) / 255)
+    }
+
+    var hexString: String? {
+        #if os(macOS)
+        guard let c = NSColor(self).usingColorSpace(.sRGB)?.cgColor.components else { return nil }
+        #else
+        guard let c = UIColor(self).cgColor.components else { return nil }
+        #endif
+        return String(format: "#%02X%02X%02X", Int(c[0] * 255), Int(c[safe: 1, default: c[0]] * 255), Int(c[safe: 2, default: c[0]] * 255))
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int, default defaultValue: Element) -> Element {
+        indices.contains(index) ? self[index] : defaultValue
+    }
+}
