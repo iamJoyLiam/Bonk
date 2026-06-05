@@ -32,10 +32,10 @@ struct AIProviderDetailSheet: View {
         onDelete: (() -> Void)? = nil,
         onCancel: @escaping () -> Void
     ) {
-        self._draft = State(initialValue: provider)
-        self._apiKeyInput = State(initialValue: provider.apiKey)
+        _draft = State(initialValue: provider)
+        _apiKeyInput = State(initialValue: provider.apiKey)
         // Seed fetchedModels with current model so Picker doesn't default to "Other"
-        self._fetchedModels = State(initialValue: provider.model.isEmpty ? [] : [provider.model])
+        _fetchedModels = State(initialValue: provider.model.isEmpty ? [] : [provider.model])
         self.isNew = isNew
         self.onSave = onSave
         self.onDelete = onDelete
@@ -113,7 +113,7 @@ struct AIProviderDetailSheet: View {
             if case .success = testResult {
                 Label(i18n.t(.connectionSuccessful), systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green).font(.caption)
-            } else if case .failure(let msg) = testResult {
+            } else if case let .failure(msg) = testResult {
                 Label(msg, systemImage: "xmark.circle.fill")
                     .foregroundStyle(.red).font(.caption).lineLimit(3)
             }
@@ -130,7 +130,7 @@ struct AIProviderDetailSheet: View {
                     Button(i18n.t(.signInGithub)) { Task { await copilotSignIn() } }
                         .disabled(copilotService.status != .running)
                 }
-            case .signingIn(let userCode, _, _):
+            case let .signingIn(userCode, _, _):
                 VStack(alignment: .leading, spacing: 8) {
                     Text(i18n.t(.enterCodeGithub))
                     Text(userCode).font(.system(.title2, design: .monospaced)).fontWeight(.bold).textSelection(.enabled)
@@ -142,7 +142,7 @@ struct AIProviderDetailSheet: View {
                         Button(i18n.t(.cancel), role: .cancel) { Task { await copilotService.signOut() } }
                     }
                 }
-            case .signedIn(let username):
+            case let .signedIn(username):
                 HStack {
                     Label(i18n.tr(.signedInAs, args: username), systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
@@ -170,7 +170,7 @@ struct AIProviderDetailSheet: View {
                 Text(i18n.t(.startingService)).font(.caption).foregroundStyle(.secondary)
             }
         case .running: EmptyView()
-        case .error(let msg):
+        case let .error(msg):
             Label(msg, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.caption).lineLimit(2)
         }
     }
@@ -192,7 +192,9 @@ struct AIProviderDetailSheet: View {
 
     // MARK: - Model Section
 
-    private var isCustomModel: Bool { !fetchedModels.contains(draft.model) }
+    private var isCustomModel: Bool {
+        !fetchedModels.contains(draft.model)
+    }
 
     private var modelSection: some View {
         Section(i18n.t(.model)) {
@@ -229,7 +231,7 @@ struct AIProviderDetailSheet: View {
             fetchedModels.contains(draft.model) ? .fetched(draft.model) : .custom
         }, set: { newValue in
             switch newValue {
-            case .fetched(let id): draft.model = id
+            case let .fetched(id): draft.model = id
             case .custom: if fetchedModels.contains(draft.model) { draft.model = "" }
             }
         })
@@ -287,7 +289,7 @@ struct AIProviderDetailSheet: View {
 
     private func fetchModels() {
         guard draft.type.needsAPIKey || draft.type == .ollama else { return }
-        if draft.type.needsAPIKey && draft.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if draft.type.needsAPIKey, draft.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             fetchedModels = []; modelFetchError = nil; return
         }
         guard let url = AIProviderNetworking.modelsURL(endpoint: draft.endpoint, type: draft.type, apiKey: draft.apiKey) else { return }

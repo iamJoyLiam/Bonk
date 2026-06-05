@@ -9,7 +9,6 @@ import Foundation
 import os.log
 
 enum CrashReporter {
-
     private static let logDir: URL = {
         let base = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
         let dir = base.appendingPathComponent("Logs/Bonk", isDirectory: true)

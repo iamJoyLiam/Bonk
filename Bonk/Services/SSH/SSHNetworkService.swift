@@ -5,13 +5,13 @@
 //  Created by Joy Liam on 2026/5/25.
 //
 
-import Foundation
-import Crypto
-import NIOCore
-import NIOConcurrencyHelpers
-import os.log
-@preconcurrency import NIOSSH
 @preconcurrency import Citadel
+import Crypto
+import Foundation
+import NIOConcurrencyHelpers
+import NIOCore
+@preconcurrency import NIOSSH
+import os.log
 
 // MARK: - SSHNetworkService
 
@@ -22,7 +22,6 @@ import os.log
 /// PTY-based interactive shell streams, and automatic reconnection with
 /// exponential backoff + jitter.
 public actor SSHNetworkService {
-
     public private(set) var connectionState: SSHConnectionState = .disconnected
 
     /// State stream for external observation (SessionManager subscribes to this).
@@ -36,11 +35,12 @@ public actor SSHNetworkService {
     private let keepAlive = SSHKeepAlive()
 
     /// Stores PTY parameters for reconnection.
-    private struct PTYConfig: Sendable {
+    private struct PTYConfig {
         let cols: Int
         let rows: Int
         let termType: String
     }
+
     private var lastPTYConfig: PTYConfig?
 
     /// PTY session created after reconnect — SessionManager consumes this.
@@ -91,7 +91,7 @@ public actor SSHNetworkService {
             try await establishConnection(config: config)
             await keepAlive.start(client: client!)
         } catch {
-            self.client = nil
+            client = nil
             connectionState = .disconnected
             stateContinuation.yield(.disconnected)
 
@@ -133,7 +133,7 @@ public actor SSHNetworkService {
             store: hostKeyStore
         )
 
-        self.client = sshClient
+        client = sshClient
         connectionState = .connected
         stateContinuation.yield(.connected)
         startMonitoringDisconnect(sshClient)
@@ -205,13 +205,13 @@ public actor SSHNetworkService {
         let maxAttempts = config.maxReconnectAttempts
         var attempt = 0
 
-        while attempt < maxAttempts && !Task.isCancelled {
+        while attempt < maxAttempts, !Task.isCancelled {
             connectionState = .reconnecting(attempt: attempt + 1, maxAttempts: maxAttempts)
             stateContinuation.yield(.reconnecting(attempt: attempt + 1, maxAttempts: maxAttempts))
 
             let baseSeconds = max(config.baseReconnectDelay.components.seconds, 1)
             let delaySeconds = min(baseSeconds * Int64(1 << min(attempt, 4)), 30)
-            let jitterMs = Int64.random(in: 0..<500)
+            let jitterMs = Int64.random(in: 0 ..< 500)
             let totalMs = delaySeconds * 1000 + jitterMs
 
             try? await Task.sleep(for: .milliseconds(Double(totalMs)))
@@ -304,10 +304,10 @@ public actor SSHNetworkService {
         username: String
     ) throws -> SSHAuthenticationMethod {
         switch method {
-        case .password(let pw):
+        case let .password(pw):
             return .passwordBased(username: username, password: pw)
 
-        case .privateKey(let pem):
+        case let .privateKey(pem):
             let raw = try decodePEM(pem)
 
             if let ed = try? Curve25519.Signing.PrivateKey(rawRepresentation: raw) {
@@ -337,7 +337,7 @@ public actor SSHNetworkService {
 
 // MARK: - Host Key Validator
 
-private nonisolated final class HostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unchecked Sendable {
+private final nonisolated class HostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unchecked Sendable {
     private let onHostKey: @Sendable (NIOSSHPublicKey) -> Void
 
     init(onHostKey: @escaping @Sendable (NIOSSHPublicKey) -> Void) {

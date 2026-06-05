@@ -50,10 +50,11 @@ final class CopilotService: ObservableObject {
     private init() {
         // Restore persisted token from Keychain
         if let token = KeychainHelper.get(for: tokenKey),
-           let username = KeychainHelper.get(for: usernameKey) {
-            self.oauthToken = token
-            self.authState = .signedIn(username: username)
-            self.status = .running
+           let username = KeychainHelper.get(for: usernameKey)
+        {
+            oauthToken = token
+            authState = .signedIn(username: username)
+            status = .running
         }
     }
 
@@ -100,7 +101,7 @@ final class CopilotService: ObservableObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body: [String: String] = [
             "client_id": Self.clientID,
-            "scope": Self.scope
+            "scope": Self.scope,
         ]
         request.httpBody = try JSONEncoder().encode(body)
 
@@ -168,7 +169,7 @@ final class CopilotService: ObservableObject {
         let maxAttempts = expiresIn / pollInterval
         let deadline = Date().addingTimeInterval(TimeInterval(expiresIn))
 
-        for attempt in 0..<maxAttempts {
+        for _ in 0 ..< maxAttempts {
             guard !Task.isCancelled else { return }
             guard Date() < deadline else {
                 await MainActor.run {
@@ -189,7 +190,7 @@ final class CopilotService: ObservableObject {
                 let body: [String: String] = [
                     "client_id": Self.clientID,
                     "device_code": deviceCode,
-                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code"
+                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
                 ]
                 request.httpBody = try JSONEncoder().encode(body)
 
@@ -360,9 +361,9 @@ enum CopilotError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .serverNotRunning:
-            return "Copilot server is not running"
-        case .authenticationFailed(let detail):
-            return "Authentication failed: \(detail)"
+            "Copilot server is not running"
+        case let .authenticationFailed(detail):
+            "Authentication failed: \(detail)"
         }
     }
 }

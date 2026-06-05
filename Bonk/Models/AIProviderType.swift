@@ -4,64 +4,66 @@ import Foundation
 enum AIProviderType: String, CaseIterable, Identifiable, Codable {
     case copilot, claude, openAI, openRouter, openCode, gemini, ollama, custom
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var displayName: String {
         switch self {
-        case .copilot:    return "GitHub Copilot"
-        case .claude:     return "Claude"
-        case .openAI:     return "OpenAI"
-        case .openRouter: return "OpenRouter"
-        case .openCode:   return "OpenCode Zen"
-        case .gemini:     return "Gemini"
-        case .ollama:     return "Ollama"
-        case .custom:     return I18n.shared.t(.custom)
+        case .copilot: "GitHub Copilot"
+        case .claude: "Claude"
+        case .openAI: "OpenAI"
+        case .openRouter: "OpenRouter"
+        case .openCode: "OpenCode Zen"
+        case .gemini: "Gemini"
+        case .ollama: "Ollama"
+        case .custom: I18n.shared.t(.custom)
         }
     }
 
     var defaultEndpoint: String {
         switch self {
-        case .copilot:    return ""
-        case .claude:     return "https://api.anthropic.com"
-        case .openAI:     return "https://api.openai.com"
-        case .openRouter: return "https://openrouter.ai/api"
-        case .openCode:   return "https://opencode.ai/zen"
-        case .gemini:     return "https://generativelanguage.googleapis.com"
-        case .ollama:     return "http://localhost:11434"
-        case .custom:     return ""
+        case .copilot: ""
+        case .claude: "https://api.anthropic.com"
+        case .openAI: "https://api.openai.com"
+        case .openRouter: "https://openrouter.ai/api"
+        case .openCode: "https://opencode.ai/zen"
+        case .gemini: "https://generativelanguage.googleapis.com"
+        case .ollama: "http://localhost:11434"
+        case .custom: ""
         }
     }
 
     var symbolName: String {
         switch self {
-        case .copilot:    return "chevron.left.forwardslash.chevron.right"
-        case .claude:     return "brain"
-        case .openAI:     return "cpu"
-        case .openRouter: return "globe"
-        case .openCode:   return "sparkles"
-        case .gemini:     return "wand.and.stars"
-        case .ollama:     return "desktopcomputer"
-        case .custom:     return "server.rack"
+        case .copilot: "chevron.left.forwardslash.chevron.right"
+        case .claude: "brain"
+        case .openAI: "cpu"
+        case .openRouter: "globe"
+        case .openCode: "sparkles"
+        case .gemini: "wand.and.stars"
+        case .ollama: "desktopcomputer"
+        case .custom: "server.rack"
         }
     }
 
     var defaultModel: String {
         switch self {
-        case .copilot:    return ""
-        case .claude:     return "claude-sonnet-4-20250514"
-        case .openAI:     return "gpt-4o"
-        case .openRouter: return "anthropic/claude-sonnet-4-20250514"
-        case .openCode:   return ""
-        case .gemini:     return "gemini-2.5-flash"
-        case .ollama:     return "llama3"
-        case .custom:     return ""
+        case .copilot: ""
+        case .claude: "claude-sonnet-4-20250514"
+        case .openAI: "gpt-4o"
+        case .openRouter: "anthropic/claude-sonnet-4-20250514"
+        case .openCode: ""
+        case .gemini: "gemini-2.5-flash"
+        case .ollama: "llama3"
+        case .custom: ""
         }
     }
 
     var needsAPIKey: Bool {
         switch self {
-        case .ollama, .copilot, .openCode: return false
-        default: return true
+        case .ollama, .copilot, .openCode: false
+        default: true
         }
     }
 }

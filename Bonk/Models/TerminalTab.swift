@@ -33,7 +33,7 @@ final class TerminalTab: Identifiable {
         ("green", .green),
         ("blue", .blue),
         ("purple", .purple),
-        ("pink", .pink)
+        ("pink", .pink),
     ]
 
     /// Resolve the color label to a SwiftUI Color.
@@ -43,8 +43,8 @@ final class TerminalTab: Identifiable {
     }
 
     init(hostItem: HostItem) {
-        self.id = UUID()
+        id = UUID()
         self.hostItem = hostItem
-        self.title = hostItem.name
+        title = hostItem.name
     }
 }

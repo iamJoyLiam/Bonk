@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 /// Authentication method for SSH connections.
-enum AuthType: String, Codable, Sendable {
+enum AuthType: String, Codable {
     case password
     case privateKey
 }
@@ -72,13 +72,13 @@ final class HostItem {
         group: String? = nil,
         credentialID: String? = nil
     ) {
-        self.id = UUID()
+        id = UUID()
         self.name = name
         self.host = host
         self.port = port
         self.username = username
-        self.authTypeRaw = authType.rawValue
-        self.createdAt = Date()
+        authTypeRaw = authType.rawValue
+        createdAt = Date()
         self.group = group
         self.credentialID = credentialID
 
@@ -98,7 +98,8 @@ final class HostItem {
         if let credName = credentialID {
             let descriptor = FetchDescriptor<Credential>(predicate: #Predicate { $0.name == credName })
             if let cred = try? modelContext.fetch(descriptor).first,
-               let credUsername = cred.username, !credUsername.isEmpty {
+               let credUsername = cred.username, !credUsername.isEmpty
+            {
                 return credUsername
             }
         }
@@ -113,7 +114,8 @@ final class HostItem {
             let name = credName
             let descriptor = FetchDescriptor<Credential>(predicate: #Predicate { $0.name == name })
             if let cred = try? modelContext.fetch(descriptor).first,
-               let secret = cred.loadSecret(), !secret.isEmpty {
+               let secret = cred.loadSecret(), !secret.isEmpty
+            {
                 switch cred.type {
                 case .password:
                     return .password(secret)

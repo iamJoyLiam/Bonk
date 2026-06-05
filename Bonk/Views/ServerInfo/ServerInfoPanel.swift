@@ -38,7 +38,6 @@ struct ServerInfoPanel: View {
 
     // MARK: - Connection
 
-    @ViewBuilder
     private func connectionSection(_ tab: TerminalTab) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(i18n.t(.connection), systemImage: "bolt.fill")
@@ -88,7 +87,6 @@ struct ServerInfoPanel: View {
 
     // MARK: - System Info
 
-    @ViewBuilder
     private func systemSection(_ tab: TerminalTab) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(i18n.t(.systemInfo), systemImage: "desktopcomputer")
@@ -148,7 +146,6 @@ struct ServerInfoPanel: View {
 
     // MARK: - Resources
 
-    @ViewBuilder
     private func resourceSection(_ tab: TerminalTab) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(i18n.t(.resources), systemImage: "chart.bar")
@@ -181,7 +178,6 @@ struct ServerInfoPanel: View {
 
     // MARK: - Actions
 
-    @ViewBuilder
     private func actionsSection(_ tab: TerminalTab) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(i18n.t(.actions), systemImage: "bolt.circle")
@@ -214,7 +210,7 @@ struct ServerInfoPanel: View {
 
     // MARK: - Helpers
 
-    private func infoRow<V: View>(_ label: String, @ViewBuilder value: () -> V) -> some View {
+    private func infoRow(_ label: String, @ViewBuilder value: () -> some View) -> some View {
         HStack(alignment: .top) {
             Text(label)
                 .font(.caption)
@@ -235,12 +231,12 @@ struct ServerInfoPanel: View {
     }
 
     private func statusText(_ state: SSHConnectionState) -> String {
-        let i18n = self.i18n
+        let i18n = i18n
         switch state {
         case .disconnected: return i18n.t(.disconnected)
         case .connecting: return i18n.t(.connectingTo)
         case .connected: return i18n.t(.connected)
-        case .reconnecting(let a, let m): return String(format: i18n.t(.reconnecting), a, m)
+        case let .reconnecting(a, m): return String(format: i18n.t(.reconnecting), a, m)
         }
     }
 }

@@ -1,6 +1,6 @@
 import Foundation
-import SwiftUI
 import os.log
+import SwiftUI
 
 /// AI service that provides terminal assistance features.
 @Observable @MainActor
@@ -14,7 +14,7 @@ final class AIService {
 
     // MARK: - Public API
 
-    func chat(_ message: String, context: TerminalContext) async {
+    func chat(_ message: String, context _: TerminalContext) async {
         let systemPrompt = """
         You are a terminal assistant embedded in an SSH client.
         Answer concisely in plain text. If providing a command, show it on its own line.
@@ -23,7 +23,7 @@ final class AIService {
         await execute(systemPrompt: systemPrompt, userPrompt: message, label: "chat")
     }
 
-    func explainError(_ errorOutput: String, context: TerminalContext) async {
+    func explainError(_ errorOutput: String, context _: TerminalContext) async {
         let systemPrompt = """
         You are a terminal error diagnoser embedded in an SSH client.
         Explain the error briefly and suggest a fix. Reply in plain text, no markdown.
@@ -95,7 +95,7 @@ final class AIService {
             headers = ["x-api-key": apiKey, "anthropic-version": Self.anthropicVersion, "content-type": "application/json"]
             body = [
                 "model": provider.model, "max_tokens": maxTokens, "system": systemPrompt,
-                "messages": [["role": "user", "content": userPrompt]],
+                "messages": [["role": "user", "content": userPrompt]]
             ].merging(stream ? ["stream": true] : [:]) { $1 }
 
         case .openAI, .openRouter, .copilot, .openCode, .custom:
@@ -104,7 +104,7 @@ final class AIService {
             headers = ["Authorization": "Bearer \(apiKey)", "content-type": "application/json"]
             body = [
                 "model": provider.model, "max_tokens": maxTokens,
-                "messages": [["role": "system", "content": systemPrompt], ["role": "user", "content": userPrompt]],
+                "messages": [["role": "system", "content": systemPrompt], ["role": "user", "content": userPrompt]]
             ].merging(stream ? ["stream": true] : [:]) { $1 }
 
         case .gemini:
@@ -113,7 +113,7 @@ final class AIService {
             headers = ["x-goog-api-key": apiKey, "content-type": "application/json"]
             body = [
                 "contents": [["parts": [["text": "\(systemPrompt)\n\n\(userPrompt)"]]]],
-                "generationConfig": ["maxOutputTokens": maxTokens],
+                "generationConfig": ["maxOutputTokens": maxTokens]
             ]
 
         case .ollama:
@@ -123,7 +123,7 @@ final class AIService {
             body = [
                 "model": provider.model,
                 "messages": [["role": "system", "content": systemPrompt], ["role": "user", "content": userPrompt]],
-                "stream": stream,
+                "stream": stream
             ]
         }
 
@@ -149,7 +149,9 @@ final class AIService {
         guard let http = response as? HTTPURLResponse else { throw AIError.invalidResponse }
         guard http.statusCode == 200 else {
             var errorData = Data()
-            for try await byte in bytes { errorData.append(byte) }
+            for try await byte in bytes {
+                errorData.append(byte)
+            }
             throw AIError.apiError(statusCode: http.statusCode, message: String(data: errorData, encoding: .utf8) ?? "Unknown error")
         }
 
@@ -166,7 +168,7 @@ final class AIService {
             buffer += char
 
             while let range = buffer.range(of: "\n") {
-                let line = String(buffer[buffer.startIndex..<range.lowerBound])
+                let line = String(buffer[buffer.startIndex ..< range.lowerBound])
                 buffer = String(buffer[range.upperBound...])
 
                 guard line.hasPrefix("data: ") else { continue }
@@ -184,7 +186,7 @@ final class AIService {
     }
 
     /// Extract incremental text from a streaming event.
-    private func extractDelta(from json: [String: Any], type: AIProviderType) -> String? {
+    private func extractDelta(from json: [String: Any], type _: AIProviderType) -> String? {
         // OpenAI format: choices[0].delta.content
         if let choices = json["choices"] as? [[String: Any]],
            let content = choices.first?["delta"] as? [String: Any],
@@ -216,7 +218,7 @@ final class AIService {
         if let text = (json["candidates"] as? [[String: Any]])?.first
             .flatMap({ $0["content"] as? [String: Any] })
             .flatMap({ $0["parts"] as? [[String: Any]] })
-            .flatMap({ $0.first })
+            .flatMap(\.first)
             .flatMap({ $0["text"] as? String }) { return text }
         // OpenAI: choices[0].message.content
         if let text = (json["choices"] as? [[String: Any]])?.first
@@ -249,9 +251,9 @@ enum AIError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidEndpoint: return "Invalid AI provider endpoint"
-        case .invalidResponse: return "Invalid response from AI provider"
-        case .apiError(let code, let msg): return "AI API error (\(code)): \(msg)"
+        case .invalidEndpoint: "Invalid AI provider endpoint"
+        case .invalidResponse: "Invalid response from AI provider"
+        case let .apiError(code, msg): "AI API error (\(code)): \(msg)"
         }
     }
 }

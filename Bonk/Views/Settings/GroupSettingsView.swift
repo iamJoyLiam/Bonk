@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 // MARK: - Group Settings
 
@@ -112,7 +112,9 @@ struct GroupEditSheet: View {
     @State private var iconSearch = ""
     @State private var showIconPicker = false
 
-    private var isEditing: Bool { group != nil }
+    private var isEditing: Bool {
+        group != nil
+    }
 
     private var filteredIcons: [String] {
         if iconSearch.isEmpty { return Self.defaultIcons }

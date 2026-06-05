@@ -5,10 +5,10 @@
 //  Created by Joy Liam on 2026/5/25.
 //
 
-import SwiftUI
-import SwiftData
-import UniformTypeIdentifiers
 import os.log
+import SwiftData
+import SwiftUI
+import UniformTypeIdentifiers
 
 /// Center area: tab bar + active terminal content.
 struct TerminalTabView: View {
@@ -23,6 +23,7 @@ struct TerminalTabView: View {
     private var preferences: UserPreferences {
         preferencesList.first ?? UserPreferences()
     }
+
     @State private var renamingTab: TerminalTab?
     @State private var renameText = ""
     @State private var dropMessage: String?
@@ -291,11 +292,10 @@ struct TerminalTabView: View {
         }
         guard let sftp = await ensureSFTP(for: tab) else { return }
 
-        let targetDir: String
-        if let uploadDir {
-            targetDir = uploadDir
+        let targetDir: String = if let uploadDir {
+            uploadDir
         } else {
-            targetDir = await resolveUploadDir(tab: tab, sftp: sftp)
+            await resolveUploadDir(tab: tab, sftp: sftp)
         }
         let filename = url.lastPathComponent
         let remotePath = (targetDir.hasSuffix("/") ? targetDir : targetDir + "/") + filename

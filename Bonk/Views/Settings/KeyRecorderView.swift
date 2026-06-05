@@ -8,7 +8,7 @@
 import SwiftUI
 
 #if os(macOS)
-import AppKit
+    import AppKit
 #endif
 
 /// A SwiftUI view that records keyboard shortcuts.
@@ -86,36 +86,36 @@ struct KeyRecorderView: View {
     private func startRecording() {
         isRecording = true
         #if os(macOS)
-        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            // Require at least one modifier key
-            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            let significantModifiers = modifiers.subtracting([.function, .numericPad])
+            eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                // Require at least one modifier key
+                let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                let significantModifiers = modifiers.subtracting([.function, .numericPad])
 
-            guard !significantModifiers.isEmpty else {
-                return event
+                guard !significantModifiers.isEmpty else {
+                    return event
+                }
+
+                let shortcut = KeyboardShortcut(
+                    keyCode: event.keyCode,
+                    modifiers: KeyboardShortcut.ModifierFlags(significantModifiers)
+                )
+
+                DispatchQueue.main.async {
+                    self.shortcut = shortcut
+                    stopRecording()
+                }
+                return nil
             }
-
-            let shortcut = KeyboardShortcut(
-                keyCode: event.keyCode,
-                modifiers: KeyboardShortcut.ModifierFlags(significantModifiers)
-            )
-
-            DispatchQueue.main.async {
-                self.shortcut = shortcut
-                self.stopRecording()
-            }
-            return nil
-        }
         #endif
     }
 
     private func stopRecording() {
         isRecording = false
         #if os(macOS)
-        if let monitor = eventMonitor {
-            NSEvent.removeMonitor(monitor)
-            eventMonitor = nil
-        }
+            if let monitor = eventMonitor {
+                NSEvent.removeMonitor(monitor)
+                eventMonitor = nil
+            }
         #endif
     }
 }
@@ -126,7 +126,7 @@ struct KeyboardShortcut: Codable, Equatable, Hashable {
     let modifiers: ModifierFlags
 
     /// Wrapper for NSEvent.ModifierFlags to make it Codable.
-    struct ModifierFlags: OptionSet, Codable, Hashable, Sendable {
+    struct ModifierFlags: OptionSet, Codable, Hashable {
         let rawValue: UInt
 
         static let shift = ModifierFlags(rawValue: 1 << 1)
@@ -135,13 +135,13 @@ struct KeyboardShortcut: Codable, Equatable, Hashable {
         static let command = ModifierFlags(rawValue: 1 << 20)
 
         #if os(macOS)
-        init(_ flags: NSEvent.ModifierFlags) {
-            self.rawValue = flags.rawValue
-        }
+            init(_ flags: NSEvent.ModifierFlags) {
+                rawValue = flags.rawValue
+            }
 
-        var nsModifierFlags: NSEvent.ModifierFlags {
-            NSEvent.ModifierFlags(rawValue: rawValue)
-        }
+            var nsModifierFlags: NSEvent.ModifierFlags {
+                NSEvent.ModifierFlags(rawValue: rawValue)
+            }
         #endif
 
         init(rawValue: UInt) {
@@ -188,7 +188,7 @@ struct KeyboardShortcut: Codable, Equatable, Hashable {
         103: "F11", 105: "F13", 107: "F14", 109: "F10", 111: "F12",
         113: "F15", 115: "Home", 116: "Page Up", 117: "Forward Delete",
         118: "F4", 119: "End", 120: "F2", 121: "Page Down", 122: "F1",
-        123: "←", 124: "→", 125: "↓", 126: "↑"
+        123: "←", 124: "→", 125: "↓", 126: "↑",
     ]
 }
 
@@ -204,35 +204,37 @@ enum ShortcutAction: String, CaseIterable, Identifiable {
     case clearTerminal
     case aiAssistant
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     /// Default shortcut for this action.
     var defaultShortcut: KeyboardShortcut? {
         switch self {
-        case .newTerminal: return KeyboardShortcut(keyCode: 17, modifiers: .command) // Cmd+T
-        case .closeTab: return KeyboardShortcut(keyCode: 13, modifiers: .command) // Cmd+W
-        case .nextTab: return KeyboardShortcut(keyCode: 48, modifiers: .command) // Cmd+Tab
-        case .previousTab: return KeyboardShortcut(keyCode: 48, modifiers: [.command, .shift]) // Cmd+Shift+Tab
-        case .find: return KeyboardShortcut(keyCode: 3, modifiers: .command) // Cmd+F
-        case .settings: return KeyboardShortcut(keyCode: 43, modifiers: .command) // Cmd+,
-        case .reconnect: return KeyboardShortcut(keyCode: 15, modifiers: [.command, .shift]) // Cmd+Shift+R
-        case .clearTerminal: return KeyboardShortcut(keyCode: 40, modifiers: .command) // Cmd+K
-        case .aiAssistant: return KeyboardShortcut(keyCode: 40, modifiers: .command) // Cmd+K
+        case .newTerminal: KeyboardShortcut(keyCode: 17, modifiers: .command) // Cmd+T
+        case .closeTab: KeyboardShortcut(keyCode: 13, modifiers: .command) // Cmd+W
+        case .nextTab: KeyboardShortcut(keyCode: 48, modifiers: .command) // Cmd+Tab
+        case .previousTab: KeyboardShortcut(keyCode: 48, modifiers: [.command, .shift]) // Cmd+Shift+Tab
+        case .find: KeyboardShortcut(keyCode: 3, modifiers: .command) // Cmd+F
+        case .settings: KeyboardShortcut(keyCode: 43, modifiers: .command) // Cmd+,
+        case .reconnect: KeyboardShortcut(keyCode: 15, modifiers: [.command, .shift]) // Cmd+Shift+R
+        case .clearTerminal: KeyboardShortcut(keyCode: 40, modifiers: .command) // Cmd+K
+        case .aiAssistant: KeyboardShortcut(keyCode: 40, modifiers: .command) // Cmd+K
         }
     }
 
     /// Display name for the action.
     var displayName: String {
         switch self {
-        case .newTerminal: return "New Terminal"
-        case .closeTab: return "Close Tab"
-        case .nextTab: return "Next Tab"
-        case .previousTab: return "Previous Tab"
-        case .find: return "Find"
-        case .settings: return "Settings"
-        case .reconnect: return "Reconnect"
-        case .clearTerminal: return "Clear Terminal"
-        case .aiAssistant: return "AI Assistant"
+        case .newTerminal: "New Terminal"
+        case .closeTab: "Close Tab"
+        case .nextTab: "Next Tab"
+        case .previousTab: "Previous Tab"
+        case .find: "Find"
+        case .settings: "Settings"
+        case .reconnect: "Reconnect"
+        case .clearTerminal: "Clear Terminal"
+        case .aiAssistant: "AI Assistant"
         }
     }
 }

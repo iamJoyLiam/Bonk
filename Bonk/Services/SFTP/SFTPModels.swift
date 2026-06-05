@@ -6,8 +6,8 @@
 import Foundation
 
 /// Represents a remote file or directory from SFTP listing.
-struct SFTPFileEntry: Identifiable, Sendable {
-    let id: String  // path-based identity for stable SwiftUI diffing
+struct SFTPFileEntry: Identifiable {
+    let id: String // path-based identity for stable SwiftUI diffing
     let name: String
     let path: String
     let isDirectory: Bool
@@ -41,7 +41,7 @@ struct SFTPFileEntry: Identifiable, Sendable {
 }
 
 /// Transfer progress for file upload/download.
-struct SFTPTransfer: Identifiable, Sendable {
+struct SFTPTransfer: Identifiable {
     let id: UUID
     let filename: String
     let totalBytes: UInt64

@@ -16,7 +16,6 @@ import SwiftUI
 
 @MainActor
 final class TerminalThemeManager: ObservableObject {
-
     static let shared = TerminalThemeManager()
 
     // MARK: - Persisted Settings (@AppStorage = UserDefaults = instant)
@@ -60,9 +59,9 @@ final class TerminalThemeManager: ObservableObject {
     /// Detect current OS appearance for "system" theme.
     private func resolveSystem() -> TerminalColorScheme {
         #if os(macOS)
-        let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         #else
-        let isDark = UITraitCollection.current.userInterfaceStyle == .dark
+            let isDark = UITraitCollection.current.userInterfaceStyle == .dark
         #endif
         return isDark ? DarkTheme().colorScheme : LightTheme().colorScheme
     }

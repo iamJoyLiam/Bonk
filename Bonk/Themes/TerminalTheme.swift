@@ -6,8 +6,8 @@
 //  Each theme is a separate file conforming to TerminalTheme protocol.
 //
 
-import SwiftUI
 import SwiftTerm
+import SwiftUI
 
 // MARK: - RGBA Color
 
@@ -27,13 +27,13 @@ public struct RGBAColor: Sendable, Hashable {
     }
 
     #if os(macOS)
-    public var nsColor: NSColor {
-        NSColor(red: CGFloat(r), green: CGFloat(g), blue: CGFloat(b), alpha: CGFloat(a))
-    }
+        public var nsColor: NSColor {
+            NSColor(red: CGFloat(r), green: CGFloat(g), blue: CGFloat(b), alpha: CGFloat(a))
+        }
     #else
-    public var uiColor: UIColor {
-        UIColor(red: CGFloat(r), green: CGFloat(g), blue: CGFloat(b), alpha: CGFloat(a))
-    }
+        public var uiColor: UIColor {
+            UIColor(red: CGFloat(r), green: CGFloat(g), blue: CGFloat(b), alpha: CGFloat(a))
+        }
     #endif
 
     var swiftTermColor: SwiftTerm.Color {
@@ -56,7 +56,9 @@ public struct TerminalColorScheme: Sendable, Identifiable, Equatable {
     public let cursor: RGBAColor
     public let ansiColors: [RGBAColor]
 
-    public var isTransparent: Bool { background.a < 1.0 }
+    public var isTransparent: Bool {
+        background.a < 1.0
+    }
 
     public init(
         id: String,
@@ -103,7 +105,7 @@ protocol TerminalTheme: Sendable {
 /// Extension for themes that need dynamic parameters (e.g., transparency opacity).
 extension TerminalTheme {
     /// Default: no dynamic parameters needed.
-    func colorScheme(opacity: Double) -> TerminalColorScheme {
+    func colorScheme(opacity _: Double) -> TerminalColorScheme {
         colorScheme
     }
 }

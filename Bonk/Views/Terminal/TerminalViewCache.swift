@@ -8,9 +8,9 @@
 import Foundation
 import SwiftTerm
 #if os(macOS)
-import AppKit
+    import AppKit
 #else
-import UIKit
+    import UIKit
 #endif
 
 /// A cached terminal view with its coordinator.
@@ -29,7 +29,6 @@ final class CachedTerminalView {
         self.view = view
         self.coordinator = coordinator
     }
-
 }
 
 /// Caches SwiftTerm TerminalView instances to preserve scroll position and state.
@@ -47,7 +46,7 @@ final class TerminalViewCache {
 
     /// Retrieve a cached terminal view for a tab.
     func retrieve(_ tabID: UUID) -> CachedTerminalView? {
-        return cache[tabID]
+        cache[tabID]
     }
 
     /// Remove a cached terminal view.

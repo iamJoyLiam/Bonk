@@ -20,12 +20,12 @@ final class UserPreferences {
     var scrollbackLines: Int
     var optionAsMeta: Bool
     var mouseReporting: Bool
-    var cursorStyle: String        // "block", "underline", "bar"
+    var cursorStyle: String // "block", "underline", "bar"
     var cursorBlink: Bool
     var copyOnSelect: Bool
     var escDismissAI: Bool
-    var hostAutoFillClear: Bool  // true = clear on tap, false = allow edit
-    var aiDirectSubmit: Bool  // true = directly submit selected text, false = show in input
+    var hostAutoFillClear: Bool // true = clear on tap, false = allow edit
+    var aiDirectSubmit: Bool // true = directly submit selected text, false = show in input
     // General
     var restoreSessions: Bool
     var checkForUpdates: Bool

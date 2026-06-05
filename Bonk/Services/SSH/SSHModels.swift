@@ -93,15 +93,15 @@ public enum SSHServiceError: Error, Sendable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .alreadyConnected:
-            return "Already connected to this host."
+            "Already connected to this host."
         case .notConnected:
-            return "Not connected to any host."
-        case .hostKeyMismatch(let expected, let received):
-            return "Host key mismatch!\nExpected: \(expected)\nReceived: \(received)\nThe host key may have changed, or this could be a man-in-the-middle attack."
-        case .connectionFailed(let reason):
-            return "Connection failed: \(reason)"
-        case .reconnectExhausted(let attempts):
-            return "Reconnection failed after \(attempts) attempts."
+            "Not connected to any host."
+        case let .hostKeyMismatch(expected, received):
+            "Host key mismatch!\nExpected: \(expected)\nReceived: \(received)\nThe host key may have changed, or this could be a man-in-the-middle attack."
+        case let .connectionFailed(reason):
+            "Connection failed: \(reason)"
+        case let .reconnectExhausted(attempts):
+            "Reconnection failed after \(attempts) attempts."
         }
     }
 }

@@ -8,7 +8,7 @@ import SwiftUI
 struct KeyboardSettingsView: View {
     @EnvironmentObject var i18n: I18n
     @Bindable var preferences: UserPreferences
-    @AppStorage("keyboard_shortcuts") private var shortcutsData: Data = Data()
+    @AppStorage("keyboard_shortcuts") private var shortcutsData: Data = .init()
 
     /// Load saved shortcuts or use defaults.
     private var shortcuts: [String: KeyboardShortcut] {

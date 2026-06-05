@@ -5,8 +5,8 @@
 //  Created by Joy Liam on 2026/5/25.
 //
 
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 /// Left sidebar: list of saved SSH hosts with connection status.
 struct HostListView: View {
@@ -28,7 +28,7 @@ struct HostListView: View {
         if searchText.isEmpty { return hosts }
         return hosts.filter {
             $0.name.localizedCaseInsensitiveContains(searchText) ||
-            $0.host.localizedCaseInsensitiveContains(searchText)
+                $0.host.localizedCaseInsensitiveContains(searchText)
         }
     }
 
@@ -285,5 +285,4 @@ struct HostListView: View {
             .fill(color)
             .frame(width: 8, height: 8)
     }
-
 }

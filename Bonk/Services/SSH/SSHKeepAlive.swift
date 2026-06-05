@@ -1,6 +1,6 @@
+@preconcurrency import Citadel
 import Foundation
 import os.log
-@preconcurrency import Citadel
 
 /// L7 keepalive using lightweight SSH exec (echo).
 actor SSHKeepAlive {

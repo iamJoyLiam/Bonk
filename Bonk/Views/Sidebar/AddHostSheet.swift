@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct AddHostSheet: View {
     @EnvironmentObject var i18n: I18n
@@ -33,7 +33,9 @@ struct AddHostSheet: View {
 
     // MARK: - Computed
 
-    private var usingVault: Bool { selectedCredentialID != nil }
+    private var usingVault: Bool {
+        selectedCredentialID != nil
+    }
 
     private var matchingCredentials: [Credential] {
         vaultCredentials.filter { $0.type == .password || $0.type == .privateKey }
@@ -165,7 +167,7 @@ struct AddHostSheet: View {
     private var groupDropdown: some View {
         let input = group.trimmingCharacters(in: .whitespaces)
         return VStack(spacing: 0) {
-            if hostGroups.isEmpty && input.isEmpty {
+            if hostGroups.isEmpty, input.isEmpty {
                 Text(i18n.t(.noGroups)).font(.caption).foregroundStyle(.tertiary).padding(12)
             } else {
                 ScrollView {
@@ -178,7 +180,7 @@ struct AddHostSheet: View {
                 .frame(maxHeight: 200)
             }
 
-            if !input.isEmpty && !groupExists {
+            if !input.isEmpty, !groupExists {
                 Divider()
                 Button { commitGroup(); showGroupDropdown = false } label: {
                     HStack(spacing: 6) {

@@ -26,7 +26,6 @@ struct ServerInfo {
 
 /// Fetches server info via a single SSH exec command.
 enum ServerInfoFetcher {
-
     /// Simple shell script using only basic echo/pipes. No herestrings, no read -r.
     private static let script = [
         "echo hostname=$(hostname)",
@@ -65,23 +64,23 @@ enum ServerInfoFetcher {
         for line in output.components(separatedBy: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard let eqIndex = trimmed.firstIndex(of: "=") else { continue }
-            let key = String(trimmed[trimmed.startIndex..<eqIndex])
+            let key = String(trimmed[trimmed.startIndex ..< eqIndex])
             let value = String(trimmed[trimmed.index(after: eqIndex)...]).trimmingCharacters(in: .whitespaces)
             guard !value.isEmpty else { continue }
 
             switch key {
             case "hostname": info.hostname = value
-            case "os":       info.os = value
-            case "kernel":   info.kernel = value
-            case "arch":     info.architecture = value
-            case "uptime":   info.uptime = value
-            case "cpu":      info.cpuModel = value
-            case "cores":    info.cpuCores = value
-            case "mem":      info.memoryUsed = value
-            case "disk":     info.diskUsed = value
-            case "load":     info.loadAverage = value
-            case "ip":       info.serverIP = value
-            case "shell":    info.shell = value
+            case "os": info.os = value
+            case "kernel": info.kernel = value
+            case "arch": info.architecture = value
+            case "uptime": info.uptime = value
+            case "cpu": info.cpuModel = value
+            case "cores": info.cpuCores = value
+            case "mem": info.memoryUsed = value
+            case "disk": info.diskUsed = value
+            case "load": info.loadAverage = value
+            case "ip": info.serverIP = value
+            case "shell": info.shell = value
             default: break
             }
         }

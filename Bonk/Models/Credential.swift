@@ -1,29 +1,29 @@
 import Foundation
 import SwiftData
 
-enum CredentialType: String, Codable, CaseIterable, Sendable {
+enum CredentialType: String, Codable, CaseIterable {
     case password, privateKey, apiKey
 
     func displayName(_ i18n: I18n) -> String {
         switch self {
-        case .password:   return i18n.t(.password)
-        case .privateKey: return i18n.t(.privateKey)
-        case .apiKey:     return i18n.t(.apiKey)
+        case .password: i18n.t(.password)
+        case .privateKey: i18n.t(.privateKey)
+        case .apiKey: i18n.t(.apiKey)
         }
     }
 
     var symbolName: String {
         switch self {
-        case .password:   return "key.fill"
-        case .privateKey: return "lock.doc.fill"
-        case .apiKey:     return "sparkles"
+        case .password: "key.fill"
+        case .privateKey: "lock.doc.fill"
+        case .apiKey: "sparkles"
         }
     }
 }
 
 @Model
 final class Credential {
-    var keychainID: UUID  // stable identifier for Keychain, never changes
+    var keychainID: UUID // stable identifier for Keychain, never changes
     var name: String
     var typeRaw: String
     var username: String?
@@ -36,11 +36,11 @@ final class Credential {
     }
 
     init(name: String, type: CredentialType = .password, username: String? = nil, notes: String? = nil) {
-        self.keychainID = UUID()
+        keychainID = UUID()
         self.name = name
-        self.typeRaw = type.rawValue
+        typeRaw = type.rawValue
         self.username = username
-        self.createdAt = Date()
+        createdAt = Date()
         self.notes = notes
     }
 

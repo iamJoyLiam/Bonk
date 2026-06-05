@@ -16,7 +16,7 @@ struct AISettingsView: View {
     @State private var addingProviderType: AIProviderType?
     @State private var pendingDeleteID: UUID?
 
-    private let debounceRange = 100...3000
+    private let debounceRange = 100 ... 3000
 
     private var defaultConnectionPolicy: AIConnectionPolicy {
         get { AIConnectionPolicy(rawValue: defaultConnectionPolicyRaw) ?? .askEachTime }
@@ -51,7 +51,8 @@ struct AISettingsView: View {
         .scrollContentBackground(.hidden)
         .sheet(isPresented: editingSheetBinding) {
             if let id = editingProviderID,
-               let provider = store.providers.first(where: { $0.id == id }) {
+               let provider = store.providers.first(where: { $0.id == id })
+            {
                 AIProviderDetailSheet(
                     provider: provider,
                     isNew: false,

@@ -27,9 +27,9 @@ struct TerminalTabContentView: View {
     private var terminalBackground: Color {
         if colorScheme.id == "transparent" { return .clear }
         #if os(macOS)
-        return Color(nsColor: .controlBackgroundColor)
+            return Color(nsColor: .controlBackgroundColor)
         #else
-        return Color(uiColor: .systemBackground)
+            return Color(uiColor: .systemBackground)
         #endif
     }
 
@@ -42,7 +42,7 @@ struct TerminalTabContentView: View {
                 connectingView
             case .connected:
                 terminalView
-            case .reconnecting(let attempt, let max):
+            case let .reconnecting(attempt, max):
                 reconnectingView(attempt: attempt, max: max)
             }
         }
@@ -52,7 +52,6 @@ struct TerminalTabContentView: View {
 
     // MARK: - Terminal
 
-    @ViewBuilder
     private var terminalView: some View {
         TerminalContainerView(
             activeTab: tab,

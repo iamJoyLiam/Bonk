@@ -11,7 +11,7 @@ struct AIProviderConfig: Identifiable, Hashable, Codable {
     var maxOutputTokens: Int?
     var telemetryEnabled: Bool
 
-    // Exclude apiKey from Codable — stored in Keychain
+    /// Exclude apiKey from Codable — stored in Keychain
     enum CodingKeys: String, CodingKey {
         case id, name, type, model, endpoint, maxOutputTokens, telemetryEnabled
     }

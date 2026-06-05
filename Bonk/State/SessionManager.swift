@@ -1,13 +1,12 @@
 import Foundation
+import os.log
 import SwiftData
 import SwiftUI
-import os.log
 
 /// Manages multiple concurrent SSH terminal sessions.
 @Observable
 @MainActor
 final class SessionManager {
-
     var tabs: [TerminalTab] = []
     var activeTabID: UUID?
     var lastError: String?
@@ -17,7 +16,7 @@ final class SessionManager {
     private var modelContext: ModelContext?
 
     func setModelContext(_ context: ModelContext) {
-        self.modelContext = context
+        modelContext = context
     }
 
     var activeTab: TerminalTab? {

@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct KeychainManagerView: View {
     @EnvironmentObject var i18n: I18n
@@ -18,7 +18,10 @@ struct KeychainManagerView: View {
     @State private var editNotes = ""
     @State private var pendingDelete: Credential?
 
-    private var isEditing: Bool { isAdding || editing != nil }
+    private var isEditing: Bool {
+        isAdding || editing != nil
+    }
+
     private var canSave: Bool {
         !editName.trimmingCharacters(in: .whitespaces).isEmpty && !editSecret.isEmpty
     }
@@ -149,7 +152,9 @@ struct KeychainManagerView: View {
         editing = cred
     }
 
-    private func cancel() { isAdding = false; editing = nil }
+    private func cancel() {
+        isAdding = false; editing = nil
+    }
 
     private func save() {
         let trimmed = editName.trimmingCharacters(in: .whitespaces)

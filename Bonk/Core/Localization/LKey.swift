@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Type-safe localization keys
 
 enum LKey: String, CaseIterable {
-    // Tabs
+    /// Tabs
     case settings, general, appearance, terminal = "editor", keyboard, ai, integrations, account
 
     // General
@@ -111,7 +111,7 @@ enum LKey: String, CaseIterable {
     case codeExpires = "code_expires", completeSignIn = "complete_sign_in"
     case signedInAs = "signed_in_as", startingService = "starting_service"
 
-    // General extras
+    /// General extras
     case custom, notConfigured = "not_configured"
 
     // ContentView
@@ -141,7 +141,7 @@ enum LKey: String, CaseIterable {
     case fileExists = "file_exists"
     case noTerminal = "no_terminal", selectHost = "select_host"
 
-    // ServerInfoPanel
+    /// ServerInfoPanel
     case selectHostInfo = "select_host_info", port
 
     // Context menu
@@ -159,7 +159,7 @@ enum LKey: String, CaseIterable {
     case resources, memory, disk, loadAvg = "load_avg"
     case serverIP = "server_ip", fetching
 
-    // File operations
+    /// File operations
     case open, download, delete
 
     // Groups
@@ -169,7 +169,7 @@ enum LKey: String, CaseIterable {
     case noIcon = "no_icon", customColor = "custom_color"
     case deleteGroupConfirm = "delete_group_confirm"
 
-    // Search
+    /// Search
     case search, system
 
     // Keychain
@@ -178,7 +178,7 @@ enum LKey: String, CaseIterable {
     case editCredential = "edit_credential"
     case noCredentials = "no_credentials"
     case noCredentialsHint = "no_credentials_hint"
-    case credential = "credential"
+    case credential
     case notes
     case manageCredentials = "manage_credentials"
     case deleteConfirm = "delete_confirm"

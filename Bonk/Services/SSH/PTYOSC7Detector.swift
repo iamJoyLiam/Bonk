@@ -14,7 +14,7 @@ final class PTYOSC7Detector: @unchecked Sendable {
     private let lock = NSLock()
     private var state: State = .idle
     private var urlBuffer: [UInt8] = []
-    private static let maxURLBytes = 4096  // Prevent unbounded growth on malformed sequences
+    private static let maxURLBytes = 4096 // Prevent unbounded growth on malformed sequences
 
     func process(_ data: [UInt8]) {
         // Collect CWDs inside lock, fire callbacks outside

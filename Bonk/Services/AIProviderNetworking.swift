@@ -2,7 +2,6 @@ import Foundation
 
 /// Networking helpers for AI provider API interactions.
 enum AIProviderNetworking {
-
     private static let anthropicVersion = "2023-06-01"
 
     // MARK: - Build API Request
@@ -25,7 +24,7 @@ enum AIProviderNetworking {
 
     // MARK: - Models URL
 
-    static func modelsURL(endpoint: String, type: AIProviderType, apiKey: String) -> URL? {
+    static func modelsURL(endpoint: String, type: AIProviderType, apiKey _: String) -> URL? {
         guard var components = URLComponents(string: endpoint) else { return nil }
 
         switch type {

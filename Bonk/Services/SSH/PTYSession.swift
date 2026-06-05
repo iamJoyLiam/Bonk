@@ -3,26 +3,25 @@
 //  Bonk
 //
 
-import Foundation
-import os
-import NIOCore
-import NIOConcurrencyHelpers
-@preconcurrency import NIOSSH
 @preconcurrency import Citadel
+import Foundation
+import NIOConcurrencyHelpers
+import NIOCore
+@preconcurrency import NIOSSH
+import os
 
 /// Interactive PTY shell session.
 ///
 /// Bridges Citadel's closure-based `withPTY` API into a long-lived object.
 /// Uses a multicast output mechanism so multiple consumers (tab views) can
 /// receive terminal output without losing history on tab switch.
-public nonisolated final class PTYSession: @unchecked Sendable {
-
+public final nonisolated class PTYSession: @unchecked Sendable {
     /// Output buffer — stores recent lines for replay to new consumers.
     private let outputBuffer = NIOLockedValueBox<[String]>([])
     private let bufferByteCount = NIOLockedValueBox<Int>(0)
     private static let maxBufferSize = 10000
-    private static let maxBufferBytes = 10 * 1024 * 1024  // 10 MB
-    private static let maxChunkBytes = 64 * 1024           // 64 KB per chunk
+    private static let maxBufferBytes = 10 * 1024 * 1024 // 10 MB
+    private static let maxChunkBytes = 64 * 1024 // 64 KB per chunk
     private static let maxCols = 500
     private static let maxRows = 200
 
@@ -32,8 +31,8 @@ public nonisolated final class PTYSession: @unchecked Sendable {
     /// Per-consumer pending byte tracking for backpressure control.
     /// Prevents slow consumers from accumulating unbounded buffered data.
     private let pendingBytes = OSAllocatedUnfairLock<[UUID: Int]>(uncheckedState: [:])
-    private static let backpressureHighWatermark = 256 * 1024  // 256 KB — pause yielding
-    private static let backpressureLowWatermark = 64 * 1024    // 64 KB — resume yielding
+    private static let backpressureHighWatermark = 256 * 1024 // 256 KB — pause yielding
+    private static let backpressureLowWatermark = 64 * 1024 // 64 KB — resume yielding
 
     /// Internal signal — finishes when the session should end.
     private let sessionEndStream: AsyncStream<Void>
@@ -80,13 +79,13 @@ public nonisolated final class PTYSession: @unchecked Sendable {
             self.pendingBytes.withLock { $0[consumerID] = 0 }
 
             continuation.onTermination = { [self] _ in
-                self.liveContinuations.withLock { _ = $0.removeValue(forKey: consumerID) }
-                self.pendingBytes.withLock { _ = $0.removeValue(forKey: consumerID) }
+                liveContinuations.withLock { _ = $0.removeValue(forKey: consumerID) }
+                pendingBytes.withLock { _ = $0.removeValue(forKey: consumerID) }
             }
         }
 
         let onBytesProcessed: @Sendable (Int) -> Void = { [self] count in
-            self.pendingBytes.withLock { dict in
+            pendingBytes.withLock { dict in
                 dict[consumerID, default: 0] = max(0, (dict[consumerID] ?? 0) - count)
             }
         }
@@ -126,7 +125,7 @@ public nonisolated final class PTYSession: @unchecked Sendable {
                 buf.removeFirst(removed)
             }
             // Trim by byte count
-            while bufferByteCount.withLockedValue({ $0 }) > Self.maxBufferBytes && buf.count > 1 {
+            while bufferByteCount.withLockedValue({ $0 }) > Self.maxBufferBytes, buf.count > 1 {
                 if let first = buf.first {
                     bufferByteCount.withLockedValue { $0 -= first.utf8.count }
                     buf.removeFirst()
@@ -143,7 +142,7 @@ public nonisolated final class PTYSession: @unchecked Sendable {
                 dict[id] ?? 0
             }
             if pending >= Self.backpressureHighWatermark {
-                continue  // Consumer is too far behind, skip this chunk
+                continue // Consumer is too far behind, skip this chunk
             }
             pendingBytes.withLock { $0[id, default: 0] += chunkSize }
             cont.yield(chunk)
@@ -173,16 +172,15 @@ public nonisolated final class PTYSession: @unchecked Sendable {
                 try await client.withPTY(request) { inbound, outbound in
                     writerBox.withLock { $0 = outbound }
 
-
                     let readTask = Task {
                         do {
                             for try await data in inbound {
                                 if Task.isCancelled { break }
                                 switch data {
-                                case .stdout(let buf):
+                                case let .stdout(buf):
                                     let s = String(buffer: buf)
                                     if !s.isEmpty { self.yieldOutput(s) }
-                                case .stderr(let buf):
+                                case let .stderr(buf):
                                     let s = String(buffer: buf)
                                     if !s.isEmpty { self.yieldOutput(s) }
                                 }
@@ -244,7 +242,9 @@ public nonisolated final class PTYSession: @unchecked Sendable {
         // Wrappers to satisfy @Sendable requirements across isolation boundaries.
         final class SendableContinuation: @unchecked Sendable {
             let value: CheckedContinuation<String?, Never>
-            init(_ v: CheckedContinuation<String?, Never>) { value = v }
+            init(_ v: CheckedContinuation<String?, Never>) {
+                value = v
+            }
         }
 
         let resumed = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
@@ -263,7 +263,7 @@ public nonisolated final class PTYSession: @unchecked Sendable {
                                 .replacingOccurrences(of: "\u{1B}\\[[0-9;]*[a-zA-Z]", with: "", options: .regularExpression)
                                 .replacingOccurrences(of: "\u{1B}\\][^\u{07}\u{1B}]*[\u{07}]", with: "", options: .regularExpression)
                                 .trimmingCharacters(in: .whitespacesAndNewlines)
-                            if clean.hasPrefix("/") && !clean.contains(" ") && clean.count < 512 {
+                            if clean.hasPrefix("/"), !clean.contains(" "), clean.count < 512 {
                                 alreadyResumed = true
                                 box.value.resume(returning: clean)
                                 return
@@ -323,10 +323,10 @@ public nonisolated final class PTYSession: @unchecked Sendable {
 
             case .escape:
                 switch byte {
-                case 0x5B: state = .csi           // [ → CSI (keep)
-                case 0x5D: state = .oscString     // ] → OSC (strip)
-                case 0x50: state = .dcsEntry      // P → DCS (strip)
-                case 0x28, 0x29, 0x2A, 0x2B:      // charset selectors
+                case 0x5B: state = .csi // [ → CSI (keep)
+                case 0x5D: state = .oscString // ] → OSC (strip)
+                case 0x50: state = .dcsEntry // P → DCS (strip)
+                case 0x28, 0x29, 0x2A, 0x2B: // charset selectors
                     result.append(0x1B); result.append(byte)
                     state = .ground
                 default:
@@ -336,18 +336,18 @@ public nonisolated final class PTYSession: @unchecked Sendable {
 
             case .csi:
                 result.append(byte)
-                if (0x40...0x7E).contains(byte) { state = .ground }
+                if (0x40 ... 0x7E).contains(byte) { state = .ground }
 
             case .oscString:
-                if byte == 0x07 { state = .ground }         // BEL terminator
+                if byte == 0x07 { state = .ground } // BEL terminator
                 else if byte == 0x1B { state = .dcsString } // possible ESC \ (ST)
 
             case .dcsEntry:
                 if byte == 0x1B { state = .dcsString }
 
             case .dcsString:
-                if byte == 0x5C { state = .ground }  // \ → ST terminator
-                else if byte == 0x1B { /* stay */ }   // another ESC
+                if byte == 0x5C { state = .ground } // \ → ST terminator
+                else if byte == 0x1B { /* stay */ } // another ESC
                 else { state = .dcsEntry }
             }
         }

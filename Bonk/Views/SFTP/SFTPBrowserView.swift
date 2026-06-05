@@ -3,9 +3,9 @@
 //  Bonk
 //
 
+import os.log
 import SwiftUI
 import UniformTypeIdentifiers
-import os.log
 
 /// SFTP file browser panel.
 struct SFTPBrowserView: View {
@@ -15,8 +15,13 @@ struct SFTPBrowserView: View {
     @State private var newFolderName = ""
     @State private var pendingDeleteEntry: SFTPFileEntry?
 
-    private var sftpService: SFTPService? { tab.sftpService }
-    private var isConnected: Bool { sftpService != nil }
+    private var sftpService: SFTPService? {
+        tab.sftpService
+    }
+
+    private var isConnected: Bool {
+        sftpService != nil
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -89,7 +94,7 @@ struct SFTPBrowserView: View {
         }
         .task(id: tab.id) {
             try? await Task.sleep(for: .milliseconds(200))
-            if tab.connectionState.isConnected && tab.sftpService == nil {
+            if tab.connectionState.isConnected, tab.sftpService == nil {
                 await connectSFTP()
             }
         }
@@ -129,17 +134,17 @@ struct SFTPBrowserView: View {
             if isConnected {
                 Button {
                     #if os(macOS)
-                    let panel = NSOpenPanel()
-                    panel.allowsMultipleSelection = true
-                    panel.canChooseDirectories = false
-                    if panel.runModal() == .OK {
-                        for url in panel.urls {
-                            Task {
-                                do { try await sftpService?.upload(url) }
-                                catch { sftpService?.errorMessage = error.localizedDescription }
+                        let panel = NSOpenPanel()
+                        panel.allowsMultipleSelection = true
+                        panel.canChooseDirectories = false
+                        if panel.runModal() == .OK {
+                            for url in panel.urls {
+                                Task {
+                                    do { try await sftpService?.upload(url) }
+                                    catch { sftpService?.errorMessage = error.localizedDescription }
+                                }
                             }
                         }
-                    }
                     #endif
                 } label: {
                     Image(systemName: "arrow.up.doc.fill")
@@ -217,9 +222,9 @@ struct SFTPBrowserView: View {
                     if entry.isDirectory {
                         Button {
                             Task {
-                            do { try await service.enterDirectory(entry) }
-                            catch { service.errorMessage = error.localizedDescription }
-                        }
+                                do { try await service.enterDirectory(entry) }
+                                catch { service.errorMessage = error.localizedDescription }
+                            }
                         } label: {
                             Label(i18n.t(.open), systemImage: "folder")
                         }
@@ -227,14 +232,14 @@ struct SFTPBrowserView: View {
 
                     Button {
                         #if os(macOS)
-                        let panel = NSSavePanel()
-                        panel.nameFieldStringValue = entry.name
-                        if panel.runModal() == .OK, let url = panel.url {
-                            Task {
-                                do { try await service.download(entry, to: url) }
-                                catch { service.errorMessage = error.localizedDescription }
+                            let panel = NSSavePanel()
+                            panel.nameFieldStringValue = entry.name
+                            if panel.runModal() == .OK, let url = panel.url {
+                                Task {
+                                    do { try await service.download(entry, to: url) }
+                                    catch { service.errorMessage = error.localizedDescription }
+                                }
                             }
-                        }
                         #endif
                     } label: {
                         Label(i18n.t(.download), systemImage: "arrow.down.circle")
@@ -269,7 +274,7 @@ struct SFTPBrowserView: View {
 
     private func transferPanel(_ service: SFTPService) -> some View {
         let activeTransfers = service.transfers.filter { !$0.isComplete }
-        let completedTransfers = service.transfers.filter { $0.isComplete }
+        let completedTransfers = service.transfers.filter(\.isComplete)
 
         return VStack(alignment: .leading, spacing: 4) {
             if !activeTransfers.isEmpty {

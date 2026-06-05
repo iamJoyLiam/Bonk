@@ -1,6 +1,6 @@
 import Foundation
-import Security
 import os.log
+import Security
 
 /// Secure byte buffer that zeroes its contents on deallocation.
 /// Prevents sensitive data (passwords, private keys) from lingering in RAM
@@ -32,12 +32,13 @@ final class SecureBytes: @unchecked Sendable {
         withUnsafeBytes { String(bytes: $0, encoding: .utf8) }
     }
 
-    var count: Int { buffer.count }
+    var count: Int {
+        buffer.count
+    }
 }
 
 /// Lightweight wrapper around the iOS/macOS Keychain Services API.
 enum KeychainHelper {
-
     private static let service = "com.bonk.credentials"
     private static let logger = Logger(subsystem: "com.bonk", category: "Keychain")
 
@@ -50,11 +51,11 @@ enum KeychainHelper {
         delete(for: account)
 
         let query: [String: Any] = [
-            kSecClass as String:             kSecClassGenericPassword,
-            kSecAttrService as String:       service,
-            kSecAttrAccount as String:       account,
-            kSecValueData as String:         data,
-            kSecAttrAccessible as String:    kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
 
         let status = SecItemAdd(query as CFDictionary, nil)
@@ -70,11 +71,11 @@ enum KeychainHelper {
     /// For security-critical operations (SSH auth, key loading), use `getSecure()` instead.
     static func get(for account: String) -> String? {
         let query: [String: Any] = [
-            kSecClass as String:       kSecClassGenericPassword,
+            kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecReturnData as String:  true,
-            kSecMatchLimit as String:  kSecMatchLimitOne,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
         ]
 
         var result: AnyObject?
@@ -97,11 +98,11 @@ enum KeychainHelper {
     /// Use this for SSH private keys, passwords, and API keys passed to auth logic.
     static func getSecure(for account: String) -> SecureBytes? {
         let query: [String: Any] = [
-            kSecClass as String:       kSecClassGenericPassword,
+            kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecReturnData as String:  true,
-            kSecMatchLimit as String:  kSecMatchLimitOne,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
         ]
 
         var result: AnyObject?
@@ -124,7 +125,7 @@ enum KeychainHelper {
     static func constantTimeEqual(_ lhs: Data, _ rhs: Data) -> Bool {
         guard lhs.count == rhs.count else { return false }
         var result: UInt8 = 0
-        for i in 0..<lhs.count {
+        for i in 0 ..< lhs.count {
             result |= lhs[i] ^ rhs[i]
         }
         return result == 0
@@ -135,7 +136,7 @@ enum KeychainHelper {
     @discardableResult
     static func delete(for account: String) -> Bool {
         let query: [String: Any] = [
-            kSecClass as String:       kSecClassGenericPassword,
+            kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
@@ -156,5 +157,4 @@ enum KeychainHelper {
     static func privateKeyKey(for hostID: UUID) -> String {
         "host_\(hostID.uuidString)_privatekey"
     }
-
 }

@@ -13,12 +13,14 @@ struct AIChatSidebarView: View {
     @State private var selectedMode: AIMode = .ask
     @FocusState private var isInputFocused: Bool
 
-    // Sidebar has its own conversation, separate from floating panel
+    /// Sidebar has its own conversation, separate from floating panel
     @State private var sidebarConversationID: UUID?
 
     @State private var rotationAngle: Double = 0
 
-    private var aiColors: [Color] { AppStyle.aiRainbowColors }
+    private var aiColors: [Color] {
+        AppStyle.aiRainbowColors
+    }
 
     enum AIMode: String, CaseIterable {
         case ask = "Ask"
@@ -27,17 +29,17 @@ struct AIChatSidebarView: View {
 
         var icon: String {
             switch self {
-            case .ask: return "questionmark.circle"
-            case .edit: return "pencil.circle"
-            case .agent: return "bolt.circle"
+            case .ask: "questionmark.circle"
+            case .edit: "pencil.circle"
+            case .agent: "bolt.circle"
             }
         }
 
         var description: String {
             switch self {
-            case .ask: return "Answer questions only"
-            case .edit: return "Can suggest terminal commands"
-            case .agent: return "Can execute commands directly"
+            case .ask: "Answer questions only"
+            case .edit: "Can suggest terminal commands"
+            case .agent: "Can execute commands directly"
             }
         }
     }
@@ -165,13 +167,13 @@ struct AIChatSidebarView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
-                    if messages.isEmpty && !isProcessing {
+                    if messages.isEmpty, !isProcessing {
                         emptyState
                     }
                     ForEach(messages) { msg in
                         bubble(msg)
                     }
-                    if isProcessing && !aiService.streamingResponse.isEmpty {
+                    if isProcessing, !aiService.streamingResponse.isEmpty {
                         streamingBubble(aiService.streamingResponse)
                     }
                     Color.clear.frame(height: 1).id("bottom")
@@ -200,7 +202,6 @@ struct AIChatSidebarView: View {
         .padding(.top, 60)
     }
 
-    @ViewBuilder
     private func bubble(_ msg: AIMessage) -> some View {
         HStack(alignment: .top, spacing: 8) {
             if msg.role == .assistant { avatar("sparkles") }
@@ -215,7 +216,6 @@ struct AIChatSidebarView: View {
         .frame(maxWidth: .infinity, alignment: msg.role == .user ? .trailing : .leading)
     }
 
-    @ViewBuilder
     private func streamingBubble(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             avatar("sparkles")
@@ -340,8 +340,13 @@ struct AIChatSidebarView: View {
         .onAppear { fetchModels() }
     }
 
-    private var activeProvider: AIProviderConfig? { AIProviderStore.activeProvider }
-    private var allProviders: [AIProviderConfig] { AIProviderStore.allProviders }
+    private var activeProvider: AIProviderConfig? {
+        AIProviderStore.activeProvider
+    }
+
+    private var allProviders: [AIProviderConfig] {
+        AIProviderStore.allProviders
+    }
 
     // MARK: - Model Operations
 
@@ -406,11 +411,10 @@ struct AIChatSidebarView: View {
         inputText = ""
         currentTask?.cancel()
 
-        let modePrefix: String
-        switch selectedMode {
-        case .ask: modePrefix = ""
-        case .edit: modePrefix = "[Edit mode] Suggest a terminal command if relevant. "
-        case .agent: modePrefix = "[Agent mode] Provide a runnable terminal command. "
+        let modePrefix = switch selectedMode {
+        case .ask: ""
+        case .edit: "[Edit mode] Suggest a terminal command if relevant. "
+        case .agent: "[Agent mode] Provide a runnable terminal command. "
         }
 
         currentTask = Task {

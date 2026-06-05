@@ -16,11 +16,11 @@ struct AIConversation: Identifiable, Codable {
     var updatedAt: Date
 
     init(title: String = "New Chat") {
-        self.id = UUID()
+        id = UUID()
         self.title = title
-        self.messages = []
-        self.createdAt = Date()
-        self.updatedAt = Date()
+        messages = []
+        createdAt = Date()
+        updatedAt = Date()
     }
 }
 
@@ -37,7 +37,7 @@ struct AIMessage: Identifiable, Codable {
     }
 
     init(role: MessageRole, content: String, timestamp: Date = Date()) {
-        self.id = UUID()
+        id = UUID()
         self.role = role
         self.content = content
         self.timestamp = timestamp
@@ -85,7 +85,7 @@ final class AIConversationStore {
         conversation.updatedAt = Date()
 
         // Update title from first user message
-        if conversation.messages.count == 1 && role == .user {
+        if conversation.messages.count == 1, role == .user {
             conversation.title = String(content.prefix(30))
         }
 
@@ -129,7 +129,8 @@ final class AIConversationStore {
 
     private func load() {
         guard let data = defaults.data(forKey: storageKey),
-              let loaded = try? JSONDecoder().decode([AIConversation].self, from: data) else {
+              let loaded = try? JSONDecoder().decode([AIConversation].self, from: data)
+        else {
             return
         }
         conversations = loaded

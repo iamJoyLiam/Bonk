@@ -36,7 +36,7 @@ struct AppearanceSettingsView: View {
                                 get: { themeManager.opacity },
                                 set: { themeManager.setOpacity($0) }
                             ),
-                            in: 0.1...1.0,
+                            in: 0.1 ... 1.0,
                             step: 0.05
                         )
                         .frame(width: 160)
@@ -80,7 +80,7 @@ struct AppearanceSettingsView: View {
                     Text(i18n.t(.fontSize))
                     Spacer()
                     Text("10").font(.caption.monospaced()).foregroundStyle(.tertiary)
-                    Slider(value: $preferences.fontSize, in: 10...24, step: 1).frame(width: 160)
+                    Slider(value: $preferences.fontSize, in: 10 ... 24, step: 1).frame(width: 160)
                         .onChange(of: preferences.fontSize) { _, newValue in
                             NotificationCenter.default.post(
                                 name: .terminalFontDidChange,

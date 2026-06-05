@@ -46,9 +46,9 @@ struct SettingsView: View {
 
     private func updateWindowTitle() {
         #if os(macOS)
-        DispatchQueue.main.async {
-            NSApplication.shared.keyWindow?.title = i18n.t(LKey(rawValue: selectedTab) ?? .settings)
-        }
+            DispatchQueue.main.async {
+                NSApplication.shared.keyWindow?.title = i18n.t(LKey(rawValue: selectedTab) ?? .settings)
+            }
         #endif
     }
 }

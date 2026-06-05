@@ -24,9 +24,9 @@ extension Notification.Name {
 /// Map cursor style string to SwiftTerm CursorStyle.
 func mapCursorStyle(_ style: String, blink: Bool) -> SwiftTerm.CursorStyle {
     switch style {
-    case "underline": return blink ? .blinkUnderline : .steadyUnderline
-    case "bar":       return blink ? .blinkBar : .steadyBar
-    default:          return blink ? .blinkBlock : .steadyBlock
+    case "underline": blink ? .blinkUnderline : .steadyUnderline
+    case "bar": blink ? .blinkBar : .steadyBar
+    default: blink ? .blinkBlock : .steadyBlock
     }
 }
 

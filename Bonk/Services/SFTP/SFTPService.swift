@@ -3,11 +3,11 @@
 //  Bonk
 //
 
+@preconcurrency import Citadel
 import Foundation
 import NIOCore
 import NIOFoundationCompat
 import os.log
-@preconcurrency import Citadel
 
 /// High-level SFTP operations wrapping Citadel's SFTPClient.
 @Observable
@@ -131,7 +131,7 @@ final class SFTPService {
 
         do {
             try await sftp.withFile(filePath: entry.path, flags: .read) { file in
-                let chunkSize: UInt32 = 32_768
+                let chunkSize: UInt32 = 32768
                 var offset: UInt64 = 0
                 FileManager.default.createFile(atPath: localURL.path, contents: nil)
                 let handle = try FileHandle(forWritingTo: localURL)
@@ -149,15 +149,15 @@ final class SFTPService {
                     if updateCounter % 10 == 0 || offset >= entry.size {
                         let off = offset
                         await MainActor.run { [self] in
-                            if let idx = self.transfers.firstIndex(where: { $0.id == transferID }) {
-                                self.transfers[idx].transferredBytes = off
+                            if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                                transfers[idx].transferredBytes = off
                             }
                         }
                     }
                 }
                 await MainActor.run { [self] in
-                    if let idx = self.transfers.firstIndex(where: { $0.id == transferID }) {
-                        self.transfers[idx].isComplete = true
+                    if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                        transfers[idx].isComplete = true
                     }
                 }
             }
@@ -181,7 +181,7 @@ final class SFTPService {
 
         let transferID = UUID()
         await MainActor.run { [self] in
-            self.transfers.append(SFTPTransfer(
+            transfers.append(SFTPTransfer(
                 id: transferID, filename: filename, totalBytes: totalBytes,
                 transferredBytes: 0, isComplete: false, error: nil
             ))
@@ -193,7 +193,7 @@ final class SFTPService {
         do {
             try await sftp.withFile(filePath: remote, flags: [.write, .create, .truncate]) { file in
                 var offset: UInt64 = 0
-                let chunkSize = 32_768
+                let chunkSize = 32768
                 var updateCounter = 0
 
                 while true {
@@ -207,15 +207,15 @@ final class SFTPService {
                     if updateCounter % 10 == 0 || offset == totalBytes {
                         let off = offset
                         await MainActor.run { [self] in
-                            if let idx = self.transfers.firstIndex(where: { $0.id == transferID }) {
-                                self.transfers[idx].transferredBytes = off
+                            if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                                transfers[idx].transferredBytes = off
                             }
                         }
                     }
                 }
                 await MainActor.run { [self] in
-                    if let idx = self.transfers.firstIndex(where: { $0.id == transferID }) {
-                        self.transfers[idx].isComplete = true
+                    if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                        transfers[idx].isComplete = true
                     }
                 }
             }

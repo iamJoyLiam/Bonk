@@ -26,10 +26,12 @@ struct AIAssistantPanel: View {
     @State private var offset: CGSize = .zero
     @State private var lastOffset: CGSize = .zero
 
-    // Rotation animation
+    /// Rotation animation
     @State private var rotationAngle: Double = 0
 
-    private var aiColors: [Color] { AppStyle.aiRainbowColors }
+    private var aiColors: [Color] {
+        AppStyle.aiRainbowColors
+    }
 
     /// Current conversation messages.
     private var messages: [AIMessage] {
@@ -43,7 +45,7 @@ struct AIAssistantPanel: View {
 
     init(initialText: String = "", onPaste: @escaping (String) -> Void, onDismiss: @escaping () -> Void) {
         self.initialText = initialText
-        self._inputText = State(initialValue: initialText)
+        _inputText = State(initialValue: initialText)
         self.onPaste = onPaste
         self.onDismiss = onDismiss
     }
@@ -60,8 +62,8 @@ struct AIAssistantPanel: View {
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(
                             isInputFocused ?
-                            AnyShapeStyle(Color.accentColor) :
-                            AnyShapeStyle(Color.secondary)
+                                AnyShapeStyle(Color.accentColor) :
+                                AnyShapeStyle(Color.secondary)
                         )
                 }
                 .buttonStyle(.plain)
@@ -110,7 +112,7 @@ struct AIAssistantPanel: View {
 
             // AI Response - directly below input
             let streamingText = aiService.streamingResponse
-            if isProcessing && !streamingText.isEmpty {
+            if isProcessing, !streamingText.isEmpty {
                 // Show streaming response (plain text during stream)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(streamingText)
@@ -192,7 +194,6 @@ struct AIAssistantPanel: View {
     // MARK: - Markdown Rendering
 
     /// Render text with basic markdown support (code blocks, bold, italic).
-    @ViewBuilder
     private func markdownText(_ text: String) -> some View {
         Text.markdown(text).font(.system(size: 13))
     }

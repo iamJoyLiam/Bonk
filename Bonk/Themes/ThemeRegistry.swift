@@ -10,7 +10,6 @@ import Foundation
 
 @MainActor
 enum ThemeRegistry {
-
     // MARK: - Builtin Themes
 
     /// All builtin themes. Add new entries here.
