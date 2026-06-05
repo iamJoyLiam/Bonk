@@ -139,11 +139,11 @@ struct AddHostSheet: View {
             TextField(i18n.t(.groupOptional), text: $group)
                 .autocorrectionDisabled()
                 .onSubmit { commitGroup() }
-                .overlay(alignment: .leading) {
-                    if let g = selectedGroup, !group.isEmpty {
-                        GroupIndicator(group: g).padding(.leading, 6).allowsHitTesting(false)
-                    }
-                }
+
+            // Color + icon after text field
+            if let g = selectedGroup, !group.isEmpty {
+                GroupIndicator(group: g)
+            }
 
             if !group.isEmpty {
                 Button { group = "" } label: {

@@ -34,6 +34,8 @@ struct AIProviderDetailSheet: View {
     ) {
         self._draft = State(initialValue: provider)
         self._apiKeyInput = State(initialValue: provider.apiKey)
+        // Seed fetchedModels with current model so Picker doesn't default to "Other"
+        self._fetchedModels = State(initialValue: provider.model.isEmpty ? [] : [provider.model])
         self.isNew = isNew
         self.onSave = onSave
         self.onDelete = onDelete

@@ -153,7 +153,6 @@ private struct MacTerminalContainerBridge: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        print("[FontDiag] updateNSView: tab=\(activeTabID) font=\(fontFamily) size=\(fontSize)")
         guard context.coordinator.lastTabID != activeTabID else {
             // Tab didn't change, just update settings
             if let cached = TerminalViewCache.shared.retrieve(activeTabID) {
@@ -161,14 +160,12 @@ private struct MacTerminalContainerBridge: NSViewRepresentable {
                 // 验证：cache 返回的 view 是否在当前窗口的子视图树中
                 let isInHierarchy = tv.superview != nil
                 let isSubviewOfContainer = nsView.subviews.contains(tv)
-                print("[FontDiag] cache HIT: view=\(Unmanaged.passUnretained(tv).toOpaque()) inHierarchy=\(isInHierarchy) isSubviewOfContainer=\(isSubviewOfContainer)")
                 updateSettings(for: cached)
                 // Update copy-on-select monitor when setting changes
                 if let coord = cached.coordinator as? ContainerTerminalCoordinator {
                     coord.updateCopyOnSelect(copyOnSelect)
                 }
             } else {
-                print("[FontDiag] cache MISS for tab \(activeTabID)")
             }
             return
         }
@@ -286,17 +283,11 @@ private struct MacTerminalContainerBridge: NSViewRepresentable {
         let terminal = cached.view
         let newFont = createSafeFont(family: fontFamily, size: CGFloat(fontSize))
 
-        // ---- 诊断日志 ----
         let oldFont = terminal.font
-        print("[FontDiag] BEFORE: fontName=\(oldFont.fontName) pointSize=\(oldFont.pointSize)")
-        print("[FontDiag] TARGET: fontName=\(newFont.fontName) pointSize=\(newFont.pointSize)")
-        print("[FontDiag] fontEqual=\(oldFont == newFont) isViewHidden=\(terminal.isHidden) isViewOnScreen=\(terminal.window != nil)")
 
         terminal.font = newFont
 
         let afterFont = terminal.font
-        print("[FontDiag] AFTER:  fontName=\(afterFont.fontName) pointSize=\(afterFont.pointSize)")
-        print("[FontDiag] fontChanged=\(afterFont != oldFont)")
 
         terminal.terminal.setCursorStyle(mapCursorStyle(cursorStyle, blink: cursorBlink))
         if terminal.terminal.options.scrollback != scrollbackLines {
@@ -463,7 +454,6 @@ class ContainerTerminalCoordinator: NSObject, SwiftTerm.TerminalViewDelegate, @u
             }
             terminal.font = newFont
             terminal.needsDisplay = true
-            print("[FontDiag] NOTIFICATION applied: \(fontFamily) \(fontSize)pt → fontName=\(terminal.font.fontName) pointSize=\(terminal.font.pointSize)")
         }
 
         themeObserver = NotificationCenter.default.addObserver(forName: .terminalThemeDidChange, object: nil, queue: .main) { [weak self] notification in

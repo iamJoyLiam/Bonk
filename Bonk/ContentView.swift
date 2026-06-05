@@ -10,7 +10,9 @@ struct ContentView: View {
   @State private var sessionManager = SessionManager()
   #if os(macOS)
     @State private var showInspector = false
-    @State private var showSFTP = false
+    @State private var inspectorMode: InspectorMode = .sftp
+
+    enum InspectorMode { case sftp, ai }
   #endif
 
   private var preferences: UserPreferences {
@@ -69,22 +71,13 @@ struct ContentView: View {
         .background(colorScheme.isTransparent ? Color.clear : Color(nsColor: .controlBackgroundColor))
         .clipped()
         .inspector(isPresented: $showInspector) {
-          if showSFTP, let tab = sessionManager.activeTab {
-            SFTPBrowserView(tab: tab)
-          } else {
-            ServerInfoPanel(
-              tab: sessionManager.activeTab,
-              onDisconnect: {
-                if let id = sessionManager.activeTabID {
-                  Task { await sessionManager.disconnectTab(id) }
-                }
-              },
-              onReconnect: {
-                if let id = sessionManager.activeTabID {
-                  Task { await sessionManager.reconnectTab(id) }
-                }
-              }
-            )
+          switch inspectorMode {
+          case .sftp:
+            if let tab = sessionManager.activeTab {
+              SFTPBrowserView(tab: tab)
+            }
+          case .ai:
+            AIChatSidebarView()
           }
         }
       }
@@ -93,22 +86,22 @@ struct ContentView: View {
         ToolbarItem(placement: .primaryAction) {
           HStack(spacing: 6) {
             Button {
-              if showInspector && !showSFTP {
+              if showInspector && inspectorMode == .ai {
                 showInspector = false
               } else {
-                showSFTP = false
+                inspectorMode = .ai
                 showInspector = true
               }
             } label: {
-              Label(i18n.t(.serverInfo), systemImage: "server.rack")
+              Image(systemName: "sparkles")
             }
-            .help(i18n.t(.serverInfo))
+            .help(i18n.t(.aiAssistant))
 
             Button {
-              if showInspector && showSFTP {
+              if showInspector && inspectorMode == .sftp {
                 showInspector = false
               } else {
-                showSFTP = true
+                inspectorMode = .sftp
                 showInspector = true
               }
             } label: {

@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import os.log
 
 /// AI service that provides terminal assistance features.
 @Observable @MainActor
@@ -30,12 +31,22 @@ final class AIService {
     func chat(_ message: String, context: TerminalContext) async {
         guard let provider = activeProvider else {
             lastError = "No active AI provider configured"
+            Log.ai.error("chat: no active provider")
             return
         }
 
         let apiKey = provider.apiKey
         guard !apiKey.isEmpty else {
             lastError = "API key not set for \(provider.name)"
+            Log.ai.error("chat: no API key for \(provider.name)")
+            return
+        }
+
+        // Check for safety/classifier models that aren't chat models
+        let modelLower = provider.model.lowercased()
+        if modelLower.contains("safety") || modelLower.contains("classifier") || modelLower.contains("content-safety") {
+            lastError = "当前模型「\(provider.model)」是安全分类器，不是对话模型。请在设置中更换为对话模型（如 gpt-4o、claude-sonnet-4-20250514、deepseek-chat 等）"
+            Log.ai.error("chat: safety classifier model detected: \(provider.model)")
             return
         }
 
@@ -44,13 +55,12 @@ final class AIService {
         defer { isProcessing = false }
 
         let systemPrompt = """
-        You are a terminal assistant embedded in an SSH client. Rules:
-        - Reply in plain text only. No markdown, no code blocks, no bullet lists with symbols.
-        - Keep answers under 3 sentences unless the user asks for detail.
-        - If providing a command, show it on its own line with nothing else.
-        - Be direct. No greetings, no filler, no "Sure!", no "Here's".
-        - Match the user's language.
+        You are a terminal assistant embedded in an SSH client.
+        Answer concisely in plain text. If providing a command, show it on its own line.
+        No greetings or filler. Match the user's language.
         """
+
+        Log.ai.info("chat: provider=\(provider.name) model=\(provider.model) msg=\(message.prefix(80))")
 
         do {
             let response = try await callAIProviderStreaming(
@@ -61,11 +71,14 @@ final class AIService {
                 maxTokens: 500
             )
 
+            Log.ai.info("chat: response(\(response.count) chars)=\(response.prefix(200))")
+
             if !Task.isCancelled {
-                currentExplanation = stripMarkdown(response)
+                currentExplanation = response
             }
         } catch {
             lastError = error.localizedDescription
+            Log.ai.error("chat: error=\(error.localizedDescription)")
         }
     }
 
@@ -73,12 +86,14 @@ final class AIService {
     func explainError(_ errorOutput: String, context: TerminalContext) async {
         guard let provider = activeProvider else {
             lastError = "No active AI provider configured"
+            Log.ai.error("explainError: no active provider")
             return
         }
 
         let apiKey = provider.apiKey
         guard !apiKey.isEmpty else {
             lastError = "API key not set for \(provider.name)"
+            Log.ai.error("explainError: no API key for \(provider.name)")
             return
         }
 
@@ -87,11 +102,9 @@ final class AIService {
         defer { isProcessing = false }
 
         let systemPrompt = """
-        You are a terminal error diagnoser embedded in an SSH client. Rules:
-        - Reply in plain text only. No markdown formatting.
-        - Format: "问题: <one line>\n原因: <one line>\n修复: <command or one line>"
-        - Be direct and concise. No preamble, no "Sure!", no explanations of what an error is.
-        - Match the user's language.
+        You are a terminal error diagnoser embedded in an SSH client.
+        Explain the error briefly and suggest a fix. Reply in plain text, no markdown.
+        Match the user's language.
         """
 
         let userPrompt = """
@@ -111,7 +124,7 @@ final class AIService {
             )
 
             if !Task.isCancelled {
-                currentExplanation = stripMarkdown(response)
+                currentExplanation = response
             }
         } catch {
             lastError = error.localizedDescription
@@ -119,61 +132,6 @@ final class AIService {
     }
 
     /// Get the active AI provider from UserDefaults.
-
-    /// Strip common markdown formatting from AI output.
-    /// Preserves content, removes only formatting markers.
-    private func stripMarkdown(_ text: String) -> String {
-        var result = text
-
-        // Remove code fences ``` ... ``` (keep inner content)
-        result = result.replacingOccurrences(
-            of: "```[a-zA-Z]*\\n?",
-            with: "", options: .regularExpression
-        )
-        result = result.replacingOccurrences(of: "```", with: "")
-
-        // Remove inline code backticks `...`
-        result = result.replacingOccurrences(of: "`([^`]+)`", with: "$1", options: .regularExpression)
-
-        // Remove bold **...** and __...__
-        result = result.replacingOccurrences(of: "\\*\\*(.+?)\\*\\*", with: "$1", options: .regularExpression)
-        result = result.replacingOccurrences(of: "__(.+?)__", with: "$1", options: .regularExpression)
-
-        // Remove italic *...* and _..._
-        result = result.replacingOccurrences(of: "\\*(.+?)\\*", with: "$1", options: .regularExpression)
-        result = result.replacingOccurrences(of: "_(.+?)_", with: "$1", options: .regularExpression)
-
-        // Remove links [text](url) → text
-        result = result.replacingOccurrences(of: "\\[([^\\]]+)\\]\\([^\\)]+\\)", with: "$1", options: .regularExpression)
-
-        // Process line-by-line for prefix markers (headings, lists, blockquotes)
-        let lines = result.components(separatedBy: .newlines)
-        let cleaned = lines.map { line -> String in
-            var l = line
-            // Remove heading markers # ## ### etc.
-            if let range = l.range(of: #"^#{1,6}\s+"#, options: .regularExpression) {
-                l.replaceSubrange(range, with: "")
-            }
-            // Remove list markers (-, *, +, 1.)
-            if let range = l.range(of: #"^\s*[-*+]\s+"#, options: .regularExpression) {
-                l.replaceSubrange(range, with: "")
-            }
-            if let range = l.range(of: #"^\s*\d+\.\s+"#, options: .regularExpression) {
-                l.replaceSubrange(range, with: "")
-            }
-            // Remove blockquotes >
-            if let range = l.range(of: #"^>\s?"#, options: .regularExpression) {
-                l.replaceSubrange(range, with: "")
-            }
-            return l
-        }
-        result = cleaned.joined(separator: "\n")
-
-        // Collapse multiple blank lines into one
-        result = result.replacingOccurrences(of: "\\n{3,}", with: "\n\n", options: .regularExpression)
-
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
     private var activeProvider: AIProviderConfig? {
         guard let data = UserDefaults.standard.data(forKey: "ai_providers"),
               let providers = try? JSONDecoder().decode([AIProviderConfig].self, from: data),
@@ -212,12 +170,13 @@ final class AIService {
             body = [
                 "model": provider.model,
                 "max_tokens": maxTokens,
+                "system": systemPrompt,
                 "messages": [
-                    ["role": "user", "content": "\(systemPrompt)\n\n\(userPrompt)"]
+                    ["role": "user", "content": userPrompt]
                 ]
             ]
 
-        case .openAI, .openRouter, .copilot:
+        case .openAI, .openRouter, .copilot, .openCode, .custom:
             url = URL(string: "\(endpoint)/v1/chat/completions")!
             headers = [
                 "Authorization": "Bearer \(apiKey)",
@@ -257,21 +216,6 @@ final class AIService {
                     ["role": "user", "content": userPrompt]
                 ],
                 "stream": false
-            ]
-
-        case .openCode, .custom:
-            url = URL(string: "\(endpoint)/v1/chat/completions")!
-            headers = [
-                "Authorization": "Bearer \(apiKey)",
-                "content-type": "application/json"
-            ]
-            body = [
-                "model": provider.model,
-                "max_tokens": maxTokens,
-                "messages": [
-                    ["role": "system", "content": systemPrompt],
-                    ["role": "user", "content": userPrompt]
-                ]
             ]
         }
 
@@ -368,8 +312,9 @@ final class AIService {
                 "model": provider.model,
                 "max_tokens": maxTokens,
                 "stream": true,
+                "system": systemPrompt,
                 "messages": [
-                    ["role": "user", "content": "\(systemPrompt)\n\n\(userPrompt)"]
+                    ["role": "user", "content": userPrompt]
                 ]
             ]
 
@@ -481,6 +426,9 @@ final class AIService {
                                     let content = message["content"] as? String {
                                 fullResponse += content
                                 streamingResponse = fullResponse
+                            } else {
+                                // Log unrecognized stream events for debugging
+                                Log.ai.debug("stream: unrecognized event=\(jsonString.prefix(200))")
                             }
                         }
                     }

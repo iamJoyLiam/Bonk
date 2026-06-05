@@ -257,8 +257,6 @@ struct AIAssistantPanel: View {
         isProcessing = false
 
         onDismiss()
-        // Start new conversation on dismiss
-        conversationStore.newConversation()
         inputText = ""
         aiService.streamingResponse = ""
         aiService.currentExplanation = nil
@@ -268,25 +266,13 @@ struct AIAssistantPanel: View {
 
     private var historyPopover: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack {
-                Text("History")
-                    .font(.system(size: 13, weight: .semibold))
-                Spacer()
-                Button {
-                    conversationStore.clearAll()
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(12)
+            Text("History")
+                .font(.system(size: 13, weight: .semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
 
             Divider()
 
-            // Conversation list
             ScrollView {
                 LazyVStack(spacing: 2) {
                     ForEach(conversationStore.conversations) { conversation in
@@ -295,14 +281,9 @@ struct AIAssistantPanel: View {
                             showHistory = false
                         } label: {
                             HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(conversation.title)
-                                        .font(.system(size: 12))
-                                        .lineLimit(1)
-                                    Text(conversation.updatedAt, style: .relative)
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.tertiary)
-                                }
+                                Text(conversation.title)
+                                    .font(.system(size: 12))
+                                    .lineLimit(1)
                                 Spacer()
                                 if conversationStore.currentConversation?.id == conversation.id {
                                     Image(systemName: "checkmark")
