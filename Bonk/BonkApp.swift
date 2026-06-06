@@ -25,11 +25,10 @@ struct BonkApp: App {
             HostGroup.self
         ])
         #if DEBUG
-            let storeName = "Bonk-Dev"
+        let config = ModelConfiguration("Bonk-Dev", schema: schema, isStoredInMemoryOnly: false)
         #else
-            let storeName = "Bonk"
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         #endif
-        let config = ModelConfiguration(storeName, schema: schema, isStoredInMemoryOnly: false)
 
         do {
             return try ModelContainer(for: schema, configurations: [config])

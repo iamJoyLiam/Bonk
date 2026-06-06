@@ -6,6 +6,41 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.0.2</title>
+            <pubDate>Thu, 05 Jun 2026 18:00:00 +0000</pubDate>
+            <sparkle:version>202602</sparkle:version>
+            <sparkle:shortVersionString>2026.0.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>新功能</h3>
+                <ul>
+                    <li>主机分组管理：支持颜色和 SF Symbol 图标，设置页统一管理</li>
+                    <li>AI 侧边栏：右侧边栏完整对话界面，独立于浮动面板</li>
+                    <li>AI 模型切换：侧边栏可直接切换 provider 和模型</li>
+                    <li>AI 模式选择：Ask / Edit / Agent 三种模式</li>
+                </ul>
+                <h3>优化</h3>
+                <ul>
+                    <li>AI 输出质量：修复 Claude API system prompt，增加安全分类器检测</li>
+                    <li>分组选择器：下拉框支持快速创建</li>
+                    <li>侧边栏：无主机连接时显示占位提示</li>
+                    <li>SF Symbols：图标选择器支持搜索全部 8000+ 图标</li>
+                </ul>
+                <h3>修复</h3>
+                <ul>
+                    <li>连接终端过程中关闭不再弹错误提示</li>
+                    <li>AI 对话历史不再随浮动面板关闭而丢失</li>
+                    <li>SwiftData 轻量迁移保护用户数据</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.2/Bonk-v2026.0.2-arm64.dmg"
+                length="7092441"
+                type="application/octet-stream"
+                sparkle:edSignature="dFd32p1LVPJ900L95f4MY3Ywb8OZGZkmNL/SFI0MHPILf43NskpJruo7j0noF4/AOsC1+2DwjncKyf8j6g2ADg=="
+            />
+        </item>
+        <item>
             <title>2026.0.1</title>
             <pubDate>Wed, 04 Jun 2026 03:20:00 +0000</pubDate>
             <sparkle:version>202601</sparkle:version>
@@ -13,11 +48,11 @@
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <description />
             <enclosure
-        url="https://github.com/iamJoyLiam/GhostShell/releases/download/v2026.0.1/Bonk-v2026.0.1-arm64.dmg"
-        length="7487800"
-        type="application/octet-stream"
-        sparkle:edSignature="ZeV0VAAXUDBKzpUbQWuGXG/Beqe46HlYY9fJ7au+WB1VGuyrEtN+q7EIaNg+Sf6EoDnsWlShk0q3fVvDSwp8BQ=="
-      />
+                url="https://github.com/iamJoyLiam/GhostShell/releases/download/v2026.0.1/Bonk-v2026.0.1-arm64.dmg"
+                length="7487800"
+                type="application/octet-stream"
+                sparkle:edSignature="ZeV0VAAXUDBKzpUbQWuGXG/Beqe46HlYY9fJ7au+WB1VGuyrEtN+q7EIaNg+Sf6EoDnsWlShk0q3fVvDSwp8BQ=="
+            />
         </item>
     </channel>
 </rss>
