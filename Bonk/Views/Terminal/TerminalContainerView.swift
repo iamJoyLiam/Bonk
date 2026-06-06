@@ -309,14 +309,14 @@ import SwiftUI
         private var copyOnSelect: Bool
         nonisolated(unsafe) weak var terminalView: SwiftTerm.TerminalView?
         nonisolated(unsafe) var feedTask: Task<Void, Never>?
-        private var themeObserver: NSObjectProtocol?
+        var themeObserver: NSObjectProtocol?
         private nonisolated(unsafe) var mouseUpMonitor: Any?
-        private var fontObserver: NSObjectProtocol?
+        var fontObserver: NSObjectProtocol?
 
         // Batch feed throttling — reduces MainActor.run calls under heavy output
-        private let batchBuffer = OSAllocatedUnfairLock<String>(uncheckedState: "")
-        private let batchFlushScheduled = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
-        private static let batchThreshold = 4096 // 4 KB — flush immediately when buffer reaches this size
+        let batchBuffer = OSAllocatedUnfairLock<String>(uncheckedState: "")
+        let batchFlushScheduled = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
+        static let batchThreshold = 4096 // 4 KB — flush immediately when buffer reaches this size
 
         var onSend: @Sendable (ArraySlice<UInt8>) -> Void {
             get { lock.lock(); defer { lock.unlock() }; return _onSend }
@@ -386,165 +386,6 @@ import SwiftUI
             }
         }
 
-        func startFeeding(from stream: AsyncStream<String>, onBytesProcessed: (@Sendable (Int) -> Void)? = nil) {
-            // Cancel existing feed task before creating new one
-            feedTask?.cancel()
-            // Reset batch state
-            batchBuffer.withLock { $0 = "" }
-            batchFlushScheduled.withLock { $0 = false }
-
-            feedTask = Task { [weak self] in
-                guard let self else { return }
-                try? await Task.sleep(for: .milliseconds(150))
-                for await text in stream {
-                    guard !Task.isCancelled else { break }
-                    let byteCount = text.utf8.count
-                    let shouldFlush = batchBuffer.withLock { buf -> Bool in
-                        buf += text
-                        return buf.utf8.count >= Self.batchThreshold
-                    }
-                    if shouldFlush {
-                        flushBatch()
-                    } else {
-                        scheduleFlush()
-                    }
-                    onBytesProcessed?(byteCount)
-                }
-            }
-        }
-
-        private func scheduleFlush() {
-            let alreadyScheduled = batchFlushScheduled.withLock { val -> Bool in
-                if !val { val = true; return false }
-                return true
-            }
-            guard !alreadyScheduled else { return }
-            Task { [weak self] in
-                try? await Task.sleep(for: .milliseconds(16))
-                self?.flushBatch()
-            }
-        }
-
-        private func flushBatch() {
-            batchFlushScheduled.withLock { $0 = false }
-            let text = batchBuffer.withLock { buf -> String in
-                let flushedText = buf
-                buf = ""
-                return flushedText
-            }
-            guard !text.isEmpty else { return }
-            Task { @MainActor [weak self] in
-                self?.terminalView?.feed(text: text)
-            }
-        }
-
-        func observeThemeChanges() {
-            // Font changes — bypass SwiftUI observation chain (same pattern as theme)
-            fontObserver = NotificationCenter.default.addObserver(
-                forName: .terminalFontDidChange, object: nil, queue: .main
-            ) { [weak self] notification in
-                guard let self, let terminal = terminalView else { return }
-                let fontFamily = (notification.object as? String) ?? "SF Mono"
-                let fontSize = (notification.userInfo?["fontSize"] as? Double) ?? 14.0
-                let size = CGFloat(fontSize)
-                let newFont = switch fontFamily {
-                case "Menlo":
-                    NSFont(name: "Menlo", size: size) ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
-                case "Monaco":
-                    NSFont(name: "Monaco", size: size) ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
-                case "Courier New":
-                    NSFont(name: "Courier New", size: size)
-                        ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
-                case "JetBrains Mono":
-                    NSFont(name: "JetBrains Mono", size: size)
-                        ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
-                default:
-                    NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
-                }
-                terminal.font = newFont
-                terminal.needsDisplay = true
-            }
-
-            themeObserver = NotificationCenter.default.addObserver(
-                forName: .terminalThemeDidChange, object: nil, queue: .main
-            ) { [weak self] notification in
-                guard let self, let terminal = terminalView,
-                      let scheme = notification.object as? TerminalColorScheme else { return }
-                terminal.nativeBackgroundColor = scheme.background.nsColor
-                terminal.nativeForegroundColor = scheme.foreground.nsColor
-                terminal.installColors(scheme.swiftTermColors)
-            }
-
-            // Selection request → respond with selected text
-            NotificationCenter.default.addObserver(
-                forName: .requestTerminalSelection,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                guard let self, let terminal = terminalView else { return }
-                let selectedText = terminal.getSelection()
-                NotificationCenter.default.post(name: .terminalSelectionResponse, object: selectedText)
-            }
-
-            // Select all text in terminal
-            NotificationCenter.default.addObserver(
-                forName: .selectAllInTerminal,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                guard let self, let terminal = terminalView else { return }
-                terminal.selectAll()
-            }
-
-            // Focus terminal
-            NotificationCenter.default.addObserver(
-                forName: .focusTerminal,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                guard let self, let terminal = terminalView else { return }
-                terminal.window?.makeFirstResponder(terminal)
-            }
-        }
-
-        func removeThemeObserver() {
-            if let observer = themeObserver {
-                NotificationCenter.default.removeObserver(observer)
-                themeObserver = nil
-            }
-            if let observer = fontObserver {
-                NotificationCenter.default.removeObserver(observer)
-                fontObserver = nil
-            }
-        }
-
-        func send(source _: SwiftTerm.TerminalView, data: ArraySlice<UInt8>) {
-            onSend(data)
-        }
-
-        func sizeChanged(source _: SwiftTerm.TerminalView, newCols: Int, newRows: Int) {
-            onResize?(newCols, newRows)
-        }
-
-        func setTerminalTitle(source _: SwiftTerm.TerminalView, title: String) {
-            onTitleChange?(title)
-        }
-
-        func hostCurrentDirectoryUpdate(source _: SwiftTerm.TerminalView, directory _: String?) {}
-        func scrolled(source _: SwiftTerm.TerminalView, position _: Double) {}
-        func requestOpenLink(source _: SwiftTerm.TerminalView, link _: String, params _: [String: String]) {}
-        func bell(source _: SwiftTerm.TerminalView) {}
-        func clipboardCopy(source _: SwiftTerm.TerminalView, content: Data) {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setData(content, forType: .string)
-        }
-
-        func clipboardRead(source _: SwiftTerm.TerminalView) -> Data? {
-            nil
-        }
-
-        func iTermContent(source _: SwiftTerm.TerminalView, content _: ArraySlice<UInt8>) {}
-        func rangeChanged(source _: SwiftTerm.TerminalView, startY _: Int, endY _: Int) {}
     }
 
 #endif

@@ -5,43 +5,24 @@ import SwiftUI
 struct AIChatSidebarView: View {
     @EnvironmentObject var i18n: I18n
     @State private var aiService = AIService.shared
-    @State private var conversationStore = AIConversationStore.shared
+    @State var conversationStore = AIConversationStore.shared
     @State private var inputText = ""
     @State private var isProcessing = false
     @State private var currentTask: Task<Void, Never>?
-    @State private var showHistory = false
+    @State var showHistory = false
     @State private var selectedMode: AIMode = .ask
     @FocusState private var isInputFocused: Bool
 
     /// Sidebar has its own conversation, separate from floating panel
-    @State private var sidebarConversationID: UUID?
+    @State var sidebarConversationID: UUID?
 
     @State private var rotationAngle: Double = 0
+    @State var fetchedModels: [String] = []
+    @State var isFetchingModels = false
+    @State var pendingDeleteConversation: UUID?
 
     private var aiColors: [Color] {
         AppStyle.aiRainbowColors
-    }
-
-    enum AIMode: String, CaseIterable {
-        case ask = "Ask"
-        case edit = "Edit"
-        case agent = "Agent"
-
-        var icon: String {
-            switch self {
-            case .ask: "questionmark.circle"
-            case .edit: "pencil.circle"
-            case .agent: "bolt.circle"
-            }
-        }
-
-        var description: String {
-            switch self {
-            case .ask: "Answer questions only"
-            case .edit: "Can suggest terminal commands"
-            case .agent: "Can execute commands directly"
-            }
-        }
     }
 
     /// Current sidebar conversation (independent from floating panel).
@@ -96,73 +77,6 @@ struct AIChatSidebarView: View {
         .padding(.vertical, 10)
     }
 
-    // MARK: - History
-
-    @State private var pendingDeleteConversation: UUID?
-
-    private var historyPopover: some View {
-        VStack(spacing: 0) {
-            if conversationStore.conversations.isEmpty {
-                Text(i18n.t(.aiNoHistory))
-                    .font(.caption).foregroundStyle(.tertiary)
-                    .padding(16)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 2) {
-                        ForEach(conversationStore.conversations) { conversation in
-                            HStack(spacing: 8) {
-                                Button {
-                                    sidebarConversationID = conversation.id
-                                    showHistory = false
-                                } label: {
-                                    HStack {
-                                        Text(conversation.title)
-                                            .font(.system(size: 12))
-                                            .lineLimit(1)
-                                        Spacer()
-                                        if sidebarConversationID == conversation.id {
-                                            Image(systemName: "checkmark")
-                                                .font(.system(size: 10))
-                                                .foregroundStyle(Color.accentColor)
-                                        }
-                                    }
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-
-                                // Delete button
-                                Button {
-                                    pendingDeleteConversation = conversation.id
-                                } label: {
-                                    Image(systemName: "xmark")
-                                        .font(.system(size: 9, weight: .medium))
-                                        .foregroundStyle(.tertiary)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .padding(.horizontal, 12).padding(.vertical, 6)
-                        }
-                    }
-                }
-                .frame(maxHeight: 200)
-            }
-        }
-        .frame(width: 220)
-        .alert(i18n.t(.aiDeleteConversation), isPresented: Binding(
-            get: { pendingDeleteConversation != nil },
-            set: { if !$0 { pendingDeleteConversation = nil } }
-        )) {
-            Button(i18n.t(.delete), role: .destructive) {
-                if let id = pendingDeleteConversation {
-                    conversationStore.deleteConversation(id)
-                    if sidebarConversationID == id { sidebarConversationID = nil }
-                }
-                pendingDeleteConversation = nil
-            }
-            Button(i18n.t(.cancel), role: .cancel) { pendingDeleteConversation = nil }
-        }
-    }
-
     // MARK: - Messages
 
     private var messageList: some View {
@@ -191,55 +105,7 @@ struct AIChatSidebarView: View {
         }
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 28))
-                .foregroundStyle(.tertiary)
-            Text(i18n.t(.terminalAssistant))
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 60)
-    }
-
-    private func bubble(_ msg: AIMessage) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            if msg.role == .assistant { avatar("sparkles") }
-            VStack(alignment: msg.role == .user ? .trailing : .leading, spacing: 4) {
-                Text.markdown(msg.content).font(.system(size: 13)).textSelection(.enabled)
-            }
-            .padding(10)
-            .background(msg.role == .user ? Color.accentColor.opacity(0.1) : Color(nsColor: .controlColor))
-            .clipShape(.rect(cornerRadius: 10))
-            if msg.role == .user { avatar("person.fill") }
-        }
-        .frame(maxWidth: .infinity, alignment: msg.role == .user ? .trailing : .leading)
-    }
-
-    private func streamingBubble(_ text: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            avatar("sparkles")
-            Text(text).font(.system(size: 13))
-                .padding(10)
-                .background(Color(nsColor: .controlColor))
-                .clipShape(.rect(cornerRadius: 10))
-        }
-    }
-
-    private func avatar(_ icon: String) -> some View {
-        Image(systemName: icon)
-            .font(.system(size: 10)).foregroundStyle(.secondary)
-            .frame(width: 20, height: 20)
-            .background(Color(nsColor: .controlColor))
-            .clipShape(Circle())
-    }
-
     // MARK: - Bottom Bar
-
-    @State private var fetchedModels: [String] = []
-    @State private var isFetchingModels = false
 
     private var bottomBar: some View {
         VStack(spacing: 6) {
@@ -306,88 +172,6 @@ struct AIChatSidebarView: View {
             .clipShape(Capsule())
         }
         .menuStyle(.borderlessButton).fixedSize()
-    }
-
-    private var modelMenu: some View {
-        let currentModel = activeProvider?.model ?? i18n.t(.aiNoModel)
-        return Menu {
-            if isFetchingModels {
-                Text(i18n.t(.aiFetchingModels))
-            } else if fetchedModels.isEmpty {
-                Button { fetchModels() } label: {
-                    Label(i18n.t(.aiFetchModels), systemImage: "arrow.clockwise")
-                }
-            } else {
-                ForEach(fetchedModels, id: \.self) { model in
-                    Button { applyModel(model) } label: {
-                        Label(model, systemImage: model == currentModel ? "checkmark" : "")
-                    }
-                }
-            }
-
-            Divider()
-
-            // Switch provider
-            ForEach(allProviders) { provider in
-                let isActive = provider.id.uuidString == activeProvider?.id.uuidString
-                Button { switchToProvider(provider) } label: {
-                    Label("\(provider.name) — \(provider.model)", systemImage: isActive ? "checkmark" : "")
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "cpu").font(.system(size: 11))
-                Text(currentModel).font(.system(size: 11))
-                    .lineLimit(1).truncationMode(.middle).frame(maxWidth: 120)
-                Image(systemName: "chevron.down").font(.system(size: 8))
-            }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(Color(nsColor: .controlColor)).clipShape(Capsule())
-        }
-        .menuStyle(.borderlessButton)
-        .onAppear { fetchModels() }
-    }
-
-    private var activeProvider: AIProviderConfig? {
-        AIProviderStore.activeProvider
-    }
-
-    private var allProviders: [AIProviderConfig] {
-        AIProviderStore.allProviders
-    }
-
-    // MARK: - Model Operations
-
-    private func fetchModels() {
-        guard let provider = activeProvider,
-              let url = AIProviderNetworking.modelsURL(
-                  endpoint: provider.endpoint,
-                  type: provider.type,
-                  apiKey: provider.apiKey
-              ) else { return }
-        isFetchingModels = true
-        Task {
-            do {
-                let request = AIProviderNetworking.makeRequest(url: url, apiKey: provider.apiKey, type: provider.type)
-                let models = try await AIProviderNetworking.fetchModels(request: request, type: provider.type)
-                await MainActor.run { fetchedModels = models; isFetchingModels = false }
-            } catch {
-                await MainActor.run { isFetchingModels = false }
-            }
-        }
-    }
-
-    private func switchToProvider(_ provider: AIProviderConfig) {
-        UserDefaults.standard.set(provider.id.uuidString, forKey: "ai_active_provider_id")
-        fetchedModels = []
-        fetchModels()
-    }
-
-    private func applyModel(_ model: String) {
-        guard var provider = activeProvider else { return }
-        provider.model = model.trimmingCharacters(in: .whitespaces)
-        AIProviderStore.updateProvider(provider)
     }
 
     // MARK: - Actions

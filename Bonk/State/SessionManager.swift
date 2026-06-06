@@ -57,33 +57,14 @@ final class SessionManager {
         tab.connectionState = .connecting
         tab.errorMessage = nil
 
-        let hostItem = tab.hostItem
-        guard let modelContext else {
-            tab.connectionState = .disconnected
-            tab.errorMessage = I18n.shared.t(.noModelContext)
-            return
-        }
-        guard let authMethod = hostItem.resolveAuthMethod(modelContext: modelContext) else {
-            tab.connectionState = .disconnected
-            tab.errorMessage = I18n.shared.t(.credentialsNotSet)
-            return
-        }
-
-        let config = SSHConnectionConfig(
-            host: hostItem.host,
-            port: UInt16(hostItem.port),
-            username: hostItem.resolveUsername(modelContext: modelContext),
-            authMethod: authMethod,
-            maxReconnectAttempts: 0,
-            baseReconnectDelay: .seconds(1)
-        )
+        guard let config = resolveConnectionConfig(for: tab) else { return }
 
         let service = SSHNetworkService(hostKeyStore: hostKeyStore)
         tab.sshService = service
         observeStateChanges(for: tab, service: service)
 
         do {
-            Log.session.info(" Connecting to \(hostItem.host):\(hostItem.port)...")
+            Log.session.info(" Connecting to \(tab.hostItem.host):\(tab.hostItem.port)...")
             try await service.connect(config: config)
             guard tabs.contains(where: { $0.id == tab.id }) else { return }
 
@@ -95,39 +76,7 @@ final class SessionManager {
             tab.connectedAt = Date()
             Log.session.info(" Opening PTY...")
 
-            let ptySession = try await service.openPTY()
-            guard tabs.contains(where: { $0.id == tab.id }) else { return }
-
-            tab.ptySession = ptySession
-            let streamResult = ptySession.makeOutputStream()
-            tab.outputStream = streamResult.stream
-
-            // Wire OSC 7 CWD detector
-            ptySession.osc7Detector.onCWDChange = { [weak tab] cwd in
-                Task { @MainActor in
-                    tab?.currentDirectory = cwd
-                }
-            }
-            Log.session.info("PTY opened, OSC 7 detector wired")
-
-            hostItem.lastConnectedAt = Date()
-
-            // Fetch server system info and refresh periodically
-            tab.serverInfoTask?.cancel()
-            tab.serverInfoTask = Task { [weak tab] in
-                // First fetch
-                if let info = await ServerInfoFetcher.fetch(using: service) {
-                    await MainActor.run { tab?.serverInfo = info }
-                }
-                // Refresh every 30 seconds while connected (reduces SSH command overhead)
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(30))
-                    guard !Task.isCancelled else { break }
-                    if let info = await ServerInfoFetcher.fetch(using: service) {
-                        await MainActor.run { tab?.serverInfo = info }
-                    }
-                }
-            }
+            try await setupPTYSession(for: tab, service: service)
         } catch {
             // Don't show error if tab was closed during connection
             guard tabs.contains(where: { $0.id == tab.id }) else { return }
@@ -182,6 +131,64 @@ final class SessionManager {
     }
 
     // MARK: - Private
+
+    /// Validate host credentials and build SSH connection config. Sets error state on tab if validation fails.
+    private func resolveConnectionConfig(for tab: TerminalTab) -> SSHConnectionConfig? {
+        let hostItem = tab.hostItem
+        guard let modelContext else {
+            tab.connectionState = .disconnected
+            tab.errorMessage = I18n.shared.t(.noModelContext)
+            return nil
+        }
+        guard let authMethod = hostItem.resolveAuthMethod(modelContext: modelContext) else {
+            tab.connectionState = .disconnected
+            tab.errorMessage = I18n.shared.t(.credentialsNotSet)
+            return nil
+        }
+        return SSHConnectionConfig(
+            host: hostItem.host,
+            port: UInt16(hostItem.port),
+            username: hostItem.resolveUsername(modelContext: modelContext),
+            authMethod: authMethod,
+            maxReconnectAttempts: 0,
+            baseReconnectDelay: .seconds(1)
+        )
+    }
+
+    /// Open PTY session, wire OSC 7 CWD detector, and start periodic server info fetching.
+    private func setupPTYSession(for tab: TerminalTab, service: SSHNetworkService) async throws {
+        let ptySession = try await service.openPTY()
+        guard tabs.contains(where: { $0.id == tab.id }) else { return }
+
+        tab.ptySession = ptySession
+        let streamResult = ptySession.makeOutputStream()
+        tab.outputStream = streamResult.stream
+
+        // Wire OSC 7 CWD detector
+        ptySession.osc7Detector.onCWDChange = { [weak tab] cwd in
+            Task { @MainActor in
+                tab?.currentDirectory = cwd
+            }
+        }
+        Log.session.info("PTY opened, OSC 7 detector wired")
+
+        tab.hostItem.lastConnectedAt = Date()
+
+        // Fetch server system info and refresh periodically
+        tab.serverInfoTask?.cancel()
+        tab.serverInfoTask = Task { [weak tab] in
+            if let info = await ServerInfoFetcher.fetch(using: service) {
+                await MainActor.run { tab?.serverInfo = info }
+            }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                guard !Task.isCancelled else { break }
+                if let info = await ServerInfoFetcher.fetch(using: service) {
+                    await MainActor.run { tab?.serverInfo = info }
+                }
+            }
+        }
+    }
 
     /// Parse current working directory from terminal title.
     private func parseCWD(from title: String) -> String? {

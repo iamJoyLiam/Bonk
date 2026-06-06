@@ -325,38 +325,59 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             switch state {
             case .ground:
                 if byte == 0x1B { state = .escape } else { result.append(byte) }
-
             case .escape:
-                switch byte {
-                case 0x5B: state = .csi // [ → CSI (keep)
-                case 0x5D: state = .oscString // ] → OSC (strip)
-                case 0x50: state = .dcsEntry // P → DCS (strip)
-                case 0x28, 0x29, 0x2A, 0x2B: // charset selectors
-                    result.append(0x1B); result.append(byte)
-                    state = .ground
-                default:
-                    result.append(0x1B); result.append(byte)
-                    state = .ground
-                }
-
+                state = processEscapeByte(byte, result: &result)
             case .csi:
-                result.append(byte)
-                if (0x40 ... 0x7E).contains(byte) { state = .ground }
-
+                state = processCSIByte(byte, result: &result)
             case .oscString:
-                if byte == 0x07 { state = .ground } // BEL terminator
-                else if byte == 0x1B { state = .dcsString } // possible ESC \ (ST)
-
+                state = processOSCStringByte(byte)
             case .dcsEntry:
-                if byte == 0x1B { state = .dcsString }
-
+                state = processDCSEntryByte(byte)
             case .dcsString:
-                if byte == 0x5C { state = .ground } // \ → ST terminator
-                else if byte == 0x1B { /* stay */ } // another ESC
-                else { state = .dcsEntry }
+                state = processDCSStringByte(byte)
             }
         }
 
         return String(bytes: result, encoding: .utf8) ?? text
+    }
+
+    /// Process a byte in the escape state. Returns the next state.
+    private nonisolated static func processEscapeByte(_ byte: UInt8, result: inout [UInt8]) -> FilterState {
+        switch byte {
+        case 0x5B: return .csi // [ → CSI (keep)
+        case 0x5D: return .oscString // ] → OSC (strip)
+        case 0x50: return .dcsEntry // P → DCS (strip)
+        case 0x28, 0x29, 0x2A, 0x2B: // charset selectors
+            result.append(0x1B); result.append(byte)
+            return .ground
+        default:
+            result.append(0x1B); result.append(byte)
+            return .ground
+        }
+    }
+
+    /// Process a byte in the CSI state. Returns the next state.
+    private nonisolated static func processCSIByte(_ byte: UInt8, result: inout [UInt8]) -> FilterState {
+        result.append(byte)
+        return (0x40 ... 0x7E).contains(byte) ? .ground : .csi
+    }
+
+    /// Process a byte in the OSC string state. Returns the next state.
+    private nonisolated static func processOSCStringByte(_ byte: UInt8) -> FilterState {
+        if byte == 0x07 { return .ground } // BEL terminator
+        if byte == 0x1B { return .dcsString } // possible ESC \ (ST)
+        return .oscString
+    }
+
+    /// Process a byte in the DCS entry state. Returns the next state.
+    private nonisolated static func processDCSEntryByte(_ byte: UInt8) -> FilterState {
+        return byte == 0x1B ? .dcsString : .dcsEntry
+    }
+
+    /// Process a byte in the DCS string state. Returns the next state.
+    private nonisolated static func processDCSStringByte(_ byte: UInt8) -> FilterState {
+        if byte == 0x5C { return .ground } // \ → ST terminator
+        if byte == 0x1B { return .dcsString } // another ESC
+        return .dcsEntry
     }
 }

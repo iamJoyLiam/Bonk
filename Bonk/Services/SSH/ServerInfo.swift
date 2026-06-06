@@ -68,31 +68,38 @@ enum ServerInfoFetcher {
         return parseOutput(output)
     }
 
+    private nonisolated(unsafe) static let keyMap: [String: WritableKeyPath<ServerInfo, String?>] = [
+        "hostname": \.hostname,
+        "os": \.os,
+        "kernel": \.kernel,
+        "arch": \.architecture,
+        "uptime": \.uptime,
+        "cpu": \.cpuModel,
+        "cores": \.cpuCores,
+        "mem": \.memoryUsed,
+        "disk": \.diskUsed,
+        "load": \.loadAverage,
+        "ip": \.serverIP,
+        "shell": \.shell,
+    ]
+
     static func parseOutput(_ output: String) -> ServerInfo {
         var info = ServerInfo()
         for line in output.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard let eqIndex = trimmed.firstIndex(of: "=") else { continue }
-            let key = String(trimmed[trimmed.startIndex ..< eqIndex])
-            let value = String(trimmed[trimmed.index(after: eqIndex)...]).trimmingCharacters(in: .whitespaces)
-            guard !value.isEmpty else { continue }
-
-            switch key {
-            case "hostname": info.hostname = value
-            case "os": info.os = value
-            case "kernel": info.kernel = value
-            case "arch": info.architecture = value
-            case "uptime": info.uptime = value
-            case "cpu": info.cpuModel = value
-            case "cores": info.cpuCores = value
-            case "mem": info.memoryUsed = value
-            case "disk": info.diskUsed = value
-            case "load": info.loadAverage = value
-            case "ip": info.serverIP = value
-            case "shell": info.shell = value
-            default: break
+            guard let (key, value) = parseLine(line) else { continue }
+            if let keyPath = keyMap[key] {
+                info[keyPath: keyPath] = value
             }
         }
         return info
+    }
+
+    private static func parseLine(_ line: String) -> (key: String, value: String)? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard let eqIndex = trimmed.firstIndex(of: "=") else { return nil }
+        let key = String(trimmed[trimmed.startIndex ..< eqIndex])
+        let value = String(trimmed[trimmed.index(after: eqIndex)...]).trimmingCharacters(in: .whitespaces)
+        guard !value.isEmpty else { return nil }
+        return (key, value)
     }
 }
