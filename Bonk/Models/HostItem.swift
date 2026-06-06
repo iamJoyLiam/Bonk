@@ -41,9 +41,9 @@ final class HostItem {
         KeychainHelper.getSecure(for: KeychainHelper.passwordKey(for: id))
     }
 
-    func storePassword(_ pw: String) {
-        guard !pw.isEmpty else { return }
-        KeychainHelper.set(pw, for: KeychainHelper.passwordKey(for: id))
+    func storePassword(_ password: String) {
+        guard !password.isEmpty else { return }
+        KeychainHelper.set(password, for: KeychainHelper.passwordKey(for: id))
     }
 
     func loadPrivateKey() -> String? {
@@ -82,7 +82,7 @@ final class HostItem {
         self.group = group
         self.credentialID = credentialID
 
-        if let pw = password { storePassword(pw) }
+        if let passwordValue = password { storePassword(passwordValue) }
         if let pem = privateKeyPEM { storePrivateKey(pem) }
     }
 
@@ -98,8 +98,7 @@ final class HostItem {
         if let credName = credentialID {
             let descriptor = FetchDescriptor<Credential>(predicate: #Predicate { $0.name == credName })
             if let cred = try? modelContext.fetch(descriptor).first,
-               let credUsername = cred.username, !credUsername.isEmpty
-            {
+               let credUsername = cred.username, !credUsername.isEmpty {
                 return credUsername
             }
         }
@@ -114,8 +113,7 @@ final class HostItem {
             let name = credName
             let descriptor = FetchDescriptor<Credential>(predicate: #Predicate { $0.name == name })
             if let cred = try? modelContext.fetch(descriptor).first,
-               let secret = cred.loadSecret(), !secret.isEmpty
-            {
+               let secret = cred.loadSecret(), !secret.isEmpty {
                 switch cred.type {
                 case .password:
                     return .password(secret)
@@ -130,8 +128,8 @@ final class HostItem {
         // 2. Fall back to host-embedded credentials
         switch authType {
         case .password:
-            guard let pw = loadPassword(), !pw.isEmpty else { return nil }
-            return .password(pw)
+            guard let password = loadPassword(), !password.isEmpty else { return nil }
+            return .password(password)
         case .privateKey:
             guard let pem = loadPrivateKey(), !pem.isEmpty else { return nil }
             return .privateKey(pemString: pem)

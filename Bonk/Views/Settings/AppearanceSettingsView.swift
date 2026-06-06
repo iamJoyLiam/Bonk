@@ -52,7 +52,10 @@ struct AppearanceSettingsView: View {
             let extra = ThemeRegistry.extra
             if !extra.isEmpty {
                 Section(i18n.t(.moreThemes)) {
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    LazyVGrid(
+                        columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
+                        spacing: 10
+                    ) {
                         ForEach(extra, id: \.id) { theme in
                             themeCard(theme)
                         }
@@ -89,7 +92,8 @@ struct AppearanceSettingsView: View {
                             )
                         }
                     Text("24").font(.caption.monospaced()).foregroundStyle(.tertiary)
-                    Text("\(Int(preferences.fontSize))pt").font(.caption.monospaced()).frame(width: 32, alignment: .trailing)
+                    Text("\(Int(preferences.fontSize))pt")
+                        .font(.caption.monospaced()).frame(width: 32, alignment: .trailing)
                 }
             }
         }
@@ -120,12 +124,21 @@ struct AppearanceSettingsView: View {
                 HStack {
                     Text(i18n.t(.system)).font(.caption2).lineLimit(1)
                     Spacer()
-                    if isSelected { Image(systemName: "checkmark.circle.fill").font(.caption2).foregroundStyle(Color.accentColor) }
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption2).foregroundStyle(Color.accentColor)
+                    }
                 }
             }
             .padding(6)
-            .background { RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.quaternary.opacity(0.3)) }
-            .overlay { RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5) }
+            .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(.quaternary.opacity(0.3))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+            }
         }
         .buttonStyle(.plain)
     }
@@ -135,35 +148,50 @@ struct AppearanceSettingsView: View {
     private func themeCard(_ theme: TerminalTheme) -> some View {
         let scheme = theme.colorScheme
         let isSelected = themeManager.activeThemeID == theme.id
-        let bg = scheme.background.swiftUIColor
-        let c0 = scheme.ansiColors[0].swiftUIColor
-        let c1 = scheme.ansiColors[1].swiftUIColor
-        let c2 = scheme.ansiColors[2].swiftUIColor
-        let c3 = scheme.ansiColors[3].swiftUIColor
+        let bgColor = scheme.background.swiftUIColor
+        let color0 = scheme.ansiColors[0].swiftUIColor
+        let color1 = scheme.ansiColors[1].swiftUIColor
+        let color2 = scheme.ansiColors[2].swiftUIColor
+        let color3 = scheme.ansiColors[3].swiftUIColor
 
         return Button {
             themeManager.setActive(theme.id)
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous).fill(bg).frame(height: 36)
-                        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(.primary.opacity(0.1), lineWidth: 0.5))
-                    HStack(spacing: 2) { strip(c0); strip(c1); strip(c2); strip(c3) }.padding(.leading, 6)
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(bgColor).frame(height: 36)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .strokeBorder(.primary.opacity(0.1), lineWidth: 0.5)
+                        )
+                    HStack(spacing: 2) {
+                        strip(color0); strip(color1); strip(color2); strip(color3)
+                    }.padding(.leading, 6)
                 }
                 HStack {
                     Text(theme.name).font(.caption2).lineLimit(1)
                     Spacer()
-                    if isSelected { Image(systemName: "checkmark.circle.fill").font(.caption2).foregroundStyle(Color.accentColor) }
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption2).foregroundStyle(Color.accentColor)
+                    }
                 }
             }
             .padding(6)
-            .background { RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.quaternary.opacity(0.3)) }
-            .overlay { RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5) }
+            .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(.quaternary.opacity(0.3))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+            }
         }
         .buttonStyle(.plain)
     }
 
-    private func strip(_ c: Color) -> some View {
-        RoundedRectangle(cornerRadius: 1, style: .continuous).fill(c).frame(width: 16, height: 3)
+    private func strip(_ color: Color) -> some View {
+        RoundedRectangle(cornerRadius: 1, style: .continuous).fill(color).frame(width: 16, height: 3)
     }
 }

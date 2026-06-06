@@ -1,0 +1,4 @@
+--swiftversion 5.9
+--trailingcommas never
+--elseposition same-line
+--guardelse same-line

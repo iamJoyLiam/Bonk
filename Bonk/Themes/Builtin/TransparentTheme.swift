@@ -21,11 +21,11 @@ struct TransparentTheme: TerminalTheme {
     )
 
     func colorScheme(opacity: Double) -> TerminalColorScheme {
-        let a = max(0.1, min(1.0, opacity))
+        let clampedOpacity = max(0.1, min(1.0, opacity))
         return TerminalColorScheme(
             id: "transparent",
             name: "Transparent",
-            background: RGBAColor(0.118, 0.118, 0.118, a),
+            background: RGBAColor(0.118, 0.118, 0.118, clampedOpacity),
             foreground: RGBAColor(0.980, 0.980, 0.980),
             cursor: RGBAColor(0.980, 0.980, 0.980),
             ansiColors: SharedColors.darkANSI

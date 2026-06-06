@@ -97,7 +97,8 @@ public enum SSHServiceError: Error, Sendable, LocalizedError {
         case .notConnected:
             "Not connected to any host."
         case let .hostKeyMismatch(expected, received):
-            "Host key mismatch!\nExpected: \(expected)\nReceived: \(received)\nThe host key may have changed, or this could be a man-in-the-middle attack."
+            "Host key mismatch!\nExpected: \(expected)\nReceived: \(received)\n"
+                + "The host key may have changed, or this could be a man-in-the-middle attack."
         case let .connectionFailed(reason):
             "Connection failed: \(reason)"
         case let .reconnectExhausted(attempts):

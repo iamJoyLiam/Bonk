@@ -46,8 +46,9 @@ struct SFTPBrowserView: View {
                             .multilineTextAlignment(.center)
                         Button(i18n.t(.retry)) {
                             Task {
-                                do { try await service.listDirectory() }
-                                catch { service.errorMessage = error.localizedDescription }
+                                do { try await service.listDirectory() } catch {
+                                    service.errorMessage = error.localizedDescription
+                                }
                             }
                         }
                         .buttonStyle(.bordered)
@@ -85,8 +86,9 @@ struct SFTPBrowserView: View {
             Button(i18n.t(.create)) {
                 guard !newFolderName.isEmpty, let service = sftpService else { return }
                 Task {
-                    do { try await service.createDirectory(name: newFolderName) }
-                    catch { service.errorMessage = error.localizedDescription }
+                    do { try await service.createDirectory(name: newFolderName) } catch {
+                        service.errorMessage = error.localizedDescription
+                    }
                 }
                 newFolderName = ""
             }
@@ -102,8 +104,9 @@ struct SFTPBrowserView: View {
             Button(i18n.t(.delete), role: .destructive) {
                 if let entry = pendingDeleteEntry, let service = sftpService {
                     Task {
-                        do { try await service.delete(entry) }
-                        catch { service.errorMessage = error.localizedDescription }
+                        do { try await service.delete(entry) } catch {
+                            service.errorMessage = error.localizedDescription
+                        }
                     }
                 }
                 pendingDeleteEntry = nil
@@ -140,8 +143,9 @@ struct SFTPBrowserView: View {
                         if panel.runModal() == .OK {
                             for url in panel.urls {
                                 Task {
-                                    do { try await sftpService?.upload(url) }
-                                    catch { sftpService?.errorMessage = error.localizedDescription }
+                                    do { try await sftpService?.upload(url) } catch {
+                                        sftpService?.errorMessage = error.localizedDescription
+                                    }
                                 }
                             }
                         }
@@ -162,8 +166,9 @@ struct SFTPBrowserView: View {
 
                 Button {
                     Task {
-                        do { try await sftpService?.listDirectory() }
-                        catch { sftpService?.errorMessage = error.localizedDescription }
+                        do { try await sftpService?.listDirectory() } catch {
+                            sftpService?.errorMessage = error.localizedDescription
+                        }
                     }
                 } label: {
                     Image(systemName: "arrow.clockwise")
@@ -182,8 +187,9 @@ struct SFTPBrowserView: View {
         HStack(spacing: 4) {
             Button {
                 Task {
-                    do { try await sftpService?.goUp() }
-                    catch { sftpService?.errorMessage = error.localizedDescription }
+                    do { try await sftpService?.goUp() } catch {
+                        sftpService?.errorMessage = error.localizedDescription
+                    }
                 }
             } label: {
                 Image(systemName: "chevron.left")
@@ -206,6 +212,7 @@ struct SFTPBrowserView: View {
 
     // MARK: - File List
 
+    // swiftlint:disable:next function_body_length
     private func fileList(_ service: SFTPService) -> some View {
         List(service.entries) { entry in
             SFTPFileRow(entry: entry)
@@ -213,8 +220,9 @@ struct SFTPBrowserView: View {
                 .onTapGesture(count: 2) {
                     if entry.isDirectory {
                         Task {
-                            do { try await service.enterDirectory(entry) }
-                            catch { service.errorMessage = error.localizedDescription }
+                            do { try await service.enterDirectory(entry) } catch {
+                                service.errorMessage = error.localizedDescription
+                            }
                         }
                     }
                 }
@@ -222,8 +230,9 @@ struct SFTPBrowserView: View {
                     if entry.isDirectory {
                         Button {
                             Task {
-                                do { try await service.enterDirectory(entry) }
-                                catch { service.errorMessage = error.localizedDescription }
+                                do { try await service.enterDirectory(entry) } catch {
+                                    service.errorMessage = error.localizedDescription
+                                }
                             }
                         } label: {
                             Label(i18n.t(.open), systemImage: "folder")
@@ -236,8 +245,9 @@ struct SFTPBrowserView: View {
                             panel.nameFieldStringValue = entry.name
                             if panel.runModal() == .OK, let url = panel.url {
                                 Task {
-                                    do { try await service.download(entry, to: url) }
-                                    catch { service.errorMessage = error.localizedDescription }
+                                    do { try await service.download(entry, to: url) } catch {
+                                        service.errorMessage = error.localizedDescription
+                                    }
                                 }
                             }
                         #endif
@@ -261,8 +271,9 @@ struct SFTPBrowserView: View {
                     guard let data = data as? Data,
                           let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
                     Task { @MainActor in
-                        do { try await service.upload(url) }
-                        catch { service.errorMessage = error.localizedDescription }
+                        do { try await service.upload(url) } catch {
+                            service.errorMessage = error.localizedDescription
+                        }
                     }
                 }
             }

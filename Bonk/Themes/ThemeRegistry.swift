@@ -22,7 +22,7 @@ enum ThemeRegistry {
         GruvboxDarkTheme(),
         CatppuccinMochaTheme(),
         NordTheme(),
-        SolarizedDarkTheme(),
+        SolarizedDarkTheme()
     ]
 
     // MARK: - Plugin Themes

@@ -188,7 +188,7 @@ struct KeyboardShortcut: Codable, Equatable, Hashable {
         103: "F11", 105: "F13", 107: "F14", 109: "F10", 111: "F12",
         113: "F15", 115: "Home", 116: "Page Up", 117: "Forward Delete",
         118: "F4", 119: "End", 120: "F2", 121: "Page Down", 122: "F1",
-        123: "←", 124: "→", 125: "↓", 126: "↑",
+        123: "←", 124: "→", 125: "↓", 126: "↑"
     ]
 }
 

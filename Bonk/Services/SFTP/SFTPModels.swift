@@ -18,17 +18,17 @@ struct SFTPFileEntry: Identifiable {
 
     var permissionsString: String {
         let perms = permissions
-        var s = isDirectory ? "d" : "-"
-        s += (perms & 0o400) != 0 ? "r" : "-"
-        s += (perms & 0o200) != 0 ? "w" : "-"
-        s += (perms & 0o100) != 0 ? "x" : "-"
-        s += (perms & 0o040) != 0 ? "r" : "-"
-        s += (perms & 0o020) != 0 ? "w" : "-"
-        s += (perms & 0o010) != 0 ? "x" : "-"
-        s += (perms & 0o004) != 0 ? "r" : "-"
-        s += (perms & 0o002) != 0 ? "w" : "-"
-        s += (perms & 0o001) != 0 ? "x" : "-"
-        return s
+        var permString = isDirectory ? "d" : "-"
+        permString += (perms & 0o400) != 0 ? "r" : "-"
+        permString += (perms & 0o200) != 0 ? "w" : "-"
+        permString += (perms & 0o100) != 0 ? "x" : "-"
+        permString += (perms & 0o040) != 0 ? "r" : "-"
+        permString += (perms & 0o020) != 0 ? "w" : "-"
+        permString += (perms & 0o010) != 0 ? "x" : "-"
+        permString += (perms & 0o004) != 0 ? "r" : "-"
+        permString += (perms & 0o002) != 0 ? "w" : "-"
+        permString += (perms & 0o001) != 0 ? "x" : "-"
+        return permString
     }
 
     var sizeFormatted: String {

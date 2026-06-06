@@ -32,7 +32,7 @@ struct GruvboxDarkTheme: TerminalTheme {
             RGBAColor(0.314, 0.482, 0.643),
             RGBAColor(0.694, 0.306, 0.592),
             RGBAColor(0.408, 0.612, 0.416),
-            RGBAColor(0.957, 0.918, 0.796),
+            RGBAColor(0.957, 0.918, 0.796)
         ]
     )
 }

@@ -28,6 +28,7 @@ final class SFTPService {
         Log.sftp.info("Opening SFTP session...")
         sftpClient = try await sshService.openSFTPClient()
         currentPath = try await sftpClient!.getRealPath(atPath: ".")
+        // swiftformat:disable:next redundantSelf
         Log.sftp.info("SFTP connected, initial path: \(self.currentPath)")
     }
 
@@ -67,9 +68,9 @@ final class SFTPService {
         }
 
         // Sort: directories first, then by name
-        result.sort { a, b in
-            if a.isDirectory != b.isDirectory { return a.isDirectory }
-            return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+        result.sort {
+            if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
+            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
 
         entries = result

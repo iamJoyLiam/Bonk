@@ -32,7 +32,7 @@ struct TokyoNightTheme: TerminalTheme {
             RGBAColor(0.451, 0.647, 0.976),
             RGBAColor(0.737, 0.557, 0.976),
             RGBAColor(0.451, 0.800, 0.890),
-            RGBAColor(0.906, 0.922, 0.969),
+            RGBAColor(0.906, 0.922, 0.969)
         ]
     )
 }

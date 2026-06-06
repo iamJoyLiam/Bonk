@@ -54,7 +54,10 @@ struct AccountSettingsView: View {
                 }
 
                 // Show hint for local builds
-                Label("iCloud sync requires Apple Developer account and App Store distribution.", systemImage: "info.circle")
+                Label(
+                    "iCloud sync requires Apple Developer account and App Store distribution.",
+                    systemImage: "info.circle"
+                )
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

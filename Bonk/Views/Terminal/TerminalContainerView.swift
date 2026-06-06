@@ -108,7 +108,8 @@ import SwiftUI
                     .foregroundStyle(.red.opacity(0.6))
                 Text("Disconnected").font(.headline)
                 if let error = activeTab.errorMessage {
-                    Text(error).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 300)
+                    Text(error).font(.caption).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center).frame(maxWidth: 300)
                 }
                 if let onReconnect {
                     Button("Reconnect", systemImage: "arrow.clockwise") { onReconnect() }
@@ -156,10 +157,10 @@ import SwiftUI
             guard context.coordinator.lastTabID != activeTabID else {
                 // Tab didn't change, just update settings
                 if let cached = TerminalViewCache.shared.retrieve(activeTabID) {
-                    let tv = cached.view
+                    let terminalView = cached.view
                     // 验证：cache 返回的 view 是否在当前窗口的子视图树中
-                    let isInHierarchy = tv.superview != nil
-                    let isSubviewOfContainer = nsView.subviews.contains(tv)
+                    let isInHierarchy = terminalView.superview != nil
+                    let isSubviewOfContainer = nsView.subviews.contains(terminalView)
                     updateSettings(for: cached)
                     // Update copy-on-select monitor when setting changes
                     if let coord = cached.coordinator as? ContainerTerminalCoordinator {
@@ -196,7 +197,7 @@ import SwiftUI
                 cached.view.leadingAnchor.constraint(equalTo: nsView.leadingAnchor, constant: 8),
                 cached.view.trailingAnchor.constraint(equalTo: nsView.trailingAnchor, constant: -8),
                 cached.view.topAnchor.constraint(equalTo: nsView.topAnchor, constant: 4),
-                cached.view.bottomAnchor.constraint(equalTo: nsView.bottomAnchor, constant: -4),
+                cached.view.bottomAnchor.constraint(equalTo: nsView.bottomAnchor, constant: -4)
             ]
             NSLayoutConstraint.activate(cached.constraints)
 
@@ -266,7 +267,7 @@ import SwiftUI
                 cached.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
                 cached.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -8),
                 cached.view.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 4),
-                cached.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -4),
+                cached.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -4)
             ]
             NSLayoutConstraint.activate(cached.constraints)
             context.coordinator.lastTabID = tabID
@@ -332,7 +333,12 @@ import SwiftUI
             set { lock.lock(); defer { lock.unlock() }; _onTitleChange = newValue }
         }
 
-        init(onSend: @escaping @Sendable (ArraySlice<UInt8>) -> Void, onResize: (@Sendable (Int, Int) -> Void)?, onTitleChange: (@Sendable (String) -> Void)?, copyOnSelect: Bool) {
+        init(
+            onSend: @escaping @Sendable (ArraySlice<UInt8>) -> Void,
+            onResize: (@Sendable (Int, Int) -> Void)?,
+            onTitleChange: (@Sendable (String) -> Void)?,
+            copyOnSelect: Bool
+        ) {
             _onSend = onSend
             _onResize = onResize
             _onTitleChange = onTitleChange
@@ -422,9 +428,9 @@ import SwiftUI
         private func flushBatch() {
             batchFlushScheduled.withLock { $0 = false }
             let text = batchBuffer.withLock { buf -> String in
-                let t = buf
+                let flushedText = buf
                 buf = ""
-                return t
+                return flushedText
             }
             guard !text.isEmpty else { return }
             Task { @MainActor [weak self] in
@@ -434,7 +440,9 @@ import SwiftUI
 
         func observeThemeChanges() {
             // Font changes — bypass SwiftUI observation chain (same pattern as theme)
-            fontObserver = NotificationCenter.default.addObserver(forName: .terminalFontDidChange, object: nil, queue: .main) { [weak self] notification in
+            fontObserver = NotificationCenter.default.addObserver(
+                forName: .terminalFontDidChange, object: nil, queue: .main
+            ) { [weak self] notification in
                 guard let self, let terminal = terminalView else { return }
                 let fontFamily = (notification.object as? String) ?? "SF Mono"
                 let fontSize = (notification.userInfo?["fontSize"] as? Double) ?? 14.0
@@ -445,9 +453,11 @@ import SwiftUI
                 case "Monaco":
                     NSFont(name: "Monaco", size: size) ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
                 case "Courier New":
-                    NSFont(name: "Courier New", size: size) ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+                    NSFont(name: "Courier New", size: size)
+                        ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
                 case "JetBrains Mono":
-                    NSFont(name: "JetBrains Mono", size: size) ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+                    NSFont(name: "JetBrains Mono", size: size)
+                        ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
                 default:
                     NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
                 }
@@ -455,8 +465,11 @@ import SwiftUI
                 terminal.needsDisplay = true
             }
 
-            themeObserver = NotificationCenter.default.addObserver(forName: .terminalThemeDidChange, object: nil, queue: .main) { [weak self] notification in
-                guard let self, let terminal = terminalView, let scheme = notification.object as? TerminalColorScheme else { return }
+            themeObserver = NotificationCenter.default.addObserver(
+                forName: .terminalThemeDidChange, object: nil, queue: .main
+            ) { [weak self] notification in
+                guard let self, let terminal = terminalView,
+                      let scheme = notification.object as? TerminalColorScheme else { return }
                 terminal.nativeBackgroundColor = scheme.background.nsColor
                 terminal.nativeForegroundColor = scheme.foreground.nsColor
                 terminal.installColors(scheme.swiftTermColors)

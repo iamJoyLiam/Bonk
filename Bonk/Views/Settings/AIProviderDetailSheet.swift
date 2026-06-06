@@ -171,7 +171,8 @@ struct AIProviderDetailSheet: View {
             }
         case .running: EmptyView()
         case let .error(msg):
-            Label(msg, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.caption).lineLimit(2)
+            Label(msg, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange).font(.caption).lineLimit(2)
         }
     }
 
@@ -256,8 +257,11 @@ struct AIProviderDetailSheet: View {
     private var maxOutputTokensBinding: Binding<String> {
         Binding(get: { draft.maxOutputTokens.map(String.init) ?? "" }, set: { newValue in
             let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty { draft.maxOutputTokens = nil }
-            else if let v = Int(trimmed), v > 0 { draft.maxOutputTokens = v }
+            if trimmed.isEmpty {
+                draft.maxOutputTokens = nil
+            } else if let tokenCount = Int(trimmed), tokenCount > 0 {
+                draft.maxOutputTokens = tokenCount
+            }
         })
     }
 
@@ -288,11 +292,15 @@ struct AIProviderDetailSheet: View {
     }
 
     private func fetchModels() {
-        guard draft.type.needsAPIKey || draft.type == .ollama else { return }
+        guard draft.type.needsAPIKey || draft.type == .ollama else {
+            return
+        }
         if draft.type.needsAPIKey, draft.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             fetchedModels = []; modelFetchError = nil; return
         }
-        guard let url = AIProviderNetworking.modelsURL(endpoint: draft.endpoint, type: draft.type, apiKey: draft.apiKey) else { return }
+        guard let url = AIProviderNetworking.modelsURL(
+            endpoint: draft.endpoint, type: draft.type, apiKey: draft.apiKey
+        ) else { return }
 
         isFetchingModels = true; modelFetchError = nil
         modelFetchTask?.cancel()
@@ -316,7 +324,9 @@ struct AIProviderDetailSheet: View {
     private func testProvider() {
         let trimmed = draft.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { testResult = .failure(i18n.t(.apiKeyRequired)); return }
-        guard let url = AIProviderNetworking.modelsURL(endpoint: draft.endpoint, type: draft.type, apiKey: draft.apiKey) else {
+        guard let url = AIProviderNetworking.modelsURL(
+            endpoint: draft.endpoint, type: draft.type, apiKey: draft.apiKey
+        ) else {
             testResult = .failure(i18n.t(.connectionTestFailed)); return
         }
 
@@ -324,12 +334,12 @@ struct AIProviderDetailSheet: View {
         Task {
             do {
                 let request = AIProviderNetworking.makeRequest(url: url, apiKey: draft.apiKey, type: draft.type)
-                let ok = try await AIProviderNetworking.testConnection(request: request)
+                let isSuccess = try await AIProviderNetworking.testConnection(request: request)
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     isTesting = false
-                    testResult = ok ? .success : .failure(i18n.t(.connectionTestFailed))
-                    if ok { fetchModels() }
+                    testResult = isSuccess ? .success : .failure(i18n.t(.connectionTestFailed))
+                    if isSuccess { fetchModels() }
                 }
             } catch {
                 guard !Task.isCancelled else { return }
@@ -341,12 +351,14 @@ struct AIProviderDetailSheet: View {
     // MARK: - Copilot Actions
 
     private func copilotSignIn() async {
-        do { try await copilotService.signIn() }
-        catch { copilotService.errorMessage = error.localizedDescription }
+        do { try await copilotService.signIn() } catch {
+            copilotService.errorMessage = error.localizedDescription
+        }
     }
 
     private func copilotCompleteSignIn() async {
-        do { try await copilotService.completeSignIn() }
-        catch { copilotService.errorMessage = error.localizedDescription }
+        do { try await copilotService.completeSignIn() } catch {
+            copilotService.errorMessage = error.localizedDescription
+        }
     }
 }

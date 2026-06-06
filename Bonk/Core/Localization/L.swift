@@ -4,6 +4,7 @@ import Foundation
 
 // SwiftUI views should use @EnvironmentObject var i18n: I18n instead.
 
+// swiftlint:disable:next type_name
 enum L {
     static var lang: String {
         I18n.shared.lang

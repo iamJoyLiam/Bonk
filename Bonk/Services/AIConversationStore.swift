@@ -129,8 +129,7 @@ final class AIConversationStore {
 
     private func load() {
         guard let data = defaults.data(forKey: storageKey),
-              let loaded = try? JSONDecoder().decode([AIConversation].self, from: data)
-        else {
+              let loaded = try? JSONDecoder().decode([AIConversation].self, from: data) else {
             return
         }
         conversations = loaded

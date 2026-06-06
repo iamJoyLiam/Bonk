@@ -32,7 +32,7 @@ struct SolarizedDarkTheme: TerminalTheme {
             RGBAColor(0.149, 0.545, 0.824),
             RGBAColor(0.827, 0.212, 0.514),
             RGBAColor(0.165, 0.631, 0.596),
-            RGBAColor(0.933, 0.910, 0.835),
+            RGBAColor(0.933, 0.910, 0.835)
         ]
     )
 }

@@ -68,9 +68,9 @@ struct ServerInfoPanel: View {
                 }
             }
 
-            if let ip = tab.serverInfo?.serverIP {
+            if let serverIP = tab.serverInfo?.serverIP {
                 infoRow(i18n.t(.serverIP)) {
-                    Text(ip).font(.body.monospaced())
+                    Text(serverIP).font(.body.monospaced())
                 }
             }
 
@@ -93,8 +93,8 @@ struct ServerInfoPanel: View {
                 .font(.headline)
 
             if let info = tab.serverInfo {
-                if let os = info.os {
-                    infoRow(i18n.t(.os)) { Text(os) }
+                if let osName = info.os {
+                    infoRow(i18n.t(.os)) { Text(osName) }
                 }
                 if let kernel = info.kernel {
                     infoRow(i18n.t(.kernel)) {
@@ -236,7 +236,8 @@ struct ServerInfoPanel: View {
         case .disconnected: return i18n.t(.disconnected)
         case .connecting: return i18n.t(.connectingTo)
         case .connected: return i18n.t(.connected)
-        case let .reconnecting(a, m): return String(format: i18n.t(.reconnecting), a, m)
+        case let .reconnecting(attempt, maxAttempts):
+            return String(format: i18n.t(.reconnecting), attempt, maxAttempts)
         }
     }
 }

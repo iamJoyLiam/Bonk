@@ -114,8 +114,8 @@
             lock.lock()
             defer { lock.unlock() }
             guard installed else { return }
-            if let m = monitor {
-                NSEvent.removeMonitor(m)
+            if let eventMonitor = monitor {
+                NSEvent.removeMonitor(eventMonitor)
                 monitor = nil
             }
             installed = false

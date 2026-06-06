@@ -149,7 +149,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         }
     }
 
-    /// Start the PTY session. Fire-and-forget — the session runs in a detached task.
+    // Start the PTY session. Fire-and-forget — the session runs in a detached task.
     func start(client: SSHClient, cols: Int, rows: Int, termType: String) {
         let safeCols = max(cols, 1)
         let safeRows = max(rows, 1)
@@ -178,11 +178,11 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                                 if Task.isCancelled { break }
                                 switch data {
                                 case let .stdout(buf):
-                                    let s = String(buffer: buf)
-                                    if !s.isEmpty { self.yieldOutput(s) }
+                                    let output = String(buffer: buf)
+                                    if !output.isEmpty { self.yieldOutput(output) }
                                 case let .stderr(buf):
-                                    let s = String(buffer: buf)
-                                    if !s.isEmpty { self.yieldOutput(s) }
+                                    let errorOutput = String(buffer: buf)
+                                    if !errorOutput.isEmpty { self.yieldOutput(errorOutput) }
                                 }
                             }
                         } catch {
@@ -234,16 +234,16 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         try await writer.changeSize(cols: safeCols, rows: safeRows, pixelWidth: 0, pixelHeight: 0)
     }
 
-    /// Query the terminal's current working directory by sending `pwd` and parsing output.
-    /// Returns nil if timeout or not at a shell prompt.
+    // Query the terminal's current working directory by sending `pwd` and parsing output.
+    // Returns nil if timeout or not at a shell prompt.
     public func getCWD() async -> String? {
         guard let writer = writerBox.withLockedValue({ $0 }) else { return nil }
 
         // Wrappers to satisfy @Sendable requirements across isolation boundaries.
         final class SendableContinuation: @unchecked Sendable {
             let value: CheckedContinuation<String?, Never>
-            init(_ v: CheckedContinuation<String?, Never>) {
-                value = v
+            init(_ continuation: CheckedContinuation<String?, Never>) {
+                value = continuation
             }
         }
 
@@ -260,8 +260,14 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                         let lines = chunk.components(separatedBy: "\r\n")
                         for raw in lines {
                             let clean = raw
-                                .replacingOccurrences(of: "\u{1B}\\[[0-9;]*[a-zA-Z]", with: "", options: .regularExpression)
-                                .replacingOccurrences(of: "\u{1B}\\][^\u{07}\u{1B}]*[\u{07}]", with: "", options: .regularExpression)
+                                .replacingOccurrences(
+                                    of: "\u{1B}\\[[0-9;]*[a-zA-Z]",
+                                    with: "", options: .regularExpression
+                                )
+                                .replacingOccurrences(
+                                    of: "\u{1B}\\][^\u{07}\u{1B}]*[\u{07}]",
+                                    with: "", options: .regularExpression
+                                )
                                 .trimmingCharacters(in: .whitespacesAndNewlines)
                             if clean.hasPrefix("/"), !clean.contains(" "), clean.count < 512 {
                                 alreadyResumed = true
@@ -306,9 +312,9 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
     private enum FilterState { case ground, escape, oscString, dcsEntry, dcsString, csi }
 
-    /// Strip OSC and DCS escape sequences from a string.
-    /// Preserves CSI sequences (cursor, SGR colors) which the terminal needs for rendering.
-    /// Used during buffer replay to prevent re-processing terminal query responses.
+    // Strip OSC and DCS escape sequences from a string.
+    // Preserves CSI sequences (cursor, SGR colors) which the terminal needs for rendering.
+    // Used during buffer replay to prevent re-processing terminal query responses.
     nonisolated static func filterOSCSequences(_ text: String) -> String {
         let bytes = Array(text.utf8)
         var result = [UInt8]()
@@ -318,8 +324,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         for byte in bytes {
             switch state {
             case .ground:
-                if byte == 0x1B { state = .escape }
-                else { result.append(byte) }
+                if byte == 0x1B { state = .escape } else { result.append(byte) }
 
             case .escape:
                 switch byte {

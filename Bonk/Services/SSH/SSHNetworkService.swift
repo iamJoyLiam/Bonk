@@ -222,7 +222,10 @@ public actor SSHNetworkService {
 
                 if let ptyConfig = lastPTYConfig {
                     let session = PTYSession()
-                    session.start(client: client!, cols: ptyConfig.cols, rows: ptyConfig.rows, termType: ptyConfig.termType)
+                    session.start(
+                        client: client!, cols: ptyConfig.cols,
+                        rows: ptyConfig.rows, termType: ptyConfig.termType
+                    )
                     activePTYSession = session
                     pendingPTYSession = session
                 }
@@ -304,18 +307,19 @@ public actor SSHNetworkService {
         username: String
     ) throws -> SSHAuthenticationMethod {
         switch method {
-        case let .password(pw):
-            return .passwordBased(username: username, password: pw)
+        case let .password(password):
+            return .passwordBased(username: username, password: password)
 
         case let .privateKey(pem):
             let raw = try decodePEM(pem)
 
-            if let ed = try? Curve25519.Signing.PrivateKey(rawRepresentation: raw) {
-                return .ed25519(username: username, privateKey: ed)
+            if let edKey = try? Curve25519.Signing.PrivateKey(rawRepresentation: raw) {
+                return .ed25519(username: username, privateKey: edKey)
             }
 
             throw SSHServiceError.connectionFailed(
-                "Unsupported key type. Only Ed25519 private keys are supported. Detected key is not Ed25519 (raw \(raw.count) bytes)."
+                "Unsupported key type. Only Ed25519 private keys are supported. "
+                    + "Detected key is not Ed25519 (raw \(raw.count) bytes)."
             )
         }
     }

@@ -4,7 +4,9 @@ import Foundation
 
 enum LKey: String, CaseIterable {
     /// Tabs
-    case settings, general, appearance, terminal = "editor", keyboard, ai, integrations, account
+    case settings, general, appearance, terminal = "editor", keyboard
+    case ai
+    case integrations, account
 
     // General
     case language, launchBehavior = "launch_behavior"
@@ -115,7 +117,9 @@ enum LKey: String, CaseIterable {
     case custom, notConfigured = "not_configured"
 
     // ContentView
-    case about, ok, serverInfo = "server_info", sftpBrowser = "sftp_browser"
+    case about
+    case ok
+    case serverInfo = "server_info", sftpBrowser = "sftp_browser"
     case connectionError = "connection_error", unknownError = "unknown_error"
 
     // AddHostSheet
@@ -155,7 +159,8 @@ enum LKey: String, CaseIterable {
     case error
     // Server system info
     case systemInfo = "system_info"
-    case os, kernel, arch, hostname, shell, uptime, cpu
+    case os
+    case kernel, arch, hostname, shell, uptime, cpu
     case resources, memory, disk, loadAvg = "load_avg"
     case serverIP = "server_ip", fetching
 

@@ -38,6 +38,6 @@ enum SharedColors {
         RGBAColor(0.608, 0.784, 0.961), // bright blue  #9bc8f5
         RGBAColor(0.843, 0.686, 0.961), // bright magenta#d7aff5
         RGBAColor(0.608, 0.863, 0.902), // bright cyan  #9bdce6
-        RGBAColor(0.980, 0.980, 0.980), // bright white #fafafa
+        RGBAColor(0.980, 0.980, 0.980) // bright white #fafafa
     ]
 }

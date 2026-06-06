@@ -31,8 +31,7 @@ struct PersistentHostKeyStore: SSHHostKeyStore {
 
     private func load() {
         guard let data = UserDefaults.standard.data(forKey: Self.key),
-              let map = try? JSONDecoder().decode([String: SSHHostFingerprint].self, from: data)
-        else {
+              let map = try? JSONDecoder().decode([String: SSHHostFingerprint].self, from: data) else {
             return
         }
         storage.fingerprints = map

@@ -174,8 +174,8 @@ final class I18n: ObservableObject, @unchecked Sendable {
         for sub in subdirs {
             let dir: String
             if sub.isEmpty {
-                guard let r = Bundle.main.resourcePath else { continue }
-                dir = r
+                guard let resourcePath = Bundle.main.resourcePath else { continue }
+                dir = resourcePath
             } else {
                 guard let url = Bundle.main.url(forResource: sub, withExtension: nil) else { continue }
                 dir = url.path
@@ -186,8 +186,7 @@ final class I18n: ObservableObject, @unchecked Sendable {
                 guard result[langCode] == nil else { continue }
                 let path = (dir as NSString).appendingPathComponent(file)
                 if let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
-                   let dict = try? JSONDecoder().decode([String: String].self, from: data)
-                {
+                   let dict = try? JSONDecoder().decode([String: String].self, from: data) {
                     result[langCode] = dict
                 }
             }

@@ -33,7 +33,7 @@ final class TerminalTab: Identifiable {
         ("green", .green),
         ("blue", .blue),
         ("purple", .purple),
-        ("pink", .pink),
+        ("pink", .pink)
     ]
 
     /// Resolve the color label to a SwiftUI Color.

@@ -80,15 +80,13 @@ final class iCloudSyncService {
     /// Handle external iCloud changes.
     @objc private func storeDidChange(_ notification: Notification) {
         guard let userInfo = notification.userInfo,
-              let reason = userInfo[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int
-        else {
+              let reason = userInfo[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int else {
             return
         }
 
         // Only process server changes and initial sync
         guard reason == NSUbiquitousKeyValueStoreServerChange ||
-            reason == NSUbiquitousKeyValueStoreInitialSyncChange
-        else {
+            reason == NSUbiquitousKeyValueStoreInitialSyncChange else {
             return
         }
 
@@ -148,12 +146,11 @@ final class iCloudSyncService {
             "cursorBlink": UserDefaults.standard.bool(forKey: "terminalCursorBlink"),
             "copyOnSelect": UserDefaults.standard.bool(forKey: "copyOnSelect"),
             "restoreSessions": UserDefaults.standard.bool(forKey: "restoreSessions"),
-            "checkForUpdates": UserDefaults.standard.bool(forKey: "checkForUpdates"),
+            "checkForUpdates": UserDefaults.standard.bool(forKey: "checkForUpdates")
         ]
 
         if let data = try? JSONSerialization.data(withJSONObject: prefs),
-           let json = String(data: data, encoding: .utf8)
-        {
+           let json = String(data: data, encoding: .utf8) {
             store.set(json, forKey: Keys.preferences)
         }
     }
@@ -161,8 +158,7 @@ final class iCloudSyncService {
     private func syncPreferencesFromCloud() {
         guard let json = store.string(forKey: Keys.preferences),
               let data = json.data(using: .utf8),
-              let prefs = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
+              let prefs = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return
         }
 

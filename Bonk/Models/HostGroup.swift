@@ -62,8 +62,7 @@ extension Color {
             guard let components = NSColor(self).usingColorSpace(.sRGB)?
                 .cgColor.components else { return nil }
         #else
-            guard let components = UIColor(self).cgColor.components
-            else { return nil }
+            guard let components = UIColor(self).cgColor.components else { return nil }
         #endif
         return String(
             format: "#%02X%02X%02X",

@@ -66,7 +66,10 @@ struct KeychainManagerView: View {
     private var listView: some View {
         VStack(spacing: 0) {
             if credentials.isEmpty {
-                ContentUnavailableView(i18n.t(.noCredentials), systemImage: "key.fill", description: Text(i18n.t(.noCredentialsHint)))
+                ContentUnavailableView(
+                    i18n.t(.noCredentials), systemImage: "key.fill",
+                    description: Text(i18n.t(.noCredentialsHint))
+                )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
@@ -111,7 +114,9 @@ struct KeychainManagerView: View {
             }
             Section(i18n.t(.credential)) {
                 Picker(i18n.t(.credential), selection: $editType) {
-                    ForEach(CredentialType.allCases, id: \.self) { Label($0.displayName(i18n), systemImage: $0.symbolName) }
+                    ForEach(CredentialType.allCases, id: \.self) {
+                        Label($0.displayName(i18n), systemImage: $0.symbolName)
+                    }
                 }
                 .pickerStyle(.segmented)
                 if editType == .password {
@@ -164,7 +169,11 @@ struct KeychainManagerView: View {
             existing.notes = editNotes.isEmpty ? nil : editNotes
             existing.storeSecret(editSecret)
         } else {
-            let cred = Credential(name: trimmed, type: editType, username: editType == .password ? editUsername : nil, notes: editNotes.isEmpty ? nil : editNotes)
+            let cred = Credential(
+                name: trimmed, type: editType,
+                username: editType == .password ? editUsername : nil,
+                notes: editNotes.isEmpty ? nil : editNotes
+            )
             modelContext.insert(cred)
             cred.storeSecret(editSecret)
         }

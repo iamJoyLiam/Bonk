@@ -32,7 +32,7 @@ struct DraculaTheme: TerminalTheme {
             RGBAColor(0.447, 0.647, 1.000),
             RGBAColor(0.788, 0.533, 1.000),
             RGBAColor(0.498, 0.933, 0.882),
-            RGBAColor(0.976, 0.976, 0.949),
+            RGBAColor(0.976, 0.976, 0.949)
         ]
     )
 }

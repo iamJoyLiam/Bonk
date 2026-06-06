@@ -51,8 +51,7 @@ struct AISettingsView: View {
         .scrollContentBackground(.hidden)
         .sheet(isPresented: editingSheetBinding) {
             if let id = editingProviderID,
-               let provider = store.providers.first(where: { $0.id == id })
-            {
+               let provider = store.providers.first(where: { $0.id == id }) {
                 AIProviderDetailSheet(
                     provider: provider,
                     isNew: false,

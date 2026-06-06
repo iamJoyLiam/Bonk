@@ -13,11 +13,12 @@ import SwiftUI
 
 /// RGBA color stored as 0–1 floats. Sendable, no platform dependency.
 public struct RGBAColor: Sendable, Hashable {
-    public let r: Double
-    public let g: Double
-    public let b: Double
-    public let a: Double
+    public let r: Double // swiftlint:disable:this identifier_name
+    public let g: Double // swiftlint:disable:this identifier_name
+    public let b: Double // swiftlint:disable:this identifier_name
+    public let a: Double // swiftlint:disable:this identifier_name
 
+    // swiftlint:disable:next identifier_name
     public init(_ r: Double, _ g: Double, _ b: Double, _ a: Double = 1.0) {
         self.r = r; self.g = g; self.b = b; self.a = a
     }

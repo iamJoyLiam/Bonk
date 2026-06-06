@@ -151,9 +151,8 @@ struct AddHostSheet: View {
                             Button { showPassword.toggle() } label: {
                                 Image(systemName: showPassword
                                     ? "eye.slash"
-                                    : "eye"
-                                )
-                                .foregroundStyle(.secondary)
+                                    : "eye")
+                                    .foregroundStyle(.secondary)
                             }
                             .buttonStyle(.plain)
                         }

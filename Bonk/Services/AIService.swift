@@ -101,7 +101,7 @@ final class AIService {
 
     private static let anthropicVersion = "2023-06-01"
 
-    /// Build URL, headers, and body for a provider API call.
+    // swiftlint:disable:next function_body_length
     private func buildRequest(
         provider: AIProviderConfig,
         apiKey: String,
@@ -160,8 +160,7 @@ final class AIService {
         case .gemini:
             let path = "\(endpoint)/v1beta/models/"
                 + "\(provider.model):generateContent"
-            guard let endpointURL = URL(string: path)
-            else { throw AIError.invalidEndpoint }
+            guard let endpointURL = URL(string: path) else { throw AIError.invalidEndpoint }
             url = endpointURL
             headers = [
                 "x-goog-api-key": apiKey,
@@ -237,7 +236,9 @@ final class AIService {
         }
         guard http.statusCode == 200 else {
             var errorData = Data()
-            for try await byte in bytes { errorData.append(byte) }
+            for try await byte in bytes {
+                errorData.append(byte)
+            }
             let body = String(data: errorData, encoding: .utf8)
                 ?? "Unknown error"
             throw AIError.apiError(
@@ -261,8 +262,7 @@ final class AIService {
 
         for try await byte in bytes {
             guard !Task.isCancelled else { break }
-            guard let char = String(bytes: [byte], encoding: .utf8)
-            else { continue }
+            guard let char = String(bytes: [byte], encoding: .utf8) else { continue }
             buffer += char
 
             while let range = buffer.range(of: "\n") {
@@ -275,8 +275,7 @@ final class AIService {
                       let data = json.data(using: .utf8),
                       let obj = try? JSONSerialization.jsonObject(
                           with: data
-                      ) as? [String: Any]
-                else { continue }
+                      ) as? [String: Any] else { continue }
 
                 if let text = extractDelta(from: obj, type: providerType) {
                     result += text

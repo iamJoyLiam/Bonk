@@ -16,6 +16,7 @@ final class PTYOSC7Detector: @unchecked Sendable {
     private var urlBuffer: [UInt8] = []
     private static let maxURLBytes = 4096 // Prevent unbounded growth on malformed sequences
 
+    // swiftlint:disable:next cyclomatic_complexity
     func process(_ data: [UInt8]) {
         // Collect CWDs inside lock, fire callbacks outside
         var detectedCWDs: [String] = []

@@ -167,12 +167,12 @@ struct HostListView: View {
 
     @ViewBuilder
     private func groupHeader(_ groupName: String) -> some View {
-        let g = groupModel(for: groupName)
+        let group = groupModel(for: groupName)
         HStack(spacing: 4) {
-            if let icon = g?.icon, !icon.isEmpty {
+            if let icon = group?.icon, !icon.isEmpty {
                 Image(systemName: icon)
                     .font(.system(size: 10))
-                    .foregroundStyle(g?.resolvedColor ?? .secondary)
+                    .foregroundStyle(group?.resolvedColor ?? .secondary)
             }
             Text(groupName)
         }
@@ -181,6 +181,7 @@ struct HostListView: View {
     // MARK: - Host Row
 
     @ViewBuilder
+    // swiftlint:disable:next function_body_length
     private func hostRow(_ host: HostItem, groupColor: Color? = nil) -> some View {
         let tab = sessionManager.tabs.first(where: { $0.hostItem.id == host.id })
         let state = tab?.connectionState ?? .disconnected
