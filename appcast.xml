@@ -38,6 +38,16 @@
                 length="7092441"
                 type="application/octet-stream"
                 sparkle:edSignature="dFd32p1LVPJ900L95f4MY3Ywb8OZGZkmNL/SFI0MHPILf43NskpJruo7j0noF4/AOsC1+2DwjncKyf8j6g2ADg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.2/Bonk-v2026.0.2-x86_64.dmg"
+                length="7635858"
+                type="application/octet-stream"
+                sparkle:edSignature="hx6/ll/VgVSYpiFVA6wbn+6Co6253rIu13DCTBzpImtLEAi8tV4wXLXZX0h8jeS13hBGY0zpZglo0TKc0BJ+Cw=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
             />
         </item>
         <item>
