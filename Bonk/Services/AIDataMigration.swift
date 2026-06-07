@@ -68,44 +68,6 @@ enum AIDataMigration {
         }
     }
 
-    // MARK: - HostItem Relationships
-
-    /// Migrate string-based group/credentialID to proper @Relationship.
-    /// Safe to run multiple times — skips already-migrated items.
-    static func migrateHostRelationships(context: ModelContext) {
-        let key = "host_relationships_migrated"
-        guard !UserDefaults.standard.bool(forKey: key) else { return }
-
-        do {
-            let hosts = try context.fetch(FetchDescriptor<HostItem>())
-            var migrated = 0
-
-            for host in hosts {
-                if host.groupRef == nil, let groupName = host.group, !groupName.isEmpty {
-                    let desc = FetchDescriptor<HostGroup>(
-                        predicate: #Predicate { $0.name == groupName }
-                    )
-                    host.groupRef = try? context.fetch(desc).first
-                    if host.groupRef != nil { migrated += 1 }
-                }
-
-                if host.credentialRef == nil, let credName = host.credentialID, !credName.isEmpty {
-                    let desc = FetchDescriptor<Credential>(
-                        predicate: #Predicate { $0.name == credName }
-                    )
-                    host.credentialRef = try? context.fetch(desc).first
-                    if host.credentialRef != nil { migrated += 1 }
-                }
-            }
-
-            try context.save()
-            UserDefaults.standard.set(true, forKey: key)
-            logger.info("Host relationship migration complete: \(migrated) relationships created")
-        } catch {
-            logger.error("Host relationship migration failed: \(error)")
-        }
-    }
-
     // MARK: - Providers
 
     @discardableResult

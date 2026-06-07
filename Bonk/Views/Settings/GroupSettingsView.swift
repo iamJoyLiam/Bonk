@@ -91,7 +91,6 @@ struct GroupSettingsView: View {
         // Nullify relationships before deleting
         for host in group.hosts {
             host.groupRef = nil
-            host.group = nil // legacy sync
         }
         modelContext.delete(group)
     }

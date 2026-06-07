@@ -36,8 +36,23 @@ struct BonkApp: App {
         do {
             return try ModelContainer(for: schema, configurations: [config])
         } catch {
-            Log.general.error("SwiftData migration failed: \(error)")
-            fatalError("SwiftData migration failed: \(error)")
+            // v2026.0.3: one-time destructive migration (removed legacy string properties)
+            Log.general.warning("Migration failed, recreating store: \(error)")
+            let storeURL = config.url
+            let storeDir = storeURL.deletingLastPathComponent()
+            let storePrefix = storeURL.lastPathComponent
+            if let contents = try? FileManager.default.contentsOfDirectory(
+                at: storeDir, includingPropertiesForKeys: nil
+            ) {
+                for file in contents where file.lastPathComponent.hasPrefix(storePrefix) {
+                    try? FileManager.default.removeItem(at: file)
+                }
+            }
+            do {
+                return try ModelContainer(for: schema, configurations: [config])
+            } catch {
+                fatalError("Could not create ModelContainer even after reset: \(error)")
+            }
         }
     }()
 

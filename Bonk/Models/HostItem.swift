@@ -20,15 +20,6 @@ final class HostItem {
     var createdAt: Date
     var lastConnectedAt: Date?
 
-    // Deprecated: kept for migration compatibility, do not use in new code.
-    // Use groupRef / credentialRef instead.
-    @available(*, deprecated, message: "Use groupRef instead")
-    var group: String?
-    @available(*, deprecated, message: "Use credentialRef instead")
-    var credentialID: String?
-
-    // MARK: - Relationships
-
     @Relationship(deleteRule: .nullify)
     var groupRef: HostGroup?
     @Relationship(deleteRule: .nullify)
@@ -87,9 +78,6 @@ final class HostItem {
         createdAt = Date()
         self.groupRef = groupRef
         self.credentialRef = credentialRef
-        // Keep legacy fields in sync for migration compatibility
-        group = groupRef?.name
-        credentialID = credentialRef?.name
 
         if let passwordValue = password { storePassword(passwordValue) }
         if let pem = privateKeyPEM { storePrivateKey(pem) }

@@ -345,8 +345,6 @@ struct AddHostSheet: View {
             existing.authType = authType
             existing.credentialRef = selectedCredential
             existing.groupRef = groupRef
-            existing.group = trimmedGroup // legacy sync
-            existing.credentialID = selectedCredential?.name // legacy sync
             existing.deleteCredentials()
             if !usingVault {
                 if authType == .password {
