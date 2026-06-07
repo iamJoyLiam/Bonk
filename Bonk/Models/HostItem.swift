@@ -19,13 +19,16 @@ final class HostItem {
     var authTypeRaw: String
     var createdAt: Date
     var lastConnectedAt: Date?
+
+    // Deprecated: kept for migration compatibility, do not use in new code.
+    // Use groupRef / credentialRef instead.
+    @available(*, deprecated, message: "Use groupRef instead")
     var group: String?
-    /// Optional reference to a shared vault credential. When set, connection
-    /// uses the vault credential instead of host-embedded password/privateKeyPEM.
+    @available(*, deprecated, message: "Use credentialRef instead")
     var credentialID: String?
 
-    // MARK: - Relationships (v2026.0.4)
-    /// Proper SwiftData relationships replacing string-based references above.
+    // MARK: - Relationships
+
     @Relationship(deleteRule: .nullify)
     var groupRef: HostGroup?
     @Relationship(deleteRule: .nullify)
@@ -36,14 +39,12 @@ final class HostItem {
         set { authTypeRaw = newValue.rawValue }
     }
 
-    // MARK: - Keychain credentials (explicit methods, no silent I/O)
+    // MARK: - Keychain credentials
 
     func loadPassword() -> String? {
         KeychainHelper.get(for: KeychainHelper.passwordKey(for: id))
     }
 
-    /// Load password into a secure buffer that auto-zeroes on deallocation.
-    /// Prefer this over `loadPassword()` for auth flows.
     func loadPasswordSecure() -> SecureBytes? {
         KeychainHelper.getSecure(for: KeychainHelper.passwordKey(for: id))
     }
@@ -57,8 +58,6 @@ final class HostItem {
         KeychainHelper.get(for: KeychainHelper.privateKeyKey(for: id))
     }
 
-    /// Load private key into a secure buffer that auto-zeroes on deallocation.
-    /// Prefer this over `loadPrivateKey()` for auth flows.
     func loadPrivateKeySecure() -> SecureBytes? {
         KeychainHelper.getSecure(for: KeychainHelper.privateKeyKey(for: id))
     }
@@ -76,8 +75,8 @@ final class HostItem {
         authType: AuthType = .password,
         password: String? = nil,
         privateKeyPEM: String? = nil,
-        group: String? = nil,
-        credentialID: String? = nil
+        groupRef: HostGroup? = nil,
+        credentialRef: Credential? = nil
     ) {
         id = UUID()
         self.name = name
@@ -86,49 +85,42 @@ final class HostItem {
         self.username = username
         authTypeRaw = authType.rawValue
         createdAt = Date()
-        self.group = group
-        self.credentialID = credentialID
+        self.groupRef = groupRef
+        self.credentialRef = credentialRef
+        // Keep legacy fields in sync for migration compatibility
+        group = groupRef?.name
+        credentialID = credentialRef?.name
 
         if let passwordValue = password { storePassword(passwordValue) }
         if let pem = privateKeyPEM { storePrivateKey(pem) }
     }
 
-    /// Remove credentials from Keychain when host is deleted.
     func deleteCredentials() {
         KeychainHelper.delete(for: KeychainHelper.passwordKey(for: id))
         KeychainHelper.delete(for: KeychainHelper.privateKeyKey(for: id))
     }
 
     /// Resolve the effective username.
-    /// Checks vault credential's username first, then falls back to host-embedded username.
-    func resolveUsername(modelContext: ModelContext) -> String {
-        if let credName = credentialID {
-            let descriptor = FetchDescriptor<Credential>(predicate: #Predicate { $0.name == credName })
-            if let cred = try? modelContext.fetch(descriptor).first,
-               let credUsername = cred.username, !credUsername.isEmpty {
-                return credUsername
-            }
+    func resolveUsername(modelContext _: ModelContext) -> String {
+        if let cred = credentialRef,
+           let credUsername = cred.username, !credUsername.isEmpty {
+            return credUsername
         }
         return username
     }
 
     /// Resolve the effective SSH auth method.
-    /// Checks vault credential first, then falls back to host-embedded credentials.
-    func resolveAuthMethod(modelContext: ModelContext) -> SSHAuthMethod? {
+    func resolveAuthMethod(modelContext _: ModelContext) -> SSHAuthMethod? {
         // 1. Try vault credential
-        if let credName = credentialID {
-            let name = credName
-            let descriptor = FetchDescriptor<Credential>(predicate: #Predicate { $0.name == name })
-            if let cred = try? modelContext.fetch(descriptor).first,
-               let secret = cred.loadSecret(), !secret.isEmpty {
-                switch cred.type {
-                case .password:
-                    return .password(secret)
-                case .privateKey:
-                    return .privateKey(pemString: secret)
-                case .apiKey:
-                    return nil
-                }
+        if let cred = credentialRef,
+           let secret = cred.loadSecret(), !secret.isEmpty {
+            switch cred.type {
+            case .password:
+                return .password(secret)
+            case .privateKey:
+                return .privateKey(pemString: secret)
+            case .apiKey:
+                return nil
             }
         }
 

@@ -24,7 +24,7 @@ struct AddHostSheet: View {
     @State private var group = ""
     @State private var showPassword = false
     @State private var showGroupDropdown = false
-    @State private var selectedCredentialID: String?
+    @State private var selectedCredential: Credential?
 
     init(
         existingHost: HostItem? = nil,
@@ -39,7 +39,7 @@ struct AddHostSheet: View {
     // MARK: - Computed
 
     private var usingVault: Bool {
-        selectedCredentialID != nil
+        selectedCredential != nil
     }
 
     private var matchingCredentials: [Credential] {
@@ -67,7 +67,7 @@ struct AddHostSheet: View {
         let hasName = !trimmedName.isEmpty
         let hasHost = !trimmedHost.isEmpty || hasName
         let hasUser = !trimmedUser.isEmpty
-            || (usingVault && vaultCredential?.username?.isEmpty == false)
+            || (usingVault && selectedCredential?.username?.isEmpty == false)
         let hasCred = usingVault
             || (authType == .password
                 ? !password.isEmpty
@@ -76,9 +76,7 @@ struct AddHostSheet: View {
     }
 
     private var vaultCredential: Credential? {
-        selectedCredentialID.flatMap { id in
-            matchingCredentials.first(where: { $0.name == id })
-        }
+        selectedCredential
     }
 
     // MARK: - Body
@@ -103,21 +101,19 @@ struct AddHostSheet: View {
             Section(i18n.t(.authentication)) {
                 Picker(
                     i18n.t(.credential),
-                    selection: $selectedCredentialID
+                    selection: $selectedCredential
                 ) {
-                    Text(i18n.t(.custom)).tag(String?.none)
+                    Text(i18n.t(.custom)).tag(Credential?.none)
                     ForEach(matchingCredentials, id: \.self) { cred in
                         Label(
                             cred.name,
                             systemImage: cred.type.symbolName
                         )
-                        .tag(String?.some(cred.name))
+                        .tag(Credential?.some(cred))
                     }
                 }
-                .onChange(of: selectedCredentialID) { _, newID in
-                    if let cred = newID.flatMap({ id in
-                        vaultCredentials.first(where: { $0.name == id })
-                    }) {
+                .onChange(of: selectedCredential) { _, newCred in
+                    if let cred = newCred {
                         authType = cred.type == .privateKey
                             ? .privateKey
                             : .password
@@ -321,8 +317,8 @@ struct AddHostSheet: View {
         authType = existing.authType
         password = existing.loadPassword() ?? ""
         privateKeyPEM = existing.loadPrivateKey() ?? ""
-        group = existing.group ?? ""
-        selectedCredentialID = existing.credentialID
+        group = existing.groupRef?.name ?? ""
+        selectedCredential = existing.credentialRef
     }
 
     private func save() {
@@ -335,13 +331,22 @@ struct AddHostSheet: View {
             ? nil
             : group.trimmingCharacters(in: .whitespaces)
 
+        // Resolve group reference
+        let groupRef: HostGroup? = {
+            guard let trimmedGroup else { return nil }
+            return hostGroups.first(where: { $0.name == trimmedGroup })
+        }()
+
         if let existing = existingHost {
             existing.name = trimmedName
             existing.host = trimmedHost
             existing.port = portNum
             existing.username = trimmedUser
             existing.authType = authType
-            existing.credentialID = selectedCredentialID
+            existing.credentialRef = selectedCredential
+            existing.groupRef = groupRef
+            existing.group = trimmedGroup // legacy sync
+            existing.credentialID = selectedCredential?.name // legacy sync
             existing.deleteCredentials()
             if !usingVault {
                 if authType == .password {
@@ -350,7 +355,6 @@ struct AddHostSheet: View {
                     existing.storePrivateKey(privateKeyPEM)
                 }
             }
-            existing.group = trimmedGroup
             onSave(existing)
         } else {
             let item = HostItem(
@@ -365,8 +369,8 @@ struct AddHostSheet: View {
                 privateKeyPEM: usingVault
                     ? nil
                     : (authType == .privateKey ? privateKeyPEM : nil),
-                group: trimmedGroup,
-                credentialID: selectedCredentialID
+                groupRef: groupRef,
+                credentialRef: selectedCredential
             )
             onSave(item)
         }

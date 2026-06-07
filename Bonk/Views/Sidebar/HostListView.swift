@@ -42,7 +42,7 @@ struct HostListView: View {
     }
 
     private var groupedHosts: [(String, [HostItem])] {
-        let grouped = Dictionary(grouping: filteredHosts) { $0.group ?? i18n.t(.unGrouped) }
+        let grouped = Dictionary(grouping: filteredHosts) { $0.groupRef?.name ?? i18n.t(.unGrouped) }
         return grouped.sorted { $0.key < $1.key }
     }
 

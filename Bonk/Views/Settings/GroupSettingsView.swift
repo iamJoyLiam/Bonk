@@ -76,9 +76,8 @@ struct GroupSettingsView: View {
 
     @ViewBuilder
     private func hostCountBadge(_ groupName: String) -> some View {
-        let count = (try? modelContext.fetchCount(
-            FetchDescriptor<HostItem>(predicate: #Predicate { $0.group == groupName })
-        )) ?? 0
+        let group = groups.first(where: { $0.name == groupName })
+        let count = group?.hosts.count ?? 0
         if count > 0 {
             Text("\(count)")
                 .font(.system(size: 10)).foregroundStyle(.tertiary)
@@ -89,11 +88,10 @@ struct GroupSettingsView: View {
     }
 
     private func deleteGroup(_ group: HostGroup) {
-        let name = group.name
-        if let hosts = try? modelContext.fetch(
-            FetchDescriptor<HostItem>(predicate: #Predicate { $0.group == name })
-        ) {
-            hosts.forEach { $0.group = nil }
+        // Nullify relationships before deleting
+        for host in group.hosts {
+            host.groupRef = nil
+            host.group = nil // legacy sync
         }
         modelContext.delete(group)
     }
