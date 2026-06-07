@@ -10,6 +10,7 @@ import SwiftUI
 /// AI Assistant panel - input stays, response appears below.
 struct AIAssistantPanel: View {
     @EnvironmentObject var i18n: I18n
+    @Environment(\.modelContext) private var modelContext
     @State private var aiService = AIService.shared
     @State private var conversationStore = AIConversationStore.shared
     @State private var inputText: String
@@ -171,6 +172,7 @@ struct AIAssistantPanel: View {
                 }
         )
         .onAppear {
+            conversationStore.setModelContext(modelContext)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 isInputFocused = true
             }

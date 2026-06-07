@@ -15,14 +15,14 @@ struct ContentView: View {
         enum InspectorMode { case sftp, aiChat }
     #endif
 
+    /// Singleton pattern: ensurePreferences() runs in onAppear, fallback is transient.
     private var preferences: UserPreferences {
         allPreferences.first ?? UserPreferences()
     }
 
     private func ensurePreferences() {
         if allPreferences.isEmpty {
-            let new = UserPreferences()
-            modelContext.insert(new)
+            modelContext.insert(UserPreferences())
         }
     }
 
@@ -42,6 +42,7 @@ struct ContentView: View {
         .environment(\.locale, Locale(identifier: i18n.lang))
         .onAppear {
             ensurePreferences()
+            AIDataMigration.migrateIfNeeded(context: modelContext)
             sessionManager.setModelContext(modelContext)
         }
         .alert(i18n.t(.connectionError), isPresented: $sessionManager.showError) {
@@ -145,8 +146,8 @@ struct ContentView: View {
             fontFamily: preferences.fontFamily,
             lineHeight: preferences.lineHeight,
             scrollbackLines: preferences.scrollbackLines,
-            cursorStyle: preferences.cursorStyle,
-            cursorBlink: preferences.cursorBlink,
+            cursorStyle: themeManager.cursorStyle,
+            cursorBlink: themeManager.cursorBlink,
             copyOnSelect: preferences.copyOnSelect,
             onSend: { data in
                 Task { try? await sessionManager.sendInput(data, to: tab.id) }

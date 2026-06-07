@@ -11,6 +11,9 @@ import SwiftData
 /// User preferences persisted via SwiftData.
 /// Note: Terminal theme (colorSchemeID, terminalOpacity) moved to ThemeManager (@AppStorage)
 /// for instant propagation without @Query latency.
+///
+/// Singleton pattern: `ensurePreferences()` in onAppear inserts if empty.
+/// Views use `@Query` + `first ?? UserPreferences()` as transient fallback for first render.
 @Model
 final class UserPreferences {
     var fontSize: Double

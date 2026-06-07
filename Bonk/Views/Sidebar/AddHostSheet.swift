@@ -9,7 +9,6 @@ struct AddHostSheet: View {
     private var vaultCredentials: [Credential]
     @Query(sort: \HostGroup.sortOrder)
     private var hostGroups: [HostGroup]
-    @Query private var allPreferences: [UserPreferences]
 
     let existingHost: HostItem?
     let defaultPort: Int

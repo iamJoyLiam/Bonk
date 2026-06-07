@@ -1,24 +1,18 @@
-//
-//  iCloudSyncService.swift
-//  Bonk
-//
-//  iCloud sync using NSUbiquitousKeyValueStore.
-//  No paid Apple Developer account required.
-//
-
 import Foundation
+import os.log
+import SwiftData
 import SwiftUI
 
-/// Service for syncing preferences and host data via iCloud.
+/// Service for syncing preferences via iCloud key-value store.
+/// Reads from SwiftData (single source of truth), syncs to iCloud KV store.
 @Observable @MainActor
 final class iCloudSyncService {
-    /// Shared instance.
     static let shared = iCloudSyncService()
+    private static let logger = Logger(subsystem: "com.bonk", category: "iCloudSync")
 
-    /// The ubiquitous key-value store.
     private let store = NSUbiquitousKeyValueStore.default
+    private var modelContext: ModelContext?
 
-    /// Whether sync is enabled.
     var isEnabled: Bool {
         didSet {
             UserDefaults.standard.set(isEnabled, forKey: "sync_icloud")
@@ -30,45 +24,38 @@ final class iCloudSyncService {
         }
     }
 
-    /// Last sync timestamp.
     var lastSynced: Date?
-
-    /// Sync error message.
     var syncError: String?
 
-    /// Keys used for storage.
     private enum Keys {
-        static let hosts = "bonk_hosts"
         static let preferences = "bonk_preferences"
         static let lastSynced = "bonk_last_synced"
     }
 
     init() {
         isEnabled = UserDefaults.standard.bool(forKey: "sync_icloud")
-
         if isEnabled {
             startSyncing()
         }
     }
 
-    /// Start observing iCloud changes.
+    func setModelContext(_ context: ModelContext) {
+        modelContext = context
+    }
+
+    // MARK: - Sync Lifecycle
+
     private func startSyncing() {
-        // Listen for external changes
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(storeDidChange),
             name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
             object: store
         )
-
-        // Trigger initial sync
         store.synchronize()
-
-        // Sync local data to iCloud
         syncToCloud()
     }
 
-    /// Stop observing iCloud changes.
     private func stopSyncing() {
         NotificationCenter.default.removeObserver(
             self,
@@ -77,133 +64,119 @@ final class iCloudSyncService {
         )
     }
 
-    /// Handle external iCloud changes.
     @objc private func storeDidChange(_ notification: Notification) {
         guard let userInfo = notification.userInfo,
               let reason = userInfo[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int else {
             return
         }
-
-        // Only process server changes and initial sync
         guard reason == NSUbiquitousKeyValueStoreServerChange ||
             reason == NSUbiquitousKeyValueStoreInitialSyncChange else {
             return
         }
-
         syncFromCloud()
     }
 
-    /// Sync local data to iCloud.
+    // MARK: - Sync To Cloud
+
     func syncToCloud() {
-        guard isEnabled else { return }
+        guard isEnabled, let context = modelContext else { return }
 
-        // Sync preferences if enabled
-        if UserDefaults.standard.bool(forKey: "sync_prefs") {
-            syncPreferencesToCloud()
+        let desc = FetchDescriptor<UserPreferences>()
+        guard let prefs = try? context.fetch(desc).first else { return }
+
+        let snapshot = SyncSnapshot(from: prefs)
+        if let data = try? JSONEncoder().encode(snapshot),
+           let json = String(data: data, encoding: .utf8) {
+            store.set(json, forKey: Keys.preferences)
         }
 
-        // Sync hosts if enabled
-        if UserDefaults.standard.bool(forKey: "sync_hosts") {
-            syncHostsToCloud()
-        }
-
-        // Update last synced timestamp
         lastSynced = Date()
         store.set(lastSynced?.timeIntervalSince1970 ?? 0, forKey: Keys.lastSynced)
     }
 
-    /// Sync data from iCloud to local.
+    // MARK: - Sync From Cloud
+
     func syncFromCloud() {
-        guard isEnabled else { return }
+        guard isEnabled, let context = modelContext else { return }
 
-        // Sync preferences if enabled
-        if UserDefaults.standard.bool(forKey: "sync_prefs") {
-            syncPreferencesFromCloud()
+        guard let json = store.string(forKey: Keys.preferences),
+              let data = json.data(using: .utf8),
+              let snapshot = try? JSONDecoder().decode(SyncSnapshot.self, from: data) else {
+            return
         }
 
-        // Sync hosts if enabled
-        if UserDefaults.standard.bool(forKey: "sync_hosts") {
-            syncHostsFromCloud()
+        let desc = FetchDescriptor<UserPreferences>()
+        guard let prefs = try? context.fetch(desc).first else { return }
+
+        snapshot.apply(to: prefs)
+
+        do {
+            try context.save()
+        } catch {
+            Self.logger.error("syncFromCloud save failed: \(error)")
         }
 
-        // Update last synced timestamp
         let cloudTimestamp = store.double(forKey: Keys.lastSynced)
         if cloudTimestamp > 0 {
             lastSynced = Date(timeIntervalSince1970: cloudTimestamp)
         }
     }
+}
 
-    // MARK: - Preferences Sync
+// MARK: - Codable Sync Snapshot
 
-    private func syncPreferencesToCloud() {
-        let prefs: [String: Any] = [
-            "fontSize": UserDefaults.standard.double(forKey: "fontSize"),
-            "defaultPort": UserDefaults.standard.integer(forKey: "defaultPort"),
-            "scrollbackLines": UserDefaults.standard.integer(forKey: "scrollbackLines"),
-            "optionAsMeta": UserDefaults.standard.bool(forKey: "optionAsMeta"),
-            "mouseReporting": UserDefaults.standard.bool(forKey: "mouseReporting"),
-            "cursorStyle": UserDefaults.standard.string(forKey: "terminalCursorStyle") ?? "block",
-            "cursorBlink": UserDefaults.standard.bool(forKey: "terminalCursorBlink"),
-            "copyOnSelect": UserDefaults.standard.bool(forKey: "copyOnSelect"),
-            "restoreSessions": UserDefaults.standard.bool(forKey: "restoreSessions"),
-            "checkForUpdates": UserDefaults.standard.bool(forKey: "checkForUpdates")
-        ]
+/// All syncable preference fields in one struct.
+/// Adding a new field here automatically includes it in sync.
+private struct SyncSnapshot: Codable {
+    var fontSize: Double
+    var fontFamily: String
+    var lineHeight: Double
+    var defaultPort: Int
+    var scrollbackLines: Int
+    var optionAsMeta: Bool
+    var mouseReporting: Bool
+    var cursorStyle: String
+    var cursorBlink: Bool
+    var copyOnSelect: Bool
+    var escDismissAI: Bool
+    var hostAutoFillClear: Bool
+    var aiDirectSubmit: Bool
+    var restoreSessions: Bool
+    var checkForUpdates: Bool
 
-        if let data = try? JSONSerialization.data(withJSONObject: prefs),
-           let json = String(data: data, encoding: .utf8) {
-            store.set(json, forKey: Keys.preferences)
-        }
+    init(from prefs: UserPreferences) {
+        fontSize = prefs.fontSize
+        fontFamily = prefs.fontFamily
+        lineHeight = prefs.lineHeight
+        defaultPort = prefs.defaultPort
+        scrollbackLines = prefs.scrollbackLines
+        optionAsMeta = prefs.optionAsMeta
+        mouseReporting = prefs.mouseReporting
+        cursorStyle = prefs.cursorStyle
+        cursorBlink = prefs.cursorBlink
+        copyOnSelect = prefs.copyOnSelect
+        escDismissAI = prefs.escDismissAI
+        hostAutoFillClear = prefs.hostAutoFillClear
+        aiDirectSubmit = prefs.aiDirectSubmit
+        restoreSessions = prefs.restoreSessions
+        checkForUpdates = prefs.checkForUpdates
     }
 
-    private func syncPreferencesFromCloud() {
-        guard let json = store.string(forKey: Keys.preferences),
-              let data = json.data(using: .utf8),
-              let prefs = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return
-        }
-
-        // Apply preferences from cloud (last writer wins)
-        if let fontSize = prefs["fontSize"] as? Double {
-            UserDefaults.standard.set(fontSize, forKey: "fontSize")
-        }
-        if let defaultPort = prefs["defaultPort"] as? Int {
-            UserDefaults.standard.set(defaultPort, forKey: "defaultPort")
-        }
-        if let scrollbackLines = prefs["scrollbackLines"] as? Int {
-            UserDefaults.standard.set(scrollbackLines, forKey: "scrollbackLines")
-        }
-        if let optionAsMeta = prefs["optionAsMeta"] as? Bool {
-            UserDefaults.standard.set(optionAsMeta, forKey: "optionAsMeta")
-        }
-        if let mouseReporting = prefs["mouseReporting"] as? Bool {
-            UserDefaults.standard.set(mouseReporting, forKey: "mouseReporting")
-        }
-        if let cursorStyle = prefs["cursorStyle"] as? String {
-            UserDefaults.standard.set(cursorStyle, forKey: "terminalCursorStyle")
-        }
-        if let cursorBlink = prefs["cursorBlink"] as? Bool {
-            UserDefaults.standard.set(cursorBlink, forKey: "terminalCursorBlink")
-        }
-        if let copyOnSelect = prefs["copyOnSelect"] as? Bool {
-            UserDefaults.standard.set(copyOnSelect, forKey: "copyOnSelect")
-        }
-        if let restoreSessions = prefs["restoreSessions"] as? Bool {
-            UserDefaults.standard.set(restoreSessions, forKey: "restoreSessions")
-        }
-        if let checkForUpdates = prefs["checkForUpdates"] as? Bool {
-            UserDefaults.standard.set(checkForUpdates, forKey: "checkForUpdates")
-        }
-    }
-
-    // MARK: - Hosts Sync
-
-    private func syncHostsToCloud() {
-        // Hosts are stored in SwiftData, we sync a simplified version
-        // Credentials are NOT synced (they stay in Keychain)
-        // This is a placeholder - actual implementation would need SwiftData context
-    }
-
-    private func syncHostsFromCloud() {
-        // Hosts sync from cloud - placeholder
+    func apply(to prefs: UserPreferences) {
+        prefs.fontSize = fontSize
+        prefs.fontFamily = fontFamily
+        prefs.lineHeight = lineHeight
+        prefs.defaultPort = defaultPort
+        prefs.scrollbackLines = scrollbackLines
+        prefs.optionAsMeta = optionAsMeta
+        prefs.mouseReporting = mouseReporting
+        prefs.cursorStyle = cursorStyle
+        prefs.cursorBlink = cursorBlink
+        prefs.copyOnSelect = copyOnSelect
+        prefs.escDismissAI = escDismissAI
+        prefs.hostAutoFillClear = hostAutoFillClear
+        prefs.aiDirectSubmit = aiDirectSubmit
+        prefs.restoreSessions = restoreSessions
+        prefs.checkForUpdates = checkForUpdates
     }
 }

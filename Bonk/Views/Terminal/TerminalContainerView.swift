@@ -308,10 +308,15 @@ import SwiftUI
         private var _onTitleChange: (@Sendable (String) -> Void)?
         private var copyOnSelect: Bool
         nonisolated(unsafe) weak var terminalView: SwiftTerm.TerminalView?
-        nonisolated(unsafe) var feedTask: Task<Void, Never>?
+        private var _feedTask: Task<Void, Never>?
         var themeObserver: NSObjectProtocol?
         private nonisolated(unsafe) var mouseUpMonitor: Any?
         var fontObserver: NSObjectProtocol?
+
+        var feedTask: Task<Void, Never>? {
+            get { lock.lock(); defer { lock.unlock() }; return _feedTask }
+            set { lock.lock(); defer { lock.unlock() }; _feedTask = newValue }
+        }
 
         // Batch feed throttling — reduces MainActor.run calls under heavy output
         let batchBuffer = OSAllocatedUnfairLock<String>(uncheckedState: "")

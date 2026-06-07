@@ -22,7 +22,10 @@ struct BonkApp: App {
             HostItem.self,
             UserPreferences.self,
             Credential.self,
-            HostGroup.self
+            HostGroup.self,
+            AIConversationRecord.self,
+            AIMessageRecord.self,
+            AIProviderRecord.self
         ])
         #if DEBUG
         let config = ModelConfiguration("Bonk-Dev", schema: schema, isStoredInMemoryOnly: false)
@@ -33,10 +36,8 @@ struct BonkApp: App {
         do {
             return try ModelContainer(for: schema, configurations: [config])
         } catch {
-            // Lightweight migration should handle schema changes automatically.
-            // If this fails, log and report — never delete user data silently.
             Log.general.error("SwiftData migration failed: \(error)")
-            fatalError("SwiftData migration failed. Please reinstall the app. Error: \(error)")
+            fatalError("SwiftData migration failed: \(error)")
         }
     }()
 

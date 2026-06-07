@@ -17,11 +17,11 @@ struct TerminalTabView: View {
     let colorScheme: TerminalColorScheme
     let cursorStyle: String
     let cursorBlink: Bool
-    @Query private var preferencesList: [UserPreferences]
+    @Query private var allPreferences: [UserPreferences]
     @Query(sort: \HostItem.createdAt) var allHosts: [HostItem]
 
     private var preferences: UserPreferences {
-        preferencesList.first ?? UserPreferences()
+        allPreferences.first ?? UserPreferences()
     }
 
     @State var renamingTab: TerminalTab?

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AccountSettingsView: View {
     @EnvironmentObject var i18n: I18n
+    @Environment(\.modelContext) private var modelContext
     @State private var syncService = iCloudSyncService.shared
 
     var body: some View {
@@ -71,5 +72,8 @@ struct AccountSettingsView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .onAppear {
+            syncService.setModelContext(modelContext)
+        }
     }
 }

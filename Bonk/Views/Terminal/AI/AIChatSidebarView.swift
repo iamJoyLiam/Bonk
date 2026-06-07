@@ -4,6 +4,7 @@ import SwiftUI
 /// Has its own conversation state, independent from the floating AI panel.
 struct AIChatSidebarView: View {
     @EnvironmentObject var i18n: I18n
+    @Environment(\.modelContext) private var modelContext
     @State private var aiService = AIService.shared
     @State var conversationStore = AIConversationStore.shared
     @State private var inputText = ""
@@ -149,6 +150,7 @@ struct AIChatSidebarView: View {
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
         .onAppear {
+            conversationStore.setModelContext(modelContext)
             withAnimation(.linear(duration: 4.0).repeatForever(autoreverses: false)) { rotationAngle = 360 }
         }
     }
