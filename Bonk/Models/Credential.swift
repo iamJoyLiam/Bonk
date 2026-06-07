@@ -30,6 +30,9 @@ final class Credential {
     var createdAt: Date
     var notes: String?
 
+    @Relationship(inverse: \HostItem.credentialRef)
+    var hosts: [HostItem]
+
     var type: CredentialType {
         get { CredentialType(rawValue: typeRaw) ?? .password }
         set { typeRaw = newValue.rawValue }
@@ -42,6 +45,7 @@ final class Credential {
         self.username = username
         createdAt = Date()
         self.notes = notes
+        hosts = []
     }
 
     // MARK: - Keychain (explicit, no silent I/O in computed property)

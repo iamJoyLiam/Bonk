@@ -13,9 +13,7 @@ enum AIDataMigration {
 
         logger.info("Starting AI data migration from UserDefaults to SwiftData")
 
-        let success = migrateConversations(context: context)
-        // Provider migration deferred — AIProviderStore still uses UserDefaults
-        // migrateProviders(context: context)
+        let success = migrateConversations(context: context) && migrateProviders(context: context)
 
         if success {
             UserDefaults.standard.set(true, forKey: migrationKey)
@@ -70,17 +68,56 @@ enum AIDataMigration {
         }
     }
 
+    // MARK: - HostItem Relationships
+
+    /// Migrate string-based group/credentialID to proper @Relationship.
+    /// Safe to run multiple times — skips already-migrated items.
+    static func migrateHostRelationships(context: ModelContext) {
+        let key = "host_relationships_migrated"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+
+        do {
+            let hosts = try context.fetch(FetchDescriptor<HostItem>())
+            var migrated = 0
+
+            for host in hosts {
+                if host.groupRef == nil, let groupName = host.group, !groupName.isEmpty {
+                    let desc = FetchDescriptor<HostGroup>(
+                        predicate: #Predicate { $0.name == groupName }
+                    )
+                    host.groupRef = try? context.fetch(desc).first
+                    if host.groupRef != nil { migrated += 1 }
+                }
+
+                if host.credentialRef == nil, let credName = host.credentialID, !credName.isEmpty {
+                    let desc = FetchDescriptor<Credential>(
+                        predicate: #Predicate { $0.name == credName }
+                    )
+                    host.credentialRef = try? context.fetch(desc).first
+                    if host.credentialRef != nil { migrated += 1 }
+                }
+            }
+
+            try context.save()
+            UserDefaults.standard.set(true, forKey: key)
+            logger.info("Host relationship migration complete: \(migrated) relationships created")
+        } catch {
+            logger.error("Host relationship migration failed: \(error)")
+        }
+    }
+
     // MARK: - Providers
 
-    private static func migrateProviders(context: ModelContext) {
+    @discardableResult
+    private static func migrateProviders(context: ModelContext) -> Bool {
         guard let data = UserDefaults.standard.data(forKey: "ai_providers") else {
             logger.info("No providers to migrate")
-            return
+            return true
         }
 
         guard let providers = try? JSONDecoder().decode([LegacyAIProvider].self, from: data) else {
             logger.error("Failed to decode legacy providers")
-            return
+            return false
         }
 
         let activeIDString = UserDefaults.standard.string(forKey: "ai_active_provider_id")
@@ -105,8 +142,10 @@ enum AIDataMigration {
             UserDefaults.standard.removeObject(forKey: "ai_providers")
             UserDefaults.standard.removeObject(forKey: "ai_active_provider_id")
             logger.info("Migrated \(providers.count) providers")
+            return true
         } catch {
             logger.error("Failed to save migrated providers: \(error)")
+            return false
         }
     }
 }

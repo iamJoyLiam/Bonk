@@ -12,6 +12,9 @@ final class AIService {
     var lastError: String?
     var streamingResponse: String = ""
 
+    /// Active provider — set by views that have access to AIProviderStore.
+    var activeProvider: AIProviderConfig?
+
     // MARK: - Public API
 
     func chat(_ message: String, context _: TerminalContext) async {
@@ -85,7 +88,7 @@ final class AIService {
 
     /// Resolve active provider and validate API key.
     private func resolveProvider() -> (AIProviderConfig, String)? {
-        guard let provider = AIProviderStore.activeProvider else {
+        guard let provider = activeProvider else {
             lastError = "No active AI provider configured"
             return nil
         }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AISettingsView: View {
     @EnvironmentObject var i18n: I18n
+    @Environment(\.modelContext) private var modelContext
     @AppStorage("ai_enabled") private var aiEnabled = false
     @AppStorage("ai_inline_suggestions") private var inlineSuggestionsEnabled = false
     @AppStorage("ai_debounce_ms") private var inlineSuggestionDebounceMs = 500
@@ -49,6 +50,9 @@ struct AISettingsView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .onAppear {
+            store.setModelContext(modelContext)
+        }
         .sheet(isPresented: editingSheetBinding) {
             if let id = editingProviderID,
                let provider = store.providers.first(where: { $0.id == id }) {

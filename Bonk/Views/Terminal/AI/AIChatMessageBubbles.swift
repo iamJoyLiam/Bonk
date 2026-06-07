@@ -15,7 +15,7 @@ extension AIChatSidebarView {
         .padding(.top, 60)
     }
 
-    func bubble(_ msg: AIMessage) -> some View {
+    func bubble(_ msg: AIMessageRecord) -> some View {
         HStack(alignment: .top, spacing: 8) {
             if msg.role == .assistant { avatar("sparkles") }
             VStack(alignment: msg.role == .user ? .trailing : .leading, spacing: 4) {

@@ -11,6 +11,9 @@ final class HostGroup: Identifiable {
     var sortOrder: Int
     var createdAt: Date
 
+    @Relationship(inverse: \HostItem.groupRef)
+    var hosts: [HostItem]
+
     init(name: String, colorHex: String? = nil, icon: String? = nil, sortOrder: Int = 0) {
         id = UUID()
         self.name = name
@@ -18,6 +21,7 @@ final class HostGroup: Identifiable {
         self.icon = icon
         self.sortOrder = sortOrder
         createdAt = Date()
+        hosts = []
     }
 }
 

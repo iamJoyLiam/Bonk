@@ -24,6 +24,13 @@ final class HostItem {
     /// uses the vault credential instead of host-embedded password/privateKeyPEM.
     var credentialID: String?
 
+    // MARK: - Relationships (v2026.0.4)
+    /// Proper SwiftData relationships replacing string-based references above.
+    @Relationship(deleteRule: .nullify)
+    var groupRef: HostGroup?
+    @Relationship(deleteRule: .nullify)
+    var credentialRef: Credential?
+
     var authType: AuthType {
         get { AuthType(rawValue: authTypeRaw) ?? .password }
         set { authTypeRaw = newValue.rawValue }

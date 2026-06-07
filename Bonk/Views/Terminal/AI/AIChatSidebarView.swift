@@ -1,23 +1,25 @@
+import SwiftData
 import SwiftUI
 
 /// Full conversation-style AI chat panel for the right sidebar.
 /// Has its own conversation state, independent from the floating AI panel.
 struct AIChatSidebarView: View {
     @EnvironmentObject var i18n: I18n
-    @Environment(\.modelContext) private var modelContext
-    @State private var aiService = AIService.shared
+    @Environment(\.modelContext) var modelContext
+    @State var aiService = AIService.shared
+    @State var providerStore = AIProviderStore()
     @State var conversationStore = AIConversationStore.shared
-    @State private var inputText = ""
-    @State private var isProcessing = false
-    @State private var currentTask: Task<Void, Never>?
+    @Query(sort: \AIConversationRecord.updatedAt, order: .reverse)
+    var conversations: [AIConversationRecord]
+    @State var currentConversation: AIConversationRecord?
+    @State var inputText = ""
+    @State var isProcessing = false
+    @State var currentTask: Task<Void, Never>?
     @State var showHistory = false
-    @State private var selectedMode: AIMode = .ask
-    @FocusState private var isInputFocused: Bool
+    @State var selectedMode: AIMode = .ask
+    @FocusState var isInputFocused: Bool
 
-    /// Sidebar has its own conversation, separate from floating panel
-    @State var sidebarConversationID: UUID?
-
-    @State private var rotationAngle: Double = 0
+    @State var rotationAngle: Double = 0
     @State var fetchedModels: [String] = []
     @State var isFetchingModels = false
     @State var pendingDeleteConversation: UUID?
@@ -26,16 +28,8 @@ struct AIChatSidebarView: View {
         AppStyle.aiRainbowColors
     }
 
-    /// Current sidebar conversation (independent from floating panel).
-    private var conversation: AIConversation? {
-        if let id = sidebarConversationID {
-            return conversationStore.conversations.first(where: { $0.id == id })
-        }
-        return nil
-    }
-
-    private var messages: [AIMessage] {
-        conversation?.messages ?? []
+    private var messages: [AIMessageRecord] {
+        currentConversation?.messages ?? []
     }
 
     var body: some View {
@@ -57,7 +51,6 @@ struct AIChatSidebarView: View {
 
             Spacer()
 
-            // History
             Button { showHistory.toggle() } label: {
                 Image(systemName: "clock")
                     .font(.system(size: 12))
@@ -66,8 +59,7 @@ struct AIChatSidebarView: View {
             .buttonStyle(.plain)
             .popover(isPresented: $showHistory) { historyPopover }
 
-            // New conversation
-            Button { newConversation() } label: {
+            Button { createNewConversation() } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
@@ -110,7 +102,6 @@ struct AIChatSidebarView: View {
 
     private var bottomBar: some View {
         VStack(spacing: 6) {
-            // Input
             HStack(spacing: 8) {
                 Image(systemName: "apple.intelligence")
                     .font(.system(size: 12, weight: .medium))
@@ -137,20 +128,16 @@ struct AIChatSidebarView: View {
                     .blur(radius: 6).opacity(isInputFocused ? 0.6 : 0)
             )
 
-            // Mode + Model
             HStack(spacing: 6) {
-                // Mode dropdown
                 modeMenu
-
                 Spacer()
-
-                // Model dropdown
                 modelMenu
             }
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
         .onAppear {
-            conversationStore.setModelContext(modelContext)
+            providerStore.setModelContext(modelContext)
+            aiService.activeProvider = providerStore.activeProvider
             withAnimation(.linear(duration: 4.0).repeatForever(autoreverses: false)) { rotationAngle = 360 }
         }
     }
@@ -178,10 +165,9 @@ struct AIChatSidebarView: View {
 
     // MARK: - Actions
 
-    private func newConversation() {
-        let conv = AIConversation()
-        conversationStore.conversations.insert(conv, at: 0)
-        sidebarConversationID = conv.id
+    private func createNewConversation() {
+        let conv = conversationStore.createConversation(context: modelContext)
+        currentConversation = conv
         inputText = ""
         aiService.streamingResponse = ""
     }
@@ -190,31 +176,22 @@ struct AIChatSidebarView: View {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
-        // Ensure sidebar has its own conversation
-        if sidebarConversationID == nil || conversation == nil {
-            newConversation()
+        if currentConversation == nil {
+            createNewConversation()
         }
 
-        // Add message to sidebar conversation
-        if let conv = conversation {
-            var updated = conv
-            updated.messages.append(AIMessage(role: .user, content: text))
-            updated.title = conv.title == "New Chat" ? String(text.prefix(30)) : conv.title
-            updated.updatedAt = Date()
-            if let idx = conversationStore.conversations.firstIndex(where: { $0.id == conv.id }) {
-                conversationStore.conversations[idx] = updated
-            }
-        }
-
-        isProcessing = true
-        inputText = ""
-        currentTask?.cancel()
+        guard let conversation = currentConversation else { return }
 
         let modePrefix = switch selectedMode {
         case .ask: ""
         case .edit: "[Edit mode] Suggest a terminal command if relevant. "
         case .agent: "[Agent mode] Provide a runnable terminal command. "
         }
+
+        conversationStore.addMessage(to: conversation, role: .user, content: text, context: modelContext)
+        isProcessing = true
+        inputText = ""
+        currentTask?.cancel()
 
         currentTask = Task {
             await aiService.chat(modePrefix + text, context: TerminalContext())
@@ -224,15 +201,7 @@ struct AIChatSidebarView: View {
                 let response = aiService.currentExplanation ?? "No response."
                 aiService.currentExplanation = nil
                 aiService.streamingResponse = ""
-
-                if let conv = conversation {
-                    var updated = conv
-                    updated.messages.append(AIMessage(role: .assistant, content: response))
-                    updated.updatedAt = Date()
-                    if let idx = conversationStore.conversations.firstIndex(where: { $0.id == conv.id }) {
-                        conversationStore.conversations[idx] = updated
-                    }
-                }
+                conversationStore.addMessage(to: conversation, role: .assistant, content: response, context: modelContext)
             }
         }
     }

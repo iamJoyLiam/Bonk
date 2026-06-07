@@ -1,70 +1,111 @@
 import Combine
 import Foundation
 import os.log
+import SwiftData
 
-/// Persistent storage for AI provider configurations.
-/// Uses UserDefaults for metadata, Keychain for API keys.
+/// Persistent storage for AI provider configurations using SwiftData.
+/// API keys remain in Keychain.
 @MainActor
 final class AIProviderStore: ObservableObject {
     @Published var providers: [AIProviderConfig] = []
     @Published var activeProviderID: UUID?
 
-    private static let providersKey = "ai_providers"
-    private static let activeKey = "ai_active_provider_id"
-    private let providersKey = AIProviderStore.providersKey
-    private let activeKey = AIProviderStore.activeKey
+    private static let logger = Logger(subsystem: "com.bonk", category: "AIProviderStore")
+    private var modelContext: ModelContext?
 
-    init() {
+    init() {}
+
+    func setModelContext(_ context: ModelContext) {
+        modelContext = context
         load()
     }
 
-    private static let logger = Logger(subsystem: "com.bonk", category: "AIProviderStore")
-
     func load() {
-        if let data = UserDefaults.standard.data(forKey: providersKey) {
-            do {
-                providers = try JSONDecoder().decode([AIProviderConfig].self, from: data)
-            } catch {
-                Self.logger.error("Failed to decode AI providers: \(error.localizedDescription)")
-                // Clear corrupted data to prevent repeated failures
-                UserDefaults.standard.removeObject(forKey: providersKey)
-            }
-        }
-        if let idString = UserDefaults.standard.string(forKey: activeKey) {
-            activeProviderID = UUID(uuidString: idString)
+        guard let context = modelContext else { return }
+
+        do {
+            let records = try context.fetch(FetchDescriptor<AIProviderRecord>(
+                sortBy: [SortDescriptor(\.name)]
+            ))
+            providers = records.map { AIProviderConfig(from: $0) }
+            activeProviderID = records.first(where: { $0.isActive })?.id
+        } catch {
+            Self.logger.error("Failed to load providers: \(error)")
         }
     }
 
     func save() {
-        if let data = try? JSONEncoder().encode(providers) {
-            UserDefaults.standard.set(data, forKey: providersKey)
-        }
-        if let id = activeProviderID {
-            UserDefaults.standard.set(id.uuidString, forKey: activeKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: activeKey)
+        guard let context = modelContext else { return }
+
+        // Update active state
+        do {
+            let records = try context.fetch(FetchDescriptor<AIProviderRecord>())
+            for record in records {
+                record.isActive = record.id == activeProviderID
+            }
+            try context.save()
+        } catch {
+            Self.logger.error("Failed to save providers: \(error)")
         }
     }
 
     func add(_ provider: AIProviderConfig) {
-        providers.append(provider)
-        save()
+        guard let context = modelContext else { return }
+
+        let record = provider.toRecord()
+        if activeProviderID == nil {
+            record.isActive = true
+            activeProviderID = provider.id
+        }
+        context.insert(record)
+
+        do {
+            try context.save()
+            load()
+        } catch {
+            Self.logger.error("Failed to add provider: \(error)")
+        }
     }
 
     func update(_ provider: AIProviderConfig) {
-        if let idx = providers.firstIndex(where: { $0.id == provider.id }) {
-            providers[idx] = provider
-            save()
+        guard let context = modelContext else { return }
+
+        do {
+            let desc = FetchDescriptor<AIProviderRecord>(
+                predicate: #Predicate { $0.id == provider.id }
+            )
+            if let record = try context.fetch(desc).first {
+                record.name = provider.name
+                record.typeRaw = provider.type.rawValue
+                record.model = provider.model
+                record.endpoint = provider.endpoint
+                record.maxOutputTokens = provider.maxOutputTokens
+                record.telemetryEnabled = provider.telemetryEnabled
+                try context.save()
+                load()
+            }
+        } catch {
+            Self.logger.error("Failed to update provider: \(error)")
         }
     }
 
     func remove(_ id: UUID) {
-        if let provider = providers.first(where: { $0.id == id }) {
-            provider.deleteApiKey()
+        guard let context = modelContext else { return }
+
+        do {
+            let desc = FetchDescriptor<AIProviderRecord>(
+                predicate: #Predicate { $0.id == id }
+            )
+            if let record = try context.fetch(desc).first {
+                record.deleteApiKey()
+                context.delete(record)
+                if activeProviderID == id { activeProviderID = nil }
+                try context.save()
+                load()
+            }
+        } catch {
+            Self.logger.error("Failed to remove provider: \(error)")
         }
-        providers.removeAll { $0.id == id }
-        if activeProviderID == id { activeProviderID = nil }
-        save()
     }
 
     func setActive(_ id: UUID?) {
@@ -72,29 +113,40 @@ final class AIProviderStore: ObservableObject {
         save()
     }
 
-    // MARK: - Static Accessors (for non-ObservableObject contexts)
+    // MARK: - Convenience
 
-    /// The currently active provider, read directly from UserDefaults.
-    static var activeProvider: AIProviderConfig? {
-        guard let data = UserDefaults.standard.data(forKey: providersKey),
-              let providers = try? JSONDecoder().decode([AIProviderConfig].self, from: data),
-              let activeId = UserDefaults.standard.string(forKey: activeKey) else { return nil }
-        return providers.first(where: { $0.id.uuidString == activeId })
+    var activeProvider: AIProviderConfig? {
+        providers.first(where: { $0.id == activeProviderID })
+    }
+}
+
+// MARK: - AIProviderConfig ↔ AIProviderRecord conversion
+
+extension AIProviderConfig {
+    init(from record: AIProviderRecord) {
+        self.init(
+            id: record.id,
+            name: record.name,
+            type: record.type,
+            model: record.model,
+            endpoint: record.endpoint,
+            apiKey: record.apiKey,
+            maxOutputTokens: record.maxOutputTokens,
+            telemetryEnabled: record.telemetryEnabled
+        )
     }
 
-    /// All configured providers.
-    static var allProviders: [AIProviderConfig] {
-        guard let data = UserDefaults.standard.data(forKey: providersKey) else { return [] }
-        return (try? JSONDecoder().decode([AIProviderConfig].self, from: data)) ?? []
-    }
-
-    /// Update a specific provider by ID.
-    static func updateProvider(_ provider: AIProviderConfig) {
-        var providers = allProviders
-        guard let idx = providers.firstIndex(where: { $0.id == provider.id }) else { return }
-        providers[idx] = provider
-        if let data = try? JSONEncoder().encode(providers) {
-            UserDefaults.standard.set(data, forKey: providersKey)
-        }
+    func toRecord() -> AIProviderRecord {
+        AIProviderRecord(
+            id: id,
+            name: name,
+            type: type,
+            model: model,
+            endpoint: endpoint,
+            apiKey: apiKey,
+            maxOutputTokens: maxOutputTokens,
+            telemetryEnabled: telemetryEnabled,
+            isActive: false
+        )
     }
 }

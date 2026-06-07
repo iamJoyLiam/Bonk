@@ -4,17 +4,17 @@ extension AIChatSidebarView {
 
     var historyPopover: some View {
         VStack(spacing: 0) {
-            if conversationStore.conversations.isEmpty {
+            if conversations.isEmpty {
                 Text(i18n.t(.aiNoHistory))
                     .font(.caption).foregroundStyle(.tertiary)
                     .padding(16)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 2) {
-                        ForEach(conversationStore.conversations) { conversation in
+                        ForEach(conversations) { conversation in
                             HStack(spacing: 8) {
                                 Button {
-                                    sidebarConversationID = conversation.id
+                                    currentConversation = conversation
                                     showHistory = false
                                 } label: {
                                     HStack {
@@ -22,7 +22,7 @@ extension AIChatSidebarView {
                                             .font(.system(size: 12))
                                             .lineLimit(1)
                                         Spacer()
-                                        if sidebarConversationID == conversation.id {
+                                        if currentConversation?.id == conversation.id {
                                             Image(systemName: "checkmark")
                                                 .font(.system(size: 10))
                                                 .foregroundStyle(Color.accentColor)
@@ -32,7 +32,6 @@ extension AIChatSidebarView {
                                 }
                                 .buttonStyle(.plain)
 
-                                // Delete button
                                 Button {
                                     pendingDeleteConversation = conversation.id
                                 } label: {
@@ -55,9 +54,10 @@ extension AIChatSidebarView {
             set: { if !$0 { pendingDeleteConversation = nil } }
         )) {
             Button(i18n.t(.delete), role: .destructive) {
-                if let id = pendingDeleteConversation {
-                    conversationStore.deleteConversation(id)
-                    if sidebarConversationID == id { sidebarConversationID = nil }
+                if let id = pendingDeleteConversation,
+                   let conv = conversations.first(where: { $0.id == id }) {
+                    conversationStore.delete(conv, context: modelContext)
+                    if currentConversation?.id == id { currentConversation = nil }
                 }
                 pendingDeleteConversation = nil
             }

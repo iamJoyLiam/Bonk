@@ -43,6 +43,7 @@ struct ContentView: View {
         .onAppear {
             ensurePreferences()
             AIDataMigration.migrateIfNeeded(context: modelContext)
+            AIDataMigration.migrateHostRelationships(context: modelContext)
             sessionManager.setModelContext(modelContext)
         }
         .alert(i18n.t(.connectionError), isPresented: $sessionManager.showError) {

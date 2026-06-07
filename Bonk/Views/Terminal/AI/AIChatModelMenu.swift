@@ -5,7 +5,7 @@ import SwiftUI
 extension AIChatSidebarView {
 
     var modelMenu: some View {
-        let currentModel = activeProvider?.model ?? i18n.t(.aiNoModel)
+        let currentModel = providerStore.activeProvider?.model ?? i18n.t(.aiNoModel)
         return Menu {
             if isFetchingModels {
                 Text(i18n.t(.aiFetchingModels))
@@ -23,9 +23,8 @@ extension AIChatSidebarView {
 
             Divider()
 
-            // Switch provider
-            ForEach(allProviders) { provider in
-                let isActive = provider.id.uuidString == activeProvider?.id.uuidString
+            ForEach(providerStore.providers) { provider in
+                let isActive = provider.id == providerStore.activeProviderID
                 Button { switchToProvider(provider) } label: {
                     Label("\(provider.name) — \(provider.model)", systemImage: isActive ? "checkmark" : "")
                 }
@@ -45,16 +44,8 @@ extension AIChatSidebarView {
         .onAppear { fetchModels() }
     }
 
-    var activeProvider: AIProviderConfig? {
-        AIProviderStore.activeProvider
-    }
-
-    var allProviders: [AIProviderConfig] {
-        AIProviderStore.allProviders
-    }
-
     func fetchModels() {
-        guard let provider = activeProvider,
+        guard let provider = providerStore.activeProvider,
               let url = AIProviderNetworking.modelsURL(
                   endpoint: provider.endpoint,
                   type: provider.type,
@@ -73,14 +64,16 @@ extension AIChatSidebarView {
     }
 
     func switchToProvider(_ provider: AIProviderConfig) {
-        UserDefaults.standard.set(provider.id.uuidString, forKey: "ai_active_provider_id")
+        providerStore.setActive(provider.id)
+        aiService.activeProvider = provider
         fetchedModels = []
         fetchModels()
     }
 
     func applyModel(_ model: String) {
-        guard var provider = activeProvider else { return }
+        guard var provider = providerStore.activeProvider else { return }
         provider.model = model.trimmingCharacters(in: .whitespaces)
-        AIProviderStore.updateProvider(provider)
+        providerStore.update(provider)
+        aiService.activeProvider = provider
     }
 }

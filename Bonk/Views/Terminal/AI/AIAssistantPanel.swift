@@ -5,6 +5,7 @@
 //  AI Assistant - query/response style with history.
 //
 
+import SwiftData
 import SwiftUI
 
 /// AI Assistant panel - input stays, response appears below.
@@ -12,7 +13,11 @@ struct AIAssistantPanel: View {
     @EnvironmentObject var i18n: I18n
     @Environment(\.modelContext) private var modelContext
     @State private var aiService = AIService.shared
+    @State private var providerStore = AIProviderStore()
     @State private var conversationStore = AIConversationStore.shared
+    @Query(sort: \AIConversationRecord.updatedAt, order: .reverse)
+    private var conversations: [AIConversationRecord]
+    @State private var currentConversation: AIConversationRecord?
     @State private var inputText: String
     @State private var isProcessing = false
     @State private var showHistory = false
@@ -35,8 +40,8 @@ struct AIAssistantPanel: View {
     }
 
     /// Current conversation messages.
-    private var messages: [AIMessage] {
-        conversationStore.currentConversation?.messages ?? []
+    private var messages: [AIMessageRecord] {
+        currentConversation?.messages ?? []
     }
 
     /// Last AI response.
@@ -172,7 +177,8 @@ struct AIAssistantPanel: View {
                 }
         )
         .onAppear {
-            conversationStore.setModelContext(modelContext)
+            providerStore.setModelContext(modelContext)
+            aiService.activeProvider = providerStore.activeProvider
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 isInputFocused = true
             }
@@ -207,15 +213,15 @@ struct AIAssistantPanel: View {
         guard !text.isEmpty else { return }
 
         // Create conversation if needed
-        if conversationStore.currentConversation == nil {
-            conversationStore.newConversation()
+        if currentConversation == nil {
+            currentConversation = conversationStore.createConversation(context: modelContext)
         }
 
-        // Add user message
-        conversationStore.addMessage(role: .user, content: text)
-        isProcessing = true
+        guard let conversation = currentConversation else { return }
 
-        // Keep input text - don't clear
+        // Add user message
+        conversationStore.addMessage(to: conversation, role: .user, content: text, context: modelContext)
+        isProcessing = true
 
         // Cancel any existing task
         currentTask?.cancel()
@@ -232,14 +238,13 @@ struct AIAssistantPanel: View {
                 aiService.currentExplanation = nil
                 aiService.streamingResponse = ""
 
-                // Add AI response only if task not cancelled
-                conversationStore.addMessage(role: .assistant, content: response)
+                // Add AI response
+                conversationStore.addMessage(to: conversation, role: .assistant, content: response, context: modelContext)
             }
         }
     }
 
     private func dismiss() {
-        // Cancel any ongoing AI request
         currentTask?.cancel()
         currentTask = nil
         isProcessing = false
@@ -263,9 +268,9 @@ struct AIAssistantPanel: View {
 
             ScrollView {
                 LazyVStack(spacing: 2) {
-                    ForEach(conversationStore.conversations) { conversation in
+                    ForEach(conversations) { conversation in
                         Button {
-                            conversationStore.selectConversation(conversation.id)
+                            currentConversation = conversation
                             showHistory = false
                         } label: {
                             HStack {
@@ -273,7 +278,7 @@ struct AIAssistantPanel: View {
                                     .font(.system(size: 12))
                                     .lineLimit(1)
                                 Spacer()
-                                if conversationStore.currentConversation?.id == conversation.id {
+                                if currentConversation?.id == conversation.id {
                                     Image(systemName: "checkmark")
                                         .font(.system(size: 10))
                                         .foregroundStyle(Color.accentColor)
@@ -310,7 +315,6 @@ struct AIErrorDiagnosis: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Selected error text
             Text(selectedText)
                 .font(.system(size: 11, design: .monospaced))
                 .lineLimit(3)
