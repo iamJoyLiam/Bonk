@@ -8,7 +8,7 @@ struct AIChatSidebarView: View {
     @Environment(\.modelContext) var modelContext
     let sshService: SSHNetworkService?
     @State var aiService = AIService.shared
-    @State var providerStore = AIProviderStore.shared
+    @ObservedObject var providerStore = AIProviderStore.shared
     @State var conversationStore = AIConversationStore.shared
     @Query(sort: \AIConversationRecord.updatedAt, order: .reverse)
     var conversations: [AIConversationRecord]
@@ -299,7 +299,6 @@ struct AIChatSidebarView: View {
 
     private func submit() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let _ = print("[AIChat] submit called, mode=\(selectedMode.rawValue) text=\(text.prefix(20)) aiEnabled=\(aiEnabled)")
         guard !text.isEmpty else { return }
 
         if selectedMode == .agent {
@@ -310,15 +309,11 @@ struct AIChatSidebarView: View {
     }
 
     private func submitChat(text: String) {
-        let _ = print("[AIChat] submitChat called, text=\(text.prefix(20))")
         if currentConversation == nil {
             createNewConversation()
         }
 
-        guard let conversation = currentConversation else {
-            let _ = print("[AIChat] ERROR: currentConversation is nil after createNewConversation")
-            return
-        }
+        guard let conversation = currentConversation else { return }
 
         let modePrefix = switch selectedMode {
         case .ask: ""
@@ -330,22 +325,28 @@ struct AIChatSidebarView: View {
         isProcessing = true
         wasCancelled = false
         inputText = ""
-        let _ = print("[AIChat] isProcessing=true, calling aiService.chat, activeProvider=\(aiService.activeProvider?.name ?? "nil")")
         currentTask?.cancel()
 
         currentTask = Task {
             await aiService.chat(modePrefix + text, context: TerminalContext())
-            let _ = print("[AIChat] aiService.chat returned")
             await MainActor.run {
                 isProcessing = false
-                // Don't overwrite if user already cancelled and saved partial response
                 guard !wasCancelled else { return }
                 let response = aiService.currentExplanation
                     ?? aiService.streamingResponse
                     ?? ""
                 aiService.currentExplanation = nil
                 aiService.streamingResponse = ""
-                if !response.isEmpty {
+
+                if response.isEmpty {
+                    let error = aiService.lastError ?? "No response from AI. Check your API key and model settings."
+                    conversationStore.addMessage(
+                        to: conversation,
+                        role: .assistant,
+                        content: "⚠️ \(error)",
+                        context: modelContext
+                    )
+                } else {
                     conversationStore.addMessage(
                         to: conversation,
                         role: .assistant,

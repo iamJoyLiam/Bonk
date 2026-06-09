@@ -1,6 +1,6 @@
 import Foundation
+import Observation
 import os.log
-import SwiftUI
 
 /// AI service that provides terminal assistance features.
 @Observable @MainActor
@@ -71,7 +71,7 @@ final class AIService {
         streamingResponse = ""
         defer { isProcessing = false }
 
-        Log.ai.info("\(label): provider=\(provider.name, privacy: .public) model=\(provider.model, privacy: .public) msg=\(userPrompt.prefix(80), privacy: .public)")
+        Log.ai.info("\(label): provider=\(provider.name, privacy: .public) model=\(provider.model, privacy: .public)")
 
         do {
             let response = try await streamRequest(
@@ -136,15 +136,15 @@ final class AIService {
             headers = [
                 "x-api-key": apiKey,
                 "anthropic-version": Self.anthropicVersion,
-                "content-type": "application/json"
+                "content-type": "application/json",
             ]
             body = [
                 "model": provider.model,
                 "max_tokens": maxTokens,
                 "system": systemPrompt,
                 "messages": [
-                    ["role": "user", "content": userPrompt]
-                ]
+                    ["role": "user", "content": userPrompt],
+                ],
             ].merging(stream ? ["stream": true] : [:]) { $1 }
 
         case .openAI, .openRouter, .copilot, .openCode, .custom:
@@ -154,15 +154,15 @@ final class AIService {
             url = endpointURL
             headers = [
                 "Authorization": "Bearer \(apiKey)",
-                "content-type": "application/json"
+                "content-type": "application/json",
             ]
             body = [
                 "model": provider.model,
                 "max_tokens": maxTokens,
                 "messages": [
                     ["role": "system", "content": systemPrompt],
-                    ["role": "user", "content": userPrompt]
-                ]
+                    ["role": "user", "content": userPrompt],
+                ],
             ].merging(stream ? ["stream": true] : [:]) { $1 }
 
         case .gemini:
@@ -172,17 +172,17 @@ final class AIService {
             url = endpointURL
             headers = [
                 "x-goog-api-key": apiKey,
-                "content-type": "application/json"
+                "content-type": "application/json",
             ]
             body = [
                 "contents": [
                     ["parts": [
-                        ["text": "\(systemPrompt)\n\n\(userPrompt)"]
-                    ]]
+                        ["text": "\(systemPrompt)\n\n\(userPrompt)"],
+                    ]],
                 ],
                 "generationConfig": [
-                    "maxOutputTokens": maxTokens
-                ]
+                    "maxOutputTokens": maxTokens,
+                ],
             ]
 
         case .ollama:
@@ -195,9 +195,9 @@ final class AIService {
                 "model": provider.model,
                 "messages": [
                     ["role": "system", "content": systemPrompt],
-                    ["role": "user", "content": userPrompt]
+                    ["role": "user", "content": userPrompt],
                 ],
-                "stream": stream
+                "stream": stream,
             ]
         }
 
@@ -310,18 +310,21 @@ final class AIService {
         // OpenAI: choices[0].delta.content
         if let choices = json["choices"] as? [[String: Any]],
            let delta = choices.first?["delta"] as? [String: Any],
-           let text = delta["content"] as? String {
+           let text = delta["content"] as? String
+        {
             return text
         }
         // Claude: type == "content_block_delta"
         if json["type"] as? String == "content_block_delta",
            let delta = json["delta"] as? [String: Any],
-           let text = delta["text"] as? String {
+           let text = delta["text"] as? String
+        {
             return text
         }
         // Ollama: message.content
         if let message = json["message"] as? [String: Any],
-           let text = message["content"] as? String {
+           let text = message["content"] as? String
+        {
             return text
         }
         return nil
@@ -347,7 +350,8 @@ final class AIService {
         )
 
         guard let http = response as? HTTPURLResponse,
-              http.statusCode == 200 else {
+              http.statusCode == 200 else
+        {
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             let body = String(data: data, encoding: .utf8)
                 ?? "Unknown error"
@@ -365,23 +369,27 @@ final class AIService {
             .flatMap({ $0["content"] as? [String: Any] })
             .flatMap({ $0["parts"] as? [[String: Any]] })
             .flatMap(\.first)
-            .flatMap({ $0["text"] as? String }) {
+            .flatMap({ $0["text"] as? String })
+        {
             return text
         }
         // OpenAI: choices[0].message.content
         if let text = (json["choices"] as? [[String: Any]])?.first
             .flatMap({ $0["message"] as? [String: Any] })
-            .flatMap({ $0["content"] as? String }) {
+            .flatMap({ $0["content"] as? String })
+        {
             return text
         }
         // Claude: content[0].text
         if let text = (json["content"] as? [[String: Any]])?.first
-            .flatMap({ $0["text"] as? String }) {
+            .flatMap({ $0["text"] as? String })
+        {
             return text
         }
         // Ollama: message.content
         if let text = (json["message"] as? [String: Any])
-            .flatMap({ $0["content"] as? String }) {
+            .flatMap({ $0["content"] as? String })
+        {
             return text
         }
 

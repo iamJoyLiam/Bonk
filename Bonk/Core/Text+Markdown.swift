@@ -33,11 +33,11 @@ struct MarkdownTextView: View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(parseBlocks().enumerated()), id: \.offset) { _, block in
                 switch block {
-                case let .text(md):
-                    if let attr = try? AttributedString(markdown: md) {
+                case let .text(markdown):
+                    if let attr = try? AttributedString(markdown: markdown) {
                         Text(attr).font(.system(size: 13)).textSelection(.enabled)
                     } else {
-                        Text(md).font(.system(size: 13)).textSelection(.enabled)
+                        Text(markdown).font(.system(size: 13)).textSelection(.enabled)
                     }
                 case let .code(code, _):
                     CodeBlockView(code: code)

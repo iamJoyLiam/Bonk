@@ -118,6 +118,29 @@ final class AIProviderStore: ObservableObject {
         save()
     }
 
+    // MARK: - Model Fetching
+
+    func fetchModels(for provider: AIProviderConfig) {
+        guard let url = AIProviderNetworking.modelsURL(
+            endpoint: provider.endpoint, type: provider.type, apiKey: provider.apiKey
+        ) else { return }
+        Task {
+            do {
+                let request = AIProviderNetworking.makeRequest(
+                    url: url, apiKey: provider.apiKey, type: provider.type
+                )
+                let models = try await AIProviderNetworking.fetchModels(
+                    request: request, type: provider.type
+                )
+                await MainActor.run {
+                    cachedModels[provider.id] = models
+                }
+            } catch {
+                Self.logger.error("Failed to fetch models for \(provider.name): \(error.localizedDescription)")
+            }
+        }
+    }
+
     // MARK: - Convenience
 
     var activeProvider: AIProviderConfig? {

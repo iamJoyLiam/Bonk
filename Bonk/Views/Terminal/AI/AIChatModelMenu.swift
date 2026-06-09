@@ -29,10 +29,10 @@ struct ModelPickerButton: View {
         .popover(isPresented: $isOpen, arrowEdge: .bottom) {
             modelList.frame(width: 220)
                 .onAppear {
-                    // Auto-fetch if cache is empty
                     if let provider = store.activeProvider,
-                       store.cachedModels[provider.id] == nil {
-                        fetchModels(for: provider)
+                       store.cachedModels[provider.id] == nil
+                    {
+                        store.fetchModels(for: provider)
                     }
                 }
         }
@@ -44,20 +44,16 @@ struct ModelPickerButton: View {
             ForEach(store.providers, id: \.id) { provider in
                 let isActive = provider.id == activeID
                 let selectedModel = provider.model
-                let cachedModels = store.cachedModels[provider.id]
-                let hasCache = cachedModels != nil && !cachedModels!.isEmpty
                 let noModel = selectedModel.isEmpty
 
-                if noModel && !hasCache {
-                    // No model configured — skip (shouldn't happen after validation)
+                if noModel, store.cachedModels[provider.id] == nil {
                     EmptyView()
-                } else if hasCache {
-                    // Has cached models → show full list
-                    ForEach(cachedModels!, id: \.self) { model in
+                } else if let models = store.cachedModels[provider.id], !models.isEmpty {
+                    ForEach(models, id: \.self) { model in
                         Button {
-                            var p = provider
-                            p.model = model
-                            store.update(p)
+                            var updated = provider
+                            updated.model = model
+                            store.update(updated)
                             store.setActive(provider.id)
                             isOpen = false
                         } label: {
@@ -94,27 +90,6 @@ struct ModelPickerButton: View {
             }
         }
         .padding(.vertical, 6)
-    }
-
-    private func fetchModels(for provider: AIProviderConfig) {
-        guard let url = AIProviderNetworking.modelsURL(
-            endpoint: provider.endpoint, type: provider.type, apiKey: provider.apiKey
-        ) else { return }
-        Task {
-            do {
-                let request = AIProviderNetworking.makeRequest(
-                    url: url, apiKey: provider.apiKey, type: provider.type
-                )
-                let models = try await AIProviderNetworking.fetchModels(
-                    request: request, type: provider.type
-                )
-                await MainActor.run {
-                    store.cachedModels[provider.id] = models
-                }
-            } catch {
-                // Silently fail — will show configured model only
-            }
-        }
     }
 }
 
