@@ -1,40 +1,32 @@
 import SwiftUI
 
-// MARK: - Bouncing Dots Animation
+// MARK: - Typing Indicator (three pulsing dots)
 
-struct BouncingDots: View {
+struct TypingIndicator: View {
     @State private var phase = 0
-    @State private var timerTask: Task<Void, Never>?
-    let count: Int
-    let size: CGFloat
-    let color: Color
+    @State private var timer: Timer?
 
     var body: some View {
-        HStack(spacing: size * 0.6) {
-            ForEach(0 ..< count, id: \.self) { index in
+        HStack(spacing: 5) {
+            ForEach(0 ..< 3, id: \.self) { index in
                 Circle()
-                    .fill(color)
-                    .frame(width: size, height: size)
-                    .scaleEffect(phase == index ? 1.3 : 0.7)
-                    .animation(
-                        .easeInOut(duration: 0.4)
-                            .repeatForever(autoreverses: true),
-                        value: phase
-                    )
+                    .fill(Color.secondary.opacity(0.6))
+                    .frame(width: 6, height: 6)
+                    .scaleEffect(phase == index ? 1.0 : 0.5)
             }
         }
         .onAppear {
-            timerTask = Task {
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .milliseconds(350))
-                    guard !Task.isCancelled else { break }
-                    phase = (phase + 1) % count
+            timer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { _ in
+                Task { @MainActor in
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        phase = (phase + 1) % 3
+                    }
                 }
             }
         }
         .onDisappear {
-            timerTask?.cancel()
-            timerTask = nil
+            timer?.invalidate()
+            timer = nil
         }
     }
 }
@@ -76,29 +68,31 @@ extension AIChatSidebarView {
 
     func bubble(_ msg: AIMessageRecord) -> some View {
         VStack(alignment: msg.role == .user ? .trailing : .leading, spacing: 4) {
-            // Timestamp
             Text(msg.timestamp, style: .time)
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
 
-            HStack(alignment: .top, spacing: 8) {
-                if msg.role == .assistant { avatar("sparkles") }
-                VStack(alignment: .leading, spacing: 0) {
-                    if msg.role == .assistant {
-                        MarkdownTextView(content: msg.content)
-                    } else {
-                        Text(msg.content)
-                            .font(.system(size: 13))
-                            .textSelection(.enabled)
-                    }
+            if msg.role == .assistant {
+                HStack(alignment: .top, spacing: 8) {
+                    avatar("sparkles")
+                    MarkdownTextView(
+                        content: msg.content,
+                        onExecute: selectedMode == .edit ? { onPaste?($0) } : nil
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(msg.role == .user
-                    ? Color.accentColor.opacity(0.08)
-                    : Color(nsColor: .controlColor))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                if msg.role == .user { avatar("person.fill") }
+            } else {
+                HStack(alignment: .top, spacing: 8) {
+                    Spacer()
+                    Text(msg.content)
+                        .font(.system(size: 13))
+                        .textSelection(.enabled)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.accentColor.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    avatar("person.fill")
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: msg.role == .user ? .trailing : .leading)
@@ -108,23 +102,16 @@ extension AIChatSidebarView {
         HStack(alignment: .top, spacing: 8) {
             avatar("sparkles")
             MarkdownTextView(content: text)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color(nsColor: .controlColor))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     var loadingBubble: some View {
         HStack(alignment: .top, spacing: 8) {
             avatar("sparkles")
-            HStack(spacing: 8) {
-                BouncingDots(count: 3, size: 5, color: .secondary)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(Color(nsColor: .controlColor))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            TypingIndicator()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
         }
     }
 

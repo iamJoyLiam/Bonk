@@ -71,23 +71,41 @@ final class AIService {
         streamingResponse = ""
         defer { isProcessing = false }
 
+        // swiftlint:disable:next line_length
         Log.ai.info("\(label): provider=\(provider.name, privacy: .public) model=\(provider.model, privacy: .public)")
 
-        do {
-            let response = try await streamRequest(
-                provider: provider,
-                apiKey: apiKey,
-                systemPrompt: systemPrompt,
-                userPrompt: userPrompt
-            )
-            Log.ai.info("\(label): response(\(response.count) chars)")
-            if response.isEmpty {
-                Log.ai.warning("\(label): empty response from \(provider.name, privacy: .public)/\(provider.model, privacy: .public)")
+        let maxRetries = 2
+        for attempt in 0 ... maxRetries {
+            do {
+                let response = try await streamRequest(
+                    provider: provider,
+                    apiKey: apiKey,
+                    systemPrompt: systemPrompt,
+                    userPrompt: userPrompt
+                )
+                let sanitized = AIOutputSanitizer.sanitize(response)
+                if sanitized != response {
+                    Log.ai.warning("\(label): output sanitized (contained dangerous content)")
+                }
+                Log.ai.info("\(label): response(\(sanitized.count) chars)")
+                if sanitized.isEmpty {
+                    // swiftlint:disable:next line_length
+                    Log.ai.warning("\(label): empty response from \(provider.name, privacy: .public)/\(provider.model, privacy: .public)")
+                }
+                if !Task.isCancelled { currentExplanation = sanitized }
+                return // success
+            } catch {
+                if Task.isCancelled { return }
+                if attempt < maxRetries {
+                    let delay = UInt64(attempt + 1) * 1_000_000_000 // 1s, 2s
+                    // swiftlint:disable:next line_length
+                    Log.ai.warning("\(label): attempt \(attempt + 1) failed, retrying: \(error.localizedDescription, privacy: .public)")
+                    try? await Task.sleep(nanoseconds: delay)
+                } else {
+                    lastError = error.localizedDescription
+                    Log.ai.error("\(label): all \(maxRetries + 1) attempts failed: \(error.localizedDescription, privacy: .public)")
+                }
             }
-            if !Task.isCancelled { currentExplanation = response }
-        } catch {
-            lastError = error.localizedDescription
-            Log.ai.error("\(label): error=\(error.localizedDescription, privacy: .public)")
         }
     }
 

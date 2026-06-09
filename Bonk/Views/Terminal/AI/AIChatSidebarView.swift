@@ -7,24 +7,19 @@ struct AIChatSidebarView: View {
     @EnvironmentObject var i18n: I18n
     @Environment(\.modelContext) var modelContext
     let sshService: SSHNetworkService?
-    @State var aiService = AIService.shared
+    var onPaste: ((String) -> Void)?
+    @State var engine = AgentEngine.shared
     @ObservedObject var providerStore = AIProviderStore.shared
     @State var conversationStore = AIConversationStore.shared
     @Query(sort: \AIConversationRecord.updatedAt, order: .reverse)
     var conversations: [AIConversationRecord]
     @State var currentConversation: AIConversationRecord?
     @State var inputText = ""
-    @State var isProcessing = false
-    @State var currentTask: Task<Void, Never>?
     @State var showHistory = false
     @State var selectedMode: AIMode = .ask
     @FocusState var isInputFocused: Bool
 
     @AppStorage("ai_enabled") var aiEnabled = false
-
-    // Agent mode
-    @State var agentSession: AgentSession?
-    @State var agentMessages: [AgentMessage] = []
 
     @State var rotationAngle: Double = 0
     @State var wasCancelled = false
@@ -57,16 +52,16 @@ struct AIChatSidebarView: View {
         }
         .confirmationDialog(
             i18n.t(.confirmCommand),
-            isPresented: .constant(agentSession?.pendingConfirmation != nil),
-            presenting: agentSession?.pendingConfirmation
+            isPresented: .constant(engine.pendingConfirmation != nil),
+            presenting: engine.pendingConfirmation
         ) { pending in
             Button(i18n.t(.execute), role: .destructive) {
                 pending.continuation(true)
-                agentSession?.pendingConfirmation = nil
+                engine.pendingConfirmation = nil
             }
             Button(i18n.t(.cancel), role: .cancel) {
                 pending.continuation(false)
-                agentSession?.pendingConfirmation = nil
+                engine.pendingConfirmation = nil
             }
         } message: { pending in
             Text("\(pending.riskLevel == .dangerous ? "⚠️ Dangerous" : "⚠️ Moderate") command:\n\(pending.command)")
@@ -133,27 +128,27 @@ struct AIChatSidebarView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
-                    if messages.isEmpty, !isProcessing {
+                    if messages.isEmpty, !engine.isProcessing {
                         emptyState
                     }
                     ForEach(messages) { msg in
                         bubble(msg)
                     }
-                    if isProcessing {
-                        if aiService.streamingResponse.isEmpty {
+                    if engine.isProcessing {
+                        if engine.streamingResponse.isEmpty {
                             loadingBubble
                         } else {
-                            streamingBubble(aiService.streamingResponse)
+                            streamingBubble(engine.streamingResponse)
                         }
                     }
-                    if wasCancelled, !isProcessing {
+                    if wasCancelled, !engine.isProcessing {
                         stoppedIndicator
                     }
                     Color.clear.frame(height: 1).id("bottom")
                 }
                 .padding(12)
             }
-            .onChange(of: aiService.streamingResponse) { _, _ in
+            .onChange(of: engine.streamingResponse) { _, _ in
                 withAnimation(AppStyle.animationFast) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             .onChange(of: messages.count) { _, _ in
@@ -168,20 +163,20 @@ struct AIChatSidebarView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
-                    if agentMessages.isEmpty, !isProcessing {
+                    if engine.agentMessages.isEmpty, !engine.isProcessing {
                         agentEmptyState
                     }
-                    ForEach(agentMessages) { msg in
+                    ForEach(engine.agentMessages) { msg in
                         agentBubble(msg)
                     }
-                    if isProcessing {
+                    if engine.isProcessing {
                         loadingBubble
                     }
                     Color.clear.frame(height: 1).id("agentBottom")
                 }
                 .padding(12)
             }
-            .onChange(of: agentMessages.count) { _, _ in
+            .onChange(of: engine.agentMessages.count) { _, _ in
                 withAnimation(AppStyle.animationFast) { proxy.scrollTo("agentBottom", anchor: .bottom) }
             }
         }
@@ -200,7 +195,7 @@ struct AIChatSidebarView: View {
                     .textFieldStyle(.plain).font(.system(size: 12))
                     .focused($isInputFocused).onSubmit { submit() }
 
-                if isProcessing {
+                if engine.isProcessing {
                     Button { cancelCurrentTask() } label: {
                         Image(systemName: "stop.circle.fill")
                             .font(.system(size: 12))
@@ -234,7 +229,7 @@ struct AIChatSidebarView: View {
         .padding(.horizontal, 10).padding(.vertical, 8)
         .onAppear {
             providerStore.setModelContext(modelContext)
-            aiService.activeProvider = providerStore.activeProvider
+            engine.activeProvider = providerStore.activeProvider
             withAnimation(.linear(duration: 4.0).repeatForever(autoreverses: false)) { rotationAngle = 360 }
         }
     }
@@ -263,37 +258,26 @@ struct AIChatSidebarView: View {
     // MARK: - Actions
 
     private func cancelCurrentTask() {
-        currentTask?.cancel()
-        currentTask = nil
-        isProcessing = false
         wasCancelled = true
-        if selectedMode == .agent {
-            agentSession?.cancel()
+        let partial = engine.streamingResponse
+        engine.cancel()
+
+        if !partial.isEmpty, let conversation = currentConversation {
+            conversationStore.addMessage(
+                to: conversation, role: .assistant,
+                content: partial, context: modelContext
+            )
         }
-        // Keep the partial streaming response visible — don't clear it
-        let partial = aiService.streamingResponse
-        aiService.currentExplanation = nil
-        if !partial.isEmpty {
-            // Save partial response as a message
-            if let conversation = currentConversation {
-                conversationStore.addMessage(
-                    to: conversation, role: .assistant,
-                    content: partial, context: modelContext
-                )
-            }
-        }
-        aiService.streamingResponse = ""
     }
 
     private func createNewConversation() {
         if selectedMode == .agent {
-            agentMessages = []
-            agentSession = nil
+            engine.agentMessages = []
         } else {
             let conv = conversationStore.createConversation(context: modelContext)
             currentConversation = conv
             inputText = ""
-            aiService.streamingResponse = ""
+            engine.streamingResponse = ""
         }
     }
 
@@ -309,80 +293,45 @@ struct AIChatSidebarView: View {
     }
 
     private func submitChat(text: String) {
-        if currentConversation == nil {
-            createNewConversation()
-        }
-
+        if currentConversation == nil { createNewConversation() }
         guard let conversation = currentConversation else { return }
 
-        let modePrefix = switch selectedMode {
-        case .ask: ""
-        case .edit: "[Edit mode] Suggest a terminal command if relevant. "
-        case .agent: "" // Agent uses separate flow
-        }
-
         conversationStore.addMessage(to: conversation, role: .user, content: text, context: modelContext)
-        isProcessing = true
         wasCancelled = false
         inputText = ""
-        currentTask?.cancel()
 
-        currentTask = Task {
-            await aiService.chat(modePrefix + text, context: TerminalContext())
-            await MainActor.run {
-                isProcessing = false
-                guard !wasCancelled else { return }
-                let response = aiService.currentExplanation
-                    ?? aiService.streamingResponse
-                    ?? ""
-                aiService.currentExplanation = nil
-                aiService.streamingResponse = ""
+        Task {
+            let response = await engine.execute(input: text, mode: selectedMode)
+            guard !wasCancelled else { return }
 
-                if response.isEmpty {
-                    let error = aiService.lastError ?? "No response from AI. Check your API key and model settings."
-                    conversationStore.addMessage(
-                        to: conversation,
-                        role: .assistant,
-                        content: "⚠️ \(error)",
-                        context: modelContext
-                    )
-                } else {
-                    conversationStore.addMessage(
-                        to: conversation,
-                        role: .assistant,
-                        content: response,
-                        context: modelContext
-                    )
-                }
+            if let response, !response.isEmpty {
+                conversationStore.addMessage(
+                    to: conversation, role: .assistant,
+                    content: response, context: modelContext
+                )
+            } else {
+                let error = engine.lastError ?? "No response from AI. Check your API key and model settings."
+                conversationStore.addMessage(
+                    to: conversation, role: .assistant,
+                    content: "⚠️ \(error)", context: modelContext
+                )
             }
         }
     }
 
     private func submitAgent(text: String) {
-        // Initialize agent session if needed
-        if agentSession == nil {
-            guard let ssh = sshService else {
-                agentMessages = [AgentMessage(
-                    role: .system,
-                    content: i18n.t(.noSSHConnectionAgent)
-                )]
-                return
-            }
-            agentSession = AgentSession(sshService: ssh, aiService: aiService)
+        guard let ssh = sshService else {
+            engine.agentMessages = [AgentMessage(
+                role: .system, content: i18n.t(.noSSHConnectionAgent)
+            )]
+            return
         }
 
-        guard let session = agentSession else { return }
-
-        isProcessing = true
         inputText = ""
-        currentTask?.cancel()
+        wasCancelled = false
 
-        currentTask = Task {
-            await session.run(userInput: text)
-            await MainActor.run {
-                isProcessing = false
-                agentMessages = session.messages
-            }
+        Task {
+            await engine.runAgent(input: text, sshService: ssh)
         }
     }
 }

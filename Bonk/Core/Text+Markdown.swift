@@ -26,12 +26,16 @@ extension Text {
 
 /// A view that renders markdown with proper code block styling.
 /// Use this instead of Text.markdown() when code blocks need copy buttons.
+/// Caches parsed blocks to avoid re-parsing on every render cycle.
 struct MarkdownTextView: View {
     let content: String
+    var onExecute: ((String) -> Void)?
+    @State private var cachedBlocks: [MarkdownBlock] = []
+    @State private var lastParsedLength: Int = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(parseBlocks().enumerated()), id: \.offset) { _, block in
+            ForEach(Array(cachedBlocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case let .text(markdown):
                     if let attr = try? AttributedString(markdown: markdown) {
@@ -40,19 +44,33 @@ struct MarkdownTextView: View {
                         Text(markdown).font(.system(size: 13)).textSelection(.enabled)
                     }
                 case let .code(code, _):
-                    CodeBlockView(code: code)
+                    CodeBlockView(code: code, onExecute: onExecute)
                 }
             }
         }
+        .onChange(of: content.count) { _, newCount in
+            // Re-parse only when content grows by 50+ chars or shrinks (new message)
+            if newCount < lastParsedLength || newCount - lastParsedLength > 50 || lastParsedLength == 0 {
+                cachedBlocks = MarkdownBlock.parse(content)
+                lastParsedLength = newCount
+            }
+        }
+        .onAppear {
+            cachedBlocks = MarkdownBlock.parse(content)
+            lastParsedLength = content.count
+        }
     }
+}
 
-    private enum Block {
-        case text(String)
-        case code(String, String?) // code, language
-    }
+// MARK: - Markdown Block Model
 
-    private func parseBlocks() -> [Block] {
-        var blocks: [Block] = []
+enum MarkdownBlock {
+    case text(String)
+    case code(String, String?) // code, language
+
+    /// Parse markdown text into blocks. Handles incomplete code blocks (streaming).
+    static func parse(_ content: String) -> [MarkdownBlock] {
+        var blocks: [MarkdownBlock] = []
         var currentText = ""
         var inCode = false
         var codeContent = ""
@@ -61,19 +79,17 @@ struct MarkdownTextView: View {
         for line in content.components(separatedBy: "\n") {
             if line.hasPrefix("```") {
                 if inCode {
-                    // End code block
                     blocks.append(.code(codeContent.trimmingCharacters(in: .newlines), codeLang))
                     codeContent = ""
                     codeLang = nil
                     inCode = false
                 } else {
-                    // Start code block
                     if !currentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         blocks.append(.text(currentText.trimmingCharacters(in: .newlines)))
                     }
                     currentText = ""
-                    codeLang = line.dropFirst(3).trimmingCharacters(in: .whitespacesAndNewlines)
-                    if codeLang?.isEmpty == true { codeLang = nil }
+                    let lang = line.dropFirst(3).trimmingCharacters(in: .whitespacesAndNewlines)
+                    codeLang = lang.isEmpty ? nil : lang
                     inCode = true
                 }
             } else if inCode {
@@ -83,6 +99,7 @@ struct MarkdownTextView: View {
             }
         }
 
+        // Handle incomplete code block (streaming — no closing ```)
         if inCode {
             blocks.append(.code(codeContent.trimmingCharacters(in: .newlines), codeLang))
         }
@@ -98,12 +115,22 @@ struct MarkdownTextView: View {
 
 struct CodeBlockView: View {
     let code: String
+    var onExecute: ((String) -> Void)?
     @State private var copied = false
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 0) {
-            HStack {
+            HStack(spacing: 4) {
                 Spacer()
+                if let onExecute {
+                    Button { onExecute(code) } label: {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.green)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Execute command")
+                }
                 Button {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(code, forType: .string)

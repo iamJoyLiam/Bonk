@@ -84,7 +84,14 @@ struct ContentView: View {
                             )
                         }
                     case .aiChat:
-                        AIChatSidebarView(sshService: sessionManager.activeTab?.sshService)
+                        AIChatSidebarView(
+                            sshService: sessionManager.activeTab?.sshService,
+                            onPaste: { text in
+                                guard let activeTab = sessionManager.activeTab else { return }
+                                let bytes = Array(text.utf8 + [13]) // 13 = Enter
+                                Task { try? await sessionManager.sendInput(bytes[...], to: activeTab.id) }
+                            }
+                        )
                     }
                 }
             }
