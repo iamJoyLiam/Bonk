@@ -208,76 +208,77 @@ final class AgentEngine {
                 return
             }
 
-            let aiMessages = buildAgentMessages()
-            guard let (provider, apiKey) = resolveProvider() else {
-                agentMessages.append(AgentMessage(role: .system, content: lastError ?? "No provider"))
-                return
-            }
-
-            // Call AI (non-streaming)
-            let response: String
-            do {
-                response = try await executeNonStreaming(
-                    provider: provider, apiKey: apiKey,
-                    systemPrompt: AgentPrompts.systemPrompt,
-                    userPrompt: aiMessages.map { "\($0["role"] ?? "user"): \($0["content"] ?? "")" }
-                        .joined(separator: "\n\n")
-                )
-            } catch {
-                agentMessages.append(AgentMessage(role: .system, content: "AI error: \(error.localizedDescription)"))
-                return
-            }
-
-            let sanitized = sanitizer.sanitize(response)
-            let parsed = ResponseParser.parse(sanitized)
-
-            agentMessages.append(AgentMessage(
-                role: .assistant,
-                content: parsed.response,
-                command: parsed.command,
-                thinking: parsed.thinking
-            ))
-
-            guard let command = parsed.command, !command.isEmpty else { return }
-
-            // Safety check
-            let safety = CommandSafety.classify(command)
-            if safety == .blocked {
-                agentMessages.append(AgentMessage(
-                    role: .system, content: "Blocked: \(command)"
-                ))
-                return
-            }
-
-            if safety == .dangerous || safety == .moderate {
-                let confirmed = await requestConfirmation(
-                    command: command,
-                    riskLevel: safety == .dangerous ? .dangerous : .moderate
-                )
-                guard confirmed else {
-                    agentMessages.append(AgentMessage(role: .system, content: "Declined: \(command)"))
-                    return
-                }
-            }
-
-            // Execute via SSH
-            do {
-                let output = try await withTimeout(seconds: 30) {
-                    try await sshService.executeCommand(command)
-                }
-                let truncated = String(output.prefix(4000))
-                agentMessages.append(AgentMessage(role: .commandOutput, content: truncated))
-            } catch {
-                agentMessages.append(AgentMessage(
-                    role: .system, content: "Execution failed: \(error.localizedDescription)"
-                ))
-                return
-            }
+            let shouldContinue = await runAgentIteration(sshService: sshService)
+            guard shouldContinue else { return }
         }
 
         agentMessages.append(AgentMessage(
             role: .system, content: "Reached maximum iterations (10). Stopping."
         ))
+    }
+
+    /// Single iteration of the agent loop. Returns false if the loop should stop.
+    private func runAgentIteration(sshService: SSHNetworkService) async -> Bool {
+        let aiMessages = buildAgentMessages()
+        guard let (provider, apiKey) = resolveProvider() else {
+            agentMessages.append(AgentMessage(role: .system, content: lastError ?? "No provider"))
+            return false
+        }
+
+        // Call AI
+        let response: String
+        do {
+            let prompt = aiMessages.map { "\($0["role"] ?? "user"): \($0["content"] ?? "")" }
+                .joined(separator: "\n\n")
+            response = try await executeNonStreaming(
+                provider: provider, apiKey: apiKey,
+                systemPrompt: AgentPrompts.systemPrompt, userPrompt: prompt
+            )
+        } catch {
+            agentMessages.append(AgentMessage(role: .system, content: "AI error: \(error.localizedDescription)"))
+            return false
+        }
+
+        let sanitized = sanitizer.sanitize(response)
+        let parsed = ResponseParser.parse(sanitized)
+
+        agentMessages.append(AgentMessage(
+            role: .assistant, content: parsed.response,
+            command: parsed.command, thinking: parsed.thinking
+        ))
+
+        guard let command = parsed.command, !command.isEmpty else { return false }
+
+        // Safety check
+        let safety = CommandSafety.classify(command)
+        if safety == .blocked {
+            agentMessages.append(AgentMessage(role: .system, content: "Blocked: \(command)"))
+            return false
+        }
+
+        if safety == .dangerous || safety == .moderate {
+            let riskLevel: PendingCommand.RiskLevel = safety == .dangerous ? .dangerous : .moderate
+            let confirmed = await requestConfirmation(command: command, riskLevel: riskLevel)
+            guard confirmed else {
+                agentMessages.append(AgentMessage(role: .system, content: "Declined: \(command)"))
+                return false
+            }
+        }
+
+        // Execute via SSH
+        do {
+            let output = try await withTimeout(seconds: 30) {
+                try await sshService.executeCommand(command)
+            }
+            agentMessages.append(AgentMessage(role: .commandOutput, content: String(output.prefix(4000))))
+        } catch {
+            agentMessages.append(AgentMessage(
+                role: .system, content: "Execution failed: \(error.localizedDescription)"
+            ))
+            return false
+        }
+
+        return true
     }
 
     private func buildAgentMessages() -> [[String: String]] {
@@ -315,7 +316,10 @@ final class AgentEngine {
 
     // MARK: - Timeout Helper
 
-    private func withTimeout<T: Sendable>(seconds: TimeInterval, operation: @escaping @Sendable () async throws -> T) async throws -> T {
+    private func withTimeout<T: Sendable>(
+        seconds: TimeInterval,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
         try await withThrowingTaskGroup(of: T.self) { group in
             group.addTask { try await operation() }
             group.addTask {

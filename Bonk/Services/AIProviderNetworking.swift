@@ -81,7 +81,7 @@ enum AIProviderNetworking {
     // MARK: - Build Chat Request
 
     /// Build a provider-specific chat request (streaming or non-streaming).
-    static func buildRequest(
+    static func buildRequest( // swiftlint:disable:this function_body_length
         provider: AIProviderConfig,
         apiKey: String,
         systemPrompt: String,
