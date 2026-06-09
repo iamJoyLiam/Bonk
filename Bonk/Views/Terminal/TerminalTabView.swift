@@ -175,13 +175,14 @@ struct TerminalTabView: View {
         } message: {
             Text(i18n.t(.enterNewName))
         }
-        .alert("AI Assistant", isPresented: $showAIEnableAlert) {
-            Button("Go to Settings") {
+        .alert(i18n.t(.aiAssistant), isPresented: $showAIEnableAlert) {
+            Button(i18n.t(.goToSettings)) {
+                UserDefaults.standard.set("ai", forKey: "settings_selected_tab")
                 NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
             }
-            Button("Cancel", role: .cancel) {}
+            Button(i18n.t(.cancel), role: .cancel) {}
         } message: {
-            Text("Please enable AI in Settings → AI first.")
+            Text(i18n.t(.enableAIHint))
         }
         .onChange(of: renamingTab?.id) { _, _ in
             if let tab = renamingTab {

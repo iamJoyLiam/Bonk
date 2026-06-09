@@ -13,11 +13,19 @@ enum AIMode: String, CaseIterable {
         }
     }
 
+    var localizedName: String {
+        switch self {
+        case .ask: L.t(.aiModeAsk)
+        case .edit: L.t(.aiModeEdit)
+        case .agent: L.t(.aiModeAgent)
+        }
+    }
+
     var description: String {
         switch self {
-        case .ask: "Answer questions only"
-        case .edit: "Suggest terminal commands"
-        case .agent: "Execute commands automatically"
+        case .ask: L.t(.aiModeAskDesc)
+        case .edit: L.t(.aiModeEditDesc)
+        case .agent: L.t(.aiModeAgentDesc)
         }
     }
 }

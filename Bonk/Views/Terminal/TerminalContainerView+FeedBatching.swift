@@ -25,13 +25,21 @@ import SwiftTerm
                 for await text in stream {
                     guard !Task.isCancelled else { break }
                     let byteCount = text.utf8.count
-                    let shouldFlush = batchBuffer.withLock { buf -> Bool in
+                    let (shouldFlush, endsCR) = batchBuffer.withLock { buf -> (Bool, Bool) in
                         buf += text
-                        return buf.utf8.count >= Self.batchThreshold
+                        let endsCR = buf.utf8.last == 0x0D
+                            && buf.utf8.count >= 2
+                            && buf.utf8.dropLast().last != 0x0A
+                        return (buf.utf8.count >= Self.batchThreshold, endsCR)
                     }
                     if shouldFlush {
                         flushBatch()
-                    } else {
+                    } else if !endsCR {
+                        // Normal path: schedule time-based flush.
+                        // When buffer ends with bare CR, skip the flush so the
+                        // CR and its replacement text stay in the same batch —
+                        // prevents garbled output from programs like Docker
+                        // Compose that use \r for in-place line updates.
                         scheduleFlush()
                     }
                     onBytesProcessed?(byteCount)

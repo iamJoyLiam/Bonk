@@ -19,10 +19,10 @@ extension AIChatSidebarView {
             Image(systemName: "terminal")
                 .font(.system(size: 28))
                 .foregroundStyle(.tertiary)
-            Text("Agent Mode")
+            Text(i18n.t(.agentMode))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.secondary)
-            Text("Describe a task and I'll execute commands to complete it.")
+            Text(i18n.t(.agentModeDesc))
                 .font(.system(size: 12))
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
@@ -50,7 +50,9 @@ extension AIChatSidebarView {
     func streamingBubble(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             avatar("sparkles")
-            Text(text).font(.system(size: 13))
+            Text.markdown(text)
+                .font(.system(size: 13))
+                .textSelection(.enabled)
                 .padding(10)
                 .background(Color(nsColor: .controlColor))
                 .clipShape(.rect(cornerRadius: 10))
@@ -63,7 +65,7 @@ extension AIChatSidebarView {
             HStack(spacing: 6) {
                 ProgressView()
                     .controlSize(.mini)
-                Text("Thinking...")
+                Text(i18n.t(.aiThinking))
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
@@ -71,6 +73,19 @@ extension AIChatSidebarView {
             .background(Color(nsColor: .controlColor))
             .clipShape(.rect(cornerRadius: 10))
         }
+    }
+
+    var stoppedIndicator: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "stop.circle")
+                .font(.system(size: 11))
+            Text(i18n.t(.aiStopped))
+                .font(.system(size: 11))
+        }
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Agent Bubbles

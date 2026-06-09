@@ -22,19 +22,32 @@ enum AIProviderNetworking {
         return request
     }
 
+    // MARK: - Endpoint Normalization
+
+    /// Strip trailing `/v1` (or `/v1/`) from an endpoint to avoid double path segments.
+    /// Users often enter `https://api.example.com/v1` as the endpoint, but the code
+    /// appends `/v1/models` or `/v1/chat/completions`, producing `/v1/v1/...`.
+    static func baseEndpoint(_ endpoint: String) -> String {
+        var s = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        while s.hasSuffix("/") { s = String(s.dropLast()) }
+        if s.hasSuffix("/v1") { s = String(s.dropLast(3)) }
+        return s
+    }
+
     // MARK: - Models URL
 
     static func modelsURL(endpoint: String, type: AIProviderType, apiKey _: String) -> URL? {
-        guard var components = URLComponents(string: endpoint) else { return nil }
+        let base = baseEndpoint(endpoint)
+        guard var components = URLComponents(string: base) else { return nil }
 
         switch type {
-        case .openAI, .openRouter, .openCode, .claude:
-            components.path = components.path.trimmingSuffix("/") + "/v1/models"
+        case .openAI, .openRouter, .openCode, .claude, .custom:
+            components.path = "/v1/models"
         case .gemini:
-            components.path = components.path.trimmingSuffix("/") + "/v1beta/models"
+            components.path = "/v1beta/models"
         case .ollama:
-            components.path = components.path.trimmingSuffix("/") + "/api/tags"
-        case .copilot, .custom:
+            components.path = "/api/tags"
+        case .copilot:
             return nil
         }
 

@@ -11,7 +11,7 @@ struct AISettingsView: View {
     @AppStorage("ai_include_env") private var includeEnvironmentInfo = false
     @AppStorage("ai_connection_policy") private var defaultConnectionPolicyRaw = "askEachTime"
 
-    @StateObject private var store = AIProviderStore()
+    @StateObject private var store = AIProviderStore.shared
 
     @State private var editingProviderID: UUID?
     @State private var addingProviderType: AIProviderType?

@@ -58,9 +58,10 @@ enum AIRequestBuilder {
         messages: [[String: String]],
         maxTokens: Int
     ) throws -> RequestComponents {
+        let endpoint = AIProviderNetworking.baseEndpoint(endpoint)
         switch provider.type {
         case .claude:
-            try buildClaude(
+            return try buildClaude(
                 endpoint: endpoint,
                 apiKey: apiKey,
                 model: provider.model,
@@ -68,7 +69,7 @@ enum AIRequestBuilder {
                 maxTokens: maxTokens
             )
         case .openAI, .openRouter, .openCode, .copilot, .custom:
-            try buildOpenAI(
+            return try buildOpenAI(
                 endpoint: endpoint,
                 apiKey: apiKey,
                 model: provider.model,
@@ -76,13 +77,13 @@ enum AIRequestBuilder {
                 maxTokens: maxTokens
             )
         case .ollama:
-            try buildOllama(
+            return try buildOllama(
                 endpoint: endpoint,
                 model: provider.model,
                 messages: messages
             )
         case .gemini:
-            try buildGemini(
+            return try buildGemini(
                 endpoint: endpoint,
                 apiKey: apiKey,
                 model: provider.model,

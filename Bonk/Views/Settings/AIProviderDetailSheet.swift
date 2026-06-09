@@ -17,6 +17,7 @@ struct AIProviderDetailSheet: View {
     @State private var isFetchingModels = false
     @State private var modelFetchError: String?
     @State private var modelFetchTask: Task<Void, Never>?
+    @State private var showModelRequiredAlert = false
 
     @StateObject private var copilotService = CopilotService.shared
 
@@ -60,17 +61,30 @@ struct AIProviderDetailSheet: View {
                         .keyboardShortcut(.cancelAction)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(i18n.t(.save)) { cancelTasks(); onSave(draft) }
-                        .keyboardShortcut(.defaultAction)
+                    Button(i18n.t(.save)) {
+                        if draft.type == .custom && draft.model.trimmingCharacters(in: .whitespaces).isEmpty {
+                            showModelRequiredAlert = true
+                        } else {
+                            cancelTasks(); onSave(draft)
+                        }
+                    }
+                    .keyboardShortcut(.defaultAction)
                 }
             }
             .onAppear {
                 if draft.type == .copilot { Task { await copilotService.start() } }
-                if draft.type == .ollama { fetchModels() }
+                if draft.type == .ollama || (draft.type.needsAPIKey && !draft.apiKey.isEmpty) {
+                    fetchModels()
+                }
             }
             .onDisappear { cancelTasks() }
         }
         .frame(minWidth: 520, minHeight: 480)
+        .alert(i18n.t(.modelRequired), isPresented: $showModelRequiredAlert) {
+            Button(i18n.t(.ok), role: .cancel) {}
+        } message: {
+            Text(i18n.t(.modelRequiredHint))
+        }
         .confirmationDialog(i18n.t(.removeProviderQ), isPresented: $showRemoveConfirmation, titleVisibility: .visible) {
             Button(i18n.t(.removeProvider), role: .destructive) { onDelete?() }
             Button(i18n.t(.cancel), role: .cancel) {}
@@ -311,6 +325,8 @@ struct AIProviderDetailSheet: View {
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     fetchedModels = models
+                    // Persist to shared store so sidebar can access
+                    AIProviderStore.shared.cachedModels[draft.id] = models
                     if draft.model.isEmpty, let first = models.first { draft.model = first }
                     isFetchingModels = false
                 }
@@ -325,24 +341,22 @@ struct AIProviderDetailSheet: View {
         let trimmed = draft.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { testResult = .failure(i18n.t(.apiKeyRequired)); return }
 
-        // For custom providers, test the endpoint directly; for others, test the models URL
-        let testURL: URL?
-        if draft.type == .custom {
-            testURL = URL(string: draft.endpoint)
-        } else {
-            testURL = AIProviderNetworking.modelsURL(
-                endpoint: draft.endpoint, type: draft.type, apiKey: draft.apiKey
-            )
-        }
-        guard let url = testURL else {
-            testResult = .failure(i18n.t(.connectionTestFailed)); return
-        }
-
         isTesting = true; testResult = nil
         Task {
             do {
-                let request = AIProviderNetworking.makeRequest(url: url, apiKey: draft.apiKey, type: draft.type)
-                let isSuccess = try await AIProviderNetworking.testConnection(request: request)
+                let isSuccess: Bool
+                if draft.type == .custom {
+                    isSuccess = try await testCustomProvider()
+                } else {
+                    guard let url = AIProviderNetworking.modelsURL(
+                        endpoint: draft.endpoint, type: draft.type, apiKey: draft.apiKey
+                    ) else {
+                        await MainActor.run { isTesting = false; testResult = .failure(i18n.t(.connectionTestFailed)) }
+                        return
+                    }
+                    let request = AIProviderNetworking.makeRequest(url: url, apiKey: draft.apiKey, type: draft.type)
+                    isSuccess = try await AIProviderNetworking.testConnection(request: request)
+                }
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     isTesting = false
@@ -354,6 +368,43 @@ struct AIProviderDetailSheet: View {
                 await MainActor.run { isTesting = false; testResult = .failure(error.localizedDescription) }
             }
         }
+    }
+
+    /// Test a custom provider by sending a minimal POST request.
+    /// Distinguishes auth errors (bad key) from model errors (endpoint+key valid).
+    private func testCustomProvider() async throws -> Bool {
+        let base = AIProviderNetworking.baseEndpoint(draft.endpoint)
+        guard let url = URL(string: base + "/v1/chat/completions") else { return false }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if !draft.apiKey.isEmpty {
+            request.setValue("Bearer \(draft.apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": "test",
+            "messages": [["role": "user", "content": "hi"]],
+            "max_tokens": 1,
+        ])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { return false }
+
+        // 2xx–3xx: endpoint and key are valid
+        if http.statusCode < 400 { return true }
+
+        // 401/403: auth failure — endpoint reachable but key is wrong
+        if http.statusCode == 401 || http.statusCode == 403 { return false }
+
+        // Other 4xx/5xx: check if the error is about the model (not auth).
+        // If so, the endpoint and key are valid — just the test model doesn't exist.
+        if let body = String(data: data, encoding: .utf8)?.lowercased() {
+            let modelRelated = body.contains("model") || body.contains("not found")
+                || body.contains("invalid_request") || body.contains("does not exist")
+            if modelRelated { return true }
+        }
+
+        return false
     }
 
     // MARK: - Copilot Actions

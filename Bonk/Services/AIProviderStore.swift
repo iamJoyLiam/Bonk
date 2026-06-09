@@ -9,9 +9,14 @@ import SwiftData
 final class AIProviderStore: ObservableObject {
     @Published var providers: [AIProviderConfig] = []
     @Published var activeProviderID: UUID?
+    /// Cached model lists keyed by provider ID. Populated by fetchModels calls.
+    @Published var cachedModels: [UUID: [String]] = [:]
 
     private static let logger = Logger(subsystem: "com.bonk", category: "AIProviderStore")
     private var modelContext: ModelContext?
+
+    /// Shared singleton used by both sidebar and settings.
+    static let shared = AIProviderStore()
 
     init() {}
 

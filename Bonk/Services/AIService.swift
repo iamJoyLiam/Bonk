@@ -112,9 +112,9 @@ final class AIService {
         userPrompt: String,
         stream: Bool
     ) throws -> URLRequest {
-        let endpoint = provider.endpoint.isEmpty
-            ? provider.type.defaultEndpoint
-            : provider.endpoint
+        let endpoint = AIProviderNetworking.baseEndpoint(
+            provider.endpoint.isEmpty ? provider.type.defaultEndpoint : provider.endpoint
+        )
         guard !endpoint.isEmpty else { throw AIError.invalidEndpoint }
 
         let maxTokens = provider.maxOutputTokens ?? 500

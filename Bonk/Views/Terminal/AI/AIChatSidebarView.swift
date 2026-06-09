@@ -8,7 +8,7 @@ struct AIChatSidebarView: View {
     @Environment(\.modelContext) var modelContext
     let sshService: SSHNetworkService?
     @State var aiService = AIService.shared
-    @State var providerStore = AIProviderStore()
+    @State var providerStore = AIProviderStore.shared
     @State var conversationStore = AIConversationStore.shared
     @Query(sort: \AIConversationRecord.updatedAt, order: .reverse)
     var conversations: [AIConversationRecord]
@@ -27,8 +27,8 @@ struct AIChatSidebarView: View {
     @State var agentMessages: [AgentMessage] = []
 
     @State var rotationAngle: Double = 0
-    @State var fetchedModels: [String] = []
-    @State var isFetchingModels = false
+    @State var wasCancelled = false
+    @State var showModelPicker = false
     @State var pendingDeleteConversation: UUID?
 
     private var aiColors: [Color] {
@@ -56,15 +56,15 @@ struct AIChatSidebarView: View {
             }
         }
         .confirmationDialog(
-            "Confirm Command",
+            i18n.t(.confirmCommand),
             isPresented: .constant(agentSession?.pendingConfirmation != nil),
             presenting: agentSession?.pendingConfirmation
         ) { pending in
-            Button("Execute", role: .destructive) {
+            Button(i18n.t(.execute), role: .destructive) {
                 pending.continuation(true)
                 agentSession?.pendingConfirmation = nil
             }
-            Button("Cancel", role: .cancel) {
+            Button(i18n.t(.cancel), role: .cancel) {
                 pending.continuation(false)
                 agentSession?.pendingConfirmation = nil
             }
@@ -79,19 +79,20 @@ struct AIChatSidebarView: View {
             Image(systemName: "sparkles")
                 .font(.system(size: 36))
                 .foregroundStyle(.tertiary)
-            Text("AI Assistant")
+            Text(i18n.t(.aiAssistant))
                 .font(.headline)
                 .foregroundStyle(.secondary)
-            Text("Please enable AI in Settings to use this feature.")
+            Text(i18n.t(.aiNotEnabled))
                 .font(.callout)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
-            Button {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-            } label: {
-                Label("Open Settings", systemImage: "gear")
+            SettingsLink {
+                Label(i18n.t(.goToSettings), systemImage: "gear")
             }
             .buttonStyle(.borderedProminent)
+            .onTapGesture {
+                UserDefaults.standard.set("ai", forKey: "settings_selected_tab")
+            }
             Spacer()
         }
         .frame(maxWidth: .infinity)
@@ -145,6 +146,9 @@ struct AIChatSidebarView: View {
                             streamingBubble(aiService.streamingResponse)
                         }
                     }
+                    if wasCancelled, !isProcessing {
+                        stoppedIndicator
+                    }
                     Color.clear.frame(height: 1).id("bottom")
                 }
                 .padding(12)
@@ -192,9 +196,19 @@ struct AIChatSidebarView: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(isInputFocused ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.secondary))
 
-                TextField(selectedMode == .agent ? "Describe a task..." : i18n.t(.terminalAssistant), text: $inputText)
+                TextField(selectedMode == .agent ? i18n.t(.describeTask) : i18n.t(.terminalAssistant), text: $inputText)
                     .textFieldStyle(.plain).font(.system(size: 12))
                     .focused($isInputFocused).onSubmit { submit() }
+
+                if isProcessing {
+                    Button { cancelCurrentTask() } label: {
+                        Image(systemName: "stop.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.opacity)
+                }
             }
             .padding(.horizontal, 12).frame(height: 34)
             .background(.regularMaterial, in: Capsule())
@@ -214,17 +228,6 @@ struct AIChatSidebarView: View {
             HStack(spacing: 6) {
                 modeMenu
                 Spacer()
-                if isProcessing {
-                    Button {
-                        cancelCurrentTask()
-                    } label: {
-                        Image(systemName: "stop.circle.fill")
-                            .font(.system(size: 14))
-                            .foregroundStyle(.red)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Stop")
-                }
                 modelMenu
             }
         }
@@ -240,13 +243,13 @@ struct AIChatSidebarView: View {
         Menu {
             ForEach(AIMode.allCases, id: \.self) { mode in
                 Button { selectedMode = mode } label: {
-                    Label(mode.rawValue, systemImage: mode.icon)
+                    Label(mode.localizedName, systemImage: mode.icon)
                 }
             }
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: selectedMode.icon).font(.system(size: 11))
-                Text(selectedMode.rawValue).font(.system(size: 11))
+                Text(selectedMode.localizedName).font(.system(size: 11))
                 Image(systemName: "chevron.down").font(.system(size: 8))
             }
             .foregroundStyle(.secondary)
@@ -263,10 +266,22 @@ struct AIChatSidebarView: View {
         currentTask?.cancel()
         currentTask = nil
         isProcessing = false
+        wasCancelled = true
         if selectedMode == .agent {
             agentSession?.cancel()
         }
+        // Keep the partial streaming response visible — don't clear it
+        let partial = aiService.streamingResponse
         aiService.currentExplanation = nil
+        if !partial.isEmpty {
+            // Save partial response as a message
+            if let conversation = currentConversation {
+                conversationStore.addMessage(
+                    to: conversation, role: .assistant,
+                    content: partial, context: modelContext
+                )
+            }
+        }
         aiService.streamingResponse = ""
     }
 
@@ -308,23 +323,29 @@ struct AIChatSidebarView: View {
 
         conversationStore.addMessage(to: conversation, role: .user, content: text, context: modelContext)
         isProcessing = true
+        wasCancelled = false
         inputText = ""
         currentTask?.cancel()
 
         currentTask = Task {
             await aiService.chat(modePrefix + text, context: TerminalContext())
-            guard !Task.isCancelled else { return }
             await MainActor.run {
                 isProcessing = false
-                let response = aiService.currentExplanation ?? "No response."
+                // Don't overwrite if user already cancelled and saved partial response
+                guard !wasCancelled else { return }
+                let response = aiService.currentExplanation
+                    ?? aiService.streamingResponse
+                    ?? ""
                 aiService.currentExplanation = nil
                 aiService.streamingResponse = ""
-                conversationStore.addMessage(
-                    to: conversation,
-                    role: .assistant,
-                    content: response,
-                    context: modelContext
-                )
+                if !response.isEmpty {
+                    conversationStore.addMessage(
+                        to: conversation,
+                        role: .assistant,
+                        content: response,
+                        context: modelContext
+                    )
+                }
             }
         }
     }
@@ -335,7 +356,7 @@ struct AIChatSidebarView: View {
             guard let ssh = sshService else {
                 agentMessages = [AgentMessage(
                     role: .system,
-                    content: "No SSH connection. Please connect to a host first."
+                    content: i18n.t(.noSSHConnectionAgent)
                 )]
                 return
             }

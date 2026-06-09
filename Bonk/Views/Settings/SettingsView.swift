@@ -5,7 +5,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var i18n: I18n
     @Bindable var preferences: UserPreferences
-    @State private var selectedTab = "general"
+    @AppStorage("settings_selected_tab") private var selectedTab = "general"
 
     var body: some View {
         TabView(selection: $selectedTab) {

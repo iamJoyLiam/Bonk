@@ -99,10 +99,30 @@ enum LKey: String, CaseIterable {
     case aiDismissWithEsc = "ai_dismiss_with_esc"
     case hostAutoFillClear = "host_auto_fill_clear"
     case aiDirectSubmit = "ai_direct_submit"
+    case aiStopped = "ai_stopped"
+
+    // AI — Sidebar
+    case aiNotEnabled = "ai_not_enabled"
+    case goToSettings = "go_to_settings"
+    case enableAIHint = "enable_ai_hint"
+    case describeTask = "describe_task"
+    case confirmCommand = "confirm_command"
+    case execute, stop
+    case agentMode = "agent_mode"
+    case agentModeDesc = "agent_mode_desc"
+    case noSSHConnectionAgent = "no_ssh_connection_agent"
+    case aiModeAsk = "ai_mode_ask"
+    case aiModeEdit = "ai_mode_edit"
+    case aiModeAgent = "ai_mode_agent"
+    case aiModeAskDesc = "ai_mode_ask_desc"
+    case aiModeEditDesc = "ai_mode_edit_desc"
+    case aiModeAgentDesc = "ai_mode_agent_desc"
 
     // AI — Detail Sheet
     case addType = "add_type", other
     case modelId = "model_id", maxOutputTokens = "max_output_tokens"
+    case modelRequired = "model_required"
+    case modelRequiredHint = "model_required_hint"
     case advanced, apiKeyRequired = "api_key_required"
     case authenticationRequired = "authentication_required"
     case signInGithub = "sign_in_github", signedIn = "signed_in", signOut = "sign_out"
