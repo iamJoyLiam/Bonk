@@ -83,6 +83,10 @@ extension TerminalTabView {
 
     /// Request selected text from terminal and show AI panel.
     func requestSelectionAndShowAI() {
+        guard aiEnabled else {
+            showAIEnableAlert = true
+            return
+        }
         // Listen for selection response
         selectionObserver = NotificationCenter.default.addObserver(
             forName: .terminalSelectionResponse,

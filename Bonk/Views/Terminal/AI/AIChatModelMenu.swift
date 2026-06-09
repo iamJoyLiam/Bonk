@@ -3,7 +3,6 @@ import SwiftUI
 // MARK: - Model Menu & Operations
 
 extension AIChatSidebarView {
-
     var modelMenu: some View {
         let currentModel = providerStore.activeProvider?.model ?? i18n.t(.aiNoModel)
         return Menu {
@@ -33,14 +32,16 @@ extension AIChatSidebarView {
             HStack(spacing: 4) {
                 Image(systemName: "cpu").font(.system(size: 11))
                 Text(currentModel).font(.system(size: 11))
-                    .lineLimit(1).truncationMode(.middle).frame(maxWidth: 120)
+                    .lineLimit(1).truncationMode(.tail)
                 Image(systemName: "chevron.down").font(.system(size: 8))
             }
             .foregroundStyle(.secondary)
             .padding(.horizontal, 8).padding(.vertical, 4)
+            .frame(maxWidth: 160)
             .background(Color(nsColor: .controlColor)).clipShape(Capsule())
         }
         .menuStyle(.borderlessButton)
+        .fixedSize()
         .onAppear { fetchModels() }
     }
 

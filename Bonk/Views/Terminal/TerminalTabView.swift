@@ -19,6 +19,8 @@ struct TerminalTabView: View {
     let cursorBlink: Bool
     @Query private var allPreferences: [UserPreferences]
     @Query(sort: \HostItem.createdAt) var allHosts: [HostItem]
+    @AppStorage("ai_enabled") var aiEnabled = false
+    @State var showAIEnableAlert = false
 
     private var preferences: UserPreferences {
         allPreferences.first ?? UserPreferences()
@@ -172,6 +174,14 @@ struct TerminalTabView: View {
             }
         } message: {
             Text(i18n.t(.enterNewName))
+        }
+        .alert("AI Assistant", isPresented: $showAIEnableAlert) {
+            Button("Go to Settings") {
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Please enable AI in Settings → AI first.")
         }
         .onChange(of: renamingTab?.id) { _, _ in
             if let tab = renamingTab {

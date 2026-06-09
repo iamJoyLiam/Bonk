@@ -4,7 +4,6 @@
 //
 //  AI Assistant - query/response style with history.
 //
-
 import SwiftData
 import SwiftUI
 
@@ -23,18 +22,14 @@ struct AIAssistantPanel: View {
     @State private var showHistory = false
     @State private var currentTask: Task<Void, Never>?
     @FocusState private var isInputFocused: Bool
-
     let initialText: String
     let onPaste: (String) -> Void
     let onDismiss: () -> Void
-
     // Drag state
     @State private var offset: CGSize = .zero
     @State private var lastOffset: CGSize = .zero
-
     /// Rotation animation
     @State private var rotationAngle: Double = 0
-
     private var aiColors: [Color] {
         AppStyle.aiRainbowColors
     }
@@ -239,7 +234,12 @@ struct AIAssistantPanel: View {
                 aiService.streamingResponse = ""
 
                 // Add AI response
-                conversationStore.addMessage(to: conversation, role: .assistant, content: response, context: modelContext)
+                conversationStore.addMessage(
+                    to: conversation,
+                    role: .assistant,
+                    content: response,
+                    context: modelContext
+                )
             }
         }
     }

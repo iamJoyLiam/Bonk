@@ -1,7 +1,6 @@
 import SwiftUI
 
 extension AIChatSidebarView {
-
     var historyPopover: some View {
         VStack(spacing: 0) {
             if conversations.isEmpty {
@@ -55,7 +54,8 @@ extension AIChatSidebarView {
         )) {
             Button(i18n.t(.delete), role: .destructive) {
                 if let id = pendingDeleteConversation,
-                   let conv = conversations.first(where: { $0.id == id }) {
+                   let conv = conversations.first(where: { $0.id == id })
+                {
                     conversationStore.delete(conv, context: modelContext)
                     if currentConversation?.id == id { currentConversation = nil }
                 }

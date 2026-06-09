@@ -49,3 +49,4 @@ type_name:
 # Disabled rules
 disabled_rules:
   - trailing_comma  # Allow trailing commas in multiline collections
+  - opening_brace   # Conflicts with SwiftFormat wrapMultilineStatementBraces

@@ -84,7 +84,7 @@ struct ContentView: View {
                             )
                         }
                     case .aiChat:
-                        AIChatSidebarView()
+                        AIChatSidebarView(sshService: sessionManager.activeTab?.sshService)
                     }
                 }
             }

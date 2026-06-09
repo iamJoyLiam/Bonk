@@ -16,8 +16,8 @@ enum AIMode: String, CaseIterable {
     var description: String {
         switch self {
         case .ask: "Answer questions only"
-        case .edit: "Can suggest terminal commands"
-        case .agent: "Can execute commands directly"
+        case .edit: "Suggest terminal commands"
+        case .agent: "Execute commands automatically"
         }
     }
 }

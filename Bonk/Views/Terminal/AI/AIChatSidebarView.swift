@@ -2,10 +2,11 @@ import SwiftData
 import SwiftUI
 
 /// Full conversation-style AI chat panel for the right sidebar.
-/// Has its own conversation state, independent from the floating AI panel.
+/// Supports Ask, Edit, and Agent modes.
 struct AIChatSidebarView: View {
     @EnvironmentObject var i18n: I18n
     @Environment(\.modelContext) var modelContext
+    let sshService: SSHNetworkService?
     @State var aiService = AIService.shared
     @State var providerStore = AIProviderStore()
     @State var conversationStore = AIConversationStore.shared
@@ -18,6 +19,12 @@ struct AIChatSidebarView: View {
     @State var showHistory = false
     @State var selectedMode: AIMode = .ask
     @FocusState var isInputFocused: Bool
+
+    @AppStorage("ai_enabled") var aiEnabled = false
+
+    // Agent mode
+    @State var agentSession: AgentSession?
+    @State var agentMessages: [AgentMessage] = []
 
     @State var rotationAngle: Double = 0
     @State var fetchedModels: [String] = []
@@ -34,12 +41,61 @@ struct AIChatSidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
-            messageList
-            Divider()
-            bottomBar
+            if aiEnabled {
+                header
+                Divider()
+                if selectedMode == .agent {
+                    agentMessageList
+                } else {
+                    messageList
+                }
+                Divider()
+                bottomBar
+            } else {
+                aiDisabledView
+            }
         }
+        .confirmationDialog(
+            "Confirm Command",
+            isPresented: .constant(agentSession?.pendingConfirmation != nil),
+            presenting: agentSession?.pendingConfirmation
+        ) { pending in
+            Button("Execute", role: .destructive) {
+                pending.continuation(true)
+                agentSession?.pendingConfirmation = nil
+            }
+            Button("Cancel", role: .cancel) {
+                pending.continuation(false)
+                agentSession?.pendingConfirmation = nil
+            }
+        } message: { pending in
+            Text("\(pending.riskLevel == .dangerous ? "⚠️ Dangerous" : "⚠️ Moderate") command:\n\(pending.command)")
+        }
+    }
+
+    private var aiDisabledView: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "sparkles")
+                .font(.system(size: 36))
+                .foregroundStyle(.tertiary)
+            Text("AI Assistant")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+            Text("Please enable AI in Settings to use this feature.")
+                .font(.callout)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+            Button {
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            } label: {
+                Label("Open Settings", systemImage: "gear")
+            }
+            .buttonStyle(.borderedProminent)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding()
     }
 
     // MARK: - Header
@@ -70,7 +126,7 @@ struct AIChatSidebarView: View {
         .padding(.vertical, 10)
     }
 
-    // MARK: - Messages
+    // MARK: - Regular Message List (Ask/Edit modes)
 
     private var messageList: some View {
         ScrollViewReader { proxy in
@@ -82,8 +138,12 @@ struct AIChatSidebarView: View {
                     ForEach(messages) { msg in
                         bubble(msg)
                     }
-                    if isProcessing, !aiService.streamingResponse.isEmpty {
-                        streamingBubble(aiService.streamingResponse)
+                    if isProcessing {
+                        if aiService.streamingResponse.isEmpty {
+                            loadingBubble
+                        } else {
+                            streamingBubble(aiService.streamingResponse)
+                        }
                     }
                     Color.clear.frame(height: 1).id("bottom")
                 }
@@ -98,6 +158,31 @@ struct AIChatSidebarView: View {
         }
     }
 
+    // MARK: - Agent Message List
+
+    private var agentMessageList: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    if agentMessages.isEmpty, !isProcessing {
+                        agentEmptyState
+                    }
+                    ForEach(agentMessages) { msg in
+                        agentBubble(msg)
+                    }
+                    if isProcessing {
+                        loadingBubble
+                    }
+                    Color.clear.frame(height: 1).id("agentBottom")
+                }
+                .padding(12)
+            }
+            .onChange(of: agentMessages.count) { _, _ in
+                withAnimation(AppStyle.animationFast) { proxy.scrollTo("agentBottom", anchor: .bottom) }
+            }
+        }
+    }
+
     // MARK: - Bottom Bar
 
     private var bottomBar: some View {
@@ -107,11 +192,9 @@ struct AIChatSidebarView: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(isInputFocused ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.secondary))
 
-                TextField(i18n.t(.terminalAssistant), text: $inputText)
+                TextField(selectedMode == .agent ? "Describe a task..." : i18n.t(.terminalAssistant), text: $inputText)
                     .textFieldStyle(.plain).font(.system(size: 12))
                     .focused($isInputFocused).onSubmit { submit() }
-
-                if isProcessing { ProgressView().controlSize(.mini) }
             }
             .padding(.horizontal, 12).frame(height: 34)
             .background(.regularMaterial, in: Capsule())
@@ -131,6 +214,17 @@ struct AIChatSidebarView: View {
             HStack(spacing: 6) {
                 modeMenu
                 Spacer()
+                if isProcessing {
+                    Button {
+                        cancelCurrentTask()
+                    } label: {
+                        Image(systemName: "stop.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Stop")
+                }
                 modelMenu
             }
         }
@@ -165,17 +259,41 @@ struct AIChatSidebarView: View {
 
     // MARK: - Actions
 
-    private func createNewConversation() {
-        let conv = conversationStore.createConversation(context: modelContext)
-        currentConversation = conv
-        inputText = ""
+    private func cancelCurrentTask() {
+        currentTask?.cancel()
+        currentTask = nil
+        isProcessing = false
+        if selectedMode == .agent {
+            agentSession?.cancel()
+        }
+        aiService.currentExplanation = nil
         aiService.streamingResponse = ""
+    }
+
+    private func createNewConversation() {
+        if selectedMode == .agent {
+            agentMessages = []
+            agentSession = nil
+        } else {
+            let conv = conversationStore.createConversation(context: modelContext)
+            currentConversation = conv
+            inputText = ""
+            aiService.streamingResponse = ""
+        }
     }
 
     private func submit() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
+        if selectedMode == .agent {
+            submitAgent(text: text)
+        } else {
+            submitChat(text: text)
+        }
+    }
+
+    private func submitChat(text: String) {
         if currentConversation == nil {
             createNewConversation()
         }
@@ -185,7 +303,7 @@ struct AIChatSidebarView: View {
         let modePrefix = switch selectedMode {
         case .ask: ""
         case .edit: "[Edit mode] Suggest a terminal command if relevant. "
-        case .agent: "[Agent mode] Provide a runnable terminal command. "
+        case .agent: "" // Agent uses separate flow
         }
 
         conversationStore.addMessage(to: conversation, role: .user, content: text, context: modelContext)
@@ -201,7 +319,40 @@ struct AIChatSidebarView: View {
                 let response = aiService.currentExplanation ?? "No response."
                 aiService.currentExplanation = nil
                 aiService.streamingResponse = ""
-                conversationStore.addMessage(to: conversation, role: .assistant, content: response, context: modelContext)
+                conversationStore.addMessage(
+                    to: conversation,
+                    role: .assistant,
+                    content: response,
+                    context: modelContext
+                )
+            }
+        }
+    }
+
+    private func submitAgent(text: String) {
+        // Initialize agent session if needed
+        if agentSession == nil {
+            guard let ssh = sshService else {
+                agentMessages = [AgentMessage(
+                    role: .system,
+                    content: "No SSH connection. Please connect to a host first."
+                )]
+                return
+            }
+            agentSession = AgentSession(sshService: ssh, aiService: aiService)
+        }
+
+        guard let session = agentSession else { return }
+
+        isProcessing = true
+        inputText = ""
+        currentTask?.cancel()
+
+        currentTask = Task {
+            await session.run(userInput: text)
+            await MainActor.run {
+                isProcessing = false
+                agentMessages = session.messages
             }
         }
     }
