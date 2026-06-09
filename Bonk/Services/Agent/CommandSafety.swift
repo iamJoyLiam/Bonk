@@ -45,12 +45,8 @@ enum CommandSafety {
         // Moderate
         if isModerate(cmd, trimmed) { return .moderate }
 
-        // -rf / -fr anywhere → dangerous
-        if trimmed.contains(" -rf ") || trimmed.contains(" -fr ") ||
-            trimmed.hasSuffix(" -rf") || trimmed.hasSuffix(" -fr")
-        {
-            return .dangerous
-        }
+        // -rf / -fr / -r -f anywhere → dangerous
+        if hasRecursiveForceFlag(trimmed) { return .dangerous }
 
         // Redirects (not to /dev/null) → moderate
         if trimmed.contains(" >> ") || trimmed.contains(" > "),
@@ -102,6 +98,19 @@ enum CommandSafety {
 
     private static func isDangerous(_ cmd: String) -> Bool {
         dangerousCommands.contains(cmd)
+    }
+
+    /// Detect -rf, -fr, -r -f, -f -r patterns (recursive + force).
+    private static func hasRecursiveForceFlag(_ command: String) -> Bool {
+        let lower = command.lowercased()
+        // Combined flags: -rf, -fr, or longer like -rfv
+        let combinedPattern = #"(^|\s)-[a-z]*r[a-z]*f[a-z]*($|\s)|(^|\s)-[a-z]*f[a-z]*r[a-z]*($|\s)"#
+        if lower.range(of: combinedPattern, options: .regularExpression) != nil { return true }
+        // Separated flags: -r ... -f or -f ... -r
+        if lower.contains(" -r ") && lower.contains(" -f ") { return true }
+        if (lower.hasSuffix(" -r") || lower.contains(" -r ")) &&
+            (lower.hasSuffix(" -f") || lower.contains(" -f ")) { return true }
+        return false
     }
 
     // MARK: - Moderate
@@ -165,6 +174,11 @@ enum CommandSafety {
                 } else if char == "|", next < command.endIndex, command[next] == "|" {
                     appendSegment(&current, to: &segments)
                     cursor = command.index(after: next)
+                    continue
+                } else if char == "|" {
+                    // Pipe — split and classify each segment
+                    appendSegment(&current, to: &segments)
+                    cursor = next
                     continue
                 } else if char == ";" {
                     appendSegment(&current, to: &segments)

@@ -270,11 +270,13 @@ final class AgentEngine {
             let output = try await withTimeout(seconds: 30) {
                 try await sshService.executeCommand(command)
             }
-            agentMessages.append(AgentMessage(role: .commandOutput, content: String(output.prefix(4000))))
+            let truncated = String(output.prefix(4000))
+            agentMessages.append(AgentMessage(role: .commandOutput, content: truncated))
+            OperationLog.shared.record(command: command, output: truncated, success: true)
         } catch {
-            agentMessages.append(AgentMessage(
-                role: .system, content: "Execution failed: \(error.localizedDescription)"
-            ))
+            let errorMsg = "Execution failed: \(error.localizedDescription)"
+            agentMessages.append(AgentMessage(role: .system, content: errorMsg))
+            OperationLog.shared.record(command: command, output: errorMsg, success: false)
             return false
         }
 
