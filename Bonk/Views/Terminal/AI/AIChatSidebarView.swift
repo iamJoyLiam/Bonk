@@ -302,20 +302,20 @@ struct AIChatSidebarView: View {
 
         Task {
             let response = await engine.execute(input: text, mode: selectedMode)
-            guard !wasCancelled else { return }
 
-            if let response, !response.isEmpty {
+            if let response, !response.isEmpty, !wasCancelled {
                 conversationStore.addMessage(
                     to: conversation, role: .assistant,
                     content: response, context: modelContext
                 )
-            } else {
+            } else if !wasCancelled {
                 let error = engine.lastError ?? "No response from AI. Check your API key and model settings."
                 conversationStore.addMessage(
                     to: conversation, role: .assistant,
                     content: "⚠️ \(error)", context: modelContext
                 )
             }
+            engine.isProcessing = false
         }
     }
 

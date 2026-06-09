@@ -58,7 +58,13 @@ final class AgentEngine {
         mode: AIMode,
         context _: TerminalContext = TerminalContext()
     ) async -> String? {
-        guard let (provider, apiKey) = resolveProvider() else { return nil }
+        isProcessing = true
+        streamingResponse = ""
+
+        guard let (provider, apiKey) = resolveProvider() else {
+            isProcessing = false
+            return nil
+        }
 
         let systemPrompt = mode.systemPrompt
         let label = mode.rawValue
@@ -94,7 +100,10 @@ final class AgentEngine {
                 currentExplanation = sanitized
                 return sanitized
             } catch {
-                if Task.isCancelled { return nil }
+                if Task.isCancelled {
+                    isProcessing = false
+                    return nil
+                }
                 if attempt < maxRetries {
                     Self.logger.warning(
                         "\(label, privacy: .public): attempt \(attempt + 1) failed, retrying"
