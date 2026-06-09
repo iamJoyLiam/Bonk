@@ -36,7 +36,7 @@ struct AIChatSidebarView: View {
     }
 
     private var messages: [AIMessageRecord] {
-        currentConversation?.messages ?? []
+        (currentConversation?.messages ?? []).sorted { $0.timestamp < $1.timestamp }
     }
 
     var body: some View {
@@ -299,6 +299,7 @@ struct AIChatSidebarView: View {
 
     private func submit() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let _ = print("[AIChat] submit called, mode=\(selectedMode.rawValue) text=\(text.prefix(20)) aiEnabled=\(aiEnabled)")
         guard !text.isEmpty else { return }
 
         if selectedMode == .agent {
@@ -309,11 +310,15 @@ struct AIChatSidebarView: View {
     }
 
     private func submitChat(text: String) {
+        let _ = print("[AIChat] submitChat called, text=\(text.prefix(20))")
         if currentConversation == nil {
             createNewConversation()
         }
 
-        guard let conversation = currentConversation else { return }
+        guard let conversation = currentConversation else {
+            let _ = print("[AIChat] ERROR: currentConversation is nil after createNewConversation")
+            return
+        }
 
         let modePrefix = switch selectedMode {
         case .ask: ""
@@ -325,10 +330,12 @@ struct AIChatSidebarView: View {
         isProcessing = true
         wasCancelled = false
         inputText = ""
+        let _ = print("[AIChat] isProcessing=true, calling aiService.chat, activeProvider=\(aiService.activeProvider?.name ?? "nil")")
         currentTask?.cancel()
 
         currentTask = Task {
             await aiService.chat(modePrefix + text, context: TerminalContext())
+            let _ = print("[AIChat] aiService.chat returned")
             await MainActor.run {
                 isProcessing = false
                 // Don't overwrite if user already cancelled and saved partial response

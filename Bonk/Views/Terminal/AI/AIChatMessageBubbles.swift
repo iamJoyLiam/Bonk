@@ -37,7 +37,13 @@ extension AIChatSidebarView {
         HStack(alignment: .top, spacing: 8) {
             if msg.role == .assistant { avatar("sparkles") }
             VStack(alignment: msg.role == .user ? .trailing : .leading, spacing: 4) {
-                Text.markdown(msg.content).font(.system(size: 13)).textSelection(.enabled)
+                if msg.role == .assistant {
+                    MarkdownTextView(content: msg.content)
+                } else {
+                    Text(msg.content)
+                        .font(.system(size: 13))
+                        .textSelection(.enabled)
+                }
             }
             .padding(10)
             .background(msg.role == .user ? Color.accentColor.opacity(0.1) : Color(nsColor: .controlColor))
@@ -50,9 +56,7 @@ extension AIChatSidebarView {
     func streamingBubble(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             avatar("sparkles")
-            Text.markdown(text)
-                .font(.system(size: 13))
-                .textSelection(.enabled)
+            MarkdownTextView(content: text)
                 .padding(10)
                 .background(Color(nsColor: .controlColor))
                 .clipShape(.rect(cornerRadius: 10))

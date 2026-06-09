@@ -20,8 +20,10 @@ final class AIService {
     func chat(_ message: String, context _: TerminalContext) async {
         let systemPrompt = """
         You are a terminal assistant embedded in an SSH client.
-        Answer concisely in plain text. \
-        If providing a command, show it on its own line.
+        Answer concisely. Use markdown formatting:
+        - Use fenced code blocks (triple backticks with bash) for commands
+        - Use bold for emphasis
+        - Use inline code for file paths and flags
         No greetings or filler. Match the user's language.
         """
         await execute(
@@ -69,7 +71,7 @@ final class AIService {
         streamingResponse = ""
         defer { isProcessing = false }
 
-        Log.ai.info("\(label): provider=\(provider.name) model=\(provider.model) msg=\(userPrompt.prefix(80))")
+        Log.ai.info("\(label): provider=\(provider.name, privacy: .public) model=\(provider.model, privacy: .public) msg=\(userPrompt.prefix(80), privacy: .public)")
 
         do {
             let response = try await streamRequest(
@@ -78,11 +80,14 @@ final class AIService {
                 systemPrompt: systemPrompt,
                 userPrompt: userPrompt
             )
-            Log.ai.info("\(label): response(\(response.count) chars)=\(response.prefix(200))")
+            Log.ai.info("\(label): response(\(response.count) chars)")
+            if response.isEmpty {
+                Log.ai.warning("\(label): empty response from \(provider.name, privacy: .public)/\(provider.model, privacy: .public)")
+            }
             if !Task.isCancelled { currentExplanation = response }
         } catch {
             lastError = error.localizedDescription
-            Log.ai.error("\(label): error=\(error.localizedDescription)")
+            Log.ai.error("\(label): error=\(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -237,6 +242,7 @@ final class AIService {
         guard let http = response as? HTTPURLResponse else {
             throw AIError.invalidResponse
         }
+        Log.ai.info("streamRequest: url=\(request.url?.absoluteString ?? "nil") status=\(http.statusCode)")
         guard http.statusCode == 200 else {
             var errorData = Data()
             for try await byte in bytes {
@@ -272,7 +278,12 @@ final class AIService {
                 let line = String(buffer[buffer.startIndex ..< range.lowerBound])
                 buffer = String(buffer[range.upperBound...])
 
-                guard line.hasPrefix("data: ") else { continue }
+                guard line.hasPrefix("data: ") else {
+                    if !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Log.ai.debug("parseStream: non-data line: \(line.prefix(100))")
+                    }
+                    continue
+                }
                 let json = String(line.dropFirst(6))
                 guard json != "[DONE]",
                       let data = json.data(using: .utf8),
@@ -283,6 +294,8 @@ final class AIService {
                 if let text = extractDelta(from: obj, type: providerType) {
                     result += text
                     streamingResponse = result
+                } else {
+                    Log.ai.warning("parseStream: unhandled SSE format: \(json.prefix(200))")
                 }
             }
         }
