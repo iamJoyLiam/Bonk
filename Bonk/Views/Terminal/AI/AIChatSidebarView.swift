@@ -327,11 +327,17 @@ struct AIChatSidebarView: View {
             return
         }
 
+        if currentConversation == nil { createNewConversation() }
+        let conversation = currentConversation
+
         inputText = ""
         wasCancelled = false
 
         Task {
-            await engine.runAgent(input: text, sshService: ssh)
+            await engine.runAgent(
+                input: text, sshService: ssh,
+                conversation: conversation, context: modelContext
+            )
         }
     }
 }

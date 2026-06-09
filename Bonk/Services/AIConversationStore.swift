@@ -22,9 +22,11 @@ final class AIConversationStore {
         to conversation: AIConversationRecord,
         role: AIMessageRecord.MessageRole,
         content: String,
+        thinking: String? = nil,
+        command: String? = nil,
         context: ModelContext
     ) {
-        let msg = AIMessageRecord(role: role, content: content)
+        let msg = AIMessageRecord(role: role, content: content, thinking: thinking, command: command)
         msg.conversation = conversation
         conversation.messages.append(msg)
         conversation.updatedAt = Date()

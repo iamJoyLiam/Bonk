@@ -5,9 +5,13 @@ import SwiftData
 @Model
 final class AIMessageRecord {
     var id: UUID
-    var roleRaw: String // "user" or "assistant"
+    var roleRaw: String // "user", "assistant", "system", "commandOutput"
     var content: String
     var timestamp: Date
+
+    // Agent-specific fields (optional, additive only)
+    var agentThinking: String?
+    var agentCommand: String?
 
     var conversation: AIConversationRecord?
 
@@ -19,12 +23,22 @@ final class AIMessageRecord {
     enum MessageRole: String, Codable {
         case user
         case assistant
+        case system
+        case commandOutput
     }
 
-    init(role: MessageRole, content: String, timestamp: Date = Date()) {
+    init(
+        role: MessageRole,
+        content: String,
+        timestamp: Date = Date(),
+        thinking: String? = nil,
+        command: String? = nil
+    ) {
         id = UUID()
         roleRaw = role.rawValue
         self.content = content
         self.timestamp = timestamp
+        agentThinking = thinking
+        agentCommand = command
     }
 }

@@ -107,9 +107,9 @@ enum CommandSafety {
         let combinedPattern = #"(^|\s)-[a-z]*r[a-z]*f[a-z]*($|\s)|(^|\s)-[a-z]*f[a-z]*r[a-z]*($|\s)"#
         if lower.range(of: combinedPattern, options: .regularExpression) != nil { return true }
         // Separated flags: -r ... -f or -f ... -r
-        if lower.contains(" -r ") && lower.contains(" -f ") { return true }
-        if (lower.hasSuffix(" -r") || lower.contains(" -r ")) &&
-            (lower.hasSuffix(" -f") || lower.contains(" -f ")) { return true }
+        if lower.contains(" -r "), lower.contains(" -f ") { return true }
+        if lower.hasSuffix(" -r") || lower.contains(" -r "),
+           lower.hasSuffix(" -f") || lower.contains(" -f ") { return true }
         return false
     }
 

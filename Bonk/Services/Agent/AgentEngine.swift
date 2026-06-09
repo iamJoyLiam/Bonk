@@ -1,5 +1,6 @@
 import Foundation
 import os.log
+import SwiftData
 
 /// Central AI agent engine. Manages all three modes (Ask/Edit/Agent)
 /// with unified state, request building, and safety controls.
@@ -199,29 +200,42 @@ final class AgentEngine {
     // MARK: - Agent Mode
 
     /// Run the agent loop: AI → parse command → safety check → confirm → execute → repeat.
-    func runAgent(input: String, sshService: SSHNetworkService) async {
-        agentMessages.append(AgentMessage(role: .user, content: input))
+    func runAgent(
+        input: String,
+        sshService: SSHNetworkService,
+        conversation: AIConversationRecord? = nil,
+        context: ModelContext? = nil
+    ) async {
+        appendAgentMessage(.user, content: input, conversation: conversation, context: context)
 
         for _ in 0 ..< 10 {
             guard !Task.isCancelled else {
-                agentMessages.append(AgentMessage(role: .system, content: "Cancelled."))
+                appendAgentMessage(.system, content: "Cancelled.", conversation: conversation, context: context)
                 return
             }
 
-            let shouldContinue = await runAgentIteration(sshService: sshService)
+            let shouldContinue = await runAgentIteration(
+                sshService: sshService, conversation: conversation, context: context
+            )
             guard shouldContinue else { return }
         }
 
-        agentMessages.append(AgentMessage(
-            role: .system, content: "Reached maximum iterations (10). Stopping."
-        ))
+        appendAgentMessage(
+            .system, content: "Reached maximum iterations (10). Stopping.",
+            conversation: conversation, context: context
+        )
     }
 
     /// Single iteration of the agent loop. Returns false if the loop should stop.
-    private func runAgentIteration(sshService: SSHNetworkService) async -> Bool {
+    private func runAgentIteration(
+        sshService: SSHNetworkService,
+        conversation: AIConversationRecord?,
+        context: ModelContext?
+    ) async -> Bool {
         let aiMessages = buildAgentMessages()
         guard let (provider, apiKey) = resolveProvider() else {
-            agentMessages.append(AgentMessage(role: .system, content: lastError ?? "No provider"))
+            appendAgentMessage(.system, content: lastError ?? "No provider",
+                               conversation: conversation, context: context)
             return false
         }
 
@@ -235,24 +249,25 @@ final class AgentEngine {
                 systemPrompt: AgentPrompts.systemPrompt, userPrompt: prompt
             )
         } catch {
-            agentMessages.append(AgentMessage(role: .system, content: "AI error: \(error.localizedDescription)"))
+            appendAgentMessage(.system, content: "AI error: \(error.localizedDescription)",
+                               conversation: conversation, context: context)
             return false
         }
 
         let sanitized = sanitizer.sanitize(response)
         let parsed = ResponseParser.parse(sanitized)
 
-        agentMessages.append(AgentMessage(
-            role: .assistant, content: parsed.response,
-            command: parsed.command, thinking: parsed.thinking
-        ))
+        appendAgentMessage(.assistant, content: parsed.response,
+                           thinking: parsed.thinking, command: parsed.command,
+                           conversation: conversation, context: context)
 
         guard let command = parsed.command, !command.isEmpty else { return false }
 
         // Safety check
         let safety = CommandSafety.classify(command)
         if safety == .blocked {
-            agentMessages.append(AgentMessage(role: .system, content: "Blocked: \(command)"))
+            appendAgentMessage(.system, content: "Blocked: \(command)",
+                               conversation: conversation, context: context)
             return false
         }
 
@@ -260,7 +275,8 @@ final class AgentEngine {
             let riskLevel: PendingCommand.RiskLevel = safety == .dangerous ? .dangerous : .moderate
             let confirmed = await requestConfirmation(command: command, riskLevel: riskLevel)
             guard confirmed else {
-                agentMessages.append(AgentMessage(role: .system, content: "Declined: \(command)"))
+                appendAgentMessage(.system, content: "Declined: \(command)",
+                                   conversation: conversation, context: context)
                 return false
             }
         }
@@ -271,16 +287,43 @@ final class AgentEngine {
                 try await sshService.executeCommand(command)
             }
             let truncated = String(output.prefix(4000))
-            agentMessages.append(AgentMessage(role: .commandOutput, content: truncated))
+            appendAgentMessage(.commandOutput, content: truncated,
+                               conversation: conversation, context: context)
             OperationLog.shared.record(command: command, output: truncated, success: true)
         } catch {
             let errorMsg = "Execution failed: \(error.localizedDescription)"
-            agentMessages.append(AgentMessage(role: .system, content: errorMsg))
+            appendAgentMessage(.system, content: errorMsg,
+                               conversation: conversation, context: context)
             OperationLog.shared.record(command: command, output: errorMsg, success: false)
             return false
         }
 
         return true
+    }
+
+    /// Append an agent message to in-memory list and optionally persist to SwiftData.
+    private func appendAgentMessage(
+        _ role: AgentMessage.Role,
+        content: String,
+        thinking: String? = nil,
+        command: String? = nil,
+        conversation: AIConversationRecord?,
+        context: ModelContext?
+    ) {
+        agentMessages.append(AgentMessage(role: role, content: content, command: command, thinking: thinking))
+
+        // Persist to SwiftData if conversation is available
+        if let conversation, let context {
+            let msgRole: AIMessageRecord.MessageRole = switch role {
+            case .user: .user
+            case .assistant: .assistant
+            case .system, .commandOutput: .system
+            }
+            conversationStore.addMessage(
+                to: conversation, role: msgRole, content: content,
+                thinking: thinking, command: command, context: context
+            )
+        }
     }
 
     private func buildAgentMessages() -> [[String: String]] {
