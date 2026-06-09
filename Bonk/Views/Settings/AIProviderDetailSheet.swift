@@ -324,9 +324,17 @@ struct AIProviderDetailSheet: View {
     private func testProvider() {
         let trimmed = draft.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { testResult = .failure(i18n.t(.apiKeyRequired)); return }
-        guard let url = AIProviderNetworking.modelsURL(
-            endpoint: draft.endpoint, type: draft.type, apiKey: draft.apiKey
-        ) else {
+
+        // For custom providers, test the endpoint directly; for others, test the models URL
+        let testURL: URL?
+        if draft.type == .custom {
+            testURL = URL(string: draft.endpoint)
+        } else {
+            testURL = AIProviderNetworking.modelsURL(
+                endpoint: draft.endpoint, type: draft.type, apiKey: draft.apiKey
+            )
+        }
+        guard let url = testURL else {
             testResult = .failure(i18n.t(.connectionTestFailed)); return
         }
 
@@ -339,7 +347,7 @@ struct AIProviderDetailSheet: View {
                 await MainActor.run {
                     isTesting = false
                     testResult = isSuccess ? .success : .failure(i18n.t(.connectionTestFailed))
-                    if isSuccess { fetchModels() }
+                    if isSuccess, draft.type != .custom { fetchModels() }
                 }
             } catch {
                 guard !Task.isCancelled else { return }
