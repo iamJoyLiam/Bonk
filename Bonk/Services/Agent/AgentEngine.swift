@@ -206,9 +206,9 @@ final class AgentEngine {
         return result
     }
 
-    // MARK: - Agent Mode
+    // MARK: - Agent Mode (Plan → Approve → Execute)
 
-    /// Run the agent loop: AI → parse command → safety check → confirm → execute → repeat.
+    /// Run the agent: generate plan → wait for approval → execute steps → report.
     func runAgent(
         input: String,
         sshService: SSHNetworkService,
@@ -217,97 +217,188 @@ final class AgentEngine {
     ) async {
         appendAgentMessage(.user, content: input, conversation: conversation, context: context)
 
-        for _ in 0 ..< 10 {
-            guard !Task.isCancelled else {
-                appendAgentMessage(.system, content: "Cancelled.", conversation: conversation, context: context)
-                return
-            }
+        // Phase 1: Generate plan
+        guard let plan = await generatePlan(
+            input: input, sshService: sshService,
+            conversation: conversation, context: context
+        ) else { return }
 
-            let shouldContinue = await runAgentIteration(
-                sshService: sshService, conversation: conversation, context: context
-            )
-            guard shouldContinue else { return }
+        // If no steps (pure Q&A), just return
+        if plan.steps.isEmpty { return }
+
+        // Phase 2: Wait for user approval
+        let approved = await requestPlanApproval(plan: plan)
+        guard approved else {
+            appendAgentMessage(.system, content: "Plan rejected.", conversation: conversation, context: context)
+            return
         }
 
-        appendAgentMessage(
-            .system, content: "Reached maximum iterations (10). Stopping.",
+        // Phase 3: Execute steps
+        let report = await executePlan(
+            plan: plan, sshService: sshService,
             conversation: conversation, context: context
         )
+
+        // Phase 4: Report
+        appendExecutionReport(report, conversation: conversation, context: context)
     }
 
-    /// Single iteration of the agent loop. Returns false if the loop should stop.
-    private func runAgentIteration(
-        sshService: SSHNetworkService,
+    // MARK: - Phase 1: Generate Plan
+
+    private func generatePlan(
+        input: String,
+        sshService _: SSHNetworkService,
         conversation: AIConversationRecord?,
         context: ModelContext?
-    ) async -> Bool {
+    ) async -> AgentPlan? {
         let aiMessages = buildAgentMessages()
         guard let (provider, apiKey) = resolveProvider() else {
             appendAgentMessage(.system, content: lastError ?? "No provider",
                                conversation: conversation, context: context)
-            return false
+            return nil
         }
 
-        // Call AI
+        let prompt = aiMessages.map { "\($0["role"] ?? "user"): \($0["content"] ?? "")" }
+            .joined(separator: "\n\n")
+
         let response: String
         do {
-            let prompt = aiMessages.map { "\($0["role"] ?? "user"): \($0["content"] ?? "")" }
-                .joined(separator: "\n\n")
             response = try await executeNonStreaming(
                 provider: provider, apiKey: apiKey,
-                systemPrompt: AgentPrompts.systemPrompt, userPrompt: prompt
+                systemPrompt: AgentPrompts.planPrompt, userPrompt: prompt
             )
         } catch {
             appendAgentMessage(.system, content: "AI error: \(error.localizedDescription)",
                                conversation: conversation, context: context)
-            return false
+            return nil
         }
 
         let sanitized = sanitizer.sanitize(response)
-        let parsed = ResponseParser.parse(sanitized)
+        let parsed = ResponseParser.parsePlan(sanitized)
 
+        // Build plan steps with risk classification
+        let steps = parsed.steps.map { step in
+            AgentPlan.Step(
+                description: step.desc,
+                command: step.cmd,
+                riskLevel: CommandSafety.classify(step.cmd)
+            )
+        }
+
+        let plan = AgentPlan(thinking: parsed.thinking, steps: steps, summary: parsed.response)
+
+        // Show plan to user
         appendAgentMessage(.assistant, content: parsed.response,
-                           thinking: parsed.thinking, command: parsed.command,
-                           conversation: conversation, context: context)
+                           thinking: parsed.thinking, conversation: conversation, context: context)
 
-        guard let command = parsed.command, !command.isEmpty else { return false }
+        return plan
+    }
 
-        // Safety check
-        let safety = CommandSafety.classify(command)
-        if safety == .blocked {
-            appendAgentMessage(.system, content: "Blocked: \(command)",
-                               conversation: conversation, context: context)
-            return false
+    // MARK: - Phase 2: Plan Approval
+
+    var currentPlan: AgentPlan?
+
+    private func requestPlanApproval(plan: AgentPlan) async -> Bool {
+        currentPlan = plan
+        return await withCheckedContinuation { continuation in
+            planApprovalContinuation = continuation
         }
+    }
 
-        if safety == .dangerous || safety == .moderate {
-            let riskLevel: PendingCommand.RiskLevel = safety == .dangerous ? .dangerous : .moderate
-            let confirmed = await requestConfirmation(command: command, riskLevel: riskLevel)
-            guard confirmed else {
-                appendAgentMessage(.system, content: "Declined: \(command)",
+    var planApprovalContinuation: CheckedContinuation<Bool, Never>?
+
+    func approvePlan() {
+        planApprovalContinuation?.resume(returning: true)
+        planApprovalContinuation = nil
+        currentPlan = nil
+    }
+
+    func rejectPlan() {
+        planApprovalContinuation?.resume(returning: false)
+        planApprovalContinuation = nil
+        currentPlan = nil
+    }
+
+    // MARK: - Phase 3: Execute Plan
+
+    private func executePlan(
+        plan: AgentPlan,
+        sshService: SSHNetworkService,
+        conversation: AIConversationRecord?,
+        context: ModelContext?
+    ) async -> ExecutionReport {
+        var results: [StepResult] = []
+        let startTime = Date()
+
+        for (index, step) in plan.steps.enumerated() {
+            guard !Task.isCancelled else {
+                appendAgentMessage(.system, content: "Cancelled at step \(index + 1)/\(plan.steps.count).",
                                    conversation: conversation, context: context)
-                return false
+                break
+            }
+
+            // Show progress
+            appendAgentMessage(.system, content: "Step \(index + 1)/\(plan.steps.count): \(step.description)",
+                               conversation: conversation, context: context)
+
+            // Safety check
+            if step.riskLevel == .blocked {
+                appendAgentMessage(.system, content: "Blocked: \(step.command)",
+                                   conversation: conversation, context: context)
+                results.append(StepResult(step: step, output: "Blocked", success: false, duration: 0))
+                continue
+            }
+
+            // Confirmation for moderate/dangerous
+            if !step.isAutoExecutable {
+                let riskLevel: PendingCommand.RiskLevel = step.riskLevel == .dangerous ? .dangerous : .moderate
+                let confirmed = await requestConfirmation(command: step.command, riskLevel: riskLevel)
+                guard confirmed else {
+                    appendAgentMessage(.system, content: "Skipped: \(step.command)",
+                                       conversation: conversation, context: context)
+                    results.append(StepResult(step: step, output: "Skipped by user", success: false, duration: 0))
+                    continue
+                }
+            }
+
+            // Execute
+            let stepStart = Date()
+            do {
+                let output = try await withTimeout(seconds: 30) {
+                    try await sshService.executeCommand(step.command)
+                }
+                let truncated = String(output.prefix(4000))
+                let duration = Date().timeIntervalSince(stepStart)
+                appendAgentMessage(.commandOutput, content: truncated,
+                                   conversation: conversation, context: context)
+                OperationLog.shared.record(command: step.command, output: truncated, success: true)
+                results.append(StepResult(step: step, output: truncated, success: true, duration: duration))
+            } catch {
+                let errorMsg = "Failed: \(error.localizedDescription)"
+                let duration = Date().timeIntervalSince(stepStart)
+                appendAgentMessage(.system, content: errorMsg,
+                                   conversation: conversation, context: context)
+                OperationLog.shared.record(command: step.command, output: errorMsg, success: false)
+                results.append(StepResult(step: step, output: errorMsg, success: false, duration: duration))
             }
         }
 
-        // Execute via SSH
-        do {
-            let output = try await withTimeout(seconds: 30) {
-                try await sshService.executeCommand(command)
-            }
-            let truncated = String(output.prefix(4000))
-            appendAgentMessage(.commandOutput, content: truncated,
-                               conversation: conversation, context: context)
-            OperationLog.shared.record(command: command, output: truncated, success: true)
-        } catch {
-            let errorMsg = "Execution failed: \(error.localizedDescription)"
-            appendAgentMessage(.system, content: errorMsg,
-                               conversation: conversation, context: context)
-            OperationLog.shared.record(command: command, output: errorMsg, success: false)
-            return false
-        }
+        let totalTime = Date().timeIntervalSince(startTime)
+        return ExecutionReport(results: results, totalTime: totalTime)
+    }
 
-        return true
+    // MARK: - Phase 4: Execution Report
+
+    private func appendExecutionReport(
+        _ report: ExecutionReport,
+        conversation: AIConversationRecord?,
+        context: ModelContext?
+    ) {
+        let summary = """
+        ✅ Completed \(report.successCount)/\(report.totalCount) steps \
+        (\(report.failureCount) failed) in \(String(format: "%.1f", report.totalTime))s
+        """
+        appendAgentMessage(.system, content: summary, conversation: conversation, context: context)
     }
 
     /// Append an agent message to in-memory list and optionally persist to SwiftData.

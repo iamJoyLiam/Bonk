@@ -243,6 +243,64 @@ extension AIChatSidebarView {
         .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
+    // MARK: - Plan Approval
+
+    func agentPlanApprovalView(_ plan: AgentPlan) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            planHeaderView(plan)
+            ForEach(plan.steps) { step in planStepRow(step) }
+            planActionButtons
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.blue.opacity(0.06)))
+        .padding(.horizontal, 12).padding(.vertical, 4)
+    }
+
+    private func planHeaderView(_ plan: AgentPlan) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "list.bullet.clipboard").foregroundStyle(.blue)
+            Text("Execution Plan").font(.system(size: 12, weight: .semibold))
+            Spacer()
+            Text("\(plan.steps.count) steps").font(.system(size: 10)).foregroundStyle(.tertiary)
+        }
+    }
+
+    private func planStepRow(_ step: AgentPlan.Step) -> some View {
+        let (icon, color): (String, Color) = switch step.riskLevel {
+        case .safe: ("checkmark.circle", .green)
+        case .moderate: ("exclamationmark.triangle", .orange)
+        case .dangerous: ("exclamationmark.octagon", .red)
+        case .blocked: ("xmark.shield", .gray)
+        }
+        return HStack(spacing: 6) {
+            Image(systemName: icon).font(.system(size: 10)).foregroundStyle(color).frame(width: 14)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(step.description).font(.system(size: 11))
+                Text(step.command).font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
+    }
+
+    private var planActionButtons: some View {
+        HStack(spacing: 8) {
+            Button { engine.approvePlan() } label: {
+                Label("Execute Plan", systemImage: "play.fill")
+                    .font(.system(size: 11))
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(Color.accentColor.opacity(0.15)).clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            Button { engine.rejectPlan() } label: {
+                Label(i18n.t(.cancel), systemImage: "xmark")
+                    .font(.system(size: 11))
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(Color(nsColor: .controlColor)).clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
     // MARK: - Confirmation Banner
 
     func agentConfirmationBanner(_ pending: PendingCommand) -> some View {

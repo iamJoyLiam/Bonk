@@ -44,6 +44,9 @@ struct AIChatSidebarView: View {
                 } else {
                     messageList
                 }
+                if let plan = engine.currentPlan {
+                    agentPlanApprovalView(plan)
+                }
                 if let pending = engine.pendingConfirmation {
                     agentConfirmationBanner(pending)
                 }
