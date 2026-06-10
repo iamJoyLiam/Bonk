@@ -533,17 +533,25 @@ extension AIMode {
             ## Output Format
             - Brief explanation BEFORE the code block (1-2 sentences, plain text)
             - Commands in a SINGLE fenced code block (```bash)
-            - Each command must have a comment on the same line using # explaining what it does
-            - Do NOT put empty # lines or section headers in the code block
-            - If multiple commands, put each on its own line with its own comment
+            - Each command must have a # comment on the SAME line with meaningful text
+            - NEVER put just `#` or `# ` with nothing after it
+            - NEVER put section headers like `# Docker` in code blocks
+            - If multiple commands, each on its own line with its own comment
 
-            Example output:
-            Create a Docker network and run a container on it:
+            Example of CORRECT output:
+            Create a Docker network and run a container:
 
             ```bash
             docker network create mynet        # Create a bridge network
             docker network ls                  # Verify the network exists
             docker run --network mynet myimage # Run container on the network
+            ```
+
+            Example of WRONG output (do NOT do this):
+            ```bash
+            # Docker
+            docker network create mynet
+            docker network ls #
             ```
 
             ## Safety

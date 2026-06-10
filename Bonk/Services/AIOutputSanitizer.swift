@@ -71,14 +71,22 @@ enum AIOutputSanitizer {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
                 // Skip empty # lines
                 if trimmed == "#" { continue }
-                // Skip # followed by a capitalized word (likely a section header like "# Docker")
+                // Skip # followed by a capitalized word (section header like "# Docker")
                 if trimmed.hasPrefix("# "), trimmed.count > 2 {
                     let afterHash = String(trimmed.dropFirst(2))
-                    // If it starts with uppercase and has no = or - (not a real comment), skip it
                     if let first = afterHash.first, first.isUppercase,
                        !afterHash.contains("="), !afterHash.contains("-"),
                        !afterHash.contains("$"), !afterHash.contains("!")
                     { continue }
+                }
+                // Remove trailing empty # comment (e.g., "docker images # " → "docker images")
+                if let hashIndex = line.lastIndex(of: "#") {
+                    let afterHash = line[line.index(after: hashIndex)...]
+                        .trimmingCharacters(in: .whitespaces)
+                    if afterHash.isEmpty {
+                        let cleaned = String(line[..<hashIndex]).trimmingCharacters(in: .whitespaces)
+                        if !cleaned.isEmpty { result.append(cleaned); continue }
+                    }
                 }
             }
 
