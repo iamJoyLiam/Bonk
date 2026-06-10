@@ -44,27 +44,14 @@ struct AIChatSidebarView: View {
                 } else {
                     messageList
                 }
+                if let pending = engine.pendingConfirmation {
+                    agentConfirmationBanner(pending)
+                }
                 Divider()
                 bottomBar
             } else {
                 aiDisabledView
             }
-        }
-        .confirmationDialog(
-            i18n.t(.confirmCommand),
-            isPresented: .constant(engine.pendingConfirmation != nil),
-            presenting: engine.pendingConfirmation
-        ) { pending in
-            Button(i18n.t(.execute), role: .destructive) {
-                pending.continuation(true)
-                engine.pendingConfirmation = nil
-            }
-            Button(i18n.t(.cancel), role: .cancel) {
-                pending.continuation(false)
-                engine.pendingConfirmation = nil
-            }
-        } message: { pending in
-            Text("\(pending.riskLevel == .dangerous ? "⚠️ Dangerous" : "⚠️ Moderate") command:\n\(pending.command)")
         }
     }
 
@@ -332,12 +319,14 @@ struct AIChatSidebarView: View {
 
         inputText = ""
         wasCancelled = false
+        engine.isProcessing = true
 
         Task {
             await engine.runAgent(
                 input: text, sshService: ssh,
                 conversation: conversation, context: modelContext
             )
+            engine.isProcessing = false
         }
     }
 }

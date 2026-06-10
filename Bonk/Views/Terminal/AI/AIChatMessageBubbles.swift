@@ -243,6 +243,60 @@ extension AIChatSidebarView {
         .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
+    // MARK: - Confirmation Banner
+
+    func agentConfirmationBanner(_ pending: PendingCommand) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                let icon = pending.riskLevel == .dangerous ? "exclamationmark.octagon" : "exclamationmark.triangle"
+                Image(systemName: icon)
+                    .foregroundStyle(pending.riskLevel == .dangerous ? .red : .orange)
+                Text(pending.riskLevel == .dangerous ? "Dangerous Command" : "Confirm Command")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            Text(pending.command)
+                .font(.system(size: 12, design: .monospaced))
+                .textSelection(.enabled)
+                .padding(6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(nsColor: .controlColor).opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+
+            HStack(spacing: 8) {
+                Button {
+                    pending.continuation(true)
+                    engine.pendingConfirmation = nil
+                } label: {
+                    Label(i18n.t(.execute), systemImage: "play.fill")
+                        .font(.system(size: 11))
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Color.accentColor.opacity(0.15))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    pending.continuation(false)
+                    engine.pendingConfirmation = nil
+                } label: {
+                    Label(i18n.t(.cancel), systemImage: "xmark")
+                        .font(.system(size: 11))
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Color(nsColor: .controlColor))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(pending.riskLevel == .dangerous ? Color.red.opacity(0.08) : Color.orange.opacity(0.08))
+        )
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+    }
+
     // MARK: - Avatar
 
     func avatar(_ icon: String) -> some View {
