@@ -3,32 +3,24 @@ import SwiftUI
 // MARK: - Typing Indicator (three pulsing dots)
 
 struct TypingIndicator: View {
-    @State private var phase = 0
-    @State private var timerTask: Task<Void, Never>?
-
     var body: some View {
-        HStack(spacing: 5) {
-            ForEach(0 ..< 3, id: \.self) { index in
-                Circle()
-                    .fill(Color.secondary.opacity(0.6))
-                    .frame(width: 6, height: 6)
-                    .scaleEffect(phase == index ? 1.0 : 0.5)
-                    .animation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true), value: phase)
-            }
-        }
-        .onAppear {
-            timerTask = Task {
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .milliseconds(350))
-                    guard !Task.isCancelled else { break }
-                    phase = (phase + 1) % 3
+        TimelineView(.animation) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            HStack(spacing: 5) {
+                ForEach(0 ..< 3, id: \.self) { index in
+                    let delay = Double(index) * 0.2
+                    let progress = ((t + delay) * 2).truncatingRemainder(dividingBy: 2.0)
+                    let scale = progress < 1.0
+                        ? 0.5 + 0.5 * sin(progress * .pi)
+                        : 0.5 + 0.5 * sin((2.0 - progress) * .pi)
+                    Circle()
+                        .fill(Color.secondary.opacity(0.6))
+                        .frame(width: 6, height: 6)
+                        .scaleEffect(scale)
                 }
             }
         }
-        .onDisappear {
-            timerTask?.cancel()
-            timerTask = nil
-        }
+        .frame(width: 26, height: 10)
     }
 }
 
