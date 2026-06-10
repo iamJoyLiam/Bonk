@@ -3,7 +3,8 @@ import SwiftUI
 // MARK: - Typing Indicator (three pulsing dots)
 
 struct TypingIndicator: View {
-    @State private var animating = false
+    @State private var phase = 0
+    @State private var timer: Timer?
 
     var body: some View {
         HStack(spacing: 5) {
@@ -11,16 +12,22 @@ struct TypingIndicator: View {
                 Circle()
                     .fill(Color.secondary.opacity(0.6))
                     .frame(width: 6, height: 6)
-                    .scaleEffect(animating ? 1.0 : 0.5)
-                    .animation(
-                        .easeInOut(duration: 0.6)
-                        .repeatForever(autoreverses: true)
-                        .delay(Double(index) * 0.2),
-                        value: animating
-                    )
+                    .scaleEffect(phase == index ? 1.0 : 0.5)
             }
         }
-        .onAppear { animating = true }
+        .onAppear {
+            timer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { _ in
+                Task { @MainActor in
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        phase = (phase + 1) % 3
+                    }
+                }
+            }
+        }
+        .onDisappear {
+            timer?.invalidate()
+            timer = nil
+        }
     }
 }
 
