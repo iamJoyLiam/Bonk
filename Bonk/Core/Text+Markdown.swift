@@ -164,6 +164,7 @@ enum MarkdownParser {
 struct MarkdownTextView: View {
     let content: String
     var onExecute: ((String) -> Void)?
+    var sshService: SSHNetworkService?
     @State private var cachedBlocks: [MarkdownBlock] = []
     @State private var lastParsedLength: Int = 0
 
@@ -203,7 +204,11 @@ struct MarkdownTextView: View {
                 .lineSpacing(2)
 
         case let .code(code, lang):
-            CodeBlockView(code: code, language: lang, onExecute: onExecute)
+            if let ssh = sshService {
+                InteractiveCodeBlock(code: code, language: lang, sshService: ssh)
+            } else {
+                CodeBlockView(code: code, language: lang, onExecute: onExecute)
+            }
 
         case let .bulletList(items):
             VStack(alignment: .leading, spacing: 3) {

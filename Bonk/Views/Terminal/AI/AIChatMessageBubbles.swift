@@ -70,7 +70,8 @@ extension AIChatSidebarView {
                     avatar("sparkles")
                     MarkdownTextView(
                         content: msg.content,
-                        onExecute: selectedMode == .edit ? { onPaste?($0) } : nil
+                        onExecute: selectedMode == .edit ? { onPaste?($0) } : nil,
+                        sshService: sshService
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -94,7 +95,7 @@ extension AIChatSidebarView {
     func streamingBubble(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             avatar("sparkles")
-            MarkdownTextView(content: text)
+            MarkdownTextView(content: text, sshService: sshService)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -174,7 +175,7 @@ extension AIChatSidebarView {
                             .foregroundStyle(.tertiary)
                     }
                 }
-                MarkdownTextView(content: msg.content)
+                MarkdownTextView(content: msg.content, sshService: sshService)
                 if let command = msg.command, !command.isEmpty {
                     agentCommandBlock(command)
                 }
