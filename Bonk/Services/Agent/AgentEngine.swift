@@ -56,7 +56,7 @@ final class AgentEngine {
     func execute(
         input: String,
         mode: AIMode,
-        context _: TerminalContext = TerminalContext()
+        context: TerminalContext = TerminalContext()
     ) async -> String? {
         isProcessing = true
         streamingResponse = ""
@@ -66,7 +66,11 @@ final class AgentEngine {
             return nil
         }
 
-        let systemPrompt = mode.systemPrompt
+        var basePrompt = mode.systemPrompt
+        if let ctx = buildContextString(context) {
+            basePrompt += "\n\n## Terminal Context\n\(ctx)"
+        }
+        let systemPrompt = CustomInstructions.buildSystemPrompt(base: basePrompt)
         let label = mode.rawValue
 
         // swiftlint:disable:next line_length
@@ -246,7 +250,7 @@ final class AgentEngine {
     // MARK: - Phase 1: Generate Plan
 
     private func generatePlan(
-        input: String,
+        input _: String,
         sshService _: SSHNetworkService,
         conversation: AIConversationRecord?,
         context: ModelContext?
@@ -260,12 +264,13 @@ final class AgentEngine {
 
         let prompt = aiMessages.map { "\($0["role"] ?? "user"): \($0["content"] ?? "")" }
             .joined(separator: "\n\n")
+        let systemPrompt = CustomInstructions.buildSystemPrompt(base: AgentPrompts.planPrompt)
 
         let response: String
         do {
             response = try await executeNonStreaming(
                 provider: provider, apiKey: apiKey,
-                systemPrompt: AgentPrompts.planPrompt, userPrompt: prompt
+                systemPrompt: systemPrompt, userPrompt: prompt
             )
         } catch {
             appendAgentMessage(.system, content: "AI error: \(error.localizedDescription)",
@@ -394,11 +399,22 @@ final class AgentEngine {
         conversation: AIConversationRecord?,
         context: ModelContext?
     ) {
-        let summary = """
-        ✅ Completed \(report.successCount)/\(report.totalCount) steps \
-        (\(report.failureCount) failed) in \(String(format: "%.1f", report.totalTime))s
-        """
-        appendAgentMessage(.system, content: summary, conversation: conversation, context: context)
+        var lines = ["## Execution Report", ""]
+
+        for (i, result) in report.results.enumerated() {
+            let icon = result.success ? "✅" : "❌"
+            let duration = String(format: "%.1fs", result.duration)
+            lines.append("\(icon) Step \(i + 1): `\(result.step.command)` (\(duration))")
+            if !result.success {
+                lines.append("   Error: \(result.output.prefix(200))")
+            }
+        }
+
+        lines.append("")
+        lines.append("Total: \(report.successCount)/\(report.totalCount) succeeded, \(report.failureCount) failed, \(String(format: "%.1f", report.totalTime))s")
+
+        appendAgentMessage(.system, content: lines.joined(separator: "\n"),
+                           conversation: conversation, context: context)
     }
 
     /// Append an agent message to in-memory list and optionally persist to SwiftData.
@@ -424,6 +440,18 @@ final class AgentEngine {
                 thinking: thinking, command: command, context: context
             )
         }
+    }
+
+    /// Build context string from terminal state.
+    private func buildContextString(_ context: TerminalContext) -> String? {
+        var parts: [String] = []
+        if let cwd = context.currentDirectory { parts.append("Working directory: `\(cwd)`") }
+        if let shell = context.shell { parts.append("Shell: \(shell)") }
+        if !context.recentCommands.isEmpty {
+            let cmds = context.recentCommands.suffix(5).joined(separator: ", ")
+            parts.append("Recent commands: \(cmds)")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n")
     }
 
     private func buildAgentMessages() -> [[String: String]] {
@@ -490,14 +518,26 @@ extension AIMode {
             - Use fenced code blocks (triple backticks with bash) for commands
             - Use bold for emphasis
             - Use inline code for file paths and flags
+            - If the user requests structured output, use ```json or ```yaml fenced blocks
+            - When analyzing logs or data, present findings in a structured format
             No greetings or filler. Match the user's language.
             """
         case .edit:
             """
             You are a terminal assistant embedded in an SSH client.
             The user wants you to suggest a terminal command.
-            Provide the command in a fenced code block (triple backticks with bash).
-            Explain briefly what it does. Be concise. Match the user's language.
+
+            ## Output Format
+            - Provide the command in a fenced code block (```bash)
+            - Before the command, explain what it does in 1-2 sentences
+            - After the command, mention any side effects or risks
+            - If multiple commands are needed, explain the order
+
+            ## Safety
+            - Prefer read-only commands when possible
+            - Warn about irreversible operations
+            - Suggest dry-run options when available (e.g., `--dry-run`, `-n`)
+            - Be concise. Match the user's language.
             """
         case .agent:
             AgentPrompts.systemPrompt

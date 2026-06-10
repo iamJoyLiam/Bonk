@@ -94,7 +94,7 @@ struct AgentPlan: Identifiable {
 
     /// Steps that will auto-execute.
     var autoSteps: [Step] {
-        steps.filter { $0.isAutoExecutable }
+        steps.filter(\.isAutoExecutable)
     }
 }
 
@@ -112,9 +112,17 @@ struct ExecutionReport {
     let results: [StepResult]
     let totalTime: TimeInterval
 
-    var successCount: Int { results.filter(\.success).count }
-    var failureCount: Int { results.filter { !$0.success }.count }
-    var totalCount: Int { results.count }
+    var successCount: Int {
+        results.filter(\.success).count
+    }
+
+    var failureCount: Int {
+        results.filter { !$0.success }.count
+    }
+
+    var totalCount: Int {
+        results.count
+    }
 }
 
 /// Timeout error for Agent operations.
