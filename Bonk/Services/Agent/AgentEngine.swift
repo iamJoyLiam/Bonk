@@ -92,16 +92,17 @@ final class AgentEngine {
                 }
 
                 let sanitized = sanitizer.sanitize(response)
-                if sanitized != response {
-                    Self.logger.warning("\(label, privacy: .public): output sanitized")
+                let cleaned = AIOutputSanitizer.cleanCodeBlocks(sanitized)
+                if cleaned != response {
+                    Self.logger.warning("\(label, privacy: .public): output sanitized/cleaned")
                 }
 
-                if sanitized.isEmpty {
+                if cleaned.isEmpty {
                     // swiftlint:disable:next line_length
                     Self.logger.warning("\(label, privacy: .public): empty response from \(provider.name, privacy: .public)")
                 }
 
-                currentExplanation = sanitized
+                currentExplanation = cleaned
                 return sanitized
             } catch {
                 if Task.isCancelled {
@@ -120,6 +121,7 @@ final class AgentEngine {
                 }
             }
         }
+        isProcessing = false
         return nil
     }
 

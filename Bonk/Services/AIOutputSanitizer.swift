@@ -50,4 +50,41 @@ enum AIOutputSanitizer {
         let lower = text.lowercased()
         return dangerousPatterns.contains { lower.contains($0) }
     }
+
+    /// Clean up code blocks in AI output:
+    /// - Remove empty `#` comment lines (just `#` with nothing after)
+    /// - Remove `# SectionHeader` lines that aren't real comments
+    /// - Remove empty lines between commands in code blocks
+    static func cleanCodeBlocks(_ text: String) -> String {
+        var lines = text.components(separatedBy: "\n")
+        var inCodeBlock = false
+        var result: [String] = []
+
+        for line in lines {
+            if line.hasPrefix("```") {
+                inCodeBlock.toggle()
+                result.append(line)
+                continue
+            }
+
+            if inCodeBlock {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                // Skip empty # lines
+                if trimmed == "#" { continue }
+                // Skip # followed by a capitalized word (likely a section header like "# Docker")
+                if trimmed.hasPrefix("# "), trimmed.count > 2 {
+                    let afterHash = String(trimmed.dropFirst(2))
+                    // If it starts with uppercase and has no = or - (not a real comment), skip it
+                    if let first = afterHash.first, first.isUppercase,
+                       !afterHash.contains("="), !afterHash.contains("-"),
+                       !afterHash.contains("$"), !afterHash.contains("!")
+                    { continue }
+                }
+            }
+
+            result.append(line)
+        }
+
+        return result.joined(separator: "\n")
+    }
 }
