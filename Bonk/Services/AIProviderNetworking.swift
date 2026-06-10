@@ -125,6 +125,7 @@ enum AIProviderNetworking {
             body = [
                 "model": provider.model,
                 "max_tokens": maxTokens,
+                "temperature": 0.0,
                 "messages": [
                     ["role": "system", "content": systemPrompt],
                     ["role": "user", "content": userPrompt],
