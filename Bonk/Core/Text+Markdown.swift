@@ -175,12 +175,12 @@ struct MarkdownTextView: View {
         }
         .onChange(of: content.count) { _, newCount in
             if newCount < lastParsedLength || newCount - lastParsedLength > 50 || lastParsedLength == 0 {
-                cachedBlocks = MarkdownParser.parse(content)
+                cachedBlocks = MarkdownSanitizer.sanitize(MarkdownParser.parse(content))
                 lastParsedLength = newCount
             }
         }
         .onAppear {
-            cachedBlocks = MarkdownParser.parse(content)
+            cachedBlocks = MarkdownSanitizer.sanitize(MarkdownParser.parse(content))
             lastParsedLength = content.count
         }
     }

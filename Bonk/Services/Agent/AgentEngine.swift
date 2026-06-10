@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import os.log
 import SwiftData
@@ -29,6 +30,9 @@ final class AgentEngine {
     private let providerStore = AIProviderStore.shared
     private let conversationStore = AIConversationStore.shared
     private let sanitizer = AIOutputSanitizer.self
+    private let streamThrottler = StreamThrottler(throttleMs: 100)
+    private var streamCancellable: AnyCancellable?
+    private var lastUIUpdate = Date.distantPast
 
     private init() {}
 
@@ -92,17 +96,16 @@ final class AgentEngine {
                 }
 
                 let sanitized = sanitizer.sanitize(response)
-                let cleaned = AIOutputSanitizer.cleanCodeBlocks(sanitized)
-                if cleaned != response {
-                    Self.logger.warning("\(label, privacy: .public): output sanitized/cleaned")
+                if sanitized != response {
+                    Self.logger.warning("\(label, privacy: .public): output sanitized")
                 }
 
-                if cleaned.isEmpty {
+                if sanitized.isEmpty {
                     // swiftlint:disable:next line_length
                     Self.logger.warning("\(label, privacy: .public): empty response from \(provider.name, privacy: .public)")
                 }
 
-                currentExplanation = cleaned
+                currentExplanation = sanitized
                 return sanitized
             } catch {
                 if Task.isCancelled {
@@ -188,6 +191,9 @@ final class AgentEngine {
         var result = ""
         var buffer = ""
 
+        // Reset throttler
+        await streamThrottler.reset()
+
         for try await byte in bytes {
             guard !Task.isCancelled else { break }
             guard let char = String(bytes: [byte], encoding: .utf8) else { continue }
@@ -205,10 +211,20 @@ final class AgentEngine {
 
                 if let text = AIProviderNetworking.extractDelta(from: obj) {
                     result += text
-                    streamingResponse = result
+                    await streamThrottler.append(text)
+                    // Throttle UI updates — only refresh every 100ms
+                    let now = Date()
+                    if lastUIUpdate.timeIntervalSince(now) < -0.1 {
+                        streamingResponse = await streamThrottler.getContent()
+                        lastUIUpdate = now
+                    }
                 }
             }
         }
+
+        // Final update — ensure UI has the complete text
+        streamCancellable?.cancel()
+        streamingResponse = result
         return result
     }
 
