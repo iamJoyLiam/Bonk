@@ -51,10 +51,7 @@ enum AIOutputSanitizer {
         return dangerousPatterns.contains { lower.contains($0) }
     }
 
-    /// Clean up code blocks in AI output:
-    /// - Remove empty `#` comment lines (just `#` with nothing after)
-    /// - Remove `# SectionHeader` lines that aren't real comments
-    /// - Remove empty lines between commands in code blocks
+    /// Clean up code blocks in AI output.
     static func cleanCodeBlocks(_ text: String) -> String {
         var lines = text.components(separatedBy: "\n")
         var inCodeBlock = false
@@ -69,16 +66,29 @@ enum AIOutputSanitizer {
 
             if inCodeBlock {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
-                // Skip empty # lines
+
+                // Skip empty lines
+                if trimmed.isEmpty { continue }
+
+                // Skip bare # lines
                 if trimmed == "#" { continue }
-                // Skip # followed by a capitalized word (section header like "# Docker")
-                if trimmed.hasPrefix("# "), trimmed.count > 2 {
-                    let afterHash = String(trimmed.dropFirst(2))
+
+                // Skip # SectionHeader (uppercase first word, no code indicators)
+                if trimmed.hasPrefix("# ") {
+                    let afterHash = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+                    if afterHash.isEmpty { continue } // "# " with nothing
                     if let first = afterHash.first, first.isUppercase,
                        !afterHash.contains("="), !afterHash.contains("-"),
-                       !afterHash.contains("$"), !afterHash.contains("!")
+                       !afterHash.contains("$"), !afterHash.contains("!"),
+                       !afterHash.contains("/")
                     { continue }
                 }
+
+                // Skip standalone numbered list items inside code blocks (e.g., "1. docker pull")
+                if trimmed.range(of: #"^\d+\.\s*\S"#, options: .regularExpression) != nil {
+                    continue
+                }
+
                 // Remove trailing empty # comment (e.g., "docker images # " → "docker images")
                 if let hashIndex = line.lastIndex(of: "#") {
                     let afterHash = line[line.index(after: hashIndex)...]
@@ -93,6 +103,16 @@ enum AIOutputSanitizer {
             result.append(line)
         }
 
-        return result.joined(separator: "\n")
+        // Remove consecutive empty lines outside code blocks
+        var deduped: [String] = []
+        var lastEmpty = false
+        for line in result {
+            let isEmpty = line.trimmingCharacters(in: .whitespaces).isEmpty
+            if isEmpty && lastEmpty { continue }
+            deduped.append(line)
+            lastEmpty = isEmpty
+        }
+
+        return deduped.joined(separator: "\n")
     }
 }
