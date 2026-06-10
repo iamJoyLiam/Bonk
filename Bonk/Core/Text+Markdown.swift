@@ -1,32 +1,166 @@
 import SwiftUI
 
+// MARK: - Safe Markdown Helper
+
+/// Safely parse markdown text to AttributedString. Falls back to plain text.
+func markdownText(_ content: String) -> Text {
+    if let attr = try? AttributedString(markdown: content) { return Text(attr) }
+    return Text(content)
+}
+
+// MARK: - Simple Text Extension (for backward compatibility)
+
 extension Text {
-    /// Render text with markdown support including code blocks.
-    /// SwiftUI's AttributedString(markdown:) renders fenced code blocks
-    /// as inline code without background. This method preprocesses markdown
-    /// to ensure code blocks are properly formatted.
+    /// Render text with basic markdown support. Falls back to plain text on failure.
     static func markdown(_ content: String) -> Text {
-        // Preprocess: ensure fenced code blocks have proper syntax
-        let processed = content
-            .replacingOccurrences(of: "```\\w*\\n", with: "```\n", options: .regularExpression)
-        if let attr = try? AttributedString(markdown: processed, options: .init(
-            interpretedSyntax: .inlineOnlyPreservingWhitespace
-        )) {
-            return Text(attr)
-        }
-        // Fallback: try without options
-        if let attr = try? AttributedString(markdown: processed) {
-            return Text(attr)
-        }
+        if let attr = try? AttributedString(markdown: content) { return Text(attr) }
         return Text(content)
     }
 }
 
-// MARK: - Rich Markdown View for code blocks
+// MARK: - Markdown Block Types
 
-/// A view that renders markdown with proper code block styling.
-/// Use this instead of Text.markdown() when code blocks need copy buttons.
-/// Caches parsed blocks to avoid re-parsing on every render cycle.
+enum MarkdownBlock: Identifiable {
+    case heading(level: Int, text: String)
+    case paragraph(text: String)
+    case code(String, String?) // code, language
+    case bulletList([String])
+    case numberedList([String])
+    case blockquote(String)
+    case divider
+
+    var id: String {
+        switch self {
+        case let .heading(level, text): "h\(level)-\(text.prefix(20))"
+        case let .paragraph(text): "p-\(text.prefix(20))"
+        case let .code(code, _): "code-\(code.prefix(20))"
+        case let .bulletList(items): "ul-\(items.count)"
+        case let .numberedList(items): "ol-\(items.count)"
+        case let .blockquote(text): "q-\(text.prefix(20))"
+        case .divider: "hr"
+        }
+    }
+}
+
+// MARK: - Markdown Parser
+
+enum MarkdownParser {
+    static func parse(_ content: String) -> [MarkdownBlock] {
+        var blocks: [MarkdownBlock] = []
+        let lines = content.components(separatedBy: "\n")
+        var i = 0
+
+        while i < lines.count {
+            let line = lines[i]
+
+            // Fenced code block
+            if line.hasPrefix("```") {
+                let lang = String(line.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+                var codeLines: [String] = []
+                i += 1
+                while i < lines.count, !lines[i].hasPrefix("```") {
+                    codeLines.append(lines[i])
+                    i += 1
+                }
+                let code = codeLines.joined(separator: "\n").trimmingCharacters(in: .newlines)
+                blocks.append(.code(code, lang.isEmpty ? nil : lang))
+                i += 1 // skip closing ```
+                continue
+            }
+
+            // Heading
+            if line.hasPrefix("# ") {
+                blocks.append(.heading(level: 1, text: String(line.dropFirst(2))))
+                i += 1; continue
+            }
+            if line.hasPrefix("## ") {
+                blocks.append(.heading(level: 2, text: String(line.dropFirst(3))))
+                i += 1; continue
+            }
+            if line.hasPrefix("### ") {
+                blocks.append(.heading(level: 3, text: String(line.dropFirst(4))))
+                i += 1; continue
+            }
+
+            // Divider
+            if line.trimmingCharacters(in: .whitespaces) == "---"
+                || line.trimmingCharacters(in: .whitespaces) == "***"
+                || line.trimmingCharacters(in: .whitespaces) == "___"
+            {
+                blocks.append(.divider)
+                i += 1; continue
+            }
+
+            // Blockquote
+            if line.hasPrefix("> ") {
+                var quoteLines = [String(line.dropFirst(2))]
+                i += 1
+                while i < lines.count, lines[i].hasPrefix("> ") {
+                    quoteLines.append(String(lines[i].dropFirst(2)))
+                    i += 1
+                }
+                blocks.append(.blockquote(quoteLines.joined(separator: "\n")))
+                continue
+            }
+
+            // Bullet list
+            if line.hasPrefix("- ") || line.hasPrefix("* ") {
+                var items = [String(line.dropFirst(2))]
+                i += 1
+                while i < lines.count, lines[i].hasPrefix("- ") || lines[i].hasPrefix("* ") {
+                    items.append(String(lines[i].dropFirst(2)))
+                    i += 1
+                }
+                blocks.append(.bulletList(items))
+                continue
+            }
+
+            // Numbered list
+            let numberPattern = #"^\d+\.\s"#
+            if line.range(of: numberPattern, options: .regularExpression) != nil {
+                var items = [String(line.drop(while: { $0.isNumber || $0 == "." || $0 == " " }))]
+                i += 1
+                while i < lines.count, lines[i].range(of: numberPattern, options: .regularExpression) != nil {
+                    items.append(String(lines[i].drop(while: { $0.isNumber || $0 == "." || $0 == " " })))
+                    i += 1
+                }
+                blocks.append(.numberedList(items))
+                continue
+            }
+
+            // Empty line — skip
+            if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                i += 1; continue
+            }
+
+            // Paragraph — collect consecutive non-empty lines
+            var paraLines = [line]
+            i += 1
+            while i < lines.count {
+                let next = lines[i]
+                if next.trimmingCharacters(in: .whitespaces).isEmpty
+                    || next.hasPrefix("# ")
+                    || next.hasPrefix("## ")
+                    || next.hasPrefix("### ")
+                    || next.hasPrefix("```")
+                    || next.hasPrefix("> ")
+                    || next.hasPrefix("- ")
+                    || next.hasPrefix("* ")
+                    || next.range(of: numberPattern, options: .regularExpression) != nil
+                    || next.trimmingCharacters(in: .whitespaces) == "---"
+                { break }
+                paraLines.append(next)
+                i += 1
+            }
+            blocks.append(.paragraph(text: paraLines.joined(separator: "\n")))
+        }
+
+        return blocks
+    }
+}
+
+// MARK: - Rich Markdown View
+
 struct MarkdownTextView: View {
     let content: String
     var onExecute: ((String) -> Void)?
@@ -35,79 +169,81 @@ struct MarkdownTextView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(cachedBlocks.enumerated()), id: \.offset) { _, block in
-                switch block {
-                case let .text(markdown):
-                    if let attr = try? AttributedString(markdown: markdown) {
-                        Text(attr).font(.system(size: 13)).textSelection(.enabled)
-                    } else {
-                        Text(markdown).font(.system(size: 13)).textSelection(.enabled)
-                    }
-                case let .code(code, _):
-                    CodeBlockView(code: code, onExecute: onExecute)
-                }
+            ForEach(cachedBlocks) { block in
+                blockView(block)
             }
         }
         .onChange(of: content.count) { _, newCount in
-            // Re-parse only when content grows by 50+ chars or shrinks (new message)
             if newCount < lastParsedLength || newCount - lastParsedLength > 50 || lastParsedLength == 0 {
-                cachedBlocks = MarkdownBlock.parse(content)
+                cachedBlocks = MarkdownParser.parse(content)
                 lastParsedLength = newCount
             }
         }
         .onAppear {
-            cachedBlocks = MarkdownBlock.parse(content)
+            cachedBlocks = MarkdownParser.parse(content)
             lastParsedLength = content.count
         }
     }
-}
 
-// MARK: - Markdown Block Model
+    @ViewBuilder
+    private func blockView(_ block: MarkdownBlock) -> some View {
+        switch block {
+        case let .heading(level, text):
+            let size: CGFloat = level == 1 ? 18 : level == 2 ? 15 : 13
+            let weight: Font.Weight = level <= 2 ? .bold : .semibold
+            markdownText(text)
+                .font(.system(size: size, weight: weight))
+                .textSelection(.enabled)
+                .padding(.top, level == 1 ? 4 : 2)
 
-enum MarkdownBlock {
-    case text(String)
-    case code(String, String?) // code, language
+        case let .paragraph(text):
+            markdownText(text)
+                .font(.system(size: 13))
+                .textSelection(.enabled)
+                .lineSpacing(2)
 
-    /// Parse markdown text into blocks. Handles incomplete code blocks (streaming).
-    static func parse(_ content: String) -> [MarkdownBlock] {
-        var blocks: [MarkdownBlock] = []
-        var currentText = ""
-        var inCode = false
-        var codeContent = ""
-        var codeLang: String?
+        case let .code(code, lang):
+            CodeBlockView(code: code, language: lang, onExecute: onExecute)
 
-        for line in content.components(separatedBy: "\n") {
-            if line.hasPrefix("```") {
-                if inCode {
-                    blocks.append(.code(codeContent.trimmingCharacters(in: .newlines), codeLang))
-                    codeContent = ""
-                    codeLang = nil
-                    inCode = false
-                } else {
-                    if !currentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        blocks.append(.text(currentText.trimmingCharacters(in: .newlines)))
+        case let .bulletList(items):
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(items, id: \.self) { item in
+                    HStack(alignment: .top, spacing: 6) {
+                        Text("•").font(.system(size: 13)).foregroundStyle(.secondary)
+                        markdownText(item)
+                            .font(.system(size: 13)).textSelection(.enabled)
                     }
-                    currentText = ""
-                    let lang = line.dropFirst(3).trimmingCharacters(in: .whitespacesAndNewlines)
-                    codeLang = lang.isEmpty ? nil : lang
-                    inCode = true
                 }
-            } else if inCode {
-                codeContent += line + "\n"
-            } else {
-                currentText += line + "\n"
             }
-        }
 
-        // Handle incomplete code block (streaming — no closing ```)
-        if inCode {
-            blocks.append(.code(codeContent.trimmingCharacters(in: .newlines), codeLang))
-        }
-        if !currentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            blocks.append(.text(currentText.trimmingCharacters(in: .newlines)))
-        }
+        case let .numberedList(items):
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                    HStack(alignment: .top, spacing: 6) {
+                        Text("\(index + 1).")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 20, alignment: .trailing)
+                        markdownText(item)
+                            .font(.system(size: 13)).textSelection(.enabled)
+                    }
+                }
+            }
 
-        return blocks
+        case let .blockquote(text):
+            HStack(spacing: 8) {
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.3))
+                    .frame(width: 3)
+                markdownText(text)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+
+        case .divider:
+            Divider().padding(.vertical, 4)
+        }
     }
 }
 
@@ -115,12 +251,19 @@ enum MarkdownBlock {
 
 struct CodeBlockView: View {
     let code: String
+    var language: String?
     var onExecute: ((String) -> Void)?
     @State private var copied = false
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 0) {
-            HStack(spacing: 4) {
+            // Header bar
+            HStack(spacing: 6) {
+                if let lang = language {
+                    Text(lang)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                }
                 Spacer()
                 if let onExecute {
                     Button { onExecute(code) } label: {
@@ -142,18 +285,21 @@ struct CodeBlockView: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .padding(.horizontal, 8).padding(.vertical, 4)
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
             .background(Color(nsColor: .controlColor).opacity(0.5))
 
+            // Code content
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(code)
                     .font(.system(size: 12, design: .monospaced))
                     .textSelection(.enabled)
-                    .padding(8)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .background(Color(nsColor: .controlColor).opacity(0.3))
+        .background(Color(nsColor: .controlColor).opacity(0.25))
         .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }
