@@ -10,6 +10,7 @@
 		AE08640C2FD2A52D00C9EC5F /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = AE000006AAAA000000000006 /* Sparkle */; };
 		AEF73C8A2FC47AEE00F14E56 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = AE000002AAAA000000000002 /* Citadel */; };
 		AEF73C8B2FC47AEE00F14E57 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = AE000004AAAA000000000004 /* SwiftTerm */; };
+		AE000009AAAA000000000009 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = AE000008AAAA000000000008 /* MarkdownUI */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -45,6 +46,7 @@
 				AE08640C2FD2A52D00C9EC5F /* Sparkle in Frameworks */,
 				AEF73C8A2FC47AEE00F14E56 /* Citadel in Frameworks */,
 				AEF73C8B2FC47AEE00F14E57 /* SwiftTerm in Frameworks */,
+				AE000009AAAA000000000009 /* MarkdownUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -90,6 +92,7 @@
 				AE000002AAAA000000000002 /* Citadel */,
 				AE000004AAAA000000000004 /* SwiftTerm */,
 				AE000006AAAA000000000006 /* Sparkle */,
+				AE000008AAAA000000000008 /* MarkdownUI */,
 			);
 			productName = Bonk;
 			productReference = AEF360DD2FC35EB700D936FC /* Bonk.app */;
@@ -123,6 +126,7 @@
 				AE000001AAAA000000000001 /* XCRemoteSwiftPackageReference "Citadel" */,
 				AE000003AAAA000000000003 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 				AE000005AAAA000000000005 /* XCRemoteSwiftPackageReference "Sparkle" */,
+				AE000007AAAA000000000007 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AEF360DE2FC35EB700D936FC /* Products */;
@@ -409,6 +413,14 @@
 				minimumVersion = 2.6.0;
 			};
 		};
+		AE000007AAAA000000000007 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/gonzalezreal/swift-markdown-ui.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -426,6 +438,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AE000005AAAA000000000005 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
+		};
+		AE000008AAAA000000000008 /* MarkdownUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AE000007AAAA000000000007 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
+			productName = MarkdownUI;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
