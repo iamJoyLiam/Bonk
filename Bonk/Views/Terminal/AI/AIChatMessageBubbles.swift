@@ -4,7 +4,7 @@ import SwiftUI
 
 struct TypingIndicator: View {
     @State private var phase = 0
-    @State private var timer: Timer?
+    @State private var timerTask: Task<Void, Never>?
 
     var body: some View {
         HStack(spacing: 5) {
@@ -13,20 +13,21 @@ struct TypingIndicator: View {
                     .fill(Color.secondary.opacity(0.6))
                     .frame(width: 6, height: 6)
                     .scaleEffect(phase == index ? 1.0 : 0.5)
+                    .animation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true), value: phase)
             }
         }
         .onAppear {
-            timer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { _ in
-                Task { @MainActor in
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        phase = (phase + 1) % 3
-                    }
+            timerTask = Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(350))
+                    guard !Task.isCancelled else { break }
+                    phase = (phase + 1) % 3
                 }
             }
         }
         .onDisappear {
-            timer?.invalidate()
-            timer = nil
+            timerTask?.cancel()
+            timerTask = nil
         }
     }
 }
