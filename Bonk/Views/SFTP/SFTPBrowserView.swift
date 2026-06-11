@@ -271,8 +271,9 @@ struct SFTPBrowserView: View {
                     guard let data = data as? Data,
                           let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
                     Task { @MainActor in
-                        // Use terminal's current directory if available, otherwise SFTP current path
-                        let targetDir = tab.currentDirectory ?? sftpService?.currentPath
+                        // Get actual CWD through PTY channel
+                        let ptyCWD = await tab.ptySession?.getCWD()
+                        let targetDir = ptyCWD ?? tab.currentDirectory ?? sftpService?.currentPath
                         do {
                             if let dir = targetDir {
                                 let filename = url.lastPathComponent
