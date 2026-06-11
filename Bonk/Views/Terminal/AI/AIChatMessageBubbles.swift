@@ -66,7 +66,15 @@ extension AIChatSidebarView {
                 .foregroundStyle(.tertiary)
 
             if msg.role == .assistant {
-                assistantBubble(msg)
+                HStack(alignment: .top, spacing: 8) {
+                    avatar("sparkles")
+                    MarkdownTextView(
+                        content: msg.content,
+                        onExecute: selectedMode == .edit ? { onPaste?($0) } : nil,
+                        sshService: sshService
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
             } else {
                 HStack(alignment: .top, spacing: 8) {
                     Spacer()
@@ -82,14 +90,6 @@ extension AIChatSidebarView {
             }
         }
         .frame(maxWidth: .infinity, alignment: msg.role == .user ? .trailing : .leading)
-    }
-
-    func assistantBubble(_ msg: AIMessageRecord) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            avatar("sparkles")
-            MarkdownTextView(content: msg.content, sshService: sshService)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
     }
 
     func streamingBubble(_ text: String) -> some View {

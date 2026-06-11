@@ -289,6 +289,7 @@ struct AIChatSidebarView: View {
         conversationStore.addMessage(to: conversation, role: .user, content: text, context: modelContext)
         wasCancelled = false
         inputText = ""
+        engine.isProcessing = true
 
         Task {
             let response = await engine.execute(input: text, mode: selectedMode)
