@@ -68,12 +68,8 @@ extension AIChatSidebarView {
             if msg.role == .assistant {
                 HStack(alignment: .top, spacing: 8) {
                     avatar("sparkles")
-                    MarkdownTextView(
-                        content: msg.content,
-                        onExecute: selectedMode == .edit ? { onPaste?($0) } : nil,
-                        sshService: sshService
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    MarkdownTextView(content: msg.content, sshService: sshService)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             } else {
                 HStack(alignment: .top, spacing: 8) {

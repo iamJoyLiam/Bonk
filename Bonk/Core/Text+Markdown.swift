@@ -1,3 +1,4 @@
+import MarkdownUI
 import SwiftUI
 
 // MARK: - Safe Markdown Helper
@@ -159,96 +160,41 @@ enum MarkdownParser {
     }
 }
 
-// MARK: - Rich Markdown View
+// MARK: - Rich Markdown View (powered by MarkdownUI)
 
 struct MarkdownTextView: View {
     let content: String
-    var onExecute: ((String) -> Void)?
     var sshService: SSHNetworkService?
-    @State private var cachedBlocks: [MarkdownBlock] = []
-    @State private var lastParsedLength: Int = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(cachedBlocks) { block in
-                blockView(block)
-            }
-        }
-        .onChange(of: content.count) { _, newCount in
-            if newCount < lastParsedLength || newCount - lastParsedLength > 50 || lastParsedLength == 0 {
-                cachedBlocks = MarkdownSanitizer.sanitize(MarkdownParser.parse(content))
-                lastParsedLength = newCount
-            }
-        }
-        .onAppear {
-            cachedBlocks = MarkdownSanitizer.sanitize(MarkdownParser.parse(content))
-            lastParsedLength = content.count
-        }
+        MarkdownUI.Markdown(content, baseURL: nil)
+            .markdownTheme(.bonk(sshService: sshService))
     }
+}
 
-    @ViewBuilder
-    private func blockView(_ block: MarkdownBlock) -> some View {
-        switch block {
-        case let .heading(level, text):
-            let size: CGFloat = level == 1 ? 18 : level == 2 ? 15 : 13
-            let weight: Font.Weight = level <= 2 ? .bold : .semibold
-            markdownText(text)
-                .font(.system(size: size, weight: weight))
-                .textSelection(.enabled)
-                .padding(.top, level == 1 ? 4 : 2)
+// MARK: - Bonk Theme
 
-        case let .paragraph(text):
-            markdownText(text)
-                .font(.system(size: 13))
-                .textSelection(.enabled)
-                .lineSpacing(2)
+extension MarkdownUI.Theme {
+    static func bonk(sshService: SSHNetworkService?) -> MarkdownUI.Theme {
+        var theme = Theme.gitHub
 
-        case let .code(code, lang):
+        // Customize code blocks to use our InteractiveCodeBlock
+        theme.codeBlock = BlockStyle<CodeBlockConfiguration> { configuration in
             if let ssh = sshService {
-                InteractiveCodeBlock(code: code, language: lang, sshService: ssh)
+                InteractiveCodeBlock(
+                    code: configuration.content,
+                    language: configuration.language,
+                    sshService: ssh
+                )
             } else {
-                CodeBlockView(code: code, language: lang, onExecute: onExecute)
+                CodeBlockView(
+                    code: configuration.content,
+                    language: configuration.language
+                )
             }
-
-        case let .bulletList(items):
-            VStack(alignment: .leading, spacing: 3) {
-                ForEach(items, id: \.self) { item in
-                    HStack(alignment: .top, spacing: 6) {
-                        Text("•").font(.system(size: 13)).foregroundStyle(.secondary)
-                        markdownText(item)
-                            .font(.system(size: 13)).textSelection(.enabled)
-                    }
-                }
-            }
-
-        case let .numberedList(items):
-            VStack(alignment: .leading, spacing: 3) {
-                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                    HStack(alignment: .top, spacing: 6) {
-                        Text("\(index + 1).")
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 20, alignment: .trailing)
-                        markdownText(item)
-                            .font(.system(size: 13)).textSelection(.enabled)
-                    }
-                }
-            }
-
-        case let .blockquote(text):
-            HStack(spacing: 8) {
-                Rectangle()
-                    .fill(Color.secondary.opacity(0.3))
-                    .frame(width: 3)
-                markdownText(text)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            }
-
-        case .divider:
-            Divider().padding(.vertical, 4)
         }
+
+        return theme
     }
 }
 
@@ -257,7 +203,6 @@ struct MarkdownTextView: View {
 struct CodeBlockView: View {
     let code: String
     var language: String?
-    var onExecute: ((String) -> Void)?
     @State private var copied = false
 
     var body: some View {
@@ -270,16 +215,7 @@ struct CodeBlockView: View {
                         .foregroundStyle(.tertiary)
                 }
                 Spacer()
-                if let onExecute {
-                    Button { onExecute(code) } label: {
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.green)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Execute command")
-                }
-                Button {
+                    Button {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(code, forType: .string)
                     copied = true
