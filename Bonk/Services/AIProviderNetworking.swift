@@ -40,20 +40,25 @@ enum AIProviderNetworking {
 
     static func modelsURL(endpoint: String, type: AIProviderType, apiKey _: String) -> URL? {
         let base = baseEndpoint(endpoint)
-        guard var components = URLComponents(string: base) else { return nil }
+        guard let components = URLComponents(string: base) else { return nil }
+        let basePath = components.path
 
+        let suffix: String
         switch type {
         case .openAI, .openRouter, .openCode, .claude, .custom:
-            components.path = "/v1/models"
+            suffix = "/v1/models"
         case .gemini:
-            components.path = "/v1beta/models"
+            suffix = "/v1beta/models"
         case .ollama:
-            components.path = "/api/tags"
+            suffix = "/api/tags"
         case .copilot:
             return nil
         }
 
-        return components.url
+        // Append suffix to existing path (preserves /api for OpenRouter etc.)
+        var newComponents = components
+        newComponents.path = basePath + suffix
+        return newComponents.url
     }
 
     // MARK: - Fetch Models
@@ -65,7 +70,14 @@ enum AIProviderNetworking {
             throw URLError(.badServerResponse, userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode)"])
         }
 
-        return try parseModels(from: data, type: type)
+        do {
+            return try parseModels(from: data, type: type)
+        } catch {
+            let preview = String(data: data.prefix(200), encoding: .utf8) ?? "non-utf8"
+            throw URLError(.cannotParseResponse, userInfo: [
+                NSLocalizedDescriptionKey: "Parse error: \(error.localizedDescription). Response: \(preview)"
+            ])
+        }
     }
 
     // MARK: - Test Connection
