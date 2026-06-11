@@ -178,20 +178,43 @@ extension MarkdownUI.Theme {
     static func bonk(sshService: SSHNetworkService?) -> MarkdownUI.Theme {
         var theme = Theme.basic
 
-        // Customize code blocks to use our InteractiveCodeBlock
+        // Code blocks with proper spacing to prevent sticking to adjacent text
         theme.codeBlock = BlockStyle<CodeBlockConfiguration> { configuration in
-            if let ssh = sshService {
-                InteractiveCodeBlock(
-                    code: configuration.content,
-                    language: configuration.language,
-                    sshService: ssh
-                )
-            } else {
-                CodeBlockView(
-                    code: configuration.content,
-                    language: configuration.language
-                )
+            VStack(alignment: .leading, spacing: 0) {
+                if let ssh = sshService {
+                    InteractiveCodeBlock(
+                        code: configuration.content,
+                        language: configuration.language,
+                        sshService: ssh
+                    )
+                } else {
+                    CodeBlockView(
+                        code: configuration.content,
+                        language: configuration.language
+                    )
+                }
             }
+            .padding(.vertical, 8)
+        }
+
+        // Lists with proper indentation and spacing
+        theme.list = BlockStyle<BlockConfiguration> { configuration in
+            configuration.label
+                .padding(.leading, 8)
+                .padding(.vertical, 4)
+        }
+
+        // List items with spacing between them
+        theme.listItem = BlockStyle<BlockConfiguration> { configuration in
+            configuration.label
+                .padding(.vertical, 2)
+        }
+
+        // Paragraphs with line spacing
+        theme.paragraph = BlockStyle<BlockConfiguration> { configuration in
+            configuration.label
+                .lineSpacing(4)
+                .padding(.vertical, 4)
         }
 
         return theme

@@ -95,9 +95,7 @@ final class AgentEngine {
                     )
                 }
 
-                // TEMP: Skip sanitization to test if it's causing rendering issues
-                // let sanitized = sanitizer.sanitize(response)
-                let sanitized = response
+                let sanitized = sanitizer.sanitize(response)
 
                 if sanitized.isEmpty {
                     // swiftlint:disable:next line_length
@@ -531,7 +529,7 @@ extension AIMode {
             You are a strictly technical SSH terminal assistant for a native macOS client.
 
             ## OUTPUT RULES (STRICTLY ENFORCED)
-            1. Direct answers only. No greetings, no conversational filler.
+            1. Direct answers only. No greetings, no filler.
             2. All executable shell commands MUST be combined into a SINGLE fenced code block.
             3. Format: ```bash\n<commands>\n```
             4. Comments MUST be on the same line as the command using `#`.
