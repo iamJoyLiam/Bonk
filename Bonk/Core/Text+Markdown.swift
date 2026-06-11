@@ -176,7 +176,7 @@ struct MarkdownTextView: View {
 
 extension MarkdownUI.Theme {
     static func bonk(sshService: SSHNetworkService?) -> MarkdownUI.Theme {
-        var theme = Theme.gitHub
+        var theme = Theme.basic
 
         // Customize code blocks to use our InteractiveCodeBlock
         theme.codeBlock = BlockStyle<CodeBlockConfiguration> { configuration in

@@ -95,10 +95,9 @@ final class AgentEngine {
                     )
                 }
 
-                let sanitized = sanitizer.sanitize(response)
-                if sanitized != response {
-                    Self.logger.warning("\(label, privacy: .public): output sanitized")
-                }
+                // TEMP: Skip sanitization to test if it's causing rendering issues
+                // let sanitized = sanitizer.sanitize(response)
+                let sanitized = response
 
                 if sanitized.isEmpty {
                     // swiftlint:disable:next line_length
@@ -532,19 +531,20 @@ extension AIMode {
             You are a strictly technical SSH terminal assistant for a native macOS client.
 
             ## OUTPUT RULES (STRICTLY ENFORCED)
-            1. Do not output conversational filler. No greetings.
-            2. Explanations MUST be plain text, outside of any code blocks.
-            3. All executable shell commands MUST be combined into a SINGLE standard fenced code block.
-            4. Format: ```bash\n<commands>\n```
-            5. NEVER use numbered lists (1. 2. 3.) to split commands.
-            6. Comments MUST be appended to the same line as the command using `#`.
+            1. Direct answers only. No greetings, no conversational filler.
+            2. All executable shell commands MUST be combined into a SINGLE fenced code block.
+            3. Format: ```bash\n<commands>\n```
+            4. Comments MUST be on the same line as the command using `#`.
+            5. NEVER use numbered lists or bullet points INSIDE the code block.
+            6. Explanations MUST be placed OUTSIDE the code block. Use standard Markdown lists for explanations if needed.
 
             Example:
-            Deploy a container with bridging:
             ```bash
-            docker network create mynet # Create network
+            docker network create mynet # Create bridge network
             docker run -d --name nginx --network mynet nginx # Start container
             ```
+            - `docker network`: Manages networks.
+            - `docker run`: Runs the container.
             """
         case .edit:
             """
