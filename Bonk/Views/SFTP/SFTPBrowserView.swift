@@ -271,21 +271,7 @@ struct SFTPBrowserView: View {
                     guard let data = data as? Data,
                           let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
                     Task { @MainActor in
-                        // Get actual CWD through PTY channel
-                        let ptyCWD = await tab.ptySession?.getCWD()
-                        let trackedCWD = tab.currentDirectory
-                        let sftpPath = sftpService?.currentPath
-                        Log.session.info("SFTP drop: ptyCWD=\(ptyCWD ?? "nil", privacy: .public) tracked=\(trackedCWD ?? "nil", privacy: .public) sftp=\(sftpPath ?? "nil", privacy: .public)")
-                        let targetDir = ptyCWD ?? trackedCWD ?? sftpPath
-                        do {
-                            if let dir = targetDir {
-                                let filename = url.lastPathComponent
-                                let remotePath = (dir.hasSuffix("/") ? dir : dir + "/") + filename
-                                try await sftpService?.upload(url, to: remotePath)
-                            } else {
-                                try await sftpService?.upload(url)
-                            }
-                        } catch {
+                        do { try await service.upload(url) } catch {
                             service.errorMessage = error.localizedDescription
                         }
                     }
