@@ -260,8 +260,13 @@ struct TerminalTabView: View {
             return
         }
 
-        // Get actual CWD through PTY channel (sends pwd to the interactive shell)
-        let uploadDir = await tab.ptySession?.getCWD() ?? "/tmp"
+        // Get actual CWD through PTY channel
+        let ptyCWD = await tab.ptySession?.getCWD()
+        let trackedCWD = tab.currentDirectory
+        Log.session.info("Drop upload: ptyCWD=\(ptyCWD ?? "nil", privacy: .public) trackedCWD=\(trackedCWD ?? "nil", privacy: .public)")
+
+        // Prefer PTY getCWD, fall back to tracked CWD, then /tmp
+        let uploadDir = ptyCWD ?? trackedCWD ?? "/tmp"
         await performUpload(url, tab: tab, uploadDir: uploadDir)
     }
 }
