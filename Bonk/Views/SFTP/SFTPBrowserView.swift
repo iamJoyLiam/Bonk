@@ -273,7 +273,10 @@ struct SFTPBrowserView: View {
                     Task { @MainActor in
                         // Get actual CWD through PTY channel
                         let ptyCWD = await tab.ptySession?.getCWD()
-                        let targetDir = ptyCWD ?? tab.currentDirectory ?? sftpService?.currentPath
+                        let trackedCWD = tab.currentDirectory
+                        let sftpPath = sftpService?.currentPath
+                        Log.session.info("SFTP drop: ptyCWD=\(ptyCWD ?? "nil", privacy: .public) tracked=\(trackedCWD ?? "nil", privacy: .public) sftp=\(sftpPath ?? "nil", privacy: .public)")
+                        let targetDir = ptyCWD ?? trackedCWD ?? sftpPath
                         do {
                             if let dir = targetDir {
                                 let filename = url.lastPathComponent
