@@ -260,8 +260,8 @@ struct TerminalTabView: View {
             return
         }
 
-        // Use OSC 7 tracked directory (updated by terminal escape sequences)
-        let uploadDir = tab.currentDirectory ?? "/tmp"
+        // Get actual CWD through PTY channel (sends pwd to the interactive shell)
+        let uploadDir = await tab.ptySession?.getCWD() ?? "/tmp"
         await performUpload(url, tab: tab, uploadDir: uploadDir)
     }
 }
