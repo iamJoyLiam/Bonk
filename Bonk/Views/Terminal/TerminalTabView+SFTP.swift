@@ -26,13 +26,16 @@ extension TerminalTabView {
         }
     }
 
-    /// Resolve the upload directory from tab state or SSH query.
+    /// Resolve the upload directory from PTY session or SFTP.
     func resolveUploadDir(tab: TerminalTab, sftp: SFTPService) async -> String {
-        if let cwd = tab.currentDirectory, cwd.hasPrefix("/") { return cwd }
-        if let ssh = tab.sshService, let execCWD = try? await ssh.executeCommand("pwd"), execCWD.hasPrefix("/") {
-            tab.currentDirectory = execCWD
-            return execCWD
+        // Use PTY getCWD to get actual interactive shell directory
+        if let ptyCWD = await tab.ptySession?.getCWD(), ptyCWD.hasPrefix("/") {
+            tab.currentDirectory = ptyCWD
+            return ptyCWD
         }
+        // Fallback to tracked CWD
+        if let cwd = tab.currentDirectory, cwd.hasPrefix("/") { return cwd }
+        // Last resort: SFTP current path
         return sftp.currentPath
     }
 
