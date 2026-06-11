@@ -55,7 +55,7 @@ enum ServerInfoFetcher {
             + "echo load=$(cat /proc/loadavg | awk '{print $1, $2, $3}'); "
             + "else echo load=$(sysctl -n vm.loadavg 2>/dev/null | tr -d '{}'); fi",
         // IP
-        "echo ip=$(hostname -I 2>/dev/null | awk '{print $1}')"
+        "echo ip=$(hostname -I 2>/dev/null | awk '{print $1}')",
     ].joined(separator: "; ")
 
     /// Fetch server info from an SSH connection. Returns nil on failure.

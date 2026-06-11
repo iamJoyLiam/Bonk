@@ -25,12 +25,12 @@ struct BonkApp: App {
             HostGroup.self,
             AIConversationRecord.self,
             AIMessageRecord.self,
-            AIProviderRecord.self
+            AIProviderRecord.self,
         ])
         #if DEBUG
-        let config = ModelConfiguration("Bonk-Dev", schema: schema, isStoredInMemoryOnly: false)
+            let config = ModelConfiguration("Bonk-Dev", schema: schema, isStoredInMemoryOnly: false)
         #else
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         #endif
 
         do {

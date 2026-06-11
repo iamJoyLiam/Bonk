@@ -32,7 +32,7 @@ struct LightTheme: TerminalTheme {
             RGBAColor(0.15, 0.35, 0.75),
             RGBAColor(0.65, 0.20, 0.65),
             RGBAColor(0.15, 0.55, 0.60),
-            RGBAColor(0.95, 0.95, 0.95)
+            RGBAColor(0.95, 0.95, 0.95),
         ]
     )
 }

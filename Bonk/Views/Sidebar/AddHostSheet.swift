@@ -170,7 +170,8 @@ struct AddHostSheet: View {
                         )
                     }
                     if let credUsername = cred.username,
-                       !credUsername.isEmpty {
+                       !credUsername.isEmpty
+                    {
                         LabeledContent(i18n.t(.username)) {
                             Text(credUsername)
                         }

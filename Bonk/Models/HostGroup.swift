@@ -30,7 +30,7 @@ final class HostGroup: Identifiable {
 extension HostGroup {
     static let presetColors = [
         "#FF6B6B", "#FF9F43", "#FECA57", "#48DBFB",
-        "#0ABDE3", "#5F27CD", "#FF6B9D", "#1DD1A1"
+        "#0ABDE3", "#5F27CD", "#FF6B9D", "#1DD1A1",
     ]
 
     var resolvedColor: Color? {

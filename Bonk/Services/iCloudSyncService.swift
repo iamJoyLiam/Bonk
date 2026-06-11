@@ -66,11 +66,13 @@ final class iCloudSyncService {
 
     @objc private func storeDidChange(_ notification: Notification) {
         guard let userInfo = notification.userInfo,
-              let reason = userInfo[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int else {
+              let reason = userInfo[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int else
+        {
             return
         }
         guard reason == NSUbiquitousKeyValueStoreServerChange ||
-            reason == NSUbiquitousKeyValueStoreInitialSyncChange else {
+            reason == NSUbiquitousKeyValueStoreInitialSyncChange else
+        {
             return
         }
         syncFromCloud()
@@ -86,7 +88,8 @@ final class iCloudSyncService {
 
         let snapshot = SyncSnapshot(from: prefs)
         if let data = try? JSONEncoder().encode(snapshot),
-           let json = String(data: data, encoding: .utf8) {
+           let json = String(data: data, encoding: .utf8)
+        {
             store.set(json, forKey: Keys.preferences)
         }
 
@@ -101,7 +104,8 @@ final class iCloudSyncService {
 
         guard let json = store.string(forKey: Keys.preferences),
               let data = json.data(using: .utf8),
-              let snapshot = try? JSONDecoder().decode(SyncSnapshot.self, from: data) else {
+              let snapshot = try? JSONDecoder().decode(SyncSnapshot.self, from: data) else
+        {
             return
         }
 

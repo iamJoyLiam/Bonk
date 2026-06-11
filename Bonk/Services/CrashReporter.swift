@@ -36,7 +36,7 @@ enum CrashReporter {
             "Exception: \(exception.name.rawValue)",
             "Reason: \(exception.reason ?? "unknown")",
             "Stack:",
-            exception.callStackSymbols.joined(separator: "\n")
+            exception.callStackSymbols.joined(separator: "\n"),
         ]
 
         let text = lines.joined(separator: "\n") + "\n"

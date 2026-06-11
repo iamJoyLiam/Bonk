@@ -71,7 +71,6 @@ final class AIService {
         streamingResponse = ""
         defer { isProcessing = false }
 
-        // swiftlint:disable:next line_length
         Log.ai.info("\(label): provider=\(provider.name, privacy: .public) model=\(provider.model, privacy: .public)")
 
         let maxRetries = 2
@@ -103,7 +102,9 @@ final class AIService {
                     try? await Task.sleep(nanoseconds: delay)
                 } else {
                     lastError = error.localizedDescription
-                    Log.ai.error("\(label): all \(maxRetries + 1) attempts failed: \(error.localizedDescription, privacy: .public)")
+                    Log.ai.error(
+                        "\(label): all attempts failed: \(error.localizedDescription, privacy: .public)"
+                    )
                 }
             }
         }

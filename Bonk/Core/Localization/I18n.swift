@@ -186,7 +186,8 @@ final class I18n: ObservableObject, @unchecked Sendable {
                 guard result[langCode] == nil else { continue }
                 let path = (dir as NSString).appendingPathComponent(file)
                 if let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
-                   let dict = try? JSONDecoder().decode([String: String].self, from: data) {
+                   let dict = try? JSONDecoder().decode([String: String].self, from: data)
+                {
                     result[langCode] = dict
                 }
             }

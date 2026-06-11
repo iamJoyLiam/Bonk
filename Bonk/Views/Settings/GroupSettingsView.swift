@@ -256,6 +256,6 @@ struct GroupEditSheet: View {
         "house", "building.2", "cart", "hammer", "wrench",
         "star", "flag", "tag", "bookmark", "pin",
         "heart", "flame", "drop", "leaf", "sun.max",
-        "moon", "sparkles", "command", "atom"
+        "moon", "sparkles", "command", "atom",
     ]
 }

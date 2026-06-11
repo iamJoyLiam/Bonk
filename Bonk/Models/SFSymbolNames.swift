@@ -8108,6 +8108,6 @@ enum SFSymbols {
         "zr.button.roundedtop.horizontal.fill",
         "zr.rectangle.roundedtop",
         "zr.rectangle.roundedtop.fill",
-        "zzz"
+        "zzz",
     ]
 }

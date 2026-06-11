@@ -145,7 +145,7 @@ enum AIOutputSanitizer {
         var lastEmpty = false
         for line in result {
             let isEmpty = line.trimmingCharacters(in: .whitespaces).isEmpty
-            if isEmpty && lastEmpty { continue }
+            if isEmpty, lastEmpty { continue }
             deduped.append(line)
             lastEmpty = isEmpty
         }

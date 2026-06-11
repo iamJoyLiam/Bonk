@@ -149,7 +149,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         }
     }
 
-    // Start the PTY session. Fire-and-forget — the session runs in a detached task.
+    /// Start the PTY session. Fire-and-forget — the session runs in a detached task.
     func start(client: SSHClient, cols: Int, rows: Int, termType: String) {
         let safeCols = max(cols, 1)
         let safeRows = max(rows, 1)
@@ -234,8 +234,8 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         try await writer.changeSize(cols: safeCols, rows: safeRows, pixelWidth: 0, pixelHeight: 0)
     }
 
-    // Query the terminal's current working directory by sending `pwd` and parsing output.
-    // Returns nil if timeout or not at a shell prompt.
+    /// Query the terminal's current working directory by sending `pwd` and parsing output.
+    /// Returns nil if timeout or not at a shell prompt.
     public func getCWD() async -> String? {
         guard let writer = writerBox.withLockedValue({ $0 }) else { return nil }
 
@@ -312,9 +312,9 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
     private enum FilterState { case ground, escape, oscString, dcsEntry, dcsString, csi }
 
-    // Strip OSC and DCS escape sequences from a string.
-    // Preserves CSI sequences (cursor, SGR colors) which the terminal needs for rendering.
-    // Used during buffer replay to prevent re-processing terminal query responses.
+    /// Strip OSC and DCS escape sequences from a string.
+    /// Preserves CSI sequences (cursor, SGR colors) which the terminal needs for rendering.
+    /// Used during buffer replay to prevent re-processing terminal query responses.
     nonisolated static func filterOSCSequences(_ text: String) -> String {
         let bytes = Array(text.utf8)
         var result = [UInt8]()
@@ -371,7 +371,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
     /// Process a byte in the DCS entry state. Returns the next state.
     private nonisolated static func processDCSEntryByte(_ byte: UInt8) -> FilterState {
-        return byte == 0x1B ? .dcsString : .dcsEntry
+        byte == 0x1B ? .dcsString : .dcsEntry
     }
 
     /// Process a byte in the DCS string state. Returns the next state.

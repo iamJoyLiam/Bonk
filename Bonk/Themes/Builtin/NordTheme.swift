@@ -32,7 +32,7 @@ struct NordTheme: TerminalTheme {
             RGBAColor(0.396, 0.576, 0.757),
             RGBAColor(0.659, 0.490, 0.722),
             RGBAColor(0.424, 0.694, 0.741),
-            RGBAColor(0.925, 0.937, 0.957)
+            RGBAColor(0.925, 0.937, 0.957),
         ]
     )
 }

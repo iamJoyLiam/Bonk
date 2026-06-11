@@ -32,7 +32,7 @@ struct CatppuccinMochaTheme: TerminalTheme {
             RGBAColor(0.541, 0.682, 0.957),
             RGBAColor(0.847, 0.651, 0.957),
             RGBAColor(0.510, 0.835, 0.812),
-            RGBAColor(0.937, 0.945, 0.969)
+            RGBAColor(0.937, 0.945, 0.969),
         ]
     )
 }

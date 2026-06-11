@@ -45,7 +45,7 @@ enum AppStyle {
         Color(red: 0.2, green: 0.8, blue: 0.2),
         Color(red: 0.0, green: 0.7, blue: 1.0),
         Color(red: 0.4, green: 0.1, blue: 0.9),
-        Color(red: 1.0, green: 0.0, blue: 0.4)
+        Color(red: 1.0, green: 0.0, blue: 0.4),
     ]
 
     // MARK: - AI Panel

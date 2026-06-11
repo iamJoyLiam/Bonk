@@ -59,8 +59,8 @@ struct AccountSettingsView: View {
                     "iCloud sync requires Apple Developer account and App Store distribution.",
                     systemImage: "info.circle"
                 )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             if let error = syncService.syncError {

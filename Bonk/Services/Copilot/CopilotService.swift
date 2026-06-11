@@ -50,7 +50,8 @@ final class CopilotService: ObservableObject {
     private init() {
         // Restore persisted token from Keychain
         if let token = KeychainHelper.get(for: tokenKey),
-           let username = KeychainHelper.get(for: usernameKey) {
+           let username = KeychainHelper.get(for: usernameKey)
+        {
             oauthToken = token
             authState = .signedIn(username: username)
             status = .running
@@ -100,7 +101,7 @@ final class CopilotService: ObservableObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body: [String: String] = [
             "client_id": Self.clientID,
-            "scope": Self.scope
+            "scope": Self.scope,
         ]
         request.httpBody = try JSONEncoder().encode(body)
 
@@ -190,7 +191,7 @@ final class CopilotService: ObservableObject {
                 let body: [String: String] = [
                     "client_id": Self.clientID,
                     "device_code": deviceCode,
-                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code"
+                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
                 ]
                 request.httpBody = try JSONEncoder().encode(body)
 

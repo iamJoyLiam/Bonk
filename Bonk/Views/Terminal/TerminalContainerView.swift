@@ -197,7 +197,7 @@ import SwiftUI
                 cached.view.leadingAnchor.constraint(equalTo: nsView.leadingAnchor, constant: 8),
                 cached.view.trailingAnchor.constraint(equalTo: nsView.trailingAnchor, constant: -8),
                 cached.view.topAnchor.constraint(equalTo: nsView.topAnchor, constant: 4),
-                cached.view.bottomAnchor.constraint(equalTo: nsView.bottomAnchor, constant: -4)
+                cached.view.bottomAnchor.constraint(equalTo: nsView.bottomAnchor, constant: -4),
             ]
             NSLayoutConstraint.activate(cached.constraints)
 
@@ -267,7 +267,7 @@ import SwiftUI
                 cached.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
                 cached.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -8),
                 cached.view.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 4),
-                cached.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -4)
+                cached.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -4),
             ]
             NSLayoutConstraint.activate(cached.constraints)
             context.coordinator.lastTabID = tabID
@@ -390,7 +390,6 @@ import SwiftUI
                 removeCopyOnSelectMonitor()
             }
         }
-
     }
 
 #endif

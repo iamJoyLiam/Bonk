@@ -5,11 +5,11 @@ import SwiftUI
 struct TypingIndicator: View {
     var body: some View {
         TimelineView(.animation) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
+            let time = timeline.date.timeIntervalSinceReferenceDate
             HStack(spacing: 5) {
                 ForEach(0 ..< 3, id: \.self) { index in
                     let delay = Double(index) * 0.2
-                    let progress = ((t + delay) * 2).truncatingRemainder(dividingBy: 2.0)
+                    let progress = ((time + delay) * 2).truncatingRemainder(dividingBy: 2.0)
                     let scale = progress < 1.0
                         ? 0.5 + 0.5 * sin(progress * .pi)
                         : 0.5 + 0.5 * sin((2.0 - progress) * .pi)

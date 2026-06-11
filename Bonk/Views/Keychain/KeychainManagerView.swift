@@ -70,7 +70,7 @@ struct KeychainManagerView: View {
                     i18n.t(.noCredentials), systemImage: "key.fill",
                     description: Text(i18n.t(.noCredentialsHint))
                 )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
                     ForEach(credentials) { cred in

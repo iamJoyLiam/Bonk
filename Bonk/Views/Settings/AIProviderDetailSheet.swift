@@ -62,7 +62,7 @@ struct AIProviderDetailSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(i18n.t(.save)) {
-                        if draft.type == .custom && draft.model.trimmingCharacters(in: .whitespaces).isEmpty {
+                        if draft.type == .custom, draft.model.trimmingCharacters(in: .whitespaces).isEmpty {
                             showModelRequiredAlert = true
                         } else {
                             cancelTasks(); onSave(draft)
