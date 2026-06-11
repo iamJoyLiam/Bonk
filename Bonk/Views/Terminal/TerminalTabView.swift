@@ -260,20 +260,17 @@ struct TerminalTabView: View {
             return
         }
 
-        // Get the terminal's current working directory
-        let uploadDir: String
-        if let cwd = tab.currentDirectory, cwd.hasPrefix("/") {
-            uploadDir = cwd
-        } else if let ssh = tab.sshService,
-                  let pwd = try? await ssh.executeCommand("pwd"),
-                  pwd.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/") {
-            uploadDir = pwd.trimmingCharacters(in: .whitespacesAndNewlines)
-            tab.currentDirectory = uploadDir
-        } else {
-            uploadDir = "/tmp"
+        // Always run pwd to get the actual current directory (don't rely on cached value)
+        var uploadDir = "/tmp"
+        if let ssh = tab.sshService,
+           let pwd = try? await ssh.executeCommand("pwd") {
+            let trimmed = pwd.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.hasPrefix("/") {
+                uploadDir = trimmed
+                tab.currentDirectory = trimmed
+            }
         }
 
-        // Use existing upload logic
         await performUpload(url, tab: tab, uploadDir: uploadDir)
     }
 }
