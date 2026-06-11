@@ -81,6 +81,18 @@ struct TerminalTabView: View {
                             Task { await sessionManager.reconnectTab(activeTab.id) }
                         }
                     )
+                    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                        for provider in providers {
+                            provider.loadItem(forTypeIdentifier: "public.file-url") { data, _ in
+                                guard let data = data as? Data,
+                                      let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+                                Task { @MainActor in
+                                    await handleTerminalDrop(url: url, tab: activeTab)
+                                }
+                            }
+                        }
+                        return true
+                    }
                     .contextMenu {
                         Button {
                             requestSelectionAndShowAI()
@@ -237,5 +249,31 @@ struct TerminalTabView: View {
                 Text(i18n.t(.fileExists).replacingOccurrences(of: "%@", with: url.lastPathComponent))
             }
         }
+    }
+
+    /// Handle file drop on terminal view — upload to terminal's current directory.
+    private func handleTerminalDrop(url: URL, tab: TerminalTab) async {
+        guard tab.sshService != nil else {
+            dropMessage = i18n.t(.noSSHConnection)
+            try? await Task.sleep(for: .seconds(2))
+            dropMessage = nil
+            return
+        }
+
+        // Get the terminal's current working directory
+        let uploadDir: String
+        if let cwd = tab.currentDirectory, cwd.hasPrefix("/") {
+            uploadDir = cwd
+        } else if let ssh = tab.sshService,
+                  let pwd = try? await ssh.executeCommand("pwd"),
+                  pwd.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/") {
+            uploadDir = pwd.trimmingCharacters(in: .whitespacesAndNewlines)
+            tab.currentDirectory = uploadDir
+        } else {
+            uploadDir = "/tmp"
+        }
+
+        // Use existing upload logic
+        await performUpload(url, tab: tab, uploadDir: uploadDir)
     }
 }
