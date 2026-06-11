@@ -215,7 +215,7 @@ struct CodeBlockView: View {
                         .foregroundStyle(.tertiary)
                 }
                 Spacer()
-                    Button {
+                Button {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(code, forType: .string)
                     copied = true

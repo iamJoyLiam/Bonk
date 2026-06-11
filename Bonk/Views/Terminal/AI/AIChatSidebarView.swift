@@ -8,7 +8,10 @@ struct AIChatSidebarView: View {
     @Environment(\.modelContext) var modelContext
     let sshService: SSHNetworkService?
     var onPaste: ((String) -> Void)?
-    var engine: AgentEngine { AgentEngine.shared }
+    var engine: AgentEngine {
+        AgentEngine.shared
+    }
+
     @ObservedObject var providerStore = AIProviderStore.shared
     @State var conversationStore = AIConversationStore.shared
     @Query(sort: \AIConversationRecord.updatedAt, order: .reverse)

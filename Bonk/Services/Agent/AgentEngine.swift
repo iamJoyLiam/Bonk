@@ -191,8 +191,7 @@ final class AgentEngine {
         var result = ""
         var buffer = ""
 
-        // Reset throttler
-        await streamThrottler.reset()
+        var lastUIUpdate = Date.distantPast
 
         for try await byte in bytes {
             guard !Task.isCancelled else { break }
@@ -205,17 +204,17 @@ final class AgentEngine {
 
                 guard line.hasPrefix("data: ") else { continue }
                 let json = String(line.dropFirst(6))
-                guard json != "[DONE]",
-                      let data = json.data(using: .utf8),
-                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+                guard json != "[DONE]" else { continue }
+                guard let data = json.data(using: .utf8),
+                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else { continue }
 
                 if let text = AIProviderNetworking.extractDelta(from: obj) {
                     result += text
-                    await streamThrottler.append(text)
-                    // Throttle UI updates — only refresh every 100ms
+                    // Update UI every 100ms to prevent excessive redraws
                     let now = Date()
-                    if lastUIUpdate.timeIntervalSince(now) < -0.1 {
-                        streamingResponse = await streamThrottler.getContent()
+                    if now.timeIntervalSince(lastUIUpdate) > 0.1 {
+                        streamingResponse = result
                         lastUIUpdate = now
                     }
                 }
@@ -223,7 +222,6 @@ final class AgentEngine {
         }
 
         // Final update — ensure UI has the complete text
-        streamCancellable?.cancel()
         streamingResponse = result
         return result
     }
@@ -531,37 +529,41 @@ extension AIMode {
         switch self {
         case .ask:
             """
-            You are a terminal assistant in a native macOS SSH client.
+            You are a strictly technical SSH terminal assistant for a native macOS client.
 
-            ## IMMUTABLE FORMAT CONTRACT
-            - All commands MUST be in a fenced code block (```bash)
-            - Inside code blocks: ONLY executable lines. NO markdown lists, NO headers, NO empty # lines.
-            - If a command needs a comment, put it on the SAME line: `command  # explanation`
-            - NEVER put a trailing `#` with nothing after it
-            - All explanations go OUTSIDE code blocks as plain text
-            - Use **bold** for emphasis, `inline code` for paths/flags
+            ## OUTPUT RULES (STRICTLY ENFORCED)
+            1. Do not output conversational filler. No greetings.
+            2. Explanations MUST be plain text, outside of any code blocks.
+            3. All executable shell commands MUST be combined into a SINGLE standard fenced code block.
+            4. Format: ```bash\n<commands>\n```
+            5. NEVER use numbered lists (1. 2. 3.) to split commands.
+            6. Comments MUST be appended to the same line as the command using `#`.
 
-            No greetings. No filler. Match the user's language.
+            Example:
+            Deploy a container with bridging:
+            ```bash
+            docker network create mynet # Create network
+            docker run -d --name nginx --network mynet nginx # Start container
+            ```
             """
         case .edit:
             """
-            You are a terminal assistant in a native macOS SSH client.
+            You are a strictly technical SSH terminal assistant for a native macOS client.
 
-            ## IMMUTABLE FORMAT CONTRACT
+            ## OUTPUT RULES (STRICTLY ENFORCED)
             1. Brief explanation BEFORE the code block (1-2 sentences, plain text)
             2. Commands in a SINGLE ```bash code block
             3. Inside code blocks: ONLY executable shell lines
-            4. Each command may have a # comment on the SAME line with meaningful text
-            5. NEVER put bare `#`, `# ` with nothing, or `# Section Header` inside code blocks
-            6. NEVER put numbered lists (1. 2. 3.) inside code blocks
-            7. All step descriptions go OUTSIDE the code block
+            4. Comments MUST be appended to the same line using `#`
+            5. NEVER use numbered lists inside code blocks
+            6. All step descriptions go OUTSIDE the code block
 
             CORRECT:
             Create a network and run a container:
 
             ```bash
-            docker network create mynet        # Create bridge network
-            docker run --network mynet nginx   # Start nginx on network
+            docker network create mynet # Create network
+            docker run -d --name nginx --network mynet nginx # Start container
             ```
 
             WRONG (NEVER do this):
