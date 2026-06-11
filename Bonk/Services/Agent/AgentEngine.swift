@@ -1,4 +1,3 @@
-import Combine
 import Foundation
 import os.log
 import SwiftData
@@ -30,8 +29,6 @@ final class AgentEngine {
     private let providerStore = AIProviderStore.shared
     private let conversationStore = AIConversationStore.shared
     private let sanitizer = AIOutputSanitizer.self
-    private let streamThrottler = StreamThrottler(throttleMs: 100)
-    private var streamCancellable: AnyCancellable?
     private var lastUIUpdate = Date.distantPast
 
     private init() {}
