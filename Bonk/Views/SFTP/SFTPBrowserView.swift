@@ -271,7 +271,17 @@ struct SFTPBrowserView: View {
                     guard let data = data as? Data,
                           let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
                     Task { @MainActor in
-                        do { try await service.upload(url) } catch {
+                        // Use terminal's current directory if available, otherwise SFTP current path
+                        let targetDir = tab.currentDirectory ?? sftpService?.currentPath
+                        do {
+                            if let dir = targetDir {
+                                let filename = url.lastPathComponent
+                                let remotePath = (dir.hasSuffix("/") ? dir : dir + "/") + filename
+                                try await sftpService?.upload(url, to: remotePath)
+                            } else {
+                                try await sftpService?.upload(url)
+                            }
+                        } catch {
                             service.errorMessage = error.localizedDescription
                         }
                     }
