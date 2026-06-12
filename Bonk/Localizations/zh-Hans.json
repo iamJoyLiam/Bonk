@@ -317,5 +317,7 @@
   "port_forwarding": "端口转发",
   "add_port_forward": "添加端口转发",
   "edit_port_forward": "编辑端口转发",
-  "no_port_forwards": "暂无端口转发规则"
+  "no_port_forwards": "暂无端口转发规则",
+  "menu_view": "视图",
+  "menu_connection": "连接"
 }

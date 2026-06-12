@@ -11,11 +11,6 @@ struct ContentView: View {
     #if os(macOS)
         @State private var showInspector = false
         @State private var inspectorMode: InspectorMode = .sftp
-        @State private var showCommandPalette = false
-        @State private var showAIChat = false
-        @State private var showSnippets = false
-        @State private var showSessions = false
-        @State private var showPortForwarding = false
 
         enum InspectorMode { case sftp, aiChat }
     #endif
@@ -54,41 +49,6 @@ struct ContentView: View {
             Button(i18n.t(.ok)) {}
         } message: {
             Text(sessionManager.lastError ?? i18n.t(.unknownError))
-        }
-        .sheet(isPresented: $showSnippets) {
-            SnippetManagerView(
-                isPresented: $showSnippets,
-                onInsert: { text in
-                    if let activeTab = sessionManager.activeTab {
-                        let bytes = Array(text.utf8 + [13]) // 13 = Enter
-                        Task { try? await sessionManager.sendInput(bytes[...], to: activeTab.id) }
-                    }
-                }
-            )
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .showSnippets)) { _ in
-            showSnippets = true
-        }
-        .sheet(isPresented: $showSessions) {
-            SessionManagerView(
-                isPresented: $showSessions,
-                onConnect: { session in
-                    // Find or create host item and connect
-                    // This would need integration with the host list
-                }
-            )
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .showSessions)) { _ in
-            showSessions = true
-        }
-        .sheet(isPresented: $showPortForwarding) {
-            PortForwardView(
-                isPresented: $showPortForwarding,
-                sshService: sessionManager.activeTab?.sshService
-            )
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .showPortForwarding)) { _ in
-            showPortForwarding = true
         }
     }
 
@@ -136,47 +96,9 @@ struct ContentView: View {
                 }
             }
             .navigationSplitViewStyle(.balanced)
-            .overlay {
-                if showCommandPalette {
-                    Color.black.opacity(0.3)
-                        .ignoresSafeArea()
-                        .onTapGesture { showCommandPalette = false }
-
-                    CommandPaletteView(
-                        isPresented: $showCommandPalette,
-                        commands: CommandRegistry.buildCommands(
-                            sessionManager: sessionManager,
-                            i18n: i18n,
-                            onToggleAI: {
-                                if showInspector, inspectorMode == .aiChat {
-                                    showInspector = false
-                                } else {
-                                    inspectorMode = .aiChat
-                                    showInspector = true
-                                }
-                            },
-                            onShowSettings: {
-                                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                            },
-                            onChangeTheme: { themeID in
-                                themeManager.setActive(themeID)
-                            }
-                        )
-                    )
-                    .transition(.opacity)
-                }
-            }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     HStack(spacing: 6) {
-                        Button {
-                            showCommandPalette = true
-                        } label: {
-                            Image(systemName: "command")
-                        }
-                        .help(i18n.t(.commandPalette))
-                        .keyboardShortcut("p", modifiers: [.command, .shift])
-
                         Button {
                             if showInspector, inspectorMode == .aiChat {
                                 showInspector = false

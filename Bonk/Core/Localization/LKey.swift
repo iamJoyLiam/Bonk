@@ -243,4 +243,8 @@ enum LKey: String, CaseIterable {
     case addPortForward = "add_port_forward"
     case editPortForward = "edit_port_forward"
     case noPortForwards = "no_port_forwards"
+
+    // Menu
+    case menuView = "menu_view"
+    case menuConnection = "menu_connection"
 }

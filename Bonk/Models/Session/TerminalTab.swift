@@ -24,11 +24,6 @@ final class TerminalTab: Identifiable {
     /// Color label for the tab (like macOS Finder labels).
     var colorLabel: String?
 
-    /// Split pane layout for this tab.
-    var splitPane: SplitPane = .single(SplitPane.TerminalPane())
-    /// Currently active pane ID.
-    var activePaneID: UUID?
-
     /// Available color labels.
     static let colorLabels: [(name: String, color: Color)] = [
         ("red", .red),

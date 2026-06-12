@@ -40,7 +40,6 @@ struct BonkApp: App {
         do {
             return try ModelContainer(for: schema, configurations: [config])
         } catch {
-            // v2026.0.3: one-time destructive migration (removed legacy string properties)
             Log.general.warning("Migration failed, recreating store: \(error)")
             let storeURL = config.url
             let storeDir = storeURL.deletingLastPathComponent()
@@ -74,7 +73,7 @@ struct BonkApp: App {
         }
         .modelContainer(sharedModelContainer)
         .commands {
-            // Localized About + Check for Updates
+            // MARK: - App Info
             CommandGroup(replacing: .appInfo) {
                 Button {
                     NSApp.orderFrontStandardAboutPanel(nil)
@@ -90,10 +89,117 @@ struct BonkApp: App {
                 .keyboardShortcut("u", modifiers: [.command, .option])
             }
 
-            // AI menu
+            // MARK: - File Menu
+            CommandGroup(after: .newItem) {
+                Button(i18n.t(.newTerminal)) {
+                    NotificationCenter.default.post(name: .menuNewTerminal, object: nil)
+                }
+                .keyboardShortcut("t", modifiers: .command)
+
+                Button(i18n.t(.closeTab)) {
+                    NotificationCenter.default.post(name: .menuCloseTab, object: nil)
+                }
+                .keyboardShortcut("w", modifiers: .command)
+            }
+
+            // MARK: - Edit Menu
+            CommandGroup(after: .pasteboard) {
+                Divider()
+                Button(i18n.t(.find)) {
+                    NotificationCenter.default.post(name: .menuFind, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: .command)
+            }
+
+            // MARK: - View Menu
+            CommandMenu(i18n.t(.menuView)) {
+                // Split panes
+                Button("Split Horizontal") {
+                    NotificationCenter.default.post(name: .menuSplitHorizontal, object: nil)
+                }
+                .keyboardShortcut("d", modifiers: .command)
+
+                Button("Split Vertical") {
+                    NotificationCenter.default.post(name: .menuSplitVertical, object: nil)
+                }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
+
+                Button("Close Pane") {
+                    NotificationCenter.default.post(name: .menuClosePane, object: nil)
+                }
+                .keyboardShortcut("w", modifiers: [.command, .shift])
+
+                Divider()
+
+                // Inspector
+                Button(i18n.t(.sftpBrowser)) {
+                    NotificationCenter.default.post(name: .menuToggleSFTP, object: nil)
+                }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+
+                Button(i18n.t(.aiAssistant)) {
+                    NotificationCenter.default.post(name: .menuToggleAI, object: nil)
+                }
+                .keyboardShortcut("a", modifiers: [.command, .shift])
+
+                Divider()
+
+                // Theme submenu
+                Menu(i18n.t(.theme)) {
+                    Button("System") {
+                        NotificationCenter.default.post(name: .menuChangeTheme, object: "system")
+                    }
+                    ForEach(ThemeRegistry.all, id: \.id) { theme in
+                        Button(theme.name) {
+                            NotificationCenter.default.post(name: .menuChangeTheme, object: theme.id)
+                        }
+                    }
+                }
+
+                Divider()
+
+                // Command History
+                Button("Command History") {
+                    NotificationCenter.default.post(name: .menuShowCommandHistory, object: nil)
+                }
+            }
+
+            // MARK: - Connection Menu
+            CommandMenu(i18n.t(.menuConnection)) {
+                Button(i18n.t(.connect)) {
+                    NotificationCenter.default.post(name: .menuConnect, object: nil)
+                }
+
+                Button(i18n.t(.disconnect)) {
+                    NotificationCenter.default.post(name: .menuDisconnect, object: nil)
+                }
+
+                Button(i18n.t(.reconnect)) {
+                    NotificationCenter.default.post(name: .menuReconnect, object: nil)
+                }
+                .keyboardShortcut("r", modifiers: .command)
+
+                Divider()
+
+                Button(i18n.t(.snippets)) {
+                    NotificationCenter.default.post(name: .menuShowSnippets, object: nil)
+                }
+
+                Divider()
+
+                Button(i18n.t(.portForwarding)) {
+                    NotificationCenter.default.post(name: .menuShowPortForwarding, object: nil)
+                }
+
+                Button("Serial Port") {
+                    NotificationCenter.default.post(name: .menuShowSerialPort, object: nil)
+                }
+            }
+
+            // MARK: - AI Menu
             CommandMenu("AI") {
                 Button(i18n.t(.aiAssistant)) {
-                    NotificationCenter.default.post(name: .toggleAIChat, object: nil)
+                    NotificationCenter.default.post(name: .menuToggleAI, object: nil)
                 }
                 .keyboardShortcut("k", modifiers: .command)
             }
@@ -117,6 +223,35 @@ struct BonkApp: App {
             ThemeManager.apply(isDark ? "dark" : "light")
         }
     }
+}
+
+// MARK: - Menu Notification Names
+
+extension Notification.Name {
+    // File
+    static let menuNewTerminal = Notification.Name("bonk.menu.newTerminal")
+    static let menuCloseTab = Notification.Name("bonk.menu.closeTab")
+
+    // Edit
+    static let menuFind = Notification.Name("bonk.menu.find")
+
+    // View
+    static let menuSplitHorizontal = Notification.Name("bonk.menu.splitHorizontal")
+    static let menuSplitVertical = Notification.Name("bonk.menu.splitVertical")
+    static let menuClosePane = Notification.Name("bonk.menu.closePane")
+    static let menuToggleSFTP = Notification.Name("bonk.menu.toggleSFTP")
+    static let menuToggleAI = Notification.Name("bonk.menu.toggleAI")
+    static let menuChangeTheme = Notification.Name("bonk.menu.changeTheme")
+    static let menuShowCommandHistory = Notification.Name("bonk.menu.showCommandHistory")
+
+    // Connection
+    static let menuConnect = Notification.Name("bonk.menu.connect")
+    static let menuDisconnect = Notification.Name("bonk.menu.disconnect")
+    static let menuReconnect = Notification.Name("bonk.menu.reconnect")
+    static let menuShowSnippets = Notification.Name("bonk.menu.showSnippets")
+    static let menuShowPortForwarding = Notification.Name("bonk.menu.showPortForwarding")
+    static let menuShowSerialPort = Notification.Name("bonk.menu.showSerialPort")
+
 }
 
 #if os(macOS)

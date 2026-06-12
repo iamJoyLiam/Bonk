@@ -317,5 +317,7 @@
   "port_forwarding": "Port Forwarding",
   "add_port_forward": "Add Port Forward",
   "edit_port_forward": "Edit Port Forward",
-  "no_port_forwards": "No Port Forwards"
+  "no_port_forwards": "No Port Forwards",
+  "menu_view": "View",
+  "menu_connection": "Connection"
 }
