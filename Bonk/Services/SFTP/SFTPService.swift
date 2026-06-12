@@ -26,8 +26,9 @@ final class SFTPService {
     /// Open SFTP subsystem over the existing SSH connection.
     func connect(using sshService: SSHNetworkService) async throws {
         Log.sftp.info("Opening SFTP session...")
-        sftpClient = try await sshService.openSFTPClient()
-        currentPath = try await sftpClient!.getRealPath(atPath: ".")
+        let client = try await sshService.openSFTPClient()
+        sftpClient = client
+        currentPath = try await client.getRealPath(atPath: ".")
         // swiftformat:disable:next redundantSelf
         Log.sftp.info("SFTP connected, initial path: \(self.currentPath)")
     }
@@ -231,18 +232,20 @@ final class SFTPService {
     }
 
     /// Check if a file exists at the given absolute path.
-    func fileExists(at path: String) async -> Bool {
-        guard let sftp = sftpClient else { return false }
+    /// Returns nil when the check itself fails (e.g. network error).
+    func fileExists(at path: String) async -> Bool? {
+        guard let sftp = sftpClient else { return nil }
         let parent = (path as NSString).deletingLastPathComponent
         let filename = (path as NSString).lastPathComponent
-        guard !parent.isEmpty, !filename.isEmpty else { return false }
+        guard !parent.isEmpty, !filename.isEmpty else { return nil }
         do {
             let names = try await sftp.listDirectory(atPath: parent.isEmpty ? "/" : parent)
             return names.contains { component in
                 component.components.contains { $0.filename == filename }
             }
         } catch {
-            return false
+            Log.sftp.warning("fileExists check failed for \(path): \(error.localizedDescription)")
+            return nil
         }
     }
 

@@ -89,11 +89,24 @@ public actor SSHNetworkService {
 
         do {
             try await establishConnection(config: config)
-            await keepAlive.start(client: client!)
+            guard let client else {
+                throw SSHServiceError.connectionFailed("Connection established but client is nil")
+            }
+            await keepAlive.start(client: client)
         } catch {
             client = nil
             connectionState = .disconnected
             stateContinuation.yield(.disconnected)
+
+            // Don't retry fatal errors
+            if let sshError = error as? SSHServiceError {
+                switch sshError {
+                case .hostKeyMismatch:
+                    throw sshError
+                default:
+                    break
+                }
+            }
 
             if config.maxReconnectAttempts > 0 {
                 try await reconnect()
@@ -220,17 +233,31 @@ public actor SSHNetworkService {
             do {
                 try await establishConnection(config: config)
 
-                if let ptyConfig = lastPTYConfig {
+                if let ptyConfig = lastPTYConfig, let client {
                     let session = PTYSession()
                     session.start(
-                        client: client!, cols: ptyConfig.cols,
+                        client: client, cols: ptyConfig.cols,
                         rows: ptyConfig.rows, termType: ptyConfig.termType
                     )
                     activePTYSession = session
                     pendingPTYSession = session
                 }
                 return
+            } catch is CancellationError {
+                break
+            } catch let error as SSHServiceError {
+                // Fatal errors: don't retry
+                switch error {
+                case .hostKeyMismatch, .alreadyConnected:
+                    Log.ssh.error("Fatal SSH error, aborting reconnect: \(error.localizedDescription)")
+                    throw error
+                case .notConnected, .connectionFailed, .reconnectExhausted:
+                    Log.ssh.warning("Recoverable SSH error (attempt \(attempt + 1)/\(maxAttempts)): \(error.localizedDescription)")
+                    attempt += 1
+                }
             } catch {
+                // Generic errors (network timeouts, DNS failures, etc.) — retry
+                Log.ssh.warning("Reconnect attempt \(attempt + 1)/\(maxAttempts) failed: \(error.localizedDescription)")
                 attempt += 1
             }
         }

@@ -36,6 +36,10 @@ struct TerminalTabView: View {
     @State var showAIChat = false
     @State var selectedTextForAI = ""
     @State var selectionObserver: NSObjectProtocol?
+    @State var showSearch = false
+    @State var searchText = ""
+    @State var searchMatchCount = 0
+    @State var currentSearchMatch = 0
 
     var body: some View {
         ZStack {
@@ -211,6 +215,26 @@ struct TerminalTabView: View {
                     .padding(.bottom, 12)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+        }
+        .overlay(alignment: .topTrailing) {
+            if showSearch {
+                TerminalSearchBar(
+                    searchText: $searchText,
+                    isPresented: $showSearch,
+                    matchCount: searchMatchCount,
+                    currentMatch: currentSearchMatch,
+                    onNext: { /* TODO: next match */ },
+                    onPrevious: { /* TODO: previous match */ }
+                )
+                .padding(.top, 8)
+                .padding(.trailing, 16)
+                .transition(.opacity)
+            }
+        }
+        .background {
+            Button("") { showSearch = true }
+                .keyboardShortcut("f", modifiers: .command)
+                .hidden()
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             guard let activeTab = sessionManager.activeTab,

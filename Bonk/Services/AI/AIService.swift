@@ -95,6 +95,14 @@ final class AIService {
                 return // success
             } catch {
                 if Task.isCancelled { return }
+
+                // Don't retry non-retryable errors (auth failures, client errors)
+                if let aiError = error as? AIError, !aiError.isRetryable {
+                    lastError = error.localizedDescription
+                    Log.ai.error("\(label): non-retryable error: \(error.localizedDescription, privacy: .public)")
+                    return
+                }
+
                 if attempt < maxRetries {
                     let delay = UInt64(attempt + 1) * 1_000_000_000 // 1s, 2s
                     // swiftlint:disable:next line_length
@@ -438,6 +446,22 @@ enum AIError: LocalizedError {
             "Invalid response from AI provider"
         case let .apiError(code, msg):
             "AI API error (\(code)): \(msg)"
+        }
+    }
+
+    /// Whether this error is worth retrying.
+    var isRetryable: Bool {
+        switch self {
+        case .invalidEndpoint:
+            false
+        case .invalidResponse:
+            false
+        case let .apiError(code, _):
+            // 401/403 = auth failure, never retry
+            // 429 = rate limit, handled separately
+            // 4xx = client error, never retry
+            // 5xx = server error, retryable
+            code >= 500
         }
     }
 }

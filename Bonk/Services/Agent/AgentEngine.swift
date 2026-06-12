@@ -110,6 +110,15 @@ final class AgentEngine {
                     isProcessing = false
                     return nil
                 }
+
+                // Don't retry non-retryable errors (auth failures, client errors)
+                if let aiError = error as? AIError, !aiError.isRetryable {
+                    lastError = error.localizedDescription
+                    Self.logger.error("\(label, privacy: .public): non-retryable error: \(error.localizedDescription, privacy: .public)")
+                    isProcessing = false
+                    return nil
+                }
+
                 if attempt < maxRetries {
                     Self.logger.warning(
                         "\(label, privacy: .public): attempt \(attempt + 1) failed, retrying"

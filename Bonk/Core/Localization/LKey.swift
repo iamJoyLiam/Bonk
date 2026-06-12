@@ -216,4 +216,31 @@ enum LKey: String, CaseIterable {
     case uploadingTo = "uploading_to"
     case uploadSuccess = "upload_success"
     case uploadFailed = "upload_failed"
+
+    // Command Palette
+    case searchCommands = "search_commands"
+    case commandPalette = "command_palette"
+
+    // Snippets
+    case snippets, addSnippet = "add_snippet", editSnippet = "edit_snippet"
+    case noSnippets = "no_snippets", insertSnippet = "insert_snippet"
+    case snippetCategory = "snippet_category"
+
+    // Command categories
+    case categoryConnection = "cat_connection"
+    case categoryTabs = "cat_tabs"
+    case categoryTerminal = "cat_terminal"
+    case clearTerminalCmd = "clear_terminal"
+    case command = "command"
+
+    // Sessions
+    case sessions, noSessions = "no_sessions"
+    case noSessionsHint = "no_sessions_hint"
+    case saveSession = "save_session"
+
+    // Port Forwarding
+    case portForwarding = "port_forwarding"
+    case addPortForward = "add_port_forward"
+    case editPortForward = "edit_port_forward"
+    case noPortForwards = "no_port_forwards"
 }

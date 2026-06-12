@@ -221,7 +221,7 @@ import SwiftUI
                 return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
             }
             guard let targetFont = NSFont(name: family, size: size) else {
-                print("[TerminalContainerView] WARNING: Font '\(family)' not found, falling back to system monospaced")
+                Log.ui.warning("Font '\(family)' not found, falling back to system monospaced")
                 return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
             }
             return targetFont

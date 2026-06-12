@@ -57,12 +57,17 @@ extension TerminalTabView {
         let filename = url.lastPathComponent
         let remotePath = (uploadDir.hasSuffix("/") ? uploadDir : uploadDir + "/") + filename
 
-        if await sftp.fileExists(at: remotePath) {
+        switch await sftp.fileExists(at: remotePath) {
+        case true:
             pendingUploadURL = url
             pendingUploadTab = tab
             showOverwriteAlert = true
-        } else {
+        case false:
             await performUpload(url, tab: tab, uploadDir: uploadDir)
+        case nil:
+            dropMessage = i18n.t(.sftpConnectFailed)
+            try? await Task.sleep(for: .seconds(2))
+            dropMessage = nil
         }
     }
 
