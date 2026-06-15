@@ -14,6 +14,7 @@ import SwiftUI
 
     /// SwiftUI view that hosts the AppKit container.
     struct TerminalContainerView: View {
+        @EnvironmentObject var i18n: I18n
         let activeTab: TerminalTab
         let colorScheme: TerminalColorScheme
         let fontSize: Double
@@ -92,7 +93,7 @@ import SwiftUI
                     .symbolEffect(.variableColor.iterative, options: .repeating)
                 ProgressView().controlSize(.large)
                 VStack(spacing: 6) {
-                    Text("Connecting to \(activeTab.hostItem.host)...")
+                    Text(i18n.tr(.connectingTo, args: activeTab.hostItem.host))
                         .font(.headline)
                     Text("\(activeTab.hostItem.username)@\(activeTab.hostItem.host):\(activeTab.hostItem.port)")
                         .font(.caption)
@@ -121,7 +122,7 @@ import SwiftUI
         private func reconnectingView(attempt: Int, max: Int) -> some View {
             VStack(spacing: 16) {
                 ProgressView().controlSize(.large)
-                Text("Reconnecting (\(attempt)/\(max))...")
+                Text(i18n.tr(.reconnecting, args: attempt, max))
                     .font(.headline).foregroundStyle(.secondary)
             }
         }

@@ -150,8 +150,8 @@ struct PortForwardEditSheet: View {
                     TextField(i18n.t(.name), text: $name)
                 }
 
-                Section("Type") {
-                    Picker("Type", selection: $type) {
+                Section(i18n.t(.type)) {
+                    Picker(i18n.t(.type), selection: $type) {
                         ForEach(PortForward.ForwardType.allCases, id: \.self) { t in
                             Text(t.displayName).tag(t)
                         }
@@ -159,15 +159,15 @@ struct PortForwardEditSheet: View {
                     .pickerStyle(.segmented)
                 }
 
-                Section("Local") {
-                    TextField("Host", text: $localHost)
-                    TextField("Port", text: $localPort)
+                Section(i18n.t(.local)) {
+                    TextField(i18n.t(.host), text: $localHost)
+                    TextField(i18n.t(.port), text: $localPort)
                         .font(.system(size: 13, design: .monospaced))
                 }
 
-                Section("Remote") {
-                    TextField("Host", text: $remoteHost)
-                    TextField("Port", text: $remotePort)
+                Section(i18n.t(.remote)) {
+                    TextField(i18n.t(.host), text: $remoteHost)
+                    TextField(i18n.t(.port), text: $remotePort)
                         .font(.system(size: 13, design: .monospaced))
                 }
                 .disabled(type == .dynamic)

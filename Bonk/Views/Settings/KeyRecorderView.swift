@@ -13,6 +13,7 @@ import SwiftUI
 
 /// A SwiftUI view that records keyboard shortcuts.
 struct KeyRecorderView: View {
+    @EnvironmentObject var i18n: I18n
     let label: String
     @Binding var shortcut: KeyboardShortcut?
     @State private var isRecording = false
@@ -34,12 +35,12 @@ struct KeyRecorderView: View {
             } label: {
                 HStack(spacing: 4) {
                     if isRecording {
-                        Text("Press shortcut...")
+                        Text(i18n.t(.pressShortcut))
                             .foregroundStyle(.secondary)
                     } else if let shortcut {
                         shortcutLabel(shortcut)
                     } else {
-                        Text("Not Set")
+                        Text(i18n.t(.notSet))
                             .foregroundStyle(.tertiary)
                     }
                 }

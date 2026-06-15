@@ -247,4 +247,66 @@ enum LKey: String, CaseIterable {
     // Menu
     case menuView = "menu_view"
     case menuConnection = "menu_connection"
+
+    // Serial Port
+    case serialPort = "serial_port"
+    case scanPorts = "scan_ports"
+    case selectPort = "select_port"
+    case scanning
+    case baudRate = "baud_rate"
+    case dataBits = "data_bits"
+    case stopBits = "stop_bits"
+    case parity
+    case flowControl = "flow_control"
+
+    // SFTP Window
+    case noActiveSession = "no_active_session"
+    case connectToHostFirst = "connect_to_host_first"
+
+    // Jump Host
+    case jumpHosts = "jump_hosts"
+    case addJumpHost = "add_jump_host"
+    case editJumpHost = "edit_jump_host"
+    case noJumpHosts = "no_jump_hosts"
+    case jumpHostHint = "jump_host_hint"
+
+    // Broadcast
+    case broadcastMode = "broadcast_mode"
+    case disableBroadcast = "disable_broadcast"
+    case enableBroadcast = "enable_broadcast"
+
+    // Inspector
+    case snippetsHistory = "snippets_history"
+
+    // Toolbar
+    case sftpBrowserToolbar = "sftp_browser_toolbar"
+
+    // Common
+    case type, remote
+
+    // Command History
+    case commandHistory = "command_history"
+    case noCommands = "no_commands"
+    case rerunCommand = "rerun_command"
+    case clearHistory = "clear_history"
+
+    // Broadcast
+    case broadcastInput = "broadcast_input"
+    case selectPanes = "select_panes"
+    case selectAll = "select_all"
+    case deselectAll = "deselect_all"
+    case pane
+
+    // AI
+    case output
+    case dangerousCommand = "dangerous_command"
+    case couldNotDiagnose = "could_not_diagnose"
+    case failed
+
+    // Terminal
+    case pressShortcut = "press_shortcut"
+    case notSet = "not_set"
+
+    // Sessions
+    case unfavorite, favorite
 }

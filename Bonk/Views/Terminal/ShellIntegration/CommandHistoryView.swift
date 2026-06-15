@@ -7,6 +7,7 @@ import SwiftUI
 
 /// Displays command execution history with duration and exit codes.
 struct CommandHistoryView: View {
+    @EnvironmentObject var i18n: I18n
     @Bindable var history: CommandHistory
     @Binding var isPresented: Bool
     let onRerun: (String) -> Void
@@ -17,7 +18,7 @@ struct CommandHistoryView: View {
             HStack {
                 Image(systemName: "clock")
                     .foregroundStyle(.blue)
-                Text("Command History")
+                Text(i18n.t(.commandHistory))
                     .font(.headline)
                 Spacer()
                 Button {
@@ -26,7 +27,7 @@ struct CommandHistoryView: View {
                     Image(systemName: "trash")
                         .font(.system(size: 12))
                 }
-                .help("Clear History")
+                .help(i18n.t(.clearHistory))
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -39,7 +40,7 @@ struct CommandHistoryView: View {
                     Image(systemName: "clock")
                         .font(.system(size: 36))
                         .foregroundStyle(.secondary)
-                    Text("No Commands")
+                    Text(i18n.t(.noCommands))
                         .font(.headline)
                         .foregroundStyle(.secondary)
                 }
@@ -100,7 +101,7 @@ struct CommandHistoryView: View {
                         .foregroundStyle(.blue)
                 }
                 .buttonStyle(.plain)
-                .help("Rerun Command")
+                .help(i18n.t(.rerunCommand))
             }
         }
         .padding(.horizontal, 16)

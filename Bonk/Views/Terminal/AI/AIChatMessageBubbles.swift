@@ -187,7 +187,7 @@ extension AIChatSidebarView {
         Group {
             avatar("terminal")
             VStack(alignment: .leading, spacing: 4) {
-                Text("Output")
+                Text(i18n.t(.output))
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -299,7 +299,7 @@ extension AIChatSidebarView {
                 let icon = pending.riskLevel == .dangerous ? "exclamationmark.octagon" : "exclamationmark.triangle"
                 Image(systemName: icon)
                     .foregroundStyle(pending.riskLevel == .dangerous ? .red : .orange)
-                Text(pending.riskLevel == .dangerous ? "Dangerous Command" : "Confirm Command")
+                Text(pending.riskLevel == .dangerous ? i18n.t(.dangerousCommand) : i18n.t(.confirmCommand))
                     .font(.system(size: 12, weight: .semibold))
             }
             Text(pending.command)

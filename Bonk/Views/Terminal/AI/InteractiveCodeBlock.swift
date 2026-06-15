@@ -3,6 +3,7 @@ import SwiftUI
 /// Interactive code block with SSH execution capability.
 /// Shows code with a RUN button, executes via SSH, displays output in an embedded console.
 struct InteractiveCodeBlock: View {
+    @EnvironmentObject var i18n: I18n
     let code: String
     let language: String?
     let sshService: SSHNetworkService?
@@ -159,7 +160,7 @@ struct InteractiveCodeBlock: View {
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     consoleOutput = error.localizedDescription
-                    executionStatus = .error("Failed")
+                    executionStatus = .error(i18n.t(.failed))
                 }
             }
         }

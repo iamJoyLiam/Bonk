@@ -136,7 +136,7 @@ struct SessionManagerView: View {
                 session.isFavorite.toggle()
             } label: {
                 Label(
-                    session.isFavorite ? "Unfavorite" : "Favorite",
+                    session.isFavorite ? i18n.t(.unfavorite) : i18n.t(.favorite),
                     systemImage: session.isFavorite ? "star.slash" : "star"
                 )
             }

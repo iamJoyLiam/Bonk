@@ -83,7 +83,7 @@ struct CommandHistoryInspectorView: View {
                 Image(systemName: "clock")
                     .foregroundStyle(.secondary)
                     .font(.system(size: 12))
-                Text("Command History")
+                Text(i18n.t(.commandHistory))
                     .font(.system(size: 13, weight: .medium))
                 Spacer()
             }

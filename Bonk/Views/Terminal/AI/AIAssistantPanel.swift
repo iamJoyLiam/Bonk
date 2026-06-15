@@ -397,7 +397,7 @@ struct AIErrorDiagnosis: View {
             await aiService.explainError(selectedText, context: context)
             await MainActor.run {
                 isProcessing = false
-                diagnosis = aiService.currentExplanation ?? "Could not diagnose."
+                diagnosis = aiService.currentExplanation ?? i18n.t(.couldNotDiagnose)
                 aiService.currentExplanation = nil
             }
         }

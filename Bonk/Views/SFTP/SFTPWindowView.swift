@@ -18,9 +18,9 @@ struct SFTPWindowView: View {
                 SFTPBrowserView(tab: tab)
             } else {
                 ContentUnavailableView(
-                    "No Active Session",
+                    i18n.t(.noActiveSession),
                     systemImage: "folder.badge.questionmark",
-                    description: Text("Connect to a host first to browse files.")
+                    description: Text(i18n.t(.connectToHostFirst))
                 )
             }
         }

@@ -7,6 +7,7 @@ import SwiftUI
 
 /// Visual indicator showing broadcast mode status.
 struct BroadcastIndicator: View {
+    @EnvironmentObject var i18n: I18n
     @Bindable var manager: BroadcastManager
 
     var body: some View {
@@ -42,6 +43,7 @@ struct BroadcastIndicator: View {
 
 /// Broadcast mode toggle button for the terminal toolbar.
 struct BroadcastToggleButton: View {
+    @EnvironmentObject var i18n: I18n
     @Bindable var manager: BroadcastManager
 
     var body: some View {
@@ -52,13 +54,13 @@ struct BroadcastToggleButton: View {
                 .font(.system(size: 14))
                 .foregroundStyle(manager.isEnabled ? .orange : .secondary)
         }
-        .help(manager.isEnabled ? "Disable Broadcast" : "Enable Broadcast")
+        .help(manager.isEnabled ? i18n.t(.disableBroadcast) : i18n.t(.enableBroadcast))
         .popover(isPresented: .constant(manager.isEnabled)) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Broadcast Input")
+                Text(i18n.t(.broadcastInput))
                     .font(.headline)
 
-                Text("Select panes to receive broadcast input:")
+                Text(i18n.t(.selectPanes))
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -66,7 +68,7 @@ struct BroadcastToggleButton: View {
                     HStack {
                         Image(systemName: manager.targetPaneIDs.contains(id) ? "checkmark.circle.fill" : "circle")
                             .foregroundStyle(manager.targetPaneIDs.contains(id) ? .blue : .secondary)
-                        Text("Pane \(id.uuidString.prefix(8))")
+                        Text("\(i18n.t(.pane)) \(id.uuidString.prefix(8))")
                             .font(.system(size: 12))
                         Spacer()
                     }
@@ -79,8 +81,8 @@ struct BroadcastToggleButton: View {
                 Divider()
 
                 HStack {
-                    Button("Select All") { manager.selectAll() }
-                    Button("Deselect All") { manager.deselectAll() }
+                    Button(i18n.t(.selectAll)) { manager.selectAll() }
+                    Button(i18n.t(.deselectAll)) { manager.deselectAll() }
                 }
             }
             .padding()

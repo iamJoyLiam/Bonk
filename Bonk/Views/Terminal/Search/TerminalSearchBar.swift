@@ -7,6 +7,7 @@ import SwiftUI
 
 /// Search bar for terminal content — appears on Cmd+F.
 struct TerminalSearchBar: View {
+    @EnvironmentObject var i18n: I18n
     @Binding var searchText: String
     @Binding var isPresented: Bool
     let matchCount: Int
@@ -21,7 +22,7 @@ struct TerminalSearchBar: View {
                 .foregroundStyle(.secondary)
                 .font(.system(size: 12))
 
-            TextField("Search", text: $searchText)
+            TextField(i18n.t(.search), text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .frame(width: 200)

@@ -76,13 +76,25 @@ struct ContentView: View {
                 .inspector(isPresented: $showInspector) {
                     InspectorContainerView(sessionManager: sessionManager)
                 }
-                .toolbar {
-                    // Capsule A: [📶│🔌│🔀│⏱]
-                    ToolbarItem(placement: .automatic) {
+            }
+            .navigationSplitViewStyle(.balanced)
+            .toolbar {
+                // Capsule A: [📶] + pipe + [🔌│🔀│⏱]
+                ToolbarItem(placement: .automatic) {
+                    HStack(spacing: 0) {
                         ControlGroup {
                             Button { workspace.toggleBroadcast() } label: {
                                 Image(systemName: "antenna.radiowaves.left.and.right")
+                                    .foregroundStyle(workspace.isBroadcastEnabled ? .orange : .primary)
                             }
+                        }
+                        .opacity(workspace.isBroadcastEnabled ? 1.0 : 0.8)
+                        Text("|")
+                            .font(.system(size: 11, weight: .thin))
+                            .foregroundStyle(.secondary)
+                            .opacity(0.5)
+                            .padding(.horizontal, 4)
+                        ControlGroup {
                             Button { workspace.isSerialPortPresented = true } label: {
                                 Image(systemName: "cable.connector")
                             }
@@ -94,30 +106,29 @@ struct ContentView: View {
                             }
                         }
                     }
+                }
 
-                    // Capsule B: [📁]
-                    ToolbarItem(placement: .automatic) {
-                        ControlGroup {
-                            Button { toggleSFTPWindow() } label: {
-                                Image(systemName: "folder.fill")
-                            }
+                // Capsule B: [📁]
+                ToolbarItem(placement: .automatic) {
+                    ControlGroup {
+                        Button { toggleSFTPWindow() } label: {
+                            Image(systemName: "folder.fill")
                         }
                     }
+                }
 
-                    // Capsule C: [✨│📝]
-                    ToolbarItem(placement: .primaryAction) {
-                        ControlGroup {
-                            Button { workspace.toggleRightPanel(.ai) } label: {
-                                Image(systemName: "sparkles")
-                            }
-                            Button { workspace.toggleRightPanel(.snippetsHistory) } label: {
-                                Image(systemName: "text.badge.plus")
-                            }
+                // Capsule C: [✨│📝]
+                ToolbarItem(placement: .primaryAction) {
+                    ControlGroup {
+                        Button { workspace.toggleRightPanel(.ai) } label: {
+                            Image(systemName: "sparkles")
+                        }
+                        Button { workspace.toggleRightPanel(.snippetsHistory) } label: {
+                            Image(systemName: "text.badge.plus")
                         }
                     }
                 }
             }
-            .navigationSplitViewStyle(.balanced)
             // Sync inspector state
             .onChange(of: workspace.activeRightPanel) { _, newValue in
                 showInspector = newValue != .none

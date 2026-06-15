@@ -22,7 +22,7 @@ struct JumpHostView: View {
             HStack {
                 Image(systemName: "arrow.triangle.swap")
                     .foregroundStyle(.blue)
-                Text("Jump Hosts")
+                Text(i18n.t(.jumpHosts))
                     .font(.headline)
                 Spacer()
                 Button {
@@ -30,7 +30,7 @@ struct JumpHostView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
-                .help("Add Jump Host")
+                .help(i18n.t(.addJumpHost))
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -43,10 +43,10 @@ struct JumpHostView: View {
                     Image(systemName: "arrow.triangle.swap")
                         .font(.system(size: 36))
                         .foregroundStyle(.secondary)
-                    Text("No Jump Hosts")
+                    Text(i18n.t(.noJumpHosts))
                         .font(.headline)
                         .foregroundStyle(.secondary)
-                    Text("Jump hosts allow multi-hop SSH connections (A → B → C).")
+                    Text(i18n.t(.jumpHostHint))
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
@@ -142,9 +142,9 @@ struct JumpHostEditSheet: View {
                     TextField(i18n.t(.name), text: $name)
                 }
 
-                Section("Host") {
-                    TextField("Hostname", text: $hostname)
-                    TextField("Port", text: $port)
+                Section(i18n.t(.host)) {
+                    TextField(i18n.t(.hostname), text: $hostname)
+                    TextField(i18n.t(.port), text: $port)
                         .font(.system(size: 13, design: .monospaced))
                 }
 
@@ -153,7 +153,7 @@ struct JumpHostEditSheet: View {
                 }
             }
             .formStyle(.grouped)
-            .navigationTitle(host == nil ? "Add Jump Host" : "Edit Jump Host")
+            .navigationTitle(host == nil ? i18n.t(.addJumpHost) : i18n.t(.editJumpHost))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(i18n.t(.cancel)) { dismiss() }
