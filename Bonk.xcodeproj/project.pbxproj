@@ -7,10 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AE000009AAAA000000000009 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = AE000008AAAA000000000008 /* MarkdownUI */; };
 		AE08640C2FD2A52D00C9EC5F /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = AE000006AAAA000000000006 /* Sparkle */; };
 		AEF73C8A2FC47AEE00F14E56 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = AE000002AAAA000000000002 /* Citadel */; };
 		AEF73C8B2FC47AEE00F14E57 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = AE000004AAAA000000000004 /* SwiftTerm */; };
-		AE000009AAAA000000000009 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = AE000008AAAA000000000008 /* MarkdownUI */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */

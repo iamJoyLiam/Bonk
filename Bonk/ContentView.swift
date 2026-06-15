@@ -9,10 +9,9 @@ struct ContentView: View {
 
     @State private var sessionManager = SessionManager()
     #if os(macOS)
+        @State private var workspace = WorkspaceManager()
         @State private var showInspector = false
-        @State private var inspectorMode: InspectorMode = .sftp
-
-        enum InspectorMode { case sftp, aiChat }
+        @State private var sftpWindow: NSWindow?
     #endif
 
     /// Singleton pattern: ensurePreferences() runs in onAppear, fallback is transient.
@@ -40,6 +39,9 @@ struct ContentView: View {
             #endif
         }
         .environment(\.locale, Locale(identifier: i18n.lang))
+        #if os(macOS)
+            .environment(workspace)
+        #endif
         .onAppear {
             ensurePreferences()
             AIDataMigration.migrateIfNeeded(context: modelContext)
@@ -72,59 +74,106 @@ struct ContentView: View {
                 .background(colorScheme.isTransparent ? Color.clear : Color(nsColor: .controlBackgroundColor))
                 .clipped()
                 .inspector(isPresented: $showInspector) {
-                    switch inspectorMode {
-                    case .sftp:
-                        if let tab = sessionManager.activeTab {
-                            SFTPBrowserView(tab: tab)
-                        } else {
-                            ContentUnavailableView(
-                                i18n.t(.sftpBrowser),
-                                systemImage: "folder.fill",
-                                description: Text(i18n.t(.selectHost))
-                            )
-                        }
-                    case .aiChat:
-                        AIChatSidebarView(
-                            sshService: sessionManager.activeTab?.sshService,
-                            onPaste: { text in
-                                guard let activeTab = sessionManager.activeTab else { return }
-                                let bytes = Array(text.utf8 + [13]) // 13 = Enter
-                                Task { try? await sessionManager.sendInput(bytes[...], to: activeTab.id) }
+                    InspectorContainerView(sessionManager: sessionManager)
+                }
+                .toolbar {
+                    // Capsule A: [📶│🔌│🔀│⏱]
+                    ToolbarItem(placement: .automatic) {
+                        ControlGroup {
+                            Button { workspace.toggleBroadcast() } label: {
+                                Image(systemName: "antenna.radiowaves.left.and.right")
                             }
-                        )
+                            Button { workspace.isSerialPortPresented = true } label: {
+                                Image(systemName: "cable.connector")
+                            }
+                            Button { workspace.isPortForwardingPresented = true } label: {
+                                Image(systemName: "arrow.triangle.branch")
+                            }
+                            Button { workspace.isSessionManagerPresented = true } label: {
+                                Image(systemName: "clock.arrow.circlepath")
+                            }
+                        }
+                    }
+
+                    // Capsule B: [📁]
+                    ToolbarItem(placement: .automatic) {
+                        ControlGroup {
+                            Button { toggleSFTPWindow() } label: {
+                                Image(systemName: "folder.fill")
+                            }
+                        }
+                    }
+
+                    // Capsule C: [✨│📝]
+                    ToolbarItem(placement: .primaryAction) {
+                        ControlGroup {
+                            Button { workspace.toggleRightPanel(.ai) } label: {
+                                Image(systemName: "sparkles")
+                            }
+                            Button { workspace.toggleRightPanel(.snippetsHistory) } label: {
+                                Image(systemName: "text.badge.plus")
+                            }
+                        }
                     }
                 }
             }
             .navigationSplitViewStyle(.balanced)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    HStack(spacing: 6) {
-                        Button {
-                            if showInspector, inspectorMode == .aiChat {
-                                showInspector = false
-                            } else {
-                                inspectorMode = .aiChat
-                                showInspector = true
-                            }
-                        } label: {
-                            Image(systemName: "sparkles")
-                        }
-                        .help(i18n.t(.aiAssistant))
-
-                        Button {
-                            if showInspector, inspectorMode == .sftp {
-                                showInspector = false
-                            } else {
-                                inspectorMode = .sftp
-                                showInspector = true
-                            }
-                        } label: {
-                            Label(i18n.t(.sftp), systemImage: "folder.fill")
-                        }
-                        .help(i18n.t(.sftpBrowser))
-                    }
-                }
+            // Sync inspector state
+            .onChange(of: workspace.activeRightPanel) { _, newValue in
+                showInspector = newValue != .none
             }
+            .onChange(of: showInspector) { _, isOpen in
+                if !isOpen { workspace.activeRightPanel = .none }
+            }
+            // SFTP independent window
+            .onChange(of: workspace.isSFTPWindowOpen) { _, isOpen in
+                if isOpen { openSFTPWindow() }
+            }
+            // Sheets
+            .sheet(isPresented: $workspace.isSerialPortPresented) {
+                SerialPortView(isPresented: $workspace.isSerialPortPresented, onConnect: { _ in })
+                    .environmentObject(i18n)
+            }
+            .sheet(isPresented: $workspace.isPortForwardingPresented) {
+                PortForwardView(isPresented: $workspace.isPortForwardingPresented, sshService: sessionManager.activeTab?.sshService)
+                    .environmentObject(i18n)
+            }
+            .sheet(isPresented: $workspace.isSessionManagerPresented) {
+                SessionManagerView(isPresented: $workspace.isSessionManagerPresented, onConnect: { _ in })
+                    .environmentObject(i18n)
+            }
+        }
+
+        // MARK: - SFTP Window
+
+        private func toggleSFTPWindow() {
+            if let window = sftpWindow {
+                window.close()
+                sftpWindow = nil
+            } else {
+                openSFTPWindow()
+            }
+        }
+
+        private func openSFTPWindow() {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 700, height: 500),
+                styleMask: [.titled, .closable, .resizable, .miniaturizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "SFTP Browser"
+            window.isReleasedWhenClosed = false
+            window.contentView = NSHostingView(
+                rootView: SFTPWindowView(sessionManager: sessionManager)
+                    .environmentObject(i18n)
+                    .environment(workspace)
+            )
+            window.center()
+            window.makeKeyAndOrderFront(nil)
+            let delegate = SFTPWindowDelegate { self.sftpWindow = nil }
+            window.delegate = delegate
+            sftpWindow = window
         }
     #endif
 
@@ -194,3 +243,19 @@ struct ContentView: View {
             }
     }
 }
+
+// MARK: - SFTP Window Delegate
+
+#if os(macOS)
+    private final class SFTPWindowDelegate: NSObject, NSWindowDelegate {
+        private let onClose: () -> Void
+
+        init(onClose: @escaping () -> Void) {
+            self.onClose = onClose
+        }
+
+        func windowWillClose(_ notification: Notification) {
+            onClose()
+        }
+    }
+#endif

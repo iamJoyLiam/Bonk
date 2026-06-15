@@ -72,6 +72,9 @@ struct BonkApp: App {
                 }
         }
         .modelContainer(sharedModelContainer)
+        #if os(macOS)
+            .windowToolbarStyle(.unified)
+        #endif
         .commands {
             // MARK: - App Info
             CommandGroup(replacing: .appInfo) {
@@ -113,7 +116,6 @@ struct BonkApp: App {
 
             // MARK: - View Menu
             CommandMenu(i18n.t(.menuView)) {
-                // Split panes
                 Button("Split Horizontal") {
                     NotificationCenter.default.post(name: .menuSplitHorizontal, object: nil)
                 }
@@ -131,7 +133,6 @@ struct BonkApp: App {
 
                 Divider()
 
-                // Inspector
                 Button(i18n.t(.sftpBrowser)) {
                     NotificationCenter.default.post(name: .menuToggleSFTP, object: nil)
                 }
@@ -144,7 +145,6 @@ struct BonkApp: App {
 
                 Divider()
 
-                // Theme submenu
                 Menu(i18n.t(.theme)) {
                     Button("System") {
                         NotificationCenter.default.post(name: .menuChangeTheme, object: "system")
@@ -158,7 +158,6 @@ struct BonkApp: App {
 
                 Divider()
 
-                // Command History
                 Button("Command History") {
                     NotificationCenter.default.post(name: .menuShowCommandHistory, object: nil)
                 }

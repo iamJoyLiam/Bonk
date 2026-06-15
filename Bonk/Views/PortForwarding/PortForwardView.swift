@@ -2,6 +2,8 @@
 //  PortForwardView.swift
 //  Bonk
 //
+//  Port forwarding management — uses Form+Section (not List inside Form).
+//
 
 import SwiftData
 import SwiftUI
@@ -50,13 +52,14 @@ struct PortForwardView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
+                Form {
+                    Section {
                         ForEach(rules) { rule in
                             ruleRow(rule)
                         }
                     }
                 }
+                .formStyle(.grouped)
             }
         }
         .frame(minWidth: 400, minHeight: 300)
@@ -108,8 +111,6 @@ struct PortForwardView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
         .contentShape(Rectangle())
         .contextMenu {
             Button {
@@ -144,8 +145,35 @@ struct PortForwardEditSheet: View {
 
     var body: some View {
         NavigationStack {
-            portForwardForm
-                .navigationTitle(rule == nil ? i18n.t(.addPortForward) : i18n.t(.editPortForward))
+            Form {
+                Section(i18n.t(.name)) {
+                    TextField(i18n.t(.name), text: $name)
+                }
+
+                Section("Type") {
+                    Picker("Type", selection: $type) {
+                        ForEach(PortForward.ForwardType.allCases, id: \.self) { t in
+                            Text(t.displayName).tag(t)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                Section("Local") {
+                    TextField("Host", text: $localHost)
+                    TextField("Port", text: $localPort)
+                        .font(.system(size: 13, design: .monospaced))
+                }
+
+                Section("Remote") {
+                    TextField("Host", text: $remoteHost)
+                    TextField("Port", text: $remotePort)
+                        .font(.system(size: 13, design: .monospaced))
+                }
+                .disabled(type == .dynamic)
+            }
+            .formStyle(.grouped)
+            .navigationTitle(rule == nil ? i18n.t(.addPortForward) : i18n.t(.editPortForward))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(i18n.t(.cancel)) { dismiss() }
@@ -170,38 +198,6 @@ struct PortForwardEditSheet: View {
             }
         }
         .frame(width: 480, height: 440)
-    }
-
-    @ViewBuilder
-    private var portForwardForm: some View {
-        List {
-            Section(i18n.t(.name)) {
-                TextField(i18n.t(.name), text: $name)
-            }
-
-            Section("Type") {
-                Picker("Type", selection: $type) {
-                    ForEach(PortForward.ForwardType.allCases, id: \.self) { t in
-                        Text(t.displayName).tag(t)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
-
-            Section("Local") {
-                TextField("Host", text: $localHost)
-                TextField("Port", text: $localPort)
-                    .font(.system(size: 13, design: .monospaced))
-            }
-
-            Section("Remote") {
-                TextField("Host", text: $remoteHost)
-                TextField("Port", text: $remotePort)
-                    .font(.system(size: 13, design: .monospaced))
-            }
-            .disabled(type == .dynamic)
-        }
-        .listStyle(.sidebar)
     }
 
     private func save() {
