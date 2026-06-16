@@ -14,6 +14,10 @@ struct SFTPWindowView: View {
     @State private var localPath: String = (NSHomeDirectory() as NSString).appendingPathComponent("Downloads")
     @State private var localFiles: [LocalFileEntry] = []
     @State private var selectedRemote: SFTPFileEntry?
+    // Overwrite dialog state
+    @State private var pendingUploadURL: URL?
+    @State private var showOverwriteAlert = false
+    @State private var overwriteAlways = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,8 +29,10 @@ struct SFTPWindowView: View {
                         .frame(minWidth: 250)
 
                     // Right: Remote files
-                    SFTPBrowserView(tab: tab)
-                        .frame(minWidth: 250)
+                    SFTPBrowserView(tab: tab, onUpload: { url in
+                        Task { await checkAndUpload(url) }
+                    })
+                    .frame(minWidth: 250)
                 }
 
                 // Bottom: Transfer progress
@@ -40,6 +46,28 @@ struct SFTPWindowView: View {
                     systemImage: "folder.badge.questionmark",
                     description: Text(i18n.t(.connectToHostFirst))
                 )
+            }
+        }
+        .confirmationDialog(i18n.t(.fileExists), isPresented: $showOverwriteAlert) {
+            Button(i18n.t(.overwrite)) {
+                if let url = pendingUploadURL {
+                    pendingUploadURL = nil
+                    Task { await performUpload(url) }
+                }
+            }
+            Button(i18n.t(.alwaysOverwrite)) {
+                if let url = pendingUploadURL {
+                    overwriteAlways = true
+                    pendingUploadURL = nil
+                    Task { await performUpload(url) }
+                }
+            }
+            Button(i18n.t(.cancel), role: .cancel) {
+                pendingUploadURL = nil
+            }
+        } message: {
+            if let url = pendingUploadURL {
+                Text(i18n.t(.fileExists).replacingOccurrences(of: "%@", with: url.lastPathComponent))
             }
         }
         .frame(minWidth: 800, minHeight: 500)
@@ -219,13 +247,34 @@ struct SFTPWindowView: View {
     }
 
     private func uploadLocalFile(_ file: LocalFileEntry) {
+        let url = URL(fileURLWithPath: file.path)
+        Task { await checkAndUpload(url) }
+    }
+
+    private func checkAndUpload(_ url: URL) async {
         guard let sftp = sessionManager.activeTab?.session?.sftpService else { return }
-        Task {
-            do {
-                try await sftp.upload(URL(fileURLWithPath: file.path))
-            } catch {
-                sftp.errorMessage = error.localizedDescription
-            }
+        if overwriteAlways {
+            await performUpload(url)
+            return
+        }
+        let remotePath = (sftp.currentPath.hasSuffix("/") ? sftp.currentPath : sftp.currentPath + "/") + url.lastPathComponent
+        switch await sftp.fileExists(at: remotePath) {
+        case true:
+            pendingUploadURL = url
+            showOverwriteAlert = true
+        case false:
+            await performUpload(url)
+        case nil:
+            sftp.errorMessage = i18n.t(.sftpConnectFailed)
+        }
+    }
+
+    private func performUpload(_ url: URL) async {
+        guard let sftp = sessionManager.activeTab?.session?.sftpService else { return }
+        do {
+            try await sftp.upload(url)
+        } catch {
+            sftp.errorMessage = error.localizedDescription
         }
     }
 

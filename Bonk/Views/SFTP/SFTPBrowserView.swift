@@ -11,6 +11,8 @@ import UniformTypeIdentifiers
 struct SFTPBrowserView: View {
     @Environment(I18n.self) var i18n
     let tab: TerminalTab
+    /// Optional upload handler with overwrite check. If nil, uploads directly.
+    var onUpload: ((URL) -> Void)?
     @State private var showNewFolder = false
     @State private var newFolderName = ""
     @State private var pendingDeleteEntry: SFTPFileEntry?
@@ -142,9 +144,13 @@ struct SFTPBrowserView: View {
                         panel.canChooseDirectories = false
                         if panel.runModal() == .OK {
                             for url in panel.urls {
-                                Task {
-                                    do { try await sftpService?.upload(url) } catch {
-                                        sftpService?.errorMessage = error.localizedDescription
+                                if let onUpload {
+                                    onUpload(url)
+                                } else {
+                                    Task {
+                                        do { try await sftpService?.upload(url) } catch {
+                                            sftpService?.errorMessage = error.localizedDescription
+                                        }
                                     }
                                 }
                             }
@@ -271,8 +277,12 @@ struct SFTPBrowserView: View {
                     guard let data = data as? Data,
                           let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
                     Task { @MainActor in
-                        do { try await service.upload(url) } catch {
-                            service.errorMessage = error.localizedDescription
+                        if let onUpload {
+                            onUpload(url)
+                        } else {
+                            do { try await service.upload(url) } catch {
+                                service.errorMessage = error.localizedDescription
+                            }
                         }
                     }
                 }
