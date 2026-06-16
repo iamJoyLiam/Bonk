@@ -120,11 +120,6 @@ struct BonkApp: App {
                 }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
 
-                Button(i18n.t(.aiAssistant)) {
-                    NotificationCenter.default.post(name: .menuToggleAI, object: nil)
-                }
-                .keyboardShortcut("a", modifiers: [.command, .shift])
-
                 Divider()
 
                 Menu(i18n.t(.theme)) {
@@ -136,12 +131,6 @@ struct BonkApp: App {
                             NotificationCenter.default.post(name: .menuChangeTheme, object: theme.id)
                         }
                     }
-                }
-
-                Divider()
-
-                Button(i18n.t(.commandHistory)) {
-                    NotificationCenter.default.post(name: .menuShowCommandHistory, object: nil)
                 }
             }
 
@@ -164,6 +153,10 @@ struct BonkApp: App {
 
                 Button(i18n.t(.snippets)) {
                     NotificationCenter.default.post(name: .menuShowSnippets, object: nil)
+                }
+
+                Button(i18n.t(.commandHistory)) {
+                    NotificationCenter.default.post(name: .menuShowCommandHistory, object: nil)
                 }
 
                 Divider()

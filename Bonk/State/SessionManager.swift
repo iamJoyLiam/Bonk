@@ -143,6 +143,15 @@ final class SessionManager {
     func sendInput(_ bytes: ArraySlice<UInt8>, to tabID: UUID) async throws {
         guard let tab = tabs.first(where: { $0.id == tabID }),
               let pty = tab.session?.ptySession else { return }
+        // Record command to history when Enter is pressed
+        if bytes.last == 13, bytes.count > 1 {
+            let command = String(bytes: bytes.dropLast(), encoding: .utf8) ?? ""
+            let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                tab.session?.commandHistory.commandStarted(trimmed)
+                tab.session?.commandHistory.commandFinished(exitCode: 0)
+            }
+        }
         try await pty.sendInput(bytes)
     }
 

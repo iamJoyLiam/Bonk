@@ -44,6 +44,7 @@ final class WorkspaceManager {
     var isSerialPortPresented = false
     var isPortForwardingPresented = false
     var isSessionManagerPresented = false
+    var isAddHostPresented = false
 
     // MARK: - Right Panel Actions
 

@@ -56,6 +56,9 @@ struct ContentView: View {
                 Task { await sessionManager.closeTab(id) }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .menuNewTerminal)) { _ in
+            workspace.isAddHostPresented = true
+        }
         .onReceive(NotificationCenter.default.publisher(for: .menuConnect)) { _ in
             workspace.isSessionManagerPresented = true
         }

@@ -182,11 +182,12 @@ struct SnippetEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     let snippet: Snippet?
     let modelContext: ModelContext
+    /// Pre-fill command when adding from history.
+    var initialCommand: String = ""
 
     @State private var name = ""
     @State private var command = ""
     @State private var category = "General"
-    @State private var description = ""
 
     var body: some View {
         NavigationStack {
@@ -203,12 +204,6 @@ struct SnippetEditSheet: View {
 
                 Section(i18n.t(.snippetCategory)) {
                     TextField(i18n.t(.snippetCategory), text: $category)
-                }
-
-                Section(i18n.t(.notes)) {
-                    TextEditor(text: $description)
-                        .font(.system(size: 13))
-                        .frame(minHeight: 40)
                 }
             }
             .formStyle(.grouped)
@@ -230,11 +225,14 @@ struct SnippetEditSheet: View {
                     name = snippet.name
                     command = snippet.command
                     category = snippet.category
-                    description = snippet.snippetDescription
+                } else if !initialCommand.isEmpty {
+                    command = initialCommand
+                    name = initialCommand
                 }
             }
         }
-        .frame(width: 480, height: 440)
+        .frame(width: 480)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func save() {
@@ -242,13 +240,11 @@ struct SnippetEditSheet: View {
             snippet.name = name
             snippet.command = command
             snippet.category = category
-            snippet.snippetDescription = description
         } else {
             let newSnippet = Snippet(
                 name: name,
                 command: command,
-                category: category,
-                description: description
+                category: category
             )
             modelContext.insert(newSnippet)
         }

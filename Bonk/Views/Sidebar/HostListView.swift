@@ -11,6 +11,7 @@ import SwiftUI
 /// Left sidebar: list of saved SSH hosts with connection status.
 struct HostListView: View {
     @Environment(I18n.self) var i18n
+    @Environment(WorkspaceManager.self) private var workspace
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \HostItem.createdAt) private var hosts: [HostItem]
     @Query(sort: \HostGroup.sortOrder) private var hostGroups: [HostGroup]
@@ -138,6 +139,12 @@ struct HostListView: View {
                 } label: {
                     Label(i18n.t(.addHost), systemImage: "plus")
                 }
+            }
+        }
+        .onChange(of: workspace.isAddHostPresented) { _, newValue in
+            if newValue {
+                showAddSheet = true
+                workspace.isAddHostPresented = false
             }
         }
         .sheet(isPresented: $showAddSheet) {

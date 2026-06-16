@@ -2,7 +2,7 @@
 //  SnippetInspectorView.swift
 //  Bonk
 //
-//  Snippet panel inside the right inspector — quick insert, no full management.
+//  Snippet panel inside the right inspector — quick insert + edit.
 //
 
 import SwiftData
@@ -15,6 +15,7 @@ struct SnippetInspectorView: View {
     @Bindable var sessionManager: SessionManager
     @State private var searchText = ""
     @State private var showAddSheet = false
+    @State private var editingSnippet: Snippet?
 
     private var filteredSnippets: [Snippet] {
         if searchText.isEmpty { return snippets }
@@ -22,7 +23,13 @@ struct SnippetInspectorView: View {
         return snippets.filter {
             $0.name.lowercased().contains(query)
                 || $0.command.lowercased().contains(query)
+                || $0.category.lowercased().contains(query)
         }
+    }
+
+    private var groupedSnippets: [(String, [Snippet])] {
+        let grouped = Dictionary(grouping: filteredSnippets) { $0.category }
+        return grouped.sorted { $0.key < $1.key }
     }
 
     var body: some View {
@@ -35,6 +42,13 @@ struct SnippetInspectorView: View {
                 TextField(i18n.t(.search), text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
+                Spacer()
+                Button { showAddSheet = true } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.plain)
+                .help(i18n.t(.addSnippet))
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -50,9 +64,7 @@ struct SnippetInspectorView: View {
                     Text(i18n.t(.noSnippets))
                         .font(.headline)
                         .foregroundStyle(.secondary)
-                    Button {
-                        showAddSheet = true
-                    } label: {
+                    Button { showAddSheet = true } label: {
                         Label(i18n.t(.addSnippet), systemImage: "plus")
                     }
                     .buttonStyle(.borderedProminent)
@@ -62,8 +74,21 @@ struct SnippetInspectorView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(filteredSnippets) { snippet in
-                            snippetRow(snippet)
+                        ForEach(groupedSnippets, id: \.0) { category, items in
+                            // Category header — matches sidebar section style
+                            HStack {
+                                Text(category)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.top, 10)
+                            .padding(.bottom, 4)
+
+                            ForEach(items) { snippet in
+                                snippetRow(snippet)
+                            }
                         }
                     }
                 }
@@ -73,38 +98,58 @@ struct SnippetInspectorView: View {
             SnippetEditSheet(snippet: nil, modelContext: modelContext)
                 .environment(i18n)
         }
+        .sheet(item: $editingSnippet) { snippet in
+            SnippetEditSheet(snippet: snippet, modelContext: modelContext)
+                .environment(i18n)
+        }
     }
+
+    // MARK: - Snippet Row
 
     @ViewBuilder
     private func snippetRow(_ snippet: Snippet) -> some View {
-        Button {
-            insertSnippet(snippet)
-        } label: {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(snippet.name)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.primary)
-                    Text(snippet.command)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer()
+        HStack(spacing: 10) {
+            // Content
+            VStack(alignment: .leading, spacing: 2) {
+                Text(snippet.name)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(snippet.command)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            // Insert button
+            Button { insertSnippet(snippet) } label: {
                 Image(systemName: "arrow.right.circle")
                     .font(.system(size: 14))
                     .foregroundStyle(.blue)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .help(i18n.t(.insertSnippet))
+
+            // Edit button
+            Button { editingSnippet = snippet } label: {
+                Image(systemName: "pencil")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(i18n.t(.editSnippet))
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
         .contextMenu {
-            Button {
-                insertSnippet(snippet)
-            } label: {
+            Button { insertSnippet(snippet) } label: {
                 Label(i18n.t(.insertSnippet), systemImage: "arrow.right.circle")
+            }
+            Button { editingSnippet = snippet } label: {
+                Label(i18n.t(.editSnippet), systemImage: "pencil")
             }
             Divider()
             Button(role: .destructive) {
@@ -115,10 +160,12 @@ struct SnippetInspectorView: View {
         }
     }
 
+    // MARK: - Actions
+
     private func insertSnippet(_ snippet: Snippet) {
         guard let activeTab = sessionManager.activeTab else { return }
         let resolved = snippet.resolve()
-        let bytes = Array(resolved.utf8 + [13]) // 13 = Enter
+        let bytes = Array(resolved.utf8 + [13])
         Task { try? await sessionManager.sendInput(bytes[...], to: activeTab.id) }
     }
 }
