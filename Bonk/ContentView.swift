@@ -50,53 +50,53 @@ struct ContentView: View {
         } message: {
             Text(sessionManager.lastError ?? i18n.t(.unknownError))
         }
-        // Menu bar notification bridges
-        .onReceive(NotificationCenter.default.publisher(for: .menuCloseTab)) { _ in
-            if let id = sessionManager.activeTabID {
-                Task { await sessionManager.closeTab(id) }
+        // Menu actions via FocusedValue — synchronous, zero NotificationCenter overhead
+        #if os(macOS)
+            .focusedSceneValue(\.menuCloseTab) {
+                if let id = sessionManager.activeTabID {
+                    Task { await sessionManager.closeTab(id) }
+                }
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .menuNewTerminal)) { _ in
-            workspace.isAddHostPresented = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .menuConnect)) { _ in
-            workspace.isSessionManagerPresented = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .menuDisconnect)) { _ in
-            if let id = sessionManager.activeTabID {
-                Task { await sessionManager.disconnectTab(id) }
+            .focusedSceneValue(\.menuNewTerminal) {
+                workspace.isAddHostPresented = true
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .menuReconnect)) { _ in
-            if let id = sessionManager.activeTabID {
-                Task { await sessionManager.reconnectTab(id) }
+            .focusedSceneValue(\.menuConnect) {
+                workspace.isSessionManagerPresented = true
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .menuToggleSFTP)) { _ in
-            toggleSFTPWindow()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .menuToggleAI)) { _ in
-            workspace.toggleRightPanel(.ai)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .menuShowSerialPort)) { _ in
-            workspace.isSerialPortPresented = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .menuShowSnippets)) { _ in
-            workspace.snippetsHistoryTab = .snippets
-            workspace.activeRightPanel = .snippetsHistory
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .menuShowPortForwarding)) { _ in
-            workspace.isPortForwardingPresented = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .menuShowCommandHistory)) { _ in
-            workspace.snippetsHistoryTab = .history
-            workspace.activeRightPanel = .snippetsHistory
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .menuChangeTheme)) { notification in
-            if let themeID = notification.object as? String {
+            .focusedSceneValue(\.menuDisconnect) {
+                if let id = sessionManager.activeTabID {
+                    Task { await sessionManager.disconnectTab(id) }
+                }
+            }
+            .focusedSceneValue(\.menuReconnect) {
+                if let id = sessionManager.activeTabID {
+                    Task { await sessionManager.reconnectTab(id) }
+                }
+            }
+            .focusedSceneValue(\.menuToggleSFTP) {
+                toggleSFTPWindow()
+            }
+            .focusedSceneValue(\.menuToggleAI) {
+                workspace.toggleRightPanel(.ai)
+            }
+            .focusedSceneValue(\.menuShowSerialPort) {
+                workspace.isSerialPortPresented = true
+            }
+            .focusedSceneValue(\.menuShowSnippets) {
+                workspace.snippetsHistoryTab = .snippets
+                workspace.activeRightPanel = .snippetsHistory
+            }
+            .focusedSceneValue(\.menuShowPortForwarding) {
+                workspace.isPortForwardingPresented = true
+            }
+            .focusedSceneValue(\.menuShowCommandHistory) {
+                workspace.snippetsHistoryTab = .history
+                workspace.activeRightPanel = .snippetsHistory
+            }
+            .focusedSceneValue(\.menuChangeTheme) { themeID in
                 themeManager.setActive(themeID)
             }
-        }
+        #endif
     }
 
     // MARK: - macOS Layout (2-column NavigationSplitView + .inspector)
