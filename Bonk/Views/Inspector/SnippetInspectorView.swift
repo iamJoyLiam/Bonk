@@ -9,7 +9,7 @@ import SwiftData
 import SwiftUI
 
 struct SnippetInspectorView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Snippet.sortOrder) private var snippets: [Snippet]
     @Bindable var sessionManager: SessionManager
@@ -71,7 +71,7 @@ struct SnippetInspectorView: View {
         }
         .sheet(isPresented: $showAddSheet) {
             SnippetEditSheet(snippet: nil, modelContext: modelContext)
-                .environmentObject(i18n)
+                .environment(i18n)
         }
     }
 

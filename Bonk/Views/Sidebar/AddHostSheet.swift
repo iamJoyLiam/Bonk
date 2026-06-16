@@ -2,7 +2,7 @@ import SwiftData
 import SwiftUI
 
 struct AddHostSheet: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Credential.createdAt, order: .reverse)

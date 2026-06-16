@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Static facade for non-SwiftUI contexts
 
-// SwiftUI views should use @EnvironmentObject var i18n: I18n instead.
+// SwiftUI views should use @Environment(I18n.self) var i18n instead.
 
 // swiftlint:disable:next type_name
 enum L {

@@ -7,7 +7,7 @@ import SwiftUI
 
 /// Search bar for terminal content — appears on Cmd+F.
 struct TerminalSearchBar: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Binding var searchText: String
     @Binding var isPresented: Bool
     let matchCount: Int

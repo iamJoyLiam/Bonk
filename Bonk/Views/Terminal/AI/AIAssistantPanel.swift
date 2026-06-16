@@ -9,7 +9,7 @@ import SwiftUI
 
 /// AI Assistant panel - input stays, response appears below.
 struct AIAssistantPanel: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Environment(\.modelContext) private var modelContext
     @State private var aiService = AIService.shared
     @State private var providerStore = AIProviderStore()
@@ -300,7 +300,7 @@ struct AIAssistantPanel: View {
 
 /// Error diagnosis floating bubble.
 struct AIErrorDiagnosis: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @State private var aiService = AIService.shared
     @State private var isProcessing = false
     @State private var diagnosis: String?

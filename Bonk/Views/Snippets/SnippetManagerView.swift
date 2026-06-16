@@ -8,7 +8,7 @@ import SwiftUI
 
 /// Manages command snippets — add, edit, delete, insert.
 struct SnippetManagerView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Snippet.sortOrder) private var snippets: [Snippet]
     @Binding var isPresented: Bool
@@ -106,11 +106,11 @@ struct SnippetManagerView: View {
         .frame(minWidth: 400, minHeight: 300)
         .sheet(isPresented: $showAddSheet) {
             SnippetEditSheet(snippet: nil, modelContext: modelContext)
-                .environmentObject(i18n)
+                .environment(i18n)
         }
         .sheet(item: $editingSnippet) { snippet in
             SnippetEditSheet(snippet: snippet, modelContext: modelContext)
-                .environmentObject(i18n)
+                .environment(i18n)
         }
     }
 
@@ -178,7 +178,7 @@ struct SnippetManagerView: View {
 // MARK: - Snippet Edit Sheet
 
 struct SnippetEditSheet: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Environment(\.dismiss) private var dismiss
     let snippet: Snippet?
     let modelContext: ModelContext

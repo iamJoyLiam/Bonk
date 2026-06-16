@@ -7,7 +7,7 @@ import SwiftUI
 
 /// Serial port connection panel.
 struct SerialPortView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Binding var isPresented: Bool
     let onConnect: (SerialPortConfig) -> Void
 

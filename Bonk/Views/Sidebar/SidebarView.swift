@@ -9,7 +9,7 @@ import SwiftData
 import SwiftUI
 
 struct SidebarView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Environment(WorkspaceManager.self) private var workspace
     @Bindable var sessionManager: SessionManager
     @Query private var allPreferences: [UserPreferences]

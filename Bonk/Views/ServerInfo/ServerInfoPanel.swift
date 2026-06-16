@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct ServerInfoPanel: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     let tab: TerminalTab?
     let onDisconnect: () -> Void
     let onReconnect: () -> Void

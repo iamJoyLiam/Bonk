@@ -2,7 +2,7 @@ import SwiftData
 import SwiftUI
 
 struct KeychainManagerView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 

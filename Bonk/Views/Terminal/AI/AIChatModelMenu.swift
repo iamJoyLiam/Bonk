@@ -5,7 +5,7 @@ import SwiftUI
 /// Isolated model picker view. Reads from shared AIProviderStore.
 /// Uses HStack+onTapGesture (not Button) to avoid macOS marquee.
 struct ModelPickerButton: View {
-    @ObservedObject var store: AIProviderStore
+    @Bindable var store: AIProviderStore
     @State private var isOpen = false
 
     var body: some View {

@@ -2,7 +2,7 @@ import SwiftData
 import SwiftUI
 
 struct ContentView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Environment(\.modelContext) private var modelContext
     @Query private var allPreferences: [UserPreferences]
     @StateObject private var themeManager = TerminalThemeManager.shared
@@ -179,15 +179,15 @@ struct ContentView: View {
             // Sheets
             .sheet(isPresented: $workspace.isSerialPortPresented) {
                 SerialPortView(isPresented: $workspace.isSerialPortPresented, onConnect: { _ in })
-                    .environmentObject(i18n)
+                    .environment(i18n)
             }
             .sheet(isPresented: $workspace.isPortForwardingPresented) {
                 PortForwardView(isPresented: $workspace.isPortForwardingPresented, sshService: sessionManager.activeTab?.sshService)
-                    .environmentObject(i18n)
+                    .environment(i18n)
             }
             .sheet(isPresented: $workspace.isSessionManagerPresented) {
                 SessionManagerView(isPresented: $workspace.isSessionManagerPresented, onConnect: { _ in })
-                    .environmentObject(i18n)
+                    .environment(i18n)
             }
         }
     #endif
@@ -216,7 +216,7 @@ struct ContentView: View {
             window.isReleasedWhenClosed = false
             window.contentView = NSHostingView(
                 rootView: SFTPWindowView(sessionManager: sessionManager)
-                    .environmentObject(i18n)
+                    .environment(i18n)
                     .environment(workspace)
             )
             window.center()

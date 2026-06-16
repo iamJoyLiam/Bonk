@@ -4,7 +4,7 @@ import SwiftUI
 // MARK: - Group Settings
 
 struct GroupSettingsView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \HostGroup.sortOrder) private var groups: [HostGroup]
 
@@ -99,7 +99,7 @@ struct GroupSettingsView: View {
 // MARK: - Group Edit Sheet
 
 struct GroupEditSheet: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 

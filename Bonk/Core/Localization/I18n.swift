@@ -1,4 +1,3 @@
-import Combine
 import Foundation
 
 #if os(macOS)
@@ -7,18 +6,18 @@ import Foundation
 
 // MARK: - Reactive localization engine
 
-final class I18n: ObservableObject, @unchecked Sendable {
-    // MARK: Published state
+@Observable
+final class I18n: @unchecked Sendable {
+    // MARK: State
 
-    @Published private(set) var lang: String
+    private(set) var lang: String
 
     // MARK: Singleton (for non-SwiftUI contexts)
 
     static let shared = I18n()
 
-    // MARK: Thread safety
+    // MARK: Private state
 
-    private let lock = NSLock()
     private var _savedChoice: String
 
     // MARK: Init
@@ -26,6 +25,7 @@ final class I18n: ObservableObject, @unchecked Sendable {
     init() {
         let allKeys = Self.loadStrings()
         _allStrings = allKeys
+        availableLanguages = Array(allKeys.keys).sorted()
 
         let saved = UserDefaults.standard.string(forKey: "app_language") ?? "system"
         let resolved = Self.resolve(saved, availableKeys: Array(allKeys.keys))
@@ -38,10 +38,7 @@ final class I18n: ObservableObject, @unchecked Sendable {
             queue: .main
         ) { [weak self] _ in
             guard let self else { return }
-            lock.lock()
-            let savedChoice = _savedChoice
-            lock.unlock()
-            if savedChoice == "system" {
+            if _savedChoice == "system" {
                 let newLang = Self.resolve("system", availableKeys: Array(_allStrings.keys))
                 if lang != newLang {
                     lang = newLang
@@ -53,9 +50,7 @@ final class I18n: ObservableObject, @unchecked Sendable {
     // MARK: Set language
 
     func setLanguage(_ code: String) {
-        lock.lock()
         _savedChoice = code
-        lock.unlock()
         UserDefaults.standard.set(code, forKey: "app_language")
 
         if code == "system" {
@@ -87,11 +82,7 @@ final class I18n: ObservableObject, @unchecked Sendable {
 
     // MARK: Current saved choice
 
-    var savedChoice: String {
-        lock.lock()
-        defer { lock.unlock() }
-        return _savedChoice
-    }
+    var savedChoice: String { _savedChoice }
 
     // MARK: Translate
 
@@ -108,7 +99,7 @@ final class I18n: ObservableObject, @unchecked Sendable {
 
     // MARK: Available languages
 
-    private(set) lazy var availableLanguages: [String] = Array(_allStrings.keys).sorted()
+    private(set) var availableLanguages: [String]
 
     // MARK: Display name
 

@@ -7,7 +7,7 @@ import SwiftUI
 
 /// Visual indicator showing broadcast mode status.
 struct BroadcastIndicator: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Bindable var manager: BroadcastManager
 
     var body: some View {
@@ -43,7 +43,7 @@ struct BroadcastIndicator: View {
 
 /// Broadcast mode toggle button for the terminal toolbar.
 struct BroadcastToggleButton: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Bindable var manager: BroadcastManager
 
     var body: some View {

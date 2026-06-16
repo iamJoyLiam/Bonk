@@ -10,7 +10,7 @@ import SwiftUI
 
 /// Port forwarding management panel.
 struct PortForwardView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \PortForward.createdAt) private var rules: [PortForward]
     @Binding var isPresented: Bool
@@ -65,11 +65,11 @@ struct PortForwardView: View {
         .frame(minWidth: 400, minHeight: 300)
         .sheet(isPresented: $showAddSheet) {
             PortForwardEditSheet(rule: nil, modelContext: modelContext)
-                .environmentObject(i18n)
+                .environment(i18n)
         }
         .sheet(item: $editingRule) { rule in
             PortForwardEditSheet(rule: rule, modelContext: modelContext)
-                .environmentObject(i18n)
+                .environment(i18n)
         }
     }
 
@@ -131,7 +131,7 @@ struct PortForwardView: View {
 // MARK: - Port Forward Edit Sheet
 
 struct PortForwardEditSheet: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Environment(\.dismiss) private var dismiss
     let rule: PortForward?
     let modelContext: ModelContext

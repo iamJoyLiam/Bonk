@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct EditorSettingsView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Bindable var preferences: UserPreferences
     @StateObject private var themeManager = TerminalThemeManager.shared
 

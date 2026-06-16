@@ -13,7 +13,7 @@ import SwiftUI
 
 /// A SwiftUI view that records keyboard shortcuts.
 struct KeyRecorderView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     let label: String
     @Binding var shortcut: KeyboardShortcut?
     @State private var isRecording = false

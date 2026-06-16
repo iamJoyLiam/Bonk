@@ -9,7 +9,7 @@ import UniformTypeIdentifiers
 
 /// SFTP file browser panel.
 struct SFTPBrowserView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     let tab: TerminalTab
     @State private var showNewFolder = false
     @State private var newFolderName = ""

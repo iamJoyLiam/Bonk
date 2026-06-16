@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Settings View
 
 struct SettingsView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Bindable var preferences: UserPreferences
     @AppStorage("settings_selected_tab") private var selectedTab = "general"
 

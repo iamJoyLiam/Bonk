@@ -9,7 +9,7 @@
 import SwiftUI
 
 struct SFTPWindowView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Bindable var sessionManager: SessionManager
     @State private var localPath: String = NSHomeDirectory()
     @State private var localFiles: [LocalFileEntry] = []

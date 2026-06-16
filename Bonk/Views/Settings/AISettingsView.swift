@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AISettingsView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Environment(\.modelContext) private var modelContext
     @AppStorage("ai_enabled") private var aiEnabled = false
     @AppStorage("ai_inline_suggestions") private var inlineSuggestionsEnabled = false
@@ -11,7 +11,7 @@ struct AISettingsView: View {
     @AppStorage("ai_include_env") private var includeEnvironmentInfo = false
     @AppStorage("ai_connection_policy") private var defaultConnectionPolicyRaw = "askEachTime"
 
-    @StateObject private var store = AIProviderStore.shared
+    @State private var store = AIProviderStore.shared
 
     @State private var editingProviderID: UUID?
     @State private var addingProviderType: AIProviderType?

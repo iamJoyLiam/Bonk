@@ -6,12 +6,11 @@
 //
 
 import AppKit
-import Combine
 import Foundation
 import os
 
-@MainActor
-final class CopilotService: ObservableObject {
+@Observable @MainActor
+final class CopilotService {
     static let shared = CopilotService()
 
     private static let logger = Log.copilot
@@ -37,9 +36,9 @@ final class CopilotService: ObservableObject {
         case signedIn(username: String)
     }
 
-    @Published private(set) var status: Status = .stopped
-    @Published private(set) var authState: AuthState = .signedOut
-    @Published var errorMessage: String?
+    private(set) var status: Status = .stopped
+    private(set) var authState: AuthState = .signedOut
+    var errorMessage: String?
 
     private var oauthToken: String?
     private var signInTask: Task<Void, Never>?

@@ -4,7 +4,7 @@ import SwiftUI
 /// Full conversation-style AI chat panel for the right sidebar.
 /// Supports Ask, Edit, and Agent modes.
 struct AIChatSidebarView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Environment(\.modelContext) var modelContext
     let sshService: SSHNetworkService?
     var onPaste: ((String) -> Void)?
@@ -12,7 +12,7 @@ struct AIChatSidebarView: View {
         AgentEngine.shared
     }
 
-    @ObservedObject var providerStore = AIProviderStore.shared
+    @State var providerStore = AIProviderStore.shared
     @State var conversationStore = AIConversationStore.shared
     @Query(sort: \AIConversationRecord.updatedAt, order: .reverse)
     var conversations: [AIConversationRecord]

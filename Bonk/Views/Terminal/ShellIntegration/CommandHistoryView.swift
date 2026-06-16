@@ -7,7 +7,7 @@ import SwiftUI
 
 /// Displays command execution history with duration and exit codes.
 struct CommandHistoryView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Bindable var history: CommandHistory
     @Binding var isPresented: Bool
     let onRerun: (String) -> Void

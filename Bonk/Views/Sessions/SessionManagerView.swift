@@ -8,7 +8,7 @@ import SwiftUI
 
 /// Quick connect panel — shows saved sessions for one-click connection.
 struct SessionManagerView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \SavedSession.sortOrder) private var sessions: [SavedSession]
     @Binding var isPresented: Bool

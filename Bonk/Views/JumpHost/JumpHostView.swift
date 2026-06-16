@@ -8,7 +8,7 @@ import SwiftUI
 
 /// Jump host management panel.
 struct JumpHostView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \JumpHost.sortOrder) private var jumpHosts: [JumpHost]
     @Binding var isPresented: Bool
@@ -65,11 +65,11 @@ struct JumpHostView: View {
         .frame(minWidth: 400, minHeight: 300)
         .sheet(isPresented: $showAddSheet) {
             JumpHostEditSheet(host: nil, modelContext: modelContext)
-                .environmentObject(i18n)
+                .environment(i18n)
         }
         .sheet(item: $editingHost) { host in
             JumpHostEditSheet(host: host, modelContext: modelContext)
-                .environmentObject(i18n)
+                .environment(i18n)
         }
     }
 
@@ -125,7 +125,7 @@ struct JumpHostView: View {
 // MARK: - Jump Host Edit Sheet
 
 struct JumpHostEditSheet: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Environment(\.dismiss) private var dismiss
     let host: JumpHost?
     let modelContext: ModelContext

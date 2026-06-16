@@ -10,7 +10,7 @@ import SwiftUI
 
 /// Left sidebar: list of saved SSH hosts with connection status.
 struct HostListView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \HostItem.createdAt) private var hosts: [HostItem]
     @Query(sort: \HostGroup.sortOrder) private var hostGroups: [HostGroup]

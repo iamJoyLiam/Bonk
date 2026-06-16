@@ -12,7 +12,7 @@ import UniformTypeIdentifiers
 
 /// Center area: tab bar + active terminal content.
 struct TerminalTabView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Bindable var sessionManager: SessionManager
     let colorScheme: TerminalColorScheme
     let cursorStyle: String

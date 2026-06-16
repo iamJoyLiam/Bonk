@@ -5,16 +5,16 @@
 //  Wraps Sparkle's SPUStandardUpdaterController for SwiftUI.
 //
 
-import Combine
 import Foundation
 
 #if canImport(Sparkle)
     import Sparkle
 
-    final class UpdaterManager: ObservableObject {
+    @Observable
+    final class UpdaterManager {
         private let updaterController: SPUStandardUpdaterController
 
-        @Published var canCheckForUpdates = true
+        var canCheckForUpdates = true
 
         init() {
             updaterController = SPUStandardUpdaterController(
@@ -30,8 +30,9 @@ import Foundation
     }
 #else
     /// Stub when Sparkle is not yet added as a dependency
-    final class UpdaterManager: ObservableObject {
-        @Published var canCheckForUpdates = true
+    @Observable
+    final class UpdaterManager {
+        var canCheckForUpdates = true
         func checkForUpdates() {}
     }
 #endif

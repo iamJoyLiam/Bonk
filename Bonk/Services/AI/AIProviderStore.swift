@@ -1,16 +1,15 @@
-import Combine
 import Foundation
 import os.log
 import SwiftData
 
 /// Persistent storage for AI provider configurations using SwiftData.
 /// API keys remain in Keychain.
-@MainActor
-final class AIProviderStore: ObservableObject {
-    @Published var providers: [AIProviderConfig] = []
-    @Published var activeProviderID: UUID?
+@Observable @MainActor
+final class AIProviderStore {
+    var providers: [AIProviderConfig] = []
+    var activeProviderID: UUID?
     /// Cached model lists keyed by provider ID. Populated by fetchModels calls.
-    @Published var cachedModels: [UUID: [String]] = [:]
+    var cachedModels: [UUID: [String]] = [:]
 
     private static let logger = Logger(subsystem: "com.bonk", category: "AIProviderStore")
     private var modelContext: ModelContext?

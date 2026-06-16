@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct KeyboardSettingsView: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     @Bindable var preferences: UserPreferences
     @AppStorage("keyboard_shortcuts") private var shortcutsData: Data = .init()
 

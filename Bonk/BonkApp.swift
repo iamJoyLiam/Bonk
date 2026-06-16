@@ -5,8 +5,8 @@ import SwiftUI
 
 @main
 struct BonkApp: App {
-    @StateObject private var i18n = I18n()
-    @StateObject private var updater = UpdaterManager()
+    @State private var i18n = I18n()
+    @State private var updater = UpdaterManager()
 
     init() {
         let saved = UserDefaults.standard.string(forKey: "app_language") ?? "system"
@@ -47,7 +47,7 @@ struct BonkApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(i18n)
+                .environment(i18n)
                 .onAppear {
                     CrashReporter.install()
                     #if os(macOS)
@@ -189,7 +189,7 @@ struct BonkApp: App {
         #if os(macOS)
             Settings {
                 SettingsContainerView()
-                    .environmentObject(i18n)
+                    .environment(i18n)
             }
             .modelContainer(sharedModelContainer)
         #endif

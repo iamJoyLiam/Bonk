@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AIProviderDetailSheet: View {
-    @EnvironmentObject var i18n: I18n
+    @Environment(I18n.self) var i18n
     let isNew: Bool
     let onSave: (AIProviderConfig) -> Void
     let onDelete: (() -> Void)?
@@ -19,7 +19,7 @@ struct AIProviderDetailSheet: View {
     @State private var modelFetchTask: Task<Void, Never>?
     @State private var showModelRequiredAlert = false
 
-    @StateObject private var copilotService = CopilotService.shared
+    @State private var copilotService = CopilotService.shared
 
     enum TestResult: Equatable {
         case success
