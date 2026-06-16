@@ -11,9 +11,8 @@ import SwiftUI
 struct SFTPWindowView: View {
     @Environment(I18n.self) var i18n
     @Bindable var sessionManager: SessionManager
-    @State private var localPath: String = NSHomeDirectory()
+    @State private var localPath: String = (NSHomeDirectory() as NSString).appendingPathComponent("Downloads")
     @State private var localFiles: [LocalFileEntry] = []
-    @State private var selectedLocal: LocalFileEntry?
     @State private var selectedRemote: SFTPFileEntry?
 
     var body: some View {
@@ -57,71 +56,79 @@ struct SFTPWindowView: View {
     @ViewBuilder
     private var localFilePanel: some View {
         VStack(spacing: 0) {
-            // Header
+            // Header — matches SFTPBrowserView.header
             HStack {
                 Image(systemName: "desktopcomputer")
                     .foregroundStyle(.blue)
                 Text(i18n.t(.localFiles))
                     .font(.headline)
+
                 Spacer()
-                Button {
-                    loadLocalFiles()
-                } label: {
+
+                Button { loadLocalFiles() } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 12))
                 }
+                .buttonStyle(.borderless)
+                .help(i18n.t(.refresh))
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
 
-            // Path bar
+            Divider()
+
+            // Path bar — matches SFTPBrowserView.pathBar
             HStack(spacing: 4) {
-                Button {
-                    goUpLocal()
-                } label: {
+                Button { goUpLocal() } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 11))
+                        .font(.system(size: 11, weight: .medium))
                 }
+                .buttonStyle(.plain)
                 .disabled(localPath == "/")
 
                 Text(localPath)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11).monospaced())
                     .lineLimit(1)
                     .truncationMode(.middle)
+
+                Spacer()
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(.quaternary.opacity(0.3))
 
             Divider()
 
-            // File list
-            List(localFiles, selection: $selectedLocal) { file in
-                HStack(spacing: 8) {
-                    Image(systemName: file.isDirectory ? "folder.fill" : "doc")
-                        .font(.system(size: 14))
-                        .foregroundStyle(file.isDirectory ? .blue : .secondary)
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(file.name)
-                            .font(.system(size: 12))
-                        if !file.isDirectory {
-                            Text(formatSize(file.size))
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(.tertiary)
+            // File list — uses LocalFileRow matching SFTPFileRow
+            List(localFiles) { file in
+                LocalFileRow(file: file)
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) {
+                        if file.isDirectory {
+                            localPath = file.path
+                            loadLocalFiles()
                         }
                     }
-
-                    Spacer()
-                }
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2) {
-                    if file.isDirectory {
-                        localPath = file.path
-                        loadLocalFiles()
+                    .contextMenu {
+                        if !file.isDirectory {
+                            Button { uploadLocalFile(file) } label: {
+                                Label(i18n.t(.upload), systemImage: "arrow.up.doc")
+                            }
+                        }
+                        if file.isDirectory {
+                            Button {
+                                localPath = file.path
+                                loadLocalFiles()
+                            } label: {
+                                Label(i18n.t(.open), systemImage: "folder")
+                            }
+                        }
+                        Divider()
+                        Button {
+                            NSWorkspace.shared.selectFile(file.path, inFileViewerRootedAtPath: localPath)
+                        } label: {
+                            Label(i18n.t(.showInFinder), systemImage: "finder")
+                        }
                     }
-                }
             }
             .listStyle(.plain)
         }
@@ -187,6 +194,41 @@ struct SFTPWindowView: View {
         loadLocalFiles()
     }
 
+    private func localFileIcon(_ name: String) -> String {
+        let ext = (name as NSString).pathExtension.lowercased()
+        switch ext {
+        case "sh", "bash", "zsh", "py", "rb", "pl": return "terminal"
+        case "yml", "yaml", "json", "xml", "toml": return "doc.text"
+        case "txt", "log", "md": return "doc.plaintext"
+        case "jpg", "jpeg", "png", "gif", "svg": return "photo"
+        case "zip", "tar", "gz", "bz2", "xz": return "archivebox"
+        case "conf", "cfg", "ini", "env": return "gearshape"
+        default: return "doc"
+        }
+    }
+
+    private func localFileIconColor(_ name: String) -> Color {
+        let ext = (name as NSString).pathExtension.lowercased()
+        switch ext {
+        case "sh", "bash", "zsh", "py", "rb": return .green
+        case "yml", "yaml", "json", "xml": return .orange
+        case "log", "txt": return .gray
+        case "jpg", "jpeg", "png", "gif": return .purple
+        default: return .secondary
+        }
+    }
+
+    private func uploadLocalFile(_ file: LocalFileEntry) {
+        guard let sftp = sessionManager.activeTab?.session?.sftpService else { return }
+        Task {
+            do {
+                try await sftp.upload(URL(fileURLWithPath: file.path))
+            } catch {
+                sftp.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
     private func formatSize(_ bytes: UInt64) -> String {
         if bytes < 1024 { return "\(bytes) B" }
         if bytes < 1024 * 1024 { return String(format: "%.1f KB", Double(bytes) / 1024) }
@@ -216,4 +258,79 @@ struct LocalFileEntry: Identifiable, Hashable {
     let path: String
     let isDirectory: Bool
     let size: UInt64
+}
+
+// MARK: - Local File Row (matches SFTPFileRow layout)
+
+struct LocalFileRow: View {
+    let file: LocalFileEntry
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundStyle(iconColor)
+                .frame(width: 20)
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(file.name)
+                            .font(.system(size: 12))
+                            .lineLimit(1)
+
+                        HStack(spacing: 8) {
+                            if file.isDirectory {
+                                Text("Folder")
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.tertiary)
+                            } else {
+                                let ext = (file.name as NSString).pathExtension
+                                if !ext.isEmpty {
+                                    Text(ext.uppercased())
+                                        .font(.system(size: 9).monospaced())
+                                        .foregroundStyle(.tertiary)
+                                }
+                                Text(formatSize(file.size))
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
+
+            Spacer()
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var icon: String {
+        if file.isDirectory { return "folder.fill" }
+        let ext = (file.name as NSString).pathExtension.lowercased()
+        switch ext {
+        case "sh", "bash", "zsh", "py", "rb", "pl": return "terminal"
+        case "yml", "yaml", "json", "xml", "toml": return "doc.text"
+        case "txt", "log", "md": return "doc.plaintext"
+        case "jpg", "jpeg", "png", "gif", "svg": return "photo"
+        case "zip", "tar", "gz", "bz2", "xz": return "archivebox"
+        case "conf", "cfg", "ini", "env": return "gearshape"
+        default: return "doc"
+        }
+    }
+
+    private var iconColor: Color {
+        if file.isDirectory { return .blue }
+        let ext = (file.name as NSString).pathExtension.lowercased()
+        switch ext {
+        case "sh", "bash", "zsh", "py", "rb": return .green
+        case "yml", "yaml", "json", "xml": return .orange
+        case "log", "txt": return .gray
+        case "jpg", "jpeg", "png", "gif": return .purple
+        default: return .secondary
+        }
+    }
+
+    private func formatSize(_ bytes: UInt64) -> String {
+        if bytes < 1024 { return "\(bytes) B" }
+        if bytes < 1024 * 1024 { return String(format: "%.1f KB", Double(bytes) / 1024) }
+        if bytes < 1024 * 1024 * 1024 { return String(format: "%.1f MB", Double(bytes) / 1024 / 1024) }
+        return String(format: "%.1f GB", Double(bytes) / 1024 / 1024 / 1024)
+    }
 }

@@ -355,7 +355,6 @@ struct SFTPBrowserView: View {
         let sftp = SFTPService()
         do {
             try await sftp.connect(using: sshService)
-            try await sftp.listDirectory()
             tab.session?.sftpService = sftp
             Log.sftp.info("SFTP connected for tab \(tab.title)")
         } catch {

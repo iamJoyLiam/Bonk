@@ -213,9 +213,11 @@ enum LKey: String, CaseIterable {
     case credentialsNotSet = "credentials_not_set"
     case sftpConnectFailed = "sftp_connect_failed"
     case noSSHConnection = "no_ssh_connection"
+    case upload
     case uploadingTo = "uploading_to"
     case uploadSuccess = "upload_success"
     case uploadFailed = "upload_failed"
+    case showInFinder = "show_in_finder"
 
     // Command Palette
     case searchCommands = "search_commands"

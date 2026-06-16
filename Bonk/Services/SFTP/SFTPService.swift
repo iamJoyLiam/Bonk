@@ -29,8 +29,10 @@ final class SFTPService {
         let client = try await sshService.openSFTPClient()
         sftpClient = client
         currentPath = try await client.getRealPath(atPath: ".")
-        // swiftformat:disable:next redundantSelf
         Log.sftp.info("SFTP connected, initial path: \(self.currentPath)")
+        // Brief delay to ensure SFTP session is fully initialized
+        try? await Task.sleep(for: .milliseconds(200))
+        try await listDirectory()
     }
 
     /// List files in the current directory.
