@@ -43,7 +43,16 @@ struct HostListView: View {
 
     private var groupedHosts: [(String, [HostItem])] {
         let grouped = Dictionary(grouping: filteredHosts) { $0.groupRef?.name ?? i18n.t(.unGrouped) }
-        return grouped.sorted { $0.key < $1.key }
+        let ungroupedName = i18n.t(.unGrouped)
+        return grouped.sorted { a, b in
+            if a.key == ungroupedName { return false }
+            if b.key == ungroupedName { return true }
+            let orderA = hostGroups.first(where: { $0.name == a.key })?.sortOrder ?? Int.max
+            let orderB = hostGroups.first(where: { $0.name == b.key })?.sortOrder ?? Int.max
+            return orderA < orderB
+        }.map { key, hosts in
+            (key, hosts.sorted { $0.sortOrder < $1.sortOrder })
+        }
     }
 
     /// Look up HostGroup by name.

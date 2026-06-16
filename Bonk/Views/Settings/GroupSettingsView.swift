@@ -53,24 +53,87 @@ struct GroupSettingsView: View {
 
     // MARK: - Group List
 
+    @State private var expandedGroups = Set<UUID>()
+
     private var groupList: some View {
         List {
             ForEach(groups) { group in
-                Button { editingGroup = group } label: {
-                    HStack(spacing: 12) {
-                        GroupIndicator(group: group)
-                        Text(group.name).font(.body)
-                        Spacer()
-                        hostCountBadge(group.name)
-                        Button { pendingDelete = group } label: {
-                            Image(systemName: "trash").font(.system(size: 12)).foregroundStyle(.tertiary)
+                let isExpanded = expandedGroups.contains(group.id)
+                let hosts = group.hosts.sorted { $0.sortOrder < $1.sortOrder }
+
+                // Group header row
+                HStack(spacing: 8) {
+                    // Expand chevron
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            if isExpanded { expandedGroups.remove(group.id) }
+                            else { expandedGroups.insert(group.id) }
                         }
-                        .buttonStyle(.plain)
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .frame(width: 16, height: 16)
                     }
-                    .padding(.vertical, 8).contentShape(Rectangle())
+                    .buttonStyle(.plain)
+
+                    GroupIndicator(group: group)
+                    Text(group.name).font(.body)
+                    Spacer()
+                    hostCountBadge(group.name)
+                    HStack(spacing: 8) {
+                        Image(systemName: "pencil.circle")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.secondary)
+                            .onTapGesture { editingGroup = group }
+                        Image(systemName: "trash")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.tertiary)
+                            .onTapGesture { pendingDelete = group }
+                    }
                 }
-                .buttonStyle(.plain)
+                .padding(.vertical, 4)
+
+                // Expanded host list
+                if isExpanded {
+                    ForEach(hosts) { host in
+                        HStack(spacing: 8) {
+                            Image(systemName: "line.3.horizontal")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.quaternary)
+                            Image(systemName: "desktopcomputer")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                            Text(host.name).font(.subheadline)
+                            Spacer()
+                            Text(host.host)
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(.vertical, 4)
+                        .padding(.leading, 32)
+                    }
+                    .onMove { from, to in moveHosts(in: group, from: from, to: to) }
+                }
             }
+            .onMove { from, to in moveGroups(from: from, to: to) }
+        }
+    }
+
+    private func moveGroups(from source: IndexSet, to destination: Int) {
+        var reordered = groups
+        reordered.move(fromOffsets: source, toOffset: destination)
+        for (index, group) in reordered.enumerated() {
+            group.sortOrder = index
+        }
+    }
+
+    private func moveHosts(in group: HostGroup, from source: IndexSet, to destination: Int) {
+        var hosts = group.hosts.sorted { $0.sortOrder < $1.sortOrder }
+        hosts.move(fromOffsets: source, toOffset: destination)
+        for (index, host) in hosts.enumerated() {
+            host.sortOrder = index
         }
     }
 

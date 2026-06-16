@@ -19,6 +19,8 @@ final class HostItem {
     var authTypeRaw: String
     var createdAt: Date
     var lastConnectedAt: Date?
+    /// Sort order within group (used by drag-to-reorder).
+    var sortOrder: Int = 0
 
     @Relationship(deleteRule: .nullify)
     var groupRef: HostGroup?
