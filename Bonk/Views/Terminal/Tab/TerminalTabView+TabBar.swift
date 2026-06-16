@@ -29,7 +29,7 @@ extension TerminalTabView {
                                 Button {
                                     tab.colorLabel = nil
                                 } label: {
-                                    Text("None")
+                                    Text(i18n.t(.none))
                                 }
 
                                 ForEach(TerminalTab.colorLabels, id: \.name) { label in
@@ -142,8 +142,22 @@ extension TerminalTabView {
             .padding(.vertical, 5)
             .frame(minWidth: 80, maxWidth: 160)
             .background {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(tabBackgroundColor(tab, isActive: isActive))
+                if isActive {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    tabAccentColor(tab).opacity(0.15),
+                                    tabAccentColor(tab).opacity(0.05),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                } else {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.clear)
+                }
             }
             .overlay(alignment: .bottom) {
                 if isActive {
@@ -163,8 +177,8 @@ extension TerminalTabView {
             // Use color label as background with appropriate opacity
             return isActive ? color.opacity(0.25) : color.opacity(0.15)
         }
-        // Default: accent color for active, clear for inactive
-        return isActive ? Color.accentColor.opacity(0.12) : Color.clear
+        // Default: subtle gradient for active, clear for inactive
+        return isActive ? Color.accentColor.opacity(0.08) : Color.clear
     }
 
     /// Determine tab accent color (bottom border) based on color label.

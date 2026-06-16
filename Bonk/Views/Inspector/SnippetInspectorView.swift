@@ -14,6 +14,7 @@ struct SnippetInspectorView: View {
     @Query(sort: \Snippet.sortOrder) private var snippets: [Snippet]
     @Bindable var sessionManager: SessionManager
     @State private var searchText = ""
+    @State private var showAddSheet = false
 
     private var filteredSnippets: [Snippet] {
         if searchText.isEmpty { return snippets }
@@ -49,9 +50,12 @@ struct SnippetInspectorView: View {
                     Text(i18n.t(.noSnippets))
                         .font(.headline)
                         .foregroundStyle(.secondary)
-                    Text(i18n.t(.addSnippet) + " in Settings")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                    Button {
+                        showAddSheet = true
+                    } label: {
+                        Label(i18n.t(.addSnippet), systemImage: "plus")
+                    }
+                    .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -64,6 +68,10 @@ struct SnippetInspectorView: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showAddSheet) {
+            SnippetEditSheet(snippet: nil, modelContext: modelContext)
+                .environmentObject(i18n)
         }
     }
 

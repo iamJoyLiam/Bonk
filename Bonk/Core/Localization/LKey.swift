@@ -247,6 +247,9 @@ enum LKey: String, CaseIterable {
     // Menu
     case menuView = "menu_view"
     case menuConnection = "menu_connection"
+    case splitHorizontal = "split_horizontal"
+    case splitVertical = "split_vertical"
+    case closePane = "close_pane"
 
     // Serial Port
     case serialPort = "serial_port"
@@ -262,6 +265,7 @@ enum LKey: String, CaseIterable {
     // SFTP Window
     case noActiveSession = "no_active_session"
     case connectToHostFirst = "connect_to_host_first"
+    case localFiles = "local_files"
 
     // Jump Host
     case jumpHosts = "jump_hosts"
@@ -269,6 +273,8 @@ enum LKey: String, CaseIterable {
     case editJumpHost = "edit_jump_host"
     case noJumpHosts = "no_jump_hosts"
     case jumpHostHint = "jump_host_hint"
+    case jumpHostAdvanced = "jump_host_advanced"
+    case jumpHostHostname = "jump_host_hostname"
 
     // Broadcast
     case broadcastMode = "broadcast_mode"
@@ -289,6 +295,8 @@ enum LKey: String, CaseIterable {
     case noCommands = "no_commands"
     case rerunCommand = "rerun_command"
     case clearHistory = "clear_history"
+    case saveToSnippets = "save_to_snippets"
+    case copy
 
     // Broadcast
     case broadcastInput = "broadcast_input"

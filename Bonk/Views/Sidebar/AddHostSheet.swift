@@ -25,6 +25,10 @@ struct AddHostSheet: View {
     @State private var showPassword = false
     @State private var showGroupDropdown = false
     @State private var selectedCredential: Credential?
+    @State private var jumpHostHostname = ""
+    @State private var jumpHostPort = "22"
+    @State private var jumpHostUsername = ""
+    @State private var showJumpHost = false
 
     init(
         existingHost: HostItem? = nil,
@@ -176,6 +180,20 @@ struct AddHostSheet: View {
                             Text(credUsername)
                         }
                     }
+                }
+            }
+
+            // Jump Host (advanced option)
+            Section {
+                Toggle(i18n.t(.jumpHostAdvanced), isOn: $showJumpHost)
+                if showJumpHost {
+                    TextField(i18n.t(.jumpHostHostname), text: $jumpHostHostname)
+                        .textContentType(.URL)
+                        .autocorrectionDisabled()
+                    TextField(i18n.t(.port), text: $jumpHostPort)
+                        .font(.system(size: 13, design: .monospaced))
+                    TextField(i18n.t(.username), text: $jumpHostUsername)
+                        .autocorrectionDisabled()
                 }
             }
         }

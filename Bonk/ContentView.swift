@@ -14,7 +14,6 @@ struct ContentView: View {
         @State private var sftpWindow: NSWindow?
     #endif
 
-    /// Singleton pattern: ensurePreferences() runs in onAppear, fallback is transient.
     private var preferences: UserPreferences {
         allPreferences.first ?? UserPreferences()
     }
@@ -25,7 +24,6 @@ struct ContentView: View {
         }
     }
 
-    /// Current terminal color scheme — resolved from ThemeManager (@AppStorage, instant).
     private var colorScheme: TerminalColorScheme {
         themeManager.resolve()
     }
@@ -52,9 +50,53 @@ struct ContentView: View {
         } message: {
             Text(sessionManager.lastError ?? i18n.t(.unknownError))
         }
+        // Menu bar notification bridges
+        .onReceive(NotificationCenter.default.publisher(for: .menuCloseTab)) { _ in
+            if let id = sessionManager.activeTabID {
+                Task { await sessionManager.closeTab(id) }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .menuConnect)) { _ in
+            workspace.isSessionManagerPresented = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .menuDisconnect)) { _ in
+            if let id = sessionManager.activeTabID {
+                Task { await sessionManager.disconnectTab(id) }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .menuReconnect)) { _ in
+            if let id = sessionManager.activeTabID {
+                Task { await sessionManager.reconnectTab(id) }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .menuToggleSFTP)) { _ in
+            toggleSFTPWindow()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .menuToggleAI)) { _ in
+            workspace.toggleRightPanel(.ai)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .menuShowSerialPort)) { _ in
+            workspace.isSerialPortPresented = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .menuShowSnippets)) { _ in
+            workspace.snippetsHistoryTab = .snippets
+            workspace.activeRightPanel = .snippetsHistory
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .menuShowPortForwarding)) { _ in
+            workspace.isPortForwardingPresented = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .menuShowCommandHistory)) { _ in
+            workspace.snippetsHistoryTab = .history
+            workspace.activeRightPanel = .snippetsHistory
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .menuChangeTheme)) { notification in
+            if let themeID = notification.object as? String {
+                themeManager.setActive(themeID)
+            }
+        }
     }
 
-    // MARK: - macOS Three-Column Layout
+    // MARK: - macOS Layout (2-column NavigationSplitView + .inspector)
 
     #if os(macOS)
         private var macOSLayout: some View {
@@ -79,37 +121,31 @@ struct ContentView: View {
             }
             .navigationSplitViewStyle(.balanced)
             .toolbar {
-                // Capsule A: [📶] + pipe + [🔌│🔀│⏱]
-                ToolbarItem(placement: .automatic) {
-                    HStack(spacing: 0) {
-                        ControlGroup {
-                            Button { workspace.toggleBroadcast() } label: {
-                                Image(systemName: "antenna.radiowaves.left.and.right")
-                                    .foregroundStyle(workspace.isBroadcastEnabled ? .orange : .primary)
-                            }
+                // [📶] [🔌] [🔀] [⏱] — .principal tracks content column boundary
+                ToolbarItem(placement: .principal) {
+                    ControlGroup {
+                        Button { workspace.toggleBroadcast() } label: {
+                            Image(systemName: "antenna.radiowaves.left.and.right")
+                                .foregroundStyle(
+                                    workspace.isBroadcastEnabled ? .orange : .primary
+                                )
                         }
                         .opacity(workspace.isBroadcastEnabled ? 1.0 : 0.8)
-                        Text("|")
-                            .font(.system(size: 11, weight: .thin))
-                            .foregroundStyle(.secondary)
-                            .opacity(0.5)
-                            .padding(.horizontal, 4)
-                        ControlGroup {
-                            Button { workspace.isSerialPortPresented = true } label: {
-                                Image(systemName: "cable.connector")
-                            }
-                            Button { workspace.isPortForwardingPresented = true } label: {
-                                Image(systemName: "arrow.triangle.branch")
-                            }
-                            Button { workspace.isSessionManagerPresented = true } label: {
-                                Image(systemName: "clock.arrow.circlepath")
-                            }
+
+                        Button { workspace.isSerialPortPresented = true } label: {
+                            Image(systemName: "cable.connector")
+                        }
+                        Button { workspace.isPortForwardingPresented = true } label: {
+                            Image(systemName: "arrow.triangle.branch")
+                        }
+                        Button { workspace.isSessionManagerPresented = true } label: {
+                            Image(systemName: "clock.arrow.circlepath")
                         }
                     }
                 }
 
-                // Capsule B: [📁]
-                ToolbarItem(placement: .automatic) {
+                // [📁] — .principal tracks content column boundary
+                ToolbarItem(placement: .principal) {
                     ControlGroup {
                         Button { toggleSFTPWindow() } label: {
                             Image(systemName: "folder.fill")
@@ -117,7 +153,7 @@ struct ContentView: View {
                     }
                 }
 
-                // Capsule C: [✨│📝]
+                // [✨] [📝]
                 ToolbarItem(placement: .primaryAction) {
                     ControlGroup {
                         Button { workspace.toggleRightPanel(.ai) } label: {
@@ -154,26 +190,29 @@ struct ContentView: View {
                     .environmentObject(i18n)
             }
         }
+    #endif
 
-        // MARK: - SFTP Window
+    // MARK: - SFTP Window
 
-        private func toggleSFTPWindow() {
-            if let window = sftpWindow {
+    private func toggleSFTPWindow() {
+        #if os(macOS)
+            if let window = sftpWindow, window.isVisible {
                 window.close()
-                sftpWindow = nil
             } else {
                 openSFTPWindow()
             }
-        }
+        #endif
+    }
 
-        private func openSFTPWindow() {
+    private func openSFTPWindow() {
+        #if os(macOS)
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 700, height: 500),
+                contentRect: NSRect(x: 0, y: 0, width: 1000, height: 650),
                 styleMask: [.titled, .closable, .resizable, .miniaturizable],
                 backing: .buffered,
                 defer: false
             )
-            window.title = "SFTP Browser"
+            window.title = i18n.t(.sftpBrowser)
             window.isReleasedWhenClosed = false
             window.contentView = NSHostingView(
                 rootView: SFTPWindowView(sessionManager: sessionManager)
@@ -185,23 +224,20 @@ struct ContentView: View {
             let delegate = SFTPWindowDelegate { self.sftpWindow = nil }
             window.delegate = delegate
             sftpWindow = window
-        }
-    #endif
+        #endif
+    }
 
     // MARK: - iOS Layout
 
     private var iOSLayout: some View {
         NavigationStack {
-            HostListView(
-                sessionManager: sessionManager,
-                defaultPort: preferences.defaultPort
-            )
-            .navigationTitle("Bonk") // App name, not localized
-            .navigationDestination(for: UUID.self) { tabID in
-                if let tab = sessionManager.tabs.first(where: { $0.id == tabID }) {
-                    iOSterminalDetail(tab)
+            HostListView(sessionManager: sessionManager, defaultPort: preferences.defaultPort)
+                .navigationTitle("Bonk")
+                .navigationDestination(for: UUID.self) { tabID in
+                    if let tab = sessionManager.tabs.first(where: { $0.id == tabID }) {
+                        iOSterminalDetail(tab)
+                    }
                 }
-            }
         }
     }
 
@@ -216,42 +252,27 @@ struct ContentView: View {
             cursorStyle: themeManager.cursorStyle,
             cursorBlink: themeManager.cursorBlink,
             copyOnSelect: preferences.copyOnSelect,
-            onSend: { data in
-                Task { try? await sessionManager.sendInput(data, to: tab.id) }
-            },
-            onResize: { cols, rows in
-                Task { try? await sessionManager.resizePTY(cols: cols, rows: rows, tabID: tab.id) }
-            },
-            onTitleChange: { newTitle in
-                sessionManager.updateTabTitle(newTitle, tabID: tab.id)
-            },
-            onReconnect: {
-                Task { await sessionManager.reconnectTab(tab.id) }
-            }
+            onSend: { data in Task { try? await sessionManager.sendInput(data, to: tab.id) } },
+            onResize: { cols, rows in Task { try? await sessionManager.resizePTY(cols: cols, rows: rows, tabID: tab.id) } },
+            onTitleChange: { sessionManager.updateTabTitle($0, tabID: tab.id) },
+            onReconnect: { Task { await sessionManager.reconnectTab(tab.id) } }
         )
         .navigationTitle(tab.title)
         #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
         #endif
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button {
-                            Task { await sessionManager.reconnectTab(tab.id) }
-                        } label: {
-                            Label(i18n.t(.reconnect), systemImage: "arrow.clockwise")
-                        }
-
-                        Button(role: .destructive) {
-                            Task { await sessionManager.closeTab(tab.id) }
-                        } label: {
-                            Label(i18n.t(.disconnect), systemImage: "bolt.slash")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button { Task { await sessionManager.reconnectTab(tab.id) } } label: {
+                        Label(i18n.t(.reconnect), systemImage: "arrow.clockwise")
                     }
-                }
+                    Button(role: .destructive) { Task { await sessionManager.closeTab(tab.id) } } label: {
+                        Label(i18n.t(.disconnect), systemImage: "bolt.slash")
+                    }
+                } label: { Image(systemName: "ellipsis.circle") }
             }
+        }
     }
 }
 

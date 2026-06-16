@@ -72,9 +72,6 @@ struct BonkApp: App {
                 }
         }
         .modelContainer(sharedModelContainer)
-        #if os(macOS)
-            .windowToolbarStyle(.unified)
-        #endif
         .commands {
             // MARK: - App Info
             CommandGroup(replacing: .appInfo) {
@@ -116,17 +113,17 @@ struct BonkApp: App {
 
             // MARK: - View Menu
             CommandMenu(i18n.t(.menuView)) {
-                Button("Split Horizontal") {
+                Button(i18n.t(.splitHorizontal)) {
                     NotificationCenter.default.post(name: .menuSplitHorizontal, object: nil)
                 }
                 .keyboardShortcut("d", modifiers: .command)
 
-                Button("Split Vertical") {
+                Button(i18n.t(.splitVertical)) {
                     NotificationCenter.default.post(name: .menuSplitVertical, object: nil)
                 }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
 
-                Button("Close Pane") {
+                Button(i18n.t(.closePane)) {
                     NotificationCenter.default.post(name: .menuClosePane, object: nil)
                 }
                 .keyboardShortcut("w", modifiers: [.command, .shift])
@@ -146,7 +143,7 @@ struct BonkApp: App {
                 Divider()
 
                 Menu(i18n.t(.theme)) {
-                    Button("System") {
+                    Button(i18n.t(.system)) {
                         NotificationCenter.default.post(name: .menuChangeTheme, object: "system")
                     }
                     ForEach(ThemeRegistry.all, id: \.id) { theme in
@@ -158,7 +155,7 @@ struct BonkApp: App {
 
                 Divider()
 
-                Button("Command History") {
+                Button(i18n.t(.commandHistory)) {
                     NotificationCenter.default.post(name: .menuShowCommandHistory, object: nil)
                 }
             }

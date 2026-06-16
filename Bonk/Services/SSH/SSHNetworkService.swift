@@ -79,21 +79,32 @@ public actor SSHNetworkService {
     // MARK: - Connect
 
     public func connect(config: SSHConnectionConfig) async throws {
+        Log.ssh.info("[CONNECT] Starting connect to \(config.host):\(config.port)")
         guard !connectionState.isConnected else {
+            Log.ssh.warning("[CONNECT] Already connected, throwing alreadyConnected")
             throw SSHServiceError.alreadyConnected
         }
 
         self.config = config
         connectionState = .connecting
         stateContinuation.yield(.connecting)
+        Log.ssh.info("[CONNECT] State set to .connecting")
 
         do {
+            Log.ssh.info("[CONNECT] Calling establishConnection...")
             try await establishConnection(config: config)
+            Log.ssh.info("[CONNECT] establishConnection returned successfully")
+
             guard let client else {
+                Log.ssh.error("[CONNECT] Client is nil after successful connection")
                 throw SSHServiceError.connectionFailed("Connection established but client is nil")
             }
+
+            Log.ssh.info("[CONNECT] Starting keepAlive...")
             await keepAlive.start(client: client)
+            Log.ssh.info("[CONNECT] keepAlive started, connection complete")
         } catch {
+            Log.ssh.error("[CONNECT] Connection failed: \(error.localizedDescription)")
             client = nil
             connectionState = .disconnected
             stateContinuation.yield(.disconnected)
@@ -102,6 +113,7 @@ public actor SSHNetworkService {
             if let sshError = error as? SSHServiceError {
                 switch sshError {
                 case .hostKeyMismatch:
+                    Log.ssh.error("[CONNECT] Host key mismatch, not retrying")
                     throw sshError
                 default:
                     break
@@ -109,6 +121,7 @@ public actor SSHNetworkService {
             }
 
             if config.maxReconnectAttempts > 0 {
+                Log.ssh.info("[CONNECT] Attempting reconnection...")
                 try await reconnect()
             } else {
                 throw SSHServiceError.connectionFailed(String(describing: error))
@@ -118,7 +131,9 @@ public actor SSHNetworkService {
 
     /// Shared SSH connection logic used by both connect() and reconnect().
     private func establishConnection(config: SSHConnectionConfig) async throws {
+        Log.ssh.info("[ESTABLISH] Mapping auth method...")
         let citadelAuth = try mapAuthMethod(config.authMethod, username: config.username)
+        Log.ssh.info("[ESTABLISH] Auth method mapped, setting up host key validator...")
         let fingerprintBox = NIOLockedValueBox<SSHHostFingerprint?>(nil)
 
         let validator = HostKeyValidator { key in
@@ -131,6 +146,7 @@ public actor SSHNetworkService {
             fingerprintBox.withLockedValue { $0 = SSHHostFingerprint(hash: "SHA256:\(b64)") }
         }
 
+        Log.ssh.info("[ESTABLISH] Calling SSHClient.connect to \(config.host):\(config.port)...")
         let sshClient = try await SSHClient.connect(
             host: config.host,
             port: Int(config.port),
@@ -138,17 +154,21 @@ public actor SSHNetworkService {
             hostKeyValidator: .custom(validator),
             reconnect: .never
         )
+        Log.ssh.info("[ESTABLISH] SSHClient.connect returned successfully")
 
+        Log.ssh.info("[ESTABLISH] Verifying host key...")
         try await verifyHostKey(
             host: config.host,
             port: config.port,
             fingerprint: fingerprintBox.withLockedValue { $0 },
             store: hostKeyStore
         )
+        Log.ssh.info("[ESTABLISH] Host key verified")
 
         client = sshClient
         connectionState = .connected
         stateContinuation.yield(.connected)
+        Log.ssh.info("[ESTABLISH] State set to .connected, starting disconnect monitor")
         startMonitoringDisconnect(sshClient)
     }
 

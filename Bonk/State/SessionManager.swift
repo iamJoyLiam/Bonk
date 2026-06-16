@@ -49,37 +49,56 @@ final class SessionManager {
     // MARK: - Connection
 
     func connectTab(_ tab: TerminalTab) async {
-        guard !connectingTabs.contains(tab.id) else { return }
+        Log.session.info("[CONNECT] Starting connectTab for \(tab.hostItem.host):\(tab.hostItem.port)")
+        guard !connectingTabs.contains(tab.id) else {
+            Log.session.warning("[CONNECT] Already connecting to \(tab.hostItem.host), skipping")
+            return
+        }
         connectingTabs.insert(tab.id)
         defer { connectingTabs.remove(tab.id) }
 
         tab.connectionState = .connecting
         tab.errorMessage = nil
+        Log.session.info("[CONNECT] State set to .connecting")
 
-        guard let config = resolveConnectionConfig(for: tab) else { return }
+        guard let config = resolveConnectionConfig(for: tab) else {
+            Log.session.error("[CONNECT] Failed to resolve connection config")
+            return
+        }
+        Log.session.info("[CONNECT] Config resolved, creating SSHNetworkService")
 
         let service = SSHNetworkService(hostKeyStore: hostKeyStore)
         tab.sshService = service
+        Log.session.info("[CONNECT] SSHNetworkService created, starting state observation")
         observeStateChanges(for: tab, service: service)
 
         do {
-            Log.session.info(" Connecting to \(tab.hostItem.host):\(tab.hostItem.port)...")
+            Log.session.info("[CONNECT] Calling service.connect()...")
             try await service.connect(config: config)
-            guard tabs.contains(where: { $0.id == tab.id }) else { return }
+            Log.session.info("[CONNECT] service.connect() returned successfully")
 
-            Log.session.info(" Connected! Enabling reconnection...")
+            guard tabs.contains(where: { $0.id == tab.id }) else {
+                Log.session.warning("[CONNECT] Tab was closed during connection, aborting")
+                return
+            }
+
+            Log.session.info("[CONNECT] Enabling reconnection...")
             await service.enableReconnection(attempts: 3)
-            guard tabs.contains(where: { $0.id == tab.id }) else { return }
+
+            guard tabs.contains(where: { $0.id == tab.id }) else {
+                Log.session.warning("[CONNECT] Tab was closed after reconnection setup, aborting")
+                return
+            }
 
             tab.connectionState = .connected
             tab.connectedAt = Date()
-            Log.session.info(" Opening PTY...")
+            Log.session.info("[CONNECT] State set to .connected, opening PTY...")
 
             try await setupPTYSession(for: tab, service: service)
+            Log.session.info("[CONNECT] PTY session established successfully")
         } catch {
-            // Don't show error if tab was closed during connection
+            Log.session.error("[CONNECT] Connection failed: \(error.localizedDescription)")
             guard tabs.contains(where: { $0.id == tab.id }) else { return }
-            Log.session.info(" Error: \(error)")
             tab.connectionState = .disconnected
             tab.errorMessage = error.localizedDescription
             lastError = error.localizedDescription
@@ -156,12 +175,20 @@ final class SessionManager {
 
     /// Open PTY session, wire OSC 7 CWD detector, and start periodic server info fetching.
     private func setupPTYSession(for tab: TerminalTab, service: SSHNetworkService) async throws {
+        Log.session.info("[PTY] Opening PTY session...")
         let ptySession = try await service.openPTY()
-        guard tabs.contains(where: { $0.id == tab.id }) else { return }
+        Log.session.info("[PTY] PTY session opened successfully")
+
+        guard tabs.contains(where: { $0.id == tab.id }) else {
+            Log.session.warning("[PTY] Tab was closed during PTY setup, aborting")
+            return
+        }
 
         tab.ptySession = ptySession
+        Log.session.info("[PTY] Creating output stream...")
         let streamResult = ptySession.makeOutputStream()
         tab.outputStream = streamResult.stream
+        Log.session.info("[PTY] Output stream created")
 
         // Wire OSC 7 CWD detector
         ptySession.osc7Detector.onCWDChange = { [weak tab] cwd in
@@ -169,9 +196,10 @@ final class SessionManager {
                 tab?.currentDirectory = cwd
             }
         }
-        Log.session.info("PTY opened, OSC 7 detector wired")
+        Log.session.info("[PTY] OSC 7 detector wired")
 
         tab.hostItem.lastConnectedAt = Date()
+        Log.session.info("[PTY] PTY setup complete")
 
         // Fetch server system info and refresh periodically
         tab.serverInfoTask?.cancel()
