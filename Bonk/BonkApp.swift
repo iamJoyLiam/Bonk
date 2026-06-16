@@ -75,19 +75,19 @@ struct BonkApp: App {
             }
 
             // MARK: - File Menu
-            FileMenuCommands()
+            FileMenuCommands(i18n: i18n)
 
             // MARK: - Edit Menu
-            EditMenuCommands()
+            EditMenuCommands(i18n: i18n)
 
             // MARK: - View Menu
-            ViewMenuCommands()
+            ViewMenuCommands(i18n: i18n)
 
             // MARK: - Connection Menu
-            ConnectionMenuCommands()
+            ConnectionMenuCommands(i18n: i18n)
 
             // MARK: - AI Menu
-            AIMenuCommands()
+            AIMenuCommands(i18n: i18n)
         }
 
         #if os(macOS)
@@ -110,36 +110,39 @@ struct BonkApp: App {
     }
 }
 
-// MARK: - Menu Commands (FocusedValue — synchronous, zero NotificationCenter overhead)
+// MARK: - Menu Commands (FocusedValue + i18n)
 
 #if os(macOS)
-    struct FileMenuCommands: Commands {
+    private struct FileMenuCommands: Commands {
+        let i18n: I18n
         @FocusedValue(\.menuNewTerminal) private var newTerminal
         @FocusedValue(\.menuCloseTab) private var closeTab
 
         var body: some Commands {
             CommandGroup(after: .newItem) {
-                Button("New Terminal") { newTerminal?() }
+                Button(i18n.t(.newTerminal)) { newTerminal?() }
                     .keyboardShortcut("t", modifiers: .command)
-                Button("Close Tab") { closeTab?() }
+                Button(i18n.t(.closeTab)) { closeTab?() }
                     .keyboardShortcut("w", modifiers: .command)
             }
         }
     }
 
-    struct EditMenuCommands: Commands {
+    private struct EditMenuCommands: Commands {
+        let i18n: I18n
         @FocusedValue(\.menuFind) private var find
 
         var body: some Commands {
             CommandGroup(after: .pasteboard) {
                 Divider()
-                Button("Find") { find?() }
+                Button(i18n.t(.find)) { find?() }
                     .keyboardShortcut("f", modifiers: .command)
             }
         }
     }
 
-    struct ViewMenuCommands: Commands {
+    private struct ViewMenuCommands: Commands {
+        let i18n: I18n
         @FocusedValue(\.menuSplitHorizontal) private var splitHorizontal
         @FocusedValue(\.menuSplitVertical) private var splitVertical
         @FocusedValue(\.menuClosePane) private var closePane
@@ -147,19 +150,19 @@ struct BonkApp: App {
         @FocusedValue(\.menuChangeTheme) private var changeTheme
 
         var body: some Commands {
-            CommandMenu("View") {
-                Button("Split Horizontal") { splitHorizontal?() }
+            CommandMenu(i18n.t(.menuView)) {
+                Button(i18n.t(.splitHorizontal)) { splitHorizontal?() }
                     .keyboardShortcut("d", modifiers: .command)
-                Button("Split Vertical") { splitVertical?() }
+                Button(i18n.t(.splitVertical)) { splitVertical?() }
                     .keyboardShortcut("d", modifiers: [.command, .shift])
-                Button("Close Pane") { closePane?() }
+                Button(i18n.t(.closePane)) { closePane?() }
                     .keyboardShortcut("w", modifiers: [.command, .shift])
                 Divider()
-                Button("SFTP Browser") { toggleSFTP?() }
+                Button(i18n.t(.sftpBrowser)) { toggleSFTP?() }
                     .keyboardShortcut("s", modifiers: [.command, .shift])
                 Divider()
-                Menu("Theme") {
-                    Button("System") { changeTheme?("system") }
+                Menu(i18n.t(.theme)) {
+                    Button(i18n.t(.system)) { changeTheme?("system") }
                     ForEach(ThemeRegistry.all, id: \.id) { theme in
                         Button(theme.name) { changeTheme?(theme.id) }
                     }
@@ -168,7 +171,8 @@ struct BonkApp: App {
         }
     }
 
-    struct ConnectionMenuCommands: Commands {
+    private struct ConnectionMenuCommands: Commands {
+        let i18n: I18n
         @FocusedValue(\.menuConnect) private var connect
         @FocusedValue(\.menuDisconnect) private var disconnect
         @FocusedValue(\.menuReconnect) private var reconnect
@@ -178,27 +182,28 @@ struct BonkApp: App {
         @FocusedValue(\.menuShowSerialPort) private var showSerialPort
 
         var body: some Commands {
-            CommandMenu("Connection") {
-                Button("Connect") { connect?() }
-                Button("Disconnect") { disconnect?() }
-                Button("Reconnect") { reconnect?() }
+            CommandMenu(i18n.t(.menuConnection)) {
+                Button(i18n.t(.connect)) { connect?() }
+                Button(i18n.t(.disconnect)) { disconnect?() }
+                Button(i18n.t(.reconnect)) { reconnect?() }
                     .keyboardShortcut("r", modifiers: .command)
                 Divider()
-                Button("Snippets") { showSnippets?() }
-                Button("Command History") { showCommandHistory?() }
+                Button(i18n.t(.snippets)) { showSnippets?() }
+                Button(i18n.t(.commandHistory)) { showCommandHistory?() }
                 Divider()
-                Button("Port Forwarding") { showPortForwarding?() }
-                Button("Serial Port") { showSerialPort?() }
+                Button(i18n.t(.portForwarding)) { showPortForwarding?() }
+                Button(i18n.t(.serialPort)) { showSerialPort?() }
             }
         }
     }
 
-    struct AIMenuCommands: Commands {
+    private struct AIMenuCommands: Commands {
+        let i18n: I18n
         @FocusedValue(\.menuToggleAI) private var toggleAI
 
         var body: some Commands {
-            CommandMenu("AI") {
-                Button("AI Assistant") { toggleAI?() }
+            CommandMenu(i18n.t(.menuAI)) {
+                Button(i18n.t(.aiAssistant)) { toggleAI?() }
                     .keyboardShortcut("k", modifiers: .command)
             }
         }
