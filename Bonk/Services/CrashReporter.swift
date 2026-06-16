@@ -10,7 +10,9 @@ import os.log
 
 enum CrashReporter {
     private static let logDir: URL = {
-        let base = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
+        guard let base = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first else {
+            fatalError("Unable to locate user Library directory")
+        }
         let dir = base.appendingPathComponent("Logs/Bonk", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
