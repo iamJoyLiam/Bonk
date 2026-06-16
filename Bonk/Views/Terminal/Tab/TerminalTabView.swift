@@ -183,7 +183,7 @@ struct TerminalTabView: View {
 
     /// Handle file drop on terminal view — upload to terminal's current directory.
     private func handleTerminalDrop(url: URL, tab: TerminalTab) async {
-        guard tab.sshService != nil else {
+        guard tab.session?.sshService != nil else {
             dropMessage = i18n.t(.noSSHConnection)
             try? await Task.sleep(for: .seconds(2))
             dropMessage = nil
@@ -259,7 +259,7 @@ private struct FileDropHandlerModifier: ViewModifier {
         content
             .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                 guard let activeTab = sessionManager.activeTab,
-                      activeTab.connectionState.isConnected else { return false }
+                      activeTab.session?.connectionState.isConnected == true else { return false }
                 for provider in providers {
                     provider.loadItem(forTypeIdentifier: "public.file-url") { data, _ in
                         guard let data = data as? Data,

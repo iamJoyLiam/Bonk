@@ -35,7 +35,7 @@ struct TerminalTabContentView: View {
 
     var body: some View {
         ZStack {
-            switch tab.connectionState {
+            switch tab.session?.connectionState ?? .disconnected {
             case .disconnected:
                 disconnectedView
             case .connecting:
@@ -102,7 +102,7 @@ struct TerminalTabContentView: View {
             Text(i18n.t(.disconnected))
                 .font(.headline)
 
-            if let error = tab.errorMessage {
+            if let error = tab.session?.errorMessage {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(.secondary)

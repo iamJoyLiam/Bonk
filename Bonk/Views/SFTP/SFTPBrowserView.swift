@@ -16,7 +16,7 @@ struct SFTPBrowserView: View {
     @State private var pendingDeleteEntry: SFTPFileEntry?
 
     private var sftpService: SFTPService? {
-        tab.sftpService
+        tab.session?.sftpService
     }
 
     private var isConnected: Bool {
@@ -96,7 +96,7 @@ struct SFTPBrowserView: View {
         }
         .task(id: tab.id) {
             try? await Task.sleep(for: .milliseconds(200))
-            if tab.connectionState.isConnected, tab.sftpService == nil {
+            if tab.session?.connectionState.isConnected == true, tab.session?.sftpService == nil {
                 await connectSFTP()
             }
         }
@@ -347,7 +347,7 @@ struct SFTPBrowserView: View {
     // MARK: - Actions
 
     private func connectSFTP() async {
-        guard let sshService = await tab.sshService else {
+        guard let sshService = await tab.session?.sshService else {
             Log.sftp.warning("Cannot connect SFTP: no SSH service for tab \(tab.title)")
             return
         }
@@ -356,12 +356,12 @@ struct SFTPBrowserView: View {
         do {
             try await sftp.connect(using: sshService)
             try await sftp.listDirectory()
-            tab.sftpService = sftp
+            tab.session?.sftpService = sftp
             Log.sftp.info("SFTP connected for tab \(tab.title)")
         } catch {
             Log.sftp.error("SFTP connection failed for tab \(tab.title): \(error.localizedDescription)")
             sftp.errorMessage = error.localizedDescription
-            tab.sftpService = sftp
+            tab.session?.sftpService = sftp
         }
     }
 }

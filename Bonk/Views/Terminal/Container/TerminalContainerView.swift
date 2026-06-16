@@ -31,7 +31,7 @@ import SwiftUI
 
         var body: some View {
             ZStack {
-                switch activeTab.connectionState {
+                switch activeTab.session?.connectionState ?? .disconnected {
                 case .disconnected:
                     disconnectedView
                 case .connecting:
@@ -57,7 +57,7 @@ import SwiftUI
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(terminalBackground)
-            .onChange(of: activeTab.ptySession != nil) { _, hasSession in
+            .onChange(of: activeTab.session?.ptySession != nil) { _, hasSession in
                 if hasSession {
                     connectOutputStreamIfNeeded()
                 }
@@ -68,7 +68,7 @@ import SwiftUI
         }
 
         private func connectOutputStreamIfNeeded() {
-            guard let ptySession = activeTab.ptySession else { return }
+            guard let ptySession = activeTab.session?.ptySession else { return }
             let cached = TerminalViewCache.shared.retrieve(activeTab.id)
             if cached?.outputStream == nil {
                 let result = ptySession.makeOutputStream()
@@ -108,7 +108,7 @@ import SwiftUI
                     .font(.system(size: 40))
                     .foregroundStyle(.red.opacity(0.6))
                 Text(i18n.t(.disconnected)).font(.headline)
-                if let error = activeTab.errorMessage {
+                if let error = activeTab.session?.errorMessage {
                     Text(error).font(.caption).foregroundStyle(.secondary)
                         .multilineTextAlignment(.center).frame(maxWidth: 300)
                 }

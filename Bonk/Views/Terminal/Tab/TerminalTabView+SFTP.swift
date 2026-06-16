@@ -11,12 +11,12 @@ import SwiftUI
 extension TerminalTabView {
     /// Ensure SFTP service is connected for the given tab.
     func ensureSFTP(for tab: TerminalTab) async -> SFTPService? {
-        if let existing = tab.sftpService { return existing }
-        guard let sshService = tab.sshService else { return nil }
+        if let existing = tab.session?.sftpService { return existing }
+        guard let sshService = tab.session?.sshService else { return nil }
         let sftp = SFTPService()
         do {
             try await sftp.connect(using: sshService)
-            tab.sftpService = sftp
+            tab.session?.sftpService = sftp
             return sftp
         } catch {
             dropMessage = i18n.tr(.sftpConnectFailed, args: error.localizedDescription)
@@ -29,7 +29,7 @@ extension TerminalTabView {
     /// Resolve the upload directory from PTY session or SFTP.
     func resolveUploadDir(tab: TerminalTab, sftp: SFTPService) async -> String {
         // Use PTY getCWD to get actual interactive shell directory
-        if let ptyCWD = await tab.ptySession?.getCWD(), ptyCWD.hasPrefix("/") {
+        if let ptyCWD = await tab.session?.ptySession?.getCWD(), ptyCWD.hasPrefix("/") {
             tab.currentDirectory = ptyCWD
             return ptyCWD
         }
@@ -45,7 +45,7 @@ extension TerminalTabView {
             await performUpload(url, tab: tab)
             return
         }
-        guard tab.sshService != nil else {
+        guard tab.session?.sshService != nil else {
             dropMessage = i18n.t(.noSSHConnection)
             try? await Task.sleep(for: .seconds(2))
             dropMessage = nil
@@ -73,7 +73,7 @@ extension TerminalTabView {
 
     /// Upload file to the specified tab's server.
     func performUpload(_ url: URL, tab: TerminalTab, uploadDir: String? = nil) async {
-        guard tab.sshService != nil else {
+        guard tab.session?.sshService != nil else {
             dropMessage = i18n.t(.noSSHConnection)
             try? await Task.sleep(for: .seconds(2))
             dropMessage = nil

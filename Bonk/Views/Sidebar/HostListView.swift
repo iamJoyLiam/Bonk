@@ -184,7 +184,7 @@ struct HostListView: View {
     // swiftlint:disable:next function_body_length
     private func hostRow(_ host: HostItem, groupColor: Color? = nil) -> some View {
         let tab = sessionManager.tabs.first(where: { $0.hostItem.id == host.id })
-        let state = tab?.connectionState ?? .disconnected
+        let state = tab?.session?.connectionState ?? .disconnected
 
         Button {
             if let tab {

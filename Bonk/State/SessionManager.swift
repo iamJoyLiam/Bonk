@@ -12,12 +12,12 @@ final class SessionManager {
     var showError = false
     private let hostKeyStore = PersistentHostKeyStore()
     private let viewCache: TerminalViewCache
+    private var connectingTabs = Set<UUID>()
+    private var modelContext: ModelContext?
 
     init(viewCache: TerminalViewCache = .shared) {
         self.viewCache = viewCache
     }
-    private var connectingTabs = Set<UUID>()
-    private var modelContext: ModelContext?
 
     func setModelContext(_ context: ModelContext) {
         modelContext = context
@@ -43,7 +43,6 @@ final class SessionManager {
     func closeTab(_ id: UUID) async {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
         await disconnectTab(id)
-        // Remove cached terminal view to free memory
         viewCache.remove(id)
         tabs.removeAll(where: { $0.id == id })
         if activeTabID == id {
@@ -62,20 +61,22 @@ final class SessionManager {
         connectingTabs.insert(tab.id)
         defer { connectingTabs.remove(tab.id) }
 
-        tab.connectionState = .connecting
-        tab.errorMessage = nil
+        let session = TerminalSession(tabID: tab.id)
+        tab.session = session
+        session.connectionState = .connecting
+        session.errorMessage = nil
         Log.session.info("[CONNECT] State set to .connecting")
 
-        guard let config = resolveConnectionConfig(for: tab) else {
+        guard let config = resolveConnectionConfig(for: tab, session: session) else {
             Log.session.error("[CONNECT] Failed to resolve connection config")
             return
         }
         Log.session.info("[CONNECT] Config resolved, creating SSHNetworkService")
 
         let service = SSHNetworkService(hostKeyStore: hostKeyStore)
-        tab.sshService = service
+        session.sshService = service
         Log.session.info("[CONNECT] SSHNetworkService created, starting state observation")
-        observeStateChanges(for: tab, service: service)
+        observeStateChanges(for: tab, session: session, service: service)
 
         do {
             Log.session.info("[CONNECT] Calling service.connect()...")
@@ -95,17 +96,17 @@ final class SessionManager {
                 return
             }
 
-            tab.connectionState = .connected
-            tab.connectedAt = Date()
+            session.connectionState = .connected
+            session.connectedAt = Date()
             Log.session.info("[CONNECT] State set to .connected, opening PTY...")
 
-            try await setupPTYSession(for: tab, service: service)
+            try await setupPTYSession(for: tab, session: session, service: service)
             Log.session.info("[CONNECT] PTY session established successfully")
         } catch {
             Log.session.error("[CONNECT] Connection failed: \(error.localizedDescription)")
             guard tabs.contains(where: { $0.id == tab.id }) else { return }
-            tab.connectionState = .disconnected
-            tab.errorMessage = error.localizedDescription
+            session.connectionState = .disconnected
+            session.errorMessage = error.localizedDescription
             lastError = error.localizedDescription
             showError = true
         }
@@ -113,17 +114,9 @@ final class SessionManager {
 
     func disconnectTab(_ id: UUID) async {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
-        tab.stateObservationTask?.cancel()
-        tab.stateObservationTask = nil
-        tab.serverInfoTask?.cancel()
-        tab.serverInfoTask = nil
-        tab.serverInfo = nil
-        tab.ptySession?.close()
-        tab.ptySession = nil
-        await tab.sshService?.disconnect()
-        tab.sshService = nil
-        tab.connectionState = .disconnected
-        tab.connectedAt = nil
+        await tab.session?.sshService?.disconnect()
+        tab.session?.disconnect()
+        tab.session = nil
     }
 
     func reconnectTab(_ id: UUID) async {
@@ -136,7 +129,7 @@ final class SessionManager {
 
     func resizePTY(cols: Int, rows: Int, tabID: UUID) async throws {
         guard let tab = tabs.first(where: { $0.id == tabID }),
-              let service = tab.sshService else { return }
+              let service = tab.session?.sshService else { return }
         try await service.resizePTY(cols: cols, rows: rows)
     }
 
@@ -149,23 +142,22 @@ final class SessionManager {
 
     func sendInput(_ bytes: ArraySlice<UInt8>, to tabID: UUID) async throws {
         guard let tab = tabs.first(where: { $0.id == tabID }),
-              let pty = tab.ptySession else { return }
+              let pty = tab.session?.ptySession else { return }
         try await pty.sendInput(bytes)
     }
 
     // MARK: - Private
 
-    /// Validate host credentials and build SSH connection config. Sets error state on tab if validation fails.
-    private func resolveConnectionConfig(for tab: TerminalTab) -> SSHConnectionConfig? {
+    private func resolveConnectionConfig(for tab: TerminalTab, session: TerminalSession) -> SSHConnectionConfig? {
         let hostItem = tab.hostItem
         guard let modelContext else {
-            tab.connectionState = .disconnected
-            tab.errorMessage = I18n.shared.t(.noModelContext)
+            session.connectionState = .disconnected
+            session.errorMessage = I18n.shared.t(.noModelContext)
             return nil
         }
         guard let authMethod = hostItem.resolveAuthMethod(modelContext: modelContext) else {
-            tab.connectionState = .disconnected
-            tab.errorMessage = I18n.shared.t(.credentialsNotSet)
+            session.connectionState = .disconnected
+            session.errorMessage = I18n.shared.t(.credentialsNotSet)
             return nil
         }
         return SSHConnectionConfig(
@@ -178,8 +170,7 @@ final class SessionManager {
         )
     }
 
-    /// Open PTY session, wire OSC 7 CWD detector, and start periodic server info fetching.
-    private func setupPTYSession(for tab: TerminalTab, service: SSHNetworkService) async throws {
+    private func setupPTYSession(for tab: TerminalTab, session: TerminalSession, service: SSHNetworkService) async throws {
         Log.session.info("[PTY] Opening PTY session...")
         let ptySession = try await service.openPTY()
         Log.session.info("[PTY] PTY session opened successfully")
@@ -189,13 +180,12 @@ final class SessionManager {
             return
         }
 
-        tab.ptySession = ptySession
+        session.ptySession = ptySession
         Log.session.info("[PTY] Creating output stream...")
         let streamResult = ptySession.makeOutputStream()
-        tab.outputStream = streamResult.stream
+        session.outputStream = streamResult.stream
         Log.session.info("[PTY] Output stream created")
 
-        // Wire OSC 7 CWD detector
         ptySession.osc7Detector.onCWDChange = { [weak tab] cwd in
             Task { @MainActor in
                 tab?.currentDirectory = cwd
@@ -206,23 +196,21 @@ final class SessionManager {
         tab.hostItem.lastConnectedAt = Date()
         Log.session.info("[PTY] PTY setup complete")
 
-        // Fetch server system info and refresh periodically
-        tab.serverInfoTask?.cancel()
-        tab.serverInfoTask = Task { [weak tab] in
+        session.serverInfoTask?.cancel()
+        session.serverInfoTask = Task { [weak session] in
             if let info = await ServerInfoFetcher.fetch(using: service) {
-                await MainActor.run { tab?.serverInfo = info }
+                await MainActor.run { session?.serverInfo = info }
             }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
                 guard !Task.isCancelled else { break }
                 if let info = await ServerInfoFetcher.fetch(using: service) {
-                    await MainActor.run { tab?.serverInfo = info }
+                    await MainActor.run { session?.serverInfo = info }
                 }
             }
         }
     }
 
-    /// Parse current working directory from terminal title.
     private func parseCWD(from title: String) -> String? {
         if let colonRange = title.range(of: ": ") {
             let afterColon = String(title[colonRange.upperBound...])
@@ -235,28 +223,26 @@ final class SessionManager {
         return nil
     }
 
-    private func observeStateChanges(for tab: TerminalTab, service: SSHNetworkService) {
-        tab.stateObservationTask = Task { [weak self, weak tab] in
-            guard let self, let tab else { return }
+    private func observeStateChanges(for tab: TerminalTab, session: TerminalSession, service: SSHNetworkService) {
+        session.stateObservationTask = Task { [weak self, weak tab, weak session] in
+            guard let self, let tab, let session else { return }
             for await state in service.stateStream {
                 guard !Task.isCancelled else { break }
-                Log.session.debug("Stream update for tab \(tab.title)")
-                tab.connectionState = state
+                guard tab.session === session else { break }
+                session.connectionState = state
 
                 switch state {
                 case .connected:
                     if let newPTY = await service.consumePendingPTY() {
-                        tab.ptySession?.close()
-                        tab.ptySession = newPTY
+                        session.ptySession?.close()
+                        session.ptySession = newPTY
                         let streamResult = newPTY.makeOutputStream()
-                        tab.outputStream = streamResult.stream
-                        tab.connectedAt = Date()
-                        tab.errorMessage = nil
-                        Log.session.debug(" PTY restored from reconnect")
+                        session.outputStream = streamResult.stream
+                        session.connectedAt = Date()
+                        session.errorMessage = nil
                     }
                 case .disconnected:
-                    tab.connectedAt = nil
-                    Log.session.debug(" Disconnected, connectedAt nilled")
+                    session.connectedAt = nil
                 default:
                     break
                 }

@@ -119,7 +119,7 @@ extension TerminalTabView {
             HStack(spacing: 6) {
                 // Connection status indicator
                 Circle()
-                    .fill(tabColor(tab.connectionState))
+                    .fill(tabColor(tab.session?.connectionState ?? .disconnected))
                     .frame(width: 5, height: 5)
 
                 Text(tab.title)

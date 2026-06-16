@@ -1,28 +1,21 @@
 import SwiftUI
 
-/// Represents one terminal tab / SSH session.
+/// Represents one terminal tab — display state only.
+/// Connection resources live in TerminalSession.
 @Observable @MainActor
 final class TerminalTab: Identifiable {
     let id: UUID
     let hostItem: HostItem
-    var connectionState: SSHConnectionState = .disconnected
-    var outputStream: AsyncStream<String>?
-    var sshService: SSHNetworkService?
-    var ptySession: PTYSession?
     var title: String
     /// Current working directory from terminal title.
     var currentDirectory: String?
-    var connectedAt: Date?
-    var errorMessage: String?
-    var stateObservationTask: Task<Void, Never>?
-    /// SFTP service for this tab (lazy, created on first use).
-    var sftpService: SFTPService?
-    /// Server system info (fetched after connection).
-    var serverInfo: ServerInfo?
-    /// Timer for refreshing server info.
-    var serverInfoTask: Task<Void, Never>?
     /// Color label for the tab (like macOS Finder labels).
     var colorLabel: String?
+
+    /// Active connection session (nil when disconnected or never connected).
+    var session: TerminalSession?
+
+    // MARK: - Display Properties
 
     /// Available color labels.
     static let colorLabels: [(name: String, color: Color)] = [

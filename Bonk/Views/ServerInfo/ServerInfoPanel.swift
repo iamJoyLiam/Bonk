@@ -46,9 +46,9 @@ struct ServerInfoPanel: View {
             infoRow(i18n.t(.status)) {
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(statusColor(tab.connectionState))
+                        .fill(statusColor(tab.session?.connectionState ?? .disconnected))
                         .frame(width: 8, height: 8)
-                    Text(statusText(tab.connectionState))
+                    Text(statusText(tab.session?.connectionState ?? .disconnected))
                 }
             }
 
@@ -62,19 +62,19 @@ struct ServerInfoPanel: View {
                     .font(.body.monospaced())
             }
 
-            if let connectedAt = tab.connectedAt {
+            if let connectedAt = tab.session?.connectedAt {
                 infoRow(i18n.t(.connected)) {
                     Text(connectedAt, style: .relative)
                 }
             }
 
-            if let serverIP = tab.serverInfo?.serverIP {
+            if let serverIP = tab.session?.serverInfo?.serverIP {
                 infoRow(i18n.t(.serverIP)) {
                     Text(serverIP).font(.body.monospaced())
                 }
             }
 
-            if let error = tab.errorMessage {
+            if let error = tab.session?.errorMessage {
                 infoRow(i18n.t(.error)) {
                     Text(error)
                         .foregroundStyle(.red)
@@ -92,7 +92,7 @@ struct ServerInfoPanel: View {
             Label(i18n.t(.systemInfo), systemImage: "desktopcomputer")
                 .font(.headline)
 
-            if let info = tab.serverInfo {
+            if let info = tab.session?.serverInfo {
                 if let osName = info.os {
                     infoRow(i18n.t(.os)) { Text(osName) }
                 }
@@ -151,7 +151,7 @@ struct ServerInfoPanel: View {
             Label(i18n.t(.resources), systemImage: "chart.bar")
                 .font(.headline)
 
-            if let info = tab.serverInfo {
+            if let info = tab.session?.serverInfo {
                 // Memory (format: "used/total")
                 if let mem = info.memoryUsed {
                     infoRow(i18n.t(.memory)) {
@@ -183,7 +183,7 @@ struct ServerInfoPanel: View {
             Label(i18n.t(.actions), systemImage: "bolt.circle")
                 .font(.headline)
 
-            switch tab.connectionState {
+            switch tab.session?.connectionState ?? .disconnected {
             case .connected:
                 Button { onDisconnect() } label: {
                     Label(i18n.t(.disconnect), systemImage: "bolt.slash")

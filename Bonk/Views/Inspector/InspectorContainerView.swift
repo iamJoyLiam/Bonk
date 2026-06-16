@@ -31,7 +31,7 @@ struct InspectorContainerView: View {
     @ViewBuilder
     private var aiPanel: some View {
         AIChatSidebarView(
-            sshService: sessionManager.activeTab?.sshService,
+            sshService: sessionManager.activeTab?.session?.sshService,
             onPaste: { text in
                 guard let activeTab = sessionManager.activeTab else { return }
                 let bytes = Array(text.utf8 + [13])

@@ -182,7 +182,7 @@ struct ContentView: View {
                     .environment(i18n)
             }
             .sheet(isPresented: $workspace.isPortForwardingPresented) {
-                PortForwardView(isPresented: $workspace.isPortForwardingPresented, sshService: sessionManager.activeTab?.sshService)
+                PortForwardView(isPresented: $workspace.isPortForwardingPresented, sshService: sessionManager.activeTab?.session?.sshService)
                     .environment(i18n)
             }
             .sheet(isPresented: $workspace.isSessionManagerPresented) {

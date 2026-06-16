@@ -18,7 +18,7 @@ struct SFTPWindowView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let tab = sessionManager.activeTab, let sftp = tab.sftpService {
+            if let tab = sessionManager.activeTab, let sftp = tab.session?.sftpService {
                 // Dual pane: local (left) + remote (right)
                 HSplitView {
                     // Left: Local files
@@ -46,7 +46,7 @@ struct SFTPWindowView: View {
         .frame(minWidth: 800, minHeight: 500)
         .onAppear {
             loadLocalFiles()
-            if let tab = sessionManager.activeTab, tab.sftpService == nil {
+            if let tab = sessionManager.activeTab, tab.session?.sftpService == nil {
                 Task { _ = await ensureSFTP(for: tab) }
             }
         }
@@ -195,12 +195,12 @@ struct SFTPWindowView: View {
     }
 
     private func ensureSFTP(for tab: TerminalTab) async -> SFTPService? {
-        if let existing = tab.sftpService { return existing }
-        guard let sshService = tab.sshService else { return nil }
+        if let existing = tab.session?.sftpService { return existing }
+        guard let sshService = tab.session?.sshService else { return nil }
         let sftp = SFTPService()
         do {
             try await sftp.connect(using: sshService)
-            tab.sftpService = sftp
+            tab.session?.sftpService = sftp
             return sftp
         } catch {
             return nil
