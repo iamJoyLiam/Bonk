@@ -235,6 +235,101 @@ enum AIProviderNetworking {
         return nil
     }
 
+    // MARK: - Streaming Request
+
+    /// Execute a streaming request and return the accumulated response.
+    /// Falls back to non-streaming for Gemini.
+    static func streamRequest(
+        provider: AIProviderConfig,
+        apiKey: String,
+        systemPrompt: String,
+        userPrompt: String,
+        onDelta: ((String) -> Void)? = nil
+    ) async throws -> String {
+        if provider.type == .gemini {
+            return try await nonStreamRequest(
+                provider: provider, apiKey: apiKey,
+                systemPrompt: systemPrompt, userPrompt: userPrompt
+            )
+        }
+
+        let request = try buildRequest(
+            provider: provider, apiKey: apiKey,
+            systemPrompt: systemPrompt, userPrompt: userPrompt, stream: true
+        )
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+
+        guard let http = response as? HTTPURLResponse else { throw AIError.invalidResponse }
+        guard http.statusCode == 200 else {
+            var errorData = Data()
+            for try await byte in bytes { errorData.append(byte) }
+            let body = String(data: errorData, encoding: .utf8) ?? "Unknown error"
+            throw AIError.apiError(statusCode: http.statusCode, message: body)
+        }
+
+        return try await parseStream(bytes: bytes, providerType: provider.type, onDelta: onDelta)
+    }
+
+    // MARK: - Non-Streaming Request
+
+    /// Execute a non-streaming request (used as Gemini fallback).
+    static func nonStreamRequest(
+        provider: AIProviderConfig,
+        apiKey: String,
+        systemPrompt: String,
+        userPrompt: String
+    ) async throws -> String {
+        let request = try buildRequest(
+            provider: provider, apiKey: apiKey,
+            systemPrompt: systemPrompt, userPrompt: userPrompt, stream: false
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let body = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw AIError.apiError(statusCode: code, message: body)
+        }
+
+        return try extractResponse(from: data, type: provider.type)
+    }
+
+    // MARK: - Stream Parsing
+
+    /// Parse an SSE stream and return the accumulated response text.
+    /// Calls `onDelta` for each incremental chunk (caller controls UI cadence).
+    static func parseStream(
+        bytes: URLSession.AsyncBytes,
+        providerType: AIProviderType,
+        onDelta: ((String) -> Void)? = nil
+    ) async throws -> String {
+        var result = ""
+        var buffer = ""
+
+        for try await byte in bytes {
+            guard let char = String(bytes: [byte], encoding: .utf8) else { continue }
+            buffer += char
+
+            while let range = buffer.range(of: "\n") {
+                let line = String(buffer[buffer.startIndex ..< range.lowerBound])
+                buffer = String(buffer[range.upperBound...])
+
+                guard line.hasPrefix("data: ") else { continue }
+                let json = String(line.dropFirst(6))
+                guard json != "[DONE]",
+                      let data = json.data(using: .utf8),
+                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else { continue }
+
+                if let text = extractDelta(from: obj) {
+                    result += text
+                    onDelta?(text)
+                }
+            }
+        }
+        return result
+    }
+
     // MARK: - Parse Models
 
     private static func parseModels(from data: Data, type: AIProviderType) throws -> [String] {

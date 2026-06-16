@@ -10,6 +10,8 @@ final class AIProviderStore {
     var activeProviderID: UUID?
     /// Cached model lists keyed by provider ID. Populated by fetchModels calls.
     var cachedModels: [UUID: [String]] = [:]
+    /// Last error surfaced to the UI.
+    var lastError: String?
 
     private static let logger = Logger(subsystem: "com.bonk", category: "AIProviderStore")
     private var modelContext: ModelContext?
@@ -49,6 +51,7 @@ final class AIProviderStore {
             }
             try context.save()
         } catch {
+            lastError = error.localizedDescription
             Self.logger.error("Failed to save providers: \(error)")
         }
     }
@@ -67,6 +70,7 @@ final class AIProviderStore {
             try context.save()
             load()
         } catch {
+            lastError = error.localizedDescription
             Self.logger.error("Failed to add provider: \(error)")
         }
     }
@@ -89,6 +93,7 @@ final class AIProviderStore {
                 load()
             }
         } catch {
+            lastError = error.localizedDescription
             Self.logger.error("Failed to update provider: \(error)")
         }
     }
@@ -108,6 +113,7 @@ final class AIProviderStore {
                 load()
             }
         } catch {
+            lastError = error.localizedDescription
             Self.logger.error("Failed to remove provider: \(error)")
         }
     }

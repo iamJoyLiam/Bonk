@@ -82,18 +82,24 @@ final class ICloudSyncService {
     func syncToCloud() {
         guard isEnabled, let context = modelContext else { return }
 
-        let desc = FetchDescriptor<UserPreferences>()
-        guard let prefs = try? context.fetch(desc).first else { return }
+        do {
+            let desc = FetchDescriptor<UserPreferences>()
+            guard let prefs = try context.fetch(desc).first else { return }
 
-        let snapshot = SyncSnapshot(from: prefs)
-        if let data = try? JSONEncoder().encode(snapshot),
-           let json = String(data: data, encoding: .utf8)
-        {
+            let snapshot = SyncSnapshot(from: prefs)
+            let data = try JSONEncoder().encode(snapshot)
+            guard let json = String(data: data, encoding: .utf8) else {
+                syncError = "Encoding failed"
+                return
+            }
             store.set(json, forKey: Keys.preferences)
+            syncError = nil
+            lastSynced = Date()
+            store.set(lastSynced?.timeIntervalSince1970 ?? 0, forKey: Keys.lastSynced)
+        } catch {
+            syncError = error.localizedDescription
+            Self.logger.error("syncToCloud failed: \(error)")
         }
-
-        lastSynced = Date()
-        store.set(lastSynced?.timeIntervalSince1970 ?? 0, forKey: Keys.lastSynced)
     }
 
     // MARK: - Sync From Cloud

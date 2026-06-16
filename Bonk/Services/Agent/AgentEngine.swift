@@ -26,8 +26,8 @@ final class AgentEngine {
 
     // MARK: - Dependencies
 
-    private let providerStore = AIProviderStore.shared
-    private let conversationStore = AIConversationStore.shared
+    private let providerStore: AIProviderStore
+    private let conversationStore: AIConversationStore
     internal let sanitizer = AIOutputSanitizer.self
     private var lastUIUpdate = Date.distantPast
 
@@ -35,7 +35,10 @@ final class AgentEngine {
     var currentPlan: AgentPlan?
     var planApprovalContinuation: CheckedContinuation<Bool, Never>?
 
-    private init() {}
+    init(providerStore: AIProviderStore = .shared, conversationStore: AIConversationStore = .shared) {
+        self.providerStore = providerStore
+        self.conversationStore = conversationStore
+    }
 
     // MARK: - Provider Resolution
 
@@ -143,26 +146,18 @@ final class AgentEngine {
         systemPrompt: String,
         userPrompt: String
     ) async throws -> String {
-        let request = try AIProviderNetworking.buildRequest(
+        var lastUIUpdate = Date.distantPast
+        return try await AIProviderNetworking.streamRequest(
             provider: provider, apiKey: apiKey,
-            systemPrompt: systemPrompt, userPrompt: userPrompt,
-            stream: true
-        )
-
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw AIError.invalidResponse
-        }
-        guard http.statusCode == 200 else {
-            var errorData = Data()
-            for try await byte in bytes {
-                errorData.append(byte)
+            systemPrompt: systemPrompt, userPrompt: userPrompt
+        ) { [weak self] delta in
+            guard let self else { return }
+            let now = Date()
+            if now.timeIntervalSince(lastUIUpdate) > 0.1 {
+                streamingResponse += delta
+                lastUIUpdate = now
             }
-            let body = String(data: errorData, encoding: .utf8) ?? "Unknown"
-            throw AIError.apiError(statusCode: http.statusCode, message: body)
         }
-
-        return try await parseStream(bytes: bytes, providerType: provider.type)
     }
 
     // MARK: - Non-Streaming Execution (Agent)
@@ -173,63 +168,10 @@ final class AgentEngine {
         systemPrompt: String,
         userPrompt: String
     ) async throws -> String {
-        let request = try AIProviderNetworking.buildRequest(
+        try await AIProviderNetworking.nonStreamRequest(
             provider: provider, apiKey: apiKey,
-            systemPrompt: systemPrompt, userPrompt: userPrompt,
-            stream: false
+            systemPrompt: systemPrompt, userPrompt: userPrompt
         )
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            let body = String(data: data, encoding: .utf8) ?? "Unknown"
-            throw AIError.apiError(statusCode: code, message: body)
-        }
-
-        return try AIProviderNetworking.extractResponse(from: data, type: provider.type)
-    }
-
-    // MARK: - Stream Parsing
-
-    private func parseStream(
-        bytes: URLSession.AsyncBytes,
-        providerType _: AIProviderType
-    ) async throws -> String {
-        var result = ""
-        var buffer = ""
-
-        var lastUIUpdate = Date.distantPast
-
-        for try await byte in bytes {
-            guard !Task.isCancelled else { break }
-            guard let char = String(bytes: [byte], encoding: .utf8) else { continue }
-            buffer += char
-
-            while let range = buffer.range(of: "\n") {
-                let line = String(buffer[buffer.startIndex ..< range.lowerBound])
-                buffer = String(buffer[range.upperBound...])
-
-                guard line.hasPrefix("data: ") else { continue }
-                let json = String(line.dropFirst(6))
-                guard json != "[DONE]" else { continue }
-                guard let data = json.data(using: .utf8),
-                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
-
-                if let text = AIProviderNetworking.extractDelta(from: obj) {
-                    result += text
-                    // Update UI every 100ms to prevent excessive redraws
-                    let now = Date()
-                    if now.timeIntervalSince(lastUIUpdate) > 0.1 {
-                        streamingResponse = result
-                        lastUIUpdate = now
-                    }
-                }
-            }
-        }
-
-        // Final update — ensure UI has the complete text
-        streamingResponse = result
-        return result
     }
 
     // MARK: - Agent Mode (Plan → Approve → Execute)

@@ -8,6 +8,7 @@ import SwiftData
 final class AIConversationStore {
     static let shared = AIConversationStore()
     private static let logger = Logger(subsystem: "com.bonk", category: "AIConversationStore")
+    var lastError: String?
 
     /// Create a new conversation and return it.
     func createConversation(title: String = "New Chat", context: ModelContext) -> AIConversationRecord {
@@ -60,6 +61,7 @@ final class AIConversationStore {
         do {
             try context.save()
         } catch {
+            lastError = error.localizedDescription
             Self.logger.error("Save failed (\(operation)): \(error)")
         }
     }

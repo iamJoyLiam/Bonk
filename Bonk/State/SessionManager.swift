@@ -11,6 +11,11 @@ final class SessionManager {
     var lastError: String?
     var showError = false
     private let hostKeyStore = PersistentHostKeyStore()
+    private let viewCache: TerminalViewCache
+
+    init(viewCache: TerminalViewCache = .shared) {
+        self.viewCache = viewCache
+    }
     private var connectingTabs = Set<UUID>()
     private var modelContext: ModelContext?
 
@@ -39,7 +44,7 @@ final class SessionManager {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
         await disconnectTab(id)
         // Remove cached terminal view to free memory
-        TerminalViewCache.shared.remove(id)
+        viewCache.remove(id)
         tabs.removeAll(where: { $0.id == id })
         if activeTabID == id {
             activeTabID = tabs.last?.id
