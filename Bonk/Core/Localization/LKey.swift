@@ -317,4 +317,62 @@ enum LKey: String, CaseIterable {
 
     // Sessions
     case unfavorite, favorite
+
+    // MARK: - New keys for hardcoded string fixes
+
+    // BonkApp menu
+    case menuAI = "menu_ai"
+
+    // Restart alert (I18n)
+    case restartRequired = "restart_required"
+    case restartMessage = "restart_message"
+    case restartNow = "restart_now"
+    case restartLater = "restart_later"
+
+    // AI Chat / Agent
+    case thinking
+    case executionPlan = "execution_plan"
+    case stepsCount = "steps_count"
+    case executePlan = "execute_plan"
+    case exitCode = "exit_code"
+    case waitingForOutput = "waiting_for_output"
+
+    // Broadcast
+    case broadcastPanes = "broadcast_panes"
+
+    // Copilot errors
+    case signInExpired = "sign_in_expired"
+    case accessDenied = "access_denied"
+    case signInTimedOut = "sign_in_timed_out"
+
+    // Command safety levels
+    case safe
+    case moderate
+    case dangerous
+    case blocked
+
+    // Agent plan executor
+    case planRejected = "plan_rejected"
+    case noProvider
+    case cancelledAtStep = "cancelled_at_step"
+    case blockedStep = "blocked_step"
+    case skippedStep = "skipped_step"
+    case executionReport = "execution_report"
+
+    // Key recorder shortcuts
+    case shortcutNewTerminal = "shortcut_new_terminal"
+    case shortcutCloseTab = "shortcut_close_tab"
+    case shortcutNextTab = "shortcut_next_tab"
+    case shortcutPrevTab = "shortcut_prev_tab"
+    case shortcutFind = "shortcut_find"
+    case shortcutSettings = "shortcut_settings"
+    case shortcutReconnect = "shortcut_reconnect"
+    case shortcutClearTerminal = "shortcut_clear_terminal"
+
+    // AI errors
+    case noActiveProvider = "no_active_provider"
+    case apiKeyNotSet = "api_key_not_set"
+
+    // I18n restart
+    case needsRestart = "needs_restart"
 }

@@ -3,7 +3,7 @@ import SwiftUI
 struct AccountSettingsView: View {
     @EnvironmentObject var i18n: I18n
     @Environment(\.modelContext) private var modelContext
-    @State private var syncService = iCloudSyncService.shared
+    @State private var syncService = ICloudSyncService.shared
 
     var body: some View {
         Form {

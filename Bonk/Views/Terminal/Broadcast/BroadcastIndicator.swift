@@ -17,7 +17,7 @@ struct BroadcastIndicator: View {
                 .foregroundStyle(manager.isEnabled ? .orange : .secondary)
 
             if manager.isEnabled {
-                Text("Broadcast: \(manager.targetPaneIDs.count) panes")
+                Text(String(format: i18n.t(.broadcastPanes), manager.targetPaneIDs.count))
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.orange)
 

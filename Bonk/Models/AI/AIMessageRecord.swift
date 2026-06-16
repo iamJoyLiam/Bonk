@@ -13,6 +13,7 @@ final class AIMessageRecord {
     var agentThinking: String?
     var agentCommand: String?
 
+    @Relationship(inverse: \AIConversationRecord.messages)
     var conversation: AIConversationRecord?
 
     var role: MessageRole {

@@ -27,7 +27,7 @@ struct TerminalTabView: View {
     }
 
     @State var renamingTab: TerminalTab?
-    @State var renameText = ""
+    @State private var renameText = ""
     @State var dropMessage: String?
     @State var pendingUploadURL: URL?
     @State var pendingUploadTab: TerminalTab?

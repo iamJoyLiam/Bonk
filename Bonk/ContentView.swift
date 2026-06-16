@@ -235,13 +235,13 @@ struct ContentView: View {
                 .navigationTitle("Bonk")
                 .navigationDestination(for: UUID.self) { tabID in
                     if let tab = sessionManager.tabs.first(where: { $0.id == tabID }) {
-                        iOSterminalDetail(tab)
+                        iOSTerminalDetail(tab)
                     }
                 }
         }
     }
 
-    private func iOSterminalDetail(_ tab: TerminalTab) -> some View {
+    private func iOSTerminalDetail(_ tab: TerminalTab) -> some View {
         TerminalTabContentView(
             tab: tab,
             colorScheme: colorScheme,

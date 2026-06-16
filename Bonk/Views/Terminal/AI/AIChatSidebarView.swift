@@ -17,16 +17,16 @@ struct AIChatSidebarView: View {
     @Query(sort: \AIConversationRecord.updatedAt, order: .reverse)
     var conversations: [AIConversationRecord]
     @State var currentConversation: AIConversationRecord?
-    @State var inputText = ""
+    @State private var inputText = ""
     @State var showHistory = false
-    @State var selectedMode: AIMode = .ask
+    @State private var selectedMode: AIMode = .ask
     @FocusState var isInputFocused: Bool
 
     @AppStorage("ai_enabled") var aiEnabled = false
 
-    @State var rotationAngle: Double = 0
-    @State var wasCancelled = false
-    @State var showModelPicker = false
+    @State private var rotationAngle: Double = 0
+    @State private var wasCancelled = false
+    @State private var showModelPicker = false
     @State var pendingDeleteConversation: UUID?
 
     private var aiColors: [Color] {

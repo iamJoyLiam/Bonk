@@ -215,10 +215,10 @@ enum CommandSafety {
 
     var description: String {
         switch self {
-        case .safe: "Safe"
-        case .moderate: "Moderate"
-        case .dangerous: "Dangerous"
-        case .blocked: "Blocked"
+        case .safe: L.t(.safe)
+        case .moderate: L.t(.moderate)
+        case .dangerous: L.t(.dangerous)
+        case .blocked: L.t(.blocked)
         }
     }
 

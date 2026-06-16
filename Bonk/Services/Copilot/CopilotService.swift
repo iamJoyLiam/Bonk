@@ -175,7 +175,7 @@ final class CopilotService: ObservableObject {
             guard Date() < deadline else {
                 await MainActor.run {
                     authState = .signedOut
-                    errorMessage = "Sign-in expired. Please try again."
+                    errorMessage = L.t(.signInExpired)
                 }
                 return
             }
@@ -214,13 +214,13 @@ final class CopilotService: ObservableObject {
                     case "expired_token":
                         await MainActor.run {
                             authState = .signedOut
-                            errorMessage = "Sign-in expired. Please try again."
+                            errorMessage = L.t(.signInExpired)
                         }
                         return
                     case "access_denied":
                         await MainActor.run {
                             authState = .signedOut
-                            errorMessage = "Access denied."
+                            errorMessage = L.t(.accessDenied)
                         }
                         return
                     default:
@@ -250,7 +250,7 @@ final class CopilotService: ObservableObject {
 
         await MainActor.run {
             authState = .signedOut
-            errorMessage = "Sign-in timed out."
+            errorMessage = L.t(.signInTimedOut)
         }
     }
 

@@ -5,8 +5,8 @@ import SwiftUI
 /// Service for syncing preferences via iCloud key-value store.
 /// Reads from SwiftData (single source of truth), syncs to iCloud KV store.
 @Observable @MainActor
-final class iCloudSyncService {
-    static let shared = iCloudSyncService()
+final class ICloudSyncService {
+    static let shared = ICloudSyncService()
     private static let logger = Logger(subsystem: "com.bonk", category: "iCloudSync")
 
     private let store = NSUbiquitousKeyValueStore.default

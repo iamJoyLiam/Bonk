@@ -42,12 +42,12 @@ final class AgentEngine {
     func resolveProvider() -> (AIProviderConfig, String)? {
         let provider = activeProvider ?? providerStore.activeProvider
         guard let provider else {
-            lastError = "No active AI provider configured"
+            lastError = L.t(.noActiveProvider)
             return nil
         }
         let key = provider.apiKey
         guard !key.isEmpty else {
-            lastError = "API key not set for \(provider.name)"
+            lastError = String(format: L.t(.apiKeyNotSet), provider.name)
             return nil
         }
         activeProvider = provider
@@ -284,7 +284,7 @@ final class AgentEngine {
         await withCheckedContinuation { continuation in
             pendingConfirmation = PendingCommand(
                 command: command,
-                reason: riskLevel == .dangerous ? "Dangerous command" : "Moderate command",
+                reason: riskLevel == .dangerous ? L.t(.dangerousCommand) : L.t(.moderate),
                 riskLevel: riskLevel,
                 continuation: { [weak self] confirmed in
                     self?.pendingConfirmation = nil

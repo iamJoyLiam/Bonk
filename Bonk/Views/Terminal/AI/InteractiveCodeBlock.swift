@@ -86,7 +86,7 @@ struct InteractiveCodeBlock: View {
                     Divider()
 
                     HStack {
-                        Text("OUTPUT")
+                        Text(i18n.t(.output).uppercased())
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundStyle(.tertiary)
                         Spacer()
@@ -95,7 +95,7 @@ struct InteractiveCodeBlock: View {
                                 Circle()
                                     .fill(exitCode == 0 ? Color.green : Color.red)
                                     .frame(width: 6, height: 6)
-                                Text("EXIT \(exitCode)")
+                                Text(String(format: i18n.t(.exitCode), exitCode))
                                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                                     .foregroundStyle(exitCode == 0 ? .green : .red)
                             }
@@ -111,7 +111,7 @@ struct InteractiveCodeBlock: View {
                     .padding(.top, 4)
 
                     ScrollView(.vertical, showsIndicators: true) {
-                        Text(consoleOutput.isEmpty ? "Waiting for output..." : consoleOutput)
+                        Text(consoleOutput.isEmpty ? i18n.t(.waitingForOutput) : consoleOutput)
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(consoleOutput.isEmpty ? Color.secondary : Color.green)
                             .frame(maxWidth: .infinity, alignment: .leading)

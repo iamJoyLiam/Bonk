@@ -107,13 +107,13 @@ import SwiftUI
                 Image(systemName: "bolt.slash.fill")
                     .font(.system(size: 40))
                     .foregroundStyle(.red.opacity(0.6))
-                Text("Disconnected").font(.headline)
+                Text(i18n.t(.disconnected)).font(.headline)
                 if let error = activeTab.errorMessage {
                     Text(error).font(.caption).foregroundStyle(.secondary)
                         .multilineTextAlignment(.center).frame(maxWidth: 300)
                 }
                 if let onReconnect {
-                    Button("Reconnect", systemImage: "arrow.clockwise") { onReconnect() }
+                    Button(i18n.t(.reconnect), systemImage: "arrow.clockwise") { onReconnect() }
                         .buttonStyle(.borderedProminent).padding(.top, 8)
                 }
             }

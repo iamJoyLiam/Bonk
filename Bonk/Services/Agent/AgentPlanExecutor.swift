@@ -27,7 +27,7 @@ extension AgentEngine {
         // Phase 2: Wait for user approval
         let approved = await requestPlanApproval(plan: plan)
         guard approved else {
-            appendAgentMessage(.system, content: "Plan rejected.", conversation: conversation, context: context)
+            appendAgentMessage(.system, content: L.t(.planRejected), conversation: conversation, context: context)
             return
         }
 
@@ -51,7 +51,7 @@ extension AgentEngine {
     ) async -> AgentPlan? {
         let aiMessages = buildAgentMessages()
         guard let (provider, apiKey) = resolveProvider() else {
-            appendAgentMessage(.system, content: lastError ?? "No provider",
+            appendAgentMessage(.system, content: lastError ?? L.t(.noProvider),
                                conversation: conversation, context: context)
             return nil
         }
@@ -115,7 +115,7 @@ extension AgentEngine {
 
         for (index, step) in plan.steps.enumerated() {
             guard !Task.isCancelled else {
-                appendAgentMessage(.system, content: "Cancelled at step \(index + 1)/\(plan.steps.count).",
+                appendAgentMessage(.system, content: String(format: L.t(.cancelledAtStep), index + 1),
                                    conversation: conversation, context: context)
                 break
             }
@@ -126,7 +126,7 @@ extension AgentEngine {
 
             // Safety check
             if step.riskLevel == .blocked {
-                appendAgentMessage(.system, content: "Blocked: \(step.command)",
+                appendAgentMessage(.system, content: String(format: L.t(.blockedStep), step.command),
                                    conversation: conversation, context: context)
                 results.append(StepResult(step: step, output: "Blocked", success: false, duration: 0))
                 continue
@@ -137,7 +137,7 @@ extension AgentEngine {
                 let riskLevel: PendingCommand.RiskLevel = step.riskLevel == .dangerous ? .dangerous : .moderate
                 let confirmed = await requestConfirmation(command: step.command, riskLevel: riskLevel)
                 guard confirmed else {
-                    appendAgentMessage(.system, content: "Skipped: \(step.command)",
+                    appendAgentMessage(.system, content: String(format: L.t(.skippedStep), step.command),
                                        conversation: conversation, context: context)
                     results.append(StepResult(step: step, output: "Skipped by user", success: false, duration: 0))
                     continue

@@ -166,7 +166,7 @@ extension AIChatSidebarView {
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     } label: {
-                        Label("Thinking", systemImage: "brain")
+                        Label(i18n.t(.thinking), systemImage: "brain")
                             .font(.system(size: 11))
                             .foregroundStyle(.tertiary)
                     }
@@ -249,9 +249,9 @@ extension AIChatSidebarView {
     private func planHeaderView(_ plan: AgentPlan) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "list.bullet.clipboard").foregroundStyle(.blue)
-            Text("Execution Plan").font(.system(size: 12, weight: .semibold))
+            Text(i18n.t(.executionPlan)).font(.system(size: 12, weight: .semibold))
             Spacer()
-            Text("\(plan.steps.count) steps").font(.system(size: 10)).foregroundStyle(.tertiary)
+            Text(String(format: i18n.t(.stepsCount), plan.steps.count)).font(.system(size: 10)).foregroundStyle(.tertiary)
         }
     }
 
@@ -275,7 +275,7 @@ extension AIChatSidebarView {
     private var planActionButtons: some View {
         HStack(spacing: 8) {
             Button { engine.approvePlan() } label: {
-                Label("Execute Plan", systemImage: "play.fill")
+                Label(i18n.t(.executePlan), systemImage: "play.fill")
                     .font(.system(size: 11))
                     .padding(.horizontal, 10).padding(.vertical, 4)
                     .background(Color.accentColor.opacity(0.15)).clipShape(Capsule())

@@ -73,11 +73,11 @@ final class I18n: ObservableObject, @unchecked Sendable {
     #if os(macOS)
         private func showRestartAlert() {
             let alert = NSAlert()
-            alert.messageText = "需要重启"
-            alert.informativeText = "请重启应用以将语言更改应用到所有组件"
+            alert.messageText = t(.restartRequired)
+            alert.informativeText = t(.restartMessage)
             alert.alertStyle = .informational
-            alert.addButton(withTitle: "立即重启")
-            alert.addButton(withTitle: "稍后")
+            alert.addButton(withTitle: t(.restartNow))
+            alert.addButton(withTitle: t(.restartLater))
             let response = alert.runModal()
             if response == .alertFirstButtonReturn {
                 NSApp.terminate(nil)

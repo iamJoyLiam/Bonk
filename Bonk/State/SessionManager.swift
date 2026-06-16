@@ -6,7 +6,7 @@ import SwiftUI
 @Observable
 @MainActor
 final class SessionManager {
-    var tabs: [TerminalTab] = []
+    private(set) var tabs: [TerminalTab] = []
     var activeTabID: UUID?
     var lastError: String?
     var showError = false

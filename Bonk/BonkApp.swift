@@ -40,22 +40,7 @@ struct BonkApp: App {
         do {
             return try ModelContainer(for: schema, configurations: [config])
         } catch {
-            Log.general.warning("Migration failed, recreating store: \(error)")
-            let storeURL = config.url
-            let storeDir = storeURL.deletingLastPathComponent()
-            let storePrefix = storeURL.lastPathComponent
-            if let contents = try? FileManager.default.contentsOfDirectory(
-                at: storeDir, includingPropertiesForKeys: nil
-            ) {
-                for file in contents where file.lastPathComponent.hasPrefix(storePrefix) {
-                    try? FileManager.default.removeItem(at: file)
-                }
-            }
-            do {
-                return try ModelContainer(for: schema, configurations: [config])
-            } catch {
-                fatalError("Could not create ModelContainer even after reset: \(error)")
-            }
+            fatalError("Migration failed: \(error)")
         }
     }()
 
@@ -187,13 +172,13 @@ struct BonkApp: App {
                     NotificationCenter.default.post(name: .menuShowPortForwarding, object: nil)
                 }
 
-                Button("Serial Port") {
+                Button(i18n.t(.serialPort)) {
                     NotificationCenter.default.post(name: .menuShowSerialPort, object: nil)
                 }
             }
 
             // MARK: - AI Menu
-            CommandMenu("AI") {
+            CommandMenu(i18n.t(.menuAI)) {
                 Button(i18n.t(.aiAssistant)) {
                     NotificationCenter.default.post(name: .menuToggleAI, object: nil)
                 }
