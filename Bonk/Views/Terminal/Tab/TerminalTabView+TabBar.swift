@@ -2,190 +2,218 @@
 //  TerminalTabView+TabBar.swift
 //  Bonk
 //
-//  Extracted from TerminalTabView.swift
+//  Capsule-style tab bar with dark-mode design.
 //
 
 import SwiftUI
 
 extension TerminalTabView {
     var tabBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(sessionManager.tabs) { tab in
-                    tabButton(tab)
-                        .contextMenu {
-                            Button {
-                                // Duplicate: create new connection to same host
-                                let host = tab.hostItem
-                                sessionManager.openTab(for: host)
-                            } label: {
-                                Label(i18n.t(.duplicate), systemImage: "plus.square.on.square")
-                            }
-
-                            Divider()
-
-                            // Color label submenu
-                            Menu {
-                                Button {
-                                    tab.colorLabel = nil
-                                } label: {
-                                    Text(i18n.t(.none))
-                                }
-
-                                ForEach(TerminalTab.colorLabels, id: \.name) { label in
-                                    Button {
-                                        tab.colorLabel = label.name
-                                    } label: {
-                                        HStack {
-                                            Circle()
-                                                .fill(label.color)
-                                                .frame(width: 10, height: 10)
-                                            Text(label.name.capitalized)
-                                            if tab.colorLabel == label.name {
-                                                Image(systemName: "checkmark")
-                                            }
-                                        }
-                                    }
-                                }
-                            } label: {
-                                Label("Color", systemImage: "paintpalette")
-                            }
-
-                            Divider()
-
-                            Button {
-                                renamingTab = tab
-                            } label: {
-                                Label(i18n.t(.rename), systemImage: "pencil")
-                            }
-
-                            Divider()
-
-                            Button(role: .destructive) {
-                                Task { await sessionManager.closeTab(tab.id) }
-                            } label: {
-                                Label(i18n.t(.close), systemImage: "xmark")
-                            }
-                        }
-                }
-
-                // "+" button — click to add host, long-press for menu
-                Menu {
-                    ForEach(allHosts) { host in
-                        let isOpen = sessionManager.tabs.contains(where: { $0.hostItem.id == host.id })
-                        Button {
-                            if isOpen {
-                                if let tab = sessionManager.tabs.first(where: { $0.hostItem.id == host.id }) {
-                                    sessionManager.selectTab(tab.id)
-                                }
-                            } else {
-                                sessionManager.openTab(for: host)
-                            }
-                        } label: {
-                            Label(host.name, systemImage: isOpen ? "checkmark" : "plus")
-                        }
+        HStack(spacing: 0) {
+            // Tab area
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    ForEach(sessionManager.tabs) { tab in
+                        tabCapsule(tab)
+                            .contextMenu { tabContextMenu(tab) }
                     }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
-                        .background(
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .fill(.quaternary.opacity(0.3))
-                        )
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+
+            // Right controls: + and chevron
+            HStack(spacing: 2) {
+                addButton
+                chevronMenu
+            }
+            .padding(.trailing, 10)
         }
-        .frame(height: 40)
+        .frame(height: 38)
         .background {
             Rectangle()
                 .fill(.bar)
-                .overlay(alignment: .bottom) {
-                    Divider()
-                }
+                .overlay(alignment: .bottom) { Divider() }
         }
     }
 
-    func tabButton(_ tab: TerminalTab) -> some View {
-        let isActive = sessionManager.activeTabID == tab.id
-        return Button {
-            sessionManager.selectTab(tab.id)
-        } label: {
-            HStack(spacing: 6) {
-                // Connection status indicator
-                Circle()
-                    .fill(tabColor(tab.session?.connectionState ?? .disconnected))
-                    .frame(width: 5, height: 5)
+    // MARK: - Tab Capsule
 
+    @ViewBuilder
+    private func tabCapsule(_ tab: TerminalTab) -> some View {
+        let isActive = sessionManager.activeTabID == tab.id
+        let state = tab.session?.connectionState ?? .disconnected
+
+        Button { sessionManager.selectTab(tab.id) } label: {
+            HStack(spacing: 6) {
+                // Status dot
+                Circle()
+                    .fill(statusDotColor(state))
+                    .frame(width: 6, height: 6)
+
+                // Title
                 Text(tab.title)
                     .font(.system(size: 11, weight: isActive ? .semibold : .regular))
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
 
-                // Close button - visible on active tab
-                if isActive {
-                    Button {
-                        Task { await sessionManager.closeTab(tab.id) }
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
+                // Close button (always present, opacity varies)
+                Button {
+                    Task { await sessionManager.closeTab(tab.id) }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 7, weight: .semibold))
+                        .foregroundStyle(.secondary)
                 }
+                .buttonStyle(.plain)
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 12)
             .padding(.vertical, 5)
             .frame(minWidth: 80, maxWidth: 160)
-            .background {
-                if isActive {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    tabAccentColor(tab).opacity(0.15),
-                                    tabAccentColor(tab).opacity(0.05),
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                } else {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.clear)
-                }
-            }
+            .background { capsuleBackground(tab: tab, isActive: isActive) }
             .overlay(alignment: .bottom) {
                 if isActive {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(tabAccentColor(tab))
-                        .frame(height: 2)
-                        .offset(y: 1)
+                    capsuleUnderline(tab: tab)
                 }
             }
         }
         .buttonStyle(.plain)
+        .onHover { hovering in
+            // Hover state would need @State tracking — simplified for now
+        }
     }
 
-    /// Determine tab background color based on color label and active state.
-    func tabBackgroundColor(_ tab: TerminalTab, isActive: Bool) -> Color {
-        if let color = tab.resolvedColor {
-            // Use color label as background with appropriate opacity
-            return isActive ? color.opacity(0.25) : color.opacity(0.15)
-        }
-        // Default: subtle gradient for active, clear for inactive
-        return isActive ? Color.accentColor.opacity(0.08) : Color.clear
+    // MARK: - Capsule Background
+
+    @ViewBuilder
+    private func capsuleBackground(tab: TerminalTab, isActive: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(capsuleFill(tab: tab, isActive: isActive))
     }
 
-    /// Determine tab accent color (bottom border) based on color label.
-    func tabAccentColor(_ tab: TerminalTab) -> Color {
-        if let color = tab.resolvedColor {
-            return color.opacity(0.7)
+    /// Capsule fill color: respects color label, neutral when none.
+    private func capsuleFill(tab: TerminalTab, isActive: Bool) -> Color {
+        if let labelColor = tab.resolvedColor {
+            return isActive ? labelColor.opacity(0.3) : labelColor.opacity(0.12)
         }
-        return Color.accentColor.opacity(0.5)
+        // No color label: neutral — slightly elevated for active, transparent for inactive
+        return isActive ? Color.primary.opacity(0.1) : Color.clear
+    }
+
+    // MARK: - Underline Indicator
+
+    private func capsuleUnderline(tab: TerminalTab) -> some View {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(tab.resolvedColor ?? Color.primary.opacity(0.5))
+            .frame(height: 2)
+            .padding(.horizontal, 8)
+            .offset(y: 1)
+    }
+
+    // MARK: - Status Dot Color
+
+    private func statusDotColor(_ state: SSHConnectionState) -> Color {
+        switch state {
+        case .connected: .yellow
+        case .connecting, .reconnecting: .yellow.opacity(0.5)
+        case .disconnected: .secondary.opacity(0.4)
+        }
+    }
+
+    // MARK: - Right Controls
+
+    private var addButton: some View {
+        Menu {
+            ForEach(allHosts) { host in
+                let isOpen = sessionManager.tabs.contains(where: { $0.hostItem.id == host.id })
+                Button {
+                    if isOpen {
+                        if let tab = sessionManager.tabs.first(where: { $0.hostItem.id == host.id }) {
+                            sessionManager.selectTab(tab.id)
+                        }
+                    } else {
+                        sessionManager.openTab(for: host)
+                    }
+                } label: {
+                    Label(host.name, systemImage: isOpen ? "checkmark" : "plus")
+                }
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
+
+    private var chevronMenu: some View {
+        Menu {
+            ForEach(sessionManager.tabs) { tab in
+                Button { sessionManager.selectTab(tab.id) } label: {
+                    HStack {
+                        Circle()
+                            .fill(statusDotColor(tab.session?.connectionState ?? .disconnected))
+                            .frame(width: 6, height: 6)
+                        Text(tab.title)
+                        if sessionManager.activeTabID == tab.id {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
+
+    // MARK: - Context Menu
+
+    @ViewBuilder
+    private func tabContextMenu(_ tab: TerminalTab) -> some View {
+        Button {
+            sessionManager.openTab(for: tab.hostItem)
+        } label: {
+            Label(i18n.t(.duplicate), systemImage: "plus.square.on.square")
+        }
+
+        Divider()
+
+        Menu {
+            Button { tab.colorLabel = nil } label: {
+                Text(i18n.t(.none))
+            }
+            ForEach(TerminalTab.colorLabels, id: \.name) { label in
+                Button { tab.colorLabel = label.name } label: {
+                    HStack {
+                        Circle().fill(label.color).frame(width: 10, height: 10)
+                        Text(label.name.capitalized)
+                        if tab.colorLabel == label.name { Image(systemName: "checkmark") }
+                    }
+                }
+            }
+        } label: {
+            Label("Color", systemImage: "paintpalette")
+        }
+
+        Divider()
+
+        Button { renamingTab = tab } label: {
+            Label(i18n.t(.rename), systemImage: "pencil")
+        }
+
+        Divider()
+
+        Button(role: .destructive) {
+            Task { await sessionManager.closeTab(tab.id) }
+        } label: {
+            Label(i18n.t(.close), systemImage: "xmark")
+        }
     }
 }
