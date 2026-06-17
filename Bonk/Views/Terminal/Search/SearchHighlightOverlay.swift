@@ -148,34 +148,26 @@ func calculateTerminalColumns(for text: String) -> Int {
     return cols
 }
 
-/// Check if a Unicode scalar is a CJK character
+/// CJK and Emoji Unicode ranges (characters that occupy 2 terminal columns)
+private let wideCharacterRanges: [ClosedRange<UInt32>] = [
+    0x1100...0x11FF,    // Hangul Jamo
+    0x2E80...0x2EFF,    // CJK Radicals Supplement
+    0x2F00...0x2FDF,    // Kangxi Radicals
+    0x3000...0x303F,    // CJK Symbols and Punctuation
+    0x3040...0x309F,    // Hiragana
+    0x30A0...0x30FF,    // Katakana
+    0x3400...0x4DBF,    // CJK Unified Ideographs Extension A
+    0x4E00...0x9FFF,    // CJK Unified Ideographs
+    0xAC00...0xD7AF,    // Hangul Syllables
+    0xF900...0xFAFF,    // CJK Compatibility Ideographs
+    0x1F1E0...0x1F1FF,  // Flags
+    0x1F300...0x1F5FF,  // Misc Symbols and Pictographs
+    0x1F600...0x1F64F,  // Emoticons
+    0x1F680...0x1F6FF,  // Transport and Map
+]
+
+/// Check if a Unicode scalar is a wide character (CJK or Emoji)
 private func isCJKCharacter(_ scalar: Unicode.Scalar) -> Bool {
-    let value = scalar.value
-    // CJK Unified Ideographs
-    if value >= 0x4E00 && value <= 0x9FFF { return true }
-    // CJK Unified Ideographs Extension A
-    if value >= 0x3400 && value <= 0x4DBF { return true }
-    // CJK Compatibility Ideographs
-    if value >= 0xF900 && value <= 0xFAFF { return true }
-    // CJK Radicals Supplement
-    if value >= 0x2E80 && value <= 0x2EFF { return true }
-    // Kangxi Radicals
-    if value >= 0x2F00 && value <= 0x2FDF { return true }
-    // CJK Symbols and Punctuation
-    if value >= 0x3000 && value <= 0x303F { return true }
-    // Hiragana
-    if value >= 0x3040 && value <= 0x309F { return true }
-    // Katakana
-    if value >= 0x30A0 && value <= 0x30FF { return true }
-    // Hangul Jamo
-    if value >= 0x1100 && value <= 0x11FF { return true }
-    // Hangul Syllables
-    if value >= 0xAC00 && value <= 0xD7AF { return true }
-    // Emoji (common ranges)
-    if value >= 0x1F600 && value <= 0x1F64F { return true } // Emoticons
-    if value >= 0x1F300 && value <= 0x1F5FF { return true } // Misc Symbols and Pictographs
-    if value >= 0x1F680 && value <= 0x1F6FF { return true } // Transport and Map
-    if value >= 0x1F1E0 && value <= 0x1F1FF { return true } // Flags
-    return false
+    wideCharacterRanges.contains { $0.contains(scalar.value) }
 }
 #endif

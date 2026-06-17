@@ -102,48 +102,71 @@ enum AIOutputSanitizer {
             }
 
             if inCodeBlock {
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-
-                // Skip empty lines
-                if trimmed.isEmpty { continue }
-
-                // Skip bare # lines
-                if trimmed == "#" { continue }
-
-                // Skip # SectionHeader (uppercase first word, no code indicators)
-                if trimmed.hasPrefix("# ") {
-                    let afterHash = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
-                    if afterHash.isEmpty { continue } // "# " with nothing
-                    if let first = afterHash.first, first.isUppercase,
-                       !afterHash.contains("="), !afterHash.contains("-"),
-                       !afterHash.contains("$"), !afterHash.contains("!"),
-                       !afterHash.contains("/")
-                    { continue }
+                if let cleaned = cleanCodeBlockLine(line) {
+                    result.append(cleaned)
                 }
-
-                // Skip standalone numbered list items inside code blocks (e.g., "1. docker pull")
-                if trimmed.range(of: #"^\d+\.\s*\S"#, options: .regularExpression) != nil {
-                    continue
-                }
-
-                // Remove trailing empty # comment (e.g., "docker images # " → "docker images")
-                if let hashIndex = line.lastIndex(of: "#") {
-                    let afterHash = line[line.index(after: hashIndex)...]
-                        .trimmingCharacters(in: .whitespaces)
-                    if afterHash.isEmpty {
-                        let cleaned = String(line[..<hashIndex]).trimmingCharacters(in: .whitespaces)
-                        if !cleaned.isEmpty { result.append(cleaned); continue }
-                    }
-                }
+            } else {
+                result.append(line)
             }
-
-            result.append(line)
         }
 
-        // Remove consecutive empty lines outside code blocks
+        return removeConsecutiveEmptyLines(result)
+    }
+
+    /// Clean a single line inside a code block. Returns nil if line should be skipped.
+    private static func cleanCodeBlockLine(_ line: String) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+        // Skip empty lines and bare # lines
+        if trimmed.isEmpty || trimmed == "#" { return nil }
+
+        // Skip section headers (e.g., "# Section Title")
+        if isSectionHeader(trimmed) { return nil }
+
+        // Skip standalone numbered list items (e.g., "1. docker pull")
+        if isNumberedListItem(trimmed) { return nil }
+
+        // Remove trailing empty # comment
+        if let cleaned = removeTrailingComment(line) {
+            return cleaned
+        }
+
+        return line
+    }
+
+    /// Check if line is a section header (e.g., "# Section Title")
+    private static func isSectionHeader(_ line: String) -> Bool {
+        guard line.hasPrefix("# ") else { return false }
+        let afterHash = String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+        guard !afterHash.isEmpty else { return true }
+
+        guard let first = afterHash.first, first.isUppercase else { return false }
+        let codeIndicators: [Character] = ["=", "-", "$", "!", "/"]
+        return !codeIndicators.contains(where: { afterHash.contains($0) })
+    }
+
+    /// Check if line is a numbered list item (e.g., "1. docker pull")
+    private static func isNumberedListItem(_ line: String) -> Bool {
+        line.range(of: #"^\d+\.\s*\S"#, options: .regularExpression) != nil
+    }
+
+    /// Remove trailing empty comment (e.g., "docker images # " → "docker images")
+    private static func removeTrailingComment(_ line: String) -> String? {
+        guard let hashIndex = line.lastIndex(of: "#") else { return nil }
+        let afterHash = line[line.index(after: hashIndex)...]
+            .trimmingCharacters(in: .whitespaces)
+        guard afterHash.isEmpty else { return nil }
+
+        let cleaned = String(line[..<hashIndex]).trimmingCharacters(in: .whitespaces)
+        return cleaned.isEmpty ? nil : cleaned
+    }
+
+    /// Remove consecutive empty lines
+    private static func removeConsecutiveEmptyLines(_ lines: [String]) -> String {
         var deduped: [String] = []
         var lastEmpty = false
-        for line in result {
+
+        for line in lines {
             let isEmpty = line.trimmingCharacters(in: .whitespaces).isEmpty
             if isEmpty, lastEmpty { continue }
             deduped.append(line)

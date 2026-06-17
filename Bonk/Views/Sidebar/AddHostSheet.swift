@@ -23,7 +23,6 @@ struct AddHostSheet: View {
     @State private var privateKeyPEM = ""
     @State private var group = ""
     @State private var showPassword = false
-    @State private var showGroupDropdown = false
     @State private var selectedCredential: Credential?
     @State private var jumpHostHostname = ""
     @State private var jumpHostPort = "22"
@@ -50,18 +49,6 @@ struct AddHostSheet: View {
         vaultCredentials.filter {
             $0.type == .password || $0.type == .privateKey
         }
-    }
-
-    private var groupExists: Bool {
-        let trimmed = group.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return false }
-        return hostGroups.contains {
-            $0.name.lowercased() == trimmed.lowercased()
-        }
-    }
-
-    private var selectedGroup: HostGroup? {
-        hostGroups.first(where: { $0.name == group })
     }
 
     private var isValid: Bool {
@@ -99,7 +86,7 @@ struct AddHostSheet: View {
                 TextField(i18n.t(.port), text: $port)
                 TextField(i18n.t(.username), text: $username)
                     .autocorrectionDisabled()
-                groupComboBox
+                GroupComboBoxView(group: $group)
             }
 
             Section(i18n.t(.authentication)) {
@@ -217,111 +204,6 @@ struct AddHostSheet: View {
         .onAppear { loadExisting() }
     }
 
-    // MARK: - Group Combo Box
-
-    private var groupComboBox: some View {
-        HStack(spacing: 6) {
-            TextField(i18n.t(.groupOptional), text: $group)
-                .autocorrectionDisabled()
-                .onSubmit { commitGroup() }
-
-            if let selected = selectedGroup, !group.isEmpty {
-                GroupIndicator(group: selected)
-            }
-
-            if !group.isEmpty {
-                Button { group = "" } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
-            }
-
-            Button { showGroupDropdown.toggle() } label: {
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .popover(
-                isPresented: $showGroupDropdown,
-                arrowEdge: .bottom
-            ) {
-                groupDropdown.fixedSize()
-            }
-        }
-    }
-
-    private var groupDropdown: some View {
-        let input = group.trimmingCharacters(in: .whitespaces)
-        return VStack(spacing: 0) {
-            if hostGroups.isEmpty, input.isEmpty {
-                Text(i18n.t(.noGroups))
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .padding(12)
-            } else {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(hostGroups) { hostGroup in
-                            groupRow(hostGroup)
-                        }
-                    }
-                }
-                .frame(maxHeight: 200)
-            }
-
-            if !input.isEmpty, !groupExists {
-                Divider()
-                Button {
-                    commitGroup()
-                    showGroupDropdown = false
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus.circle")
-                            .foregroundStyle(Color.accentColor)
-                        Text(input)
-                            .font(.system(size: 12))
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
-    private func groupRow(_ hostGroup: HostGroup) -> some View {
-        Button {
-            group = hostGroup.name
-            showGroupDropdown = false
-        } label: {
-            HStack(spacing: 6) {
-                GroupIndicator(group: hostGroup)
-                Text(hostGroup.name)
-                    .font(.system(size: 12))
-                    .lineLimit(1)
-                if hostGroup.name == group {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color.accentColor)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func commitGroup() {
-        let trimmed = group.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty, !groupExists else { return }
-        modelContext.insert(HostGroup(name: trimmed))
-    }
-
     // MARK: - Actions
 
     private func loadExisting() {
@@ -392,27 +274,5 @@ struct AddHostSheet: View {
             onSave(item)
         }
         dismiss()
-    }
-}
-
-// MARK: - Shared Indicator
-
-/// Small color dot + icon, used in combo box, dropdown, and sidebar.
-struct GroupIndicator: View {
-    let group: HostGroup
-
-    var body: some View {
-        HStack(spacing: 4) {
-            if let color = group.resolvedColor {
-                Circle()
-                    .fill(color)
-                    .frame(width: 8, height: 8)
-            }
-            if let icon = group.icon, !icon.isEmpty {
-                Image(systemName: icon)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            }
-        }
     }
 }

@@ -385,21 +385,3 @@ public actor SSHNetworkService {
         return data
     }
 }
-
-// MARK: - Host Key Validator
-
-private final nonisolated class HostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unchecked Sendable {
-    private let onHostKey: @Sendable (NIOSSHPublicKey) -> Void
-
-    init(onHostKey: @escaping @Sendable (NIOSSHPublicKey) -> Void) {
-        self.onHostKey = onHostKey
-    }
-
-    func validateHostKey(
-        hostKey: NIOSSHPublicKey,
-        validationCompletePromise: EventLoopPromise<Void>
-    ) {
-        onHostKey(hostKey)
-        validationCompletePromise.succeed(())
-    }
-}
