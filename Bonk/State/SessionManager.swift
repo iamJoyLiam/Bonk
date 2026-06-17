@@ -200,7 +200,7 @@ final class SessionManager {
         sessionPersistence.saveSession(for: hostItem)
     }
 
-    func restoreSessions() {
+    func restoreSessions(autoConnect: Bool = false) {
         let hosts = sessionPersistence.restoreHosts()
         for host in hosts {
             let tab = TerminalTab(hostItem: host)
@@ -211,7 +211,14 @@ final class SessionManager {
             tab.session = session
             tab.pendingRestore = true
         }
-        if !tabs.isEmpty { activeTabID = tabs.first?.id }
+        if !tabs.isEmpty {
+            activeTabID = tabs.first?.id
+
+            // Auto-connect if requested
+            if autoConnect, let firstTab = tabs.first {
+                Task { await connectTab(firstTab) }
+            }
+        }
     }
 
     func connectFromSession(_ saved: SavedSession) {
