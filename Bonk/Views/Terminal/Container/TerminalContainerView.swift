@@ -32,8 +32,6 @@ import SwiftUI
         var body: some View {
             ZStack {
                 switch activeTab.session?.connectionState ?? .disconnected {
-                case .restored:
-                    restoredView
                 case .disconnected:
                     disconnectedView
                 case .connecting:
@@ -100,25 +98,6 @@ import SwiftUI
                     Text("\(activeTab.hostItem.username)@\(activeTab.hostItem.host):\(activeTab.hostItem.port)")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
-                }
-            }
-        }
-
-        private var restoredView: some View {
-            VStack(spacing: 16) {
-                Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.blue.opacity(0.6))
-                Text(i18n.t(.restoredSession))
-                    .font(.headline)
-                Text(i18n.t(.offline))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                if let onReconnect {
-                    Button(i18n.t(.reconnect), systemImage: "bolt") { onReconnect() }
-                        .buttonStyle(.borderedProminent)
-                        .padding(.top, 8)
                 }
             }
         }
@@ -278,16 +257,6 @@ import SwiftUI
             let cached = CachedTerminalView(tabID: tabID, view: terminal, coordinator: coordinator)
             TerminalViewCache.shared.store(tabID: tabID, view: terminal, coordinator: coordinator)
 
-            // Restore cached terminal output if available
-            let sessionID = tabID.uuidString
-            if let cachedBytes = SessionBufferCache.shared.readOutput(for: sessionID) {
-                // Feed cached bytes to terminal (replay history)
-                terminal.feed(byteArray: cachedBytes[...])
-                // Add a separator line
-                let separator = "\r\n\u{001B}[90m--- Restored Session ---\u{001B}[0m\r\n"
-                terminal.feed(text: separator)
-            }
-
             return cached
         }
 
@@ -346,8 +315,6 @@ import SwiftUI
         var themeObserver: NSObjectProtocol?
         private nonisolated(unsafe) var mouseUpMonitor: Any?
         var fontObserver: NSObjectProtocol?
-        /// Session ID for terminal output caching (used for session restore).
-        var terminalSessionID: String?
 
         var feedTask: Task<Void, Never>? {
             get { lock.lock(); defer { lock.unlock() }; return _feedTask }
@@ -385,7 +352,6 @@ import SwiftUI
             _onResize = onResize
             _onTitleChange = onTitleChange
             self.copyOnSelect = copyOnSelect
-            self.terminalSessionID = sessionID
         }
 
         deinit {

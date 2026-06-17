@@ -44,7 +44,6 @@ final class WorkspaceManager {
     var isBroadcastEnabled: Bool { broadcastManager.isEnabled }
     var isSerialPortPresented = false
     var isPortForwardingPresented = false
-    var isSessionManagerPresented = false
 
     // MARK: - Right Panel Actions
 

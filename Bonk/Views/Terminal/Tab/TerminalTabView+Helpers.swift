@@ -34,7 +34,6 @@ extension TerminalTabView {
         case .connected: .green
         case .connecting, .reconnecting: .yellow
         case .disconnected: .red
-        case .restored: .blue
         }
     }
 

@@ -49,9 +49,7 @@ struct ContentView: View {
             sessionManager.setModelContext(modelContext)
             AIProviderStore.shared.setModelContext(modelContext)
             sessionManager.broadcastManager = workspace.broadcastManager
-            if preferences.restoreSessions {
-                sessionManager.restoreSessions()
-            }
+
         }
         .alert(i18n.t(.connectionError), isPresented: $sessionManager.showError) {
             Button(i18n.t(.ok)) {}
@@ -65,9 +63,7 @@ struct ContentView: View {
         .focusedSceneValue(\.menuNewTerminal) {
             showAddHostSheet = true
         }
-        .focusedSceneValue(\.menuConnect) {
-            workspace.isSessionManagerPresented = true
-        }
+
         .focusedSceneValue(\.menuDisconnect) {
             if let id = sessionManager.activeTabID { Task { await sessionManager.disconnectTab(id) } }
         }
@@ -136,9 +132,6 @@ struct ContentView: View {
                         Button { workspace.isPortForwardingPresented = true } label: {
                             Image(systemName: "arrow.triangle.branch")
                         }
-                        Button { workspace.isSessionManagerPresented = true } label: {
-                            Image(systemName: "clock.arrow.circlepath")
-                        }
                     }
                 }
 
@@ -191,13 +184,6 @@ struct ContentView: View {
                 PortForwardView(
                     isPresented: $workspace.isPortForwardingPresented,
                     sshService: sessionManager.activeTab?.session?.sshService
-                )
-                .environment(i18n)
-            }
-            .sheet(isPresented: $workspace.isSessionManagerPresented) {
-                SessionManagerView(
-                    isPresented: $workspace.isSessionManagerPresented,
-                    onConnect: { sessionManager.connectFromSession($0) }
                 )
                 .environment(i18n)
             }

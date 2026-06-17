@@ -19,7 +19,6 @@ struct GeneralSettingsView: View {
             }
 
             Section(i18n.t(.launchBehavior)) {
-                Toggle(i18n.t(.restoreSessions), isOn: $preferences.restoreSessions)
                 Toggle(i18n.t(.checkUpdates), isOn: $preferences.checkForUpdates)
             }
 

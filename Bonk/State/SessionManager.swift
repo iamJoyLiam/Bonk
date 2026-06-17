@@ -18,9 +18,6 @@ final class SessionManager {
     /// Handles input processing, command history, and broadcast.
     let inputHandler = InputHandler()
 
-    /// Handles session persistence (save/restore).
-    let sessionPersistence = SessionPersistence()
-
     /// Centralized session store for lifecycle management.
     let sessionStore = SessionStore.shared
 
@@ -30,7 +27,6 @@ final class SessionManager {
 
     func setModelContext(_ context: ModelContext) {
         modelContext = context
-        sessionPersistence.setModelContext(context)
     }
 
     var activeTab: TerminalTab? {
@@ -192,37 +188,6 @@ final class SessionManager {
         broadcastManager?.allPaneIDs = tabs.map { $0.id }
         let validIDs = Set(tabs.map { $0.id })
         broadcastManager?.targetPaneIDs = broadcastManager?.targetPaneIDs.filter { validIDs.contains($0) } ?? []
-    }
-
-    // MARK: - Session Persistence
-
-    func saveSession(for hostItem: HostItem) {
-        sessionPersistence.saveSession(for: hostItem)
-    }
-
-    func restoreSessions() {
-        let hosts = sessionPersistence.restoreHosts()
-        for host in hosts {
-            let tab = TerminalTab(hostItem: host)
-            tabs.append(tab)
-
-            // Create session with restored state (no SSH connection)
-            let session = sessionStore.session(for: tab)
-            session.connectionState = .restored
-            tab.session = session
-        }
-        if !tabs.isEmpty {
-            activeTabID = tabs.first?.id
-        }
-    }
-
-    func connectFromSession(_ saved: SavedSession) {
-        if let host = sessionPersistence.findHost(for: saved) {
-            openTab(for: host)
-        } else {
-            lastError = "Host not found: \(saved.host)"
-            showError = true
-        }
     }
 
     // MARK: - Private

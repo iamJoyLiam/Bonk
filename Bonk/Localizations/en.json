@@ -7,15 +7,12 @@
   "ai": "AI",
   "integrations": "Integrations",
   "account": "Account",
-
   "language": "Language",
   "launch_behavior": "Launch Behavior",
   "when_launch": "When Bonk starts",
-  "restore_sessions": "Restore previous sessions",
   "check_updates": "Check for updates",
   "welcome_screen": "Show welcome screen",
   "restart_hint": "Restart Bonk for the language change to take full effect.",
-
   "theme": "Theme",
   "light": "Light",
   "dark": "Dark",
@@ -28,7 +25,6 @@
   "font_family": "Font Family",
   "font_size": "Font Size",
   "line_height": "Line Height",
-
   "display": "Display",
   "cursor_style": "Cursor Style",
   "cursor_blink": "Cursor Blink",
@@ -38,7 +34,6 @@
   "cursor_block": "Block",
   "cursor_underline": "Underline",
   "cursor_bar": "Bar",
-
   "shortcuts": "Shortcuts",
   "new_terminal": "New Terminal",
   "close_tab": "Close Tab",
@@ -49,7 +44,6 @@
   "input": "Input",
   "option_meta": "Option as Meta Key",
   "mouse_reporting": "Mouse Reporting",
-
   "enable_ai_features": "Enable AI Features",
   "active_provider": "Active Provider",
   "none": "None",
@@ -61,7 +55,6 @@
   "add_provider": "Add Provider…",
   "add_custom_provider": "Add Custom Provider…",
   "add_provider_type": "Add Provider",
-
   "api_key": "API Key",
   "api_key_set": "API key set",
   "test_connection": "Test Connection",
@@ -78,31 +71,26 @@
   "api_key_deleted": "The API key will be permanently deleted.",
   "provider_deleted_hint": "The provider configuration and stored API key will be deleted.",
   "local": "Local",
-
   "inline_suggestions": "Inline Suggestions",
   "enable_inline_suggestions": "Enable inline suggestions while typing",
   "configure_provider_hint": "Configure an active provider to enable inline suggestions.",
   "debounce": "Debounce",
   "inline_suggestions_footer": "Inline suggestions appear as you type. Press Tab to accept, Escape to dismiss.",
-
   "context": "Context",
   "include_terminal_output": "Include terminal output",
   "include_command_history": "Include command history",
   "include_env_info": "Include environment info",
-
   "privacy": "Privacy",
   "connection_policy": "Connection policy",
   "always_allow": "Always Allow",
   "ask_each_time": "Ask Each Time",
   "never": "Never",
-
   "services": "Services",
   "docker": "Docker",
   "not_detected": "Not detected",
   "kubernetes": "Kubernetes",
   "plugins": "Plugins",
   "installed": "Installed",
-
   "license": "License",
   "license_key": "License Key",
   "not_activated": "Not activated",
@@ -117,7 +105,6 @@
   "sync_prefs": "Sync Preferences",
   "last_synced": "Last Synced",
   "sync_now": "Sync Now",
-
   "ai_assistant": "AI Assistant",
   "terminal_assistant": "Terminal Assistant",
   "ai_thinking": "Thinking...",
@@ -139,7 +126,6 @@
   "host_auto_fill_clear": "Clear hostname on click (auto-fill mode)",
   "ai_direct_submit": "Directly submit selected text to AI",
   "ai_stopped": "Stopped",
-
   "ai_not_enabled": "Please enable AI in Settings to use this feature.",
   "go_to_settings": "Go to Settings",
   "enable_ai_hint": "Please enable AI in Settings → AI first.",
@@ -156,7 +142,6 @@
   "ai_mode_ask_desc": "Answer questions only",
   "ai_mode_edit_desc": "Suggest terminal commands",
   "ai_mode_agent_desc": "Execute commands automatically",
-
   "add_type": "Add %@",
   "other": "Other…",
   "model_id": "Model ID",
@@ -180,17 +165,14 @@
   "complete_sign_in": "Complete Sign In",
   "signed_in_as": "Signed in as %@",
   "starting_service": "Starting service…",
-
   "custom": "Custom",
   "not_configured": "Not configured",
-
   "about": "About",
   "ok": "OK",
   "server_info": "Server Info",
   "sftp_browser": "SFTP Browser",
   "connection_error": "Connection Error",
   "unknown_error": "Unknown error",
-
   "host_information": "Host Information",
   "paste_pem_key": "Paste PEM-encoded private key",
   "add_host": "Add Host",
@@ -202,7 +184,6 @@
   "method": "Method",
   "password": "Password",
   "private_key": "Private Key",
-
   "retry": "Retry",
   "sftp_not_connected": "SFTP Not Connected",
   "connect": "Connect",
@@ -213,14 +194,10 @@
   "refresh": "Refresh",
   "transfers": "Transfers",
   "done": "done",
-
-  "connecting_to": "Connecting to %@…",
+  "connecting_to": "Connecting to %@...",
   "disconnected": "Disconnected",
-  "reconnecting": "Reconnecting (%d/%d)…",
-  "restored_session": "Restored Session",
-  "offline": "Offline",
+  "reconnecting": "Reconnecting (%d/%d)...",
   "no_stream": "Terminal session started but no output stream available.",
-
   "rename": "Rename",
   "enter_new_name": "Enter a new name for this tab",
   "overwrite": "Overwrite",
@@ -228,15 +205,12 @@
   "file_exists": "'%@' already exists. Overwrite?",
   "no_terminal": "No Terminal Open",
   "select_host": "Select a host from the sidebar",
-
   "select_host_info": "Select a host to view server info",
   "port": "Port",
-
   "duplicate": "Duplicate",
   "duplicate_window": "Duplicate in New Window",
   "close": "Close",
   "reconnect": "Reconnect",
-
   "host_details": "Host Details",
   "actions": "Actions",
   "disconnect": "Disconnect",
@@ -260,11 +234,9 @@
   "load_avg": "Load",
   "server_ip": "IP",
   "fetching": "Fetching...",
-
   "open": "Open",
   "download": "Download",
   "delete": "Delete",
-
   "groups": "Groups",
   "add_group": "Add Group",
   "edit_group": "Edit Group",
@@ -276,10 +248,8 @@
   "no_icon": "No Icon",
   "custom_color": "Custom…",
   "delete_group_confirm": "Delete group '%@'? Hosts in this group will become ungrouped.",
-
   "search": "Search",
   "system": "System",
-
   "keychain": "Keychain",
   "add_credential": "Add Credential",
   "edit_credential": "Edit Credential",
@@ -339,7 +309,6 @@
   "no_active_session": "No Active Session",
   "connect_to_host_first": "Connect to a host first to browse files.",
   "local_files": "Local Files",
-  "sftp_browser": "SFTP Browser",
   "jump_hosts": "Jump Hosts",
   "add_jump_host": "Add Jump Host",
   "edit_jump_host": "Edit Jump Host",
@@ -352,12 +321,8 @@
   "enable_broadcast": "Enable Broadcast",
   "snippets_history": "Snippets & History",
   "sftp_browser_toolbar": "SFTP Browser",
-  "host": "Host",
-  "hostname": "Hostname",
   "type": "Type",
-  "local": "Local",
   "remote": "Remote",
-  "none": "None",
   "command_history": "Command History",
   "no_commands": "No Commands",
   "rerun_command": "Rerun Command",
@@ -371,16 +336,12 @@
   "pane": "Pane",
   "output": "Output",
   "dangerous_command": "Dangerous Command",
-  "confirm_command": "Confirm Command",
   "could_not_diagnose": "Could not diagnose.",
   "failed": "Failed",
-  "connecting_to": "Connecting to %@...",
-  "reconnecting": "Reconnecting (%d/%d)...",
   "press_shortcut": "Press shortcut...",
   "not_set": "Not Set",
   "unfavorite": "Unfavorite",
   "favorite": "Favorite",
-
   "menu_ai": "AI",
   "restart_required": "Restart Required",
   "restart_message": "Please restart Bonk to apply the language change to all components.",

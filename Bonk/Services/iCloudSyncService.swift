@@ -150,7 +150,6 @@ private struct SyncSnapshot: Codable {
     var escDismissAI: Bool
     var hostAutoFillClear: Bool
     var aiDirectSubmit: Bool
-    var restoreSessions: Bool
     var checkForUpdates: Bool
 
     init(from prefs: UserPreferences) {
@@ -167,7 +166,6 @@ private struct SyncSnapshot: Codable {
         escDismissAI = prefs.escDismissAI
         hostAutoFillClear = prefs.hostAutoFillClear
         aiDirectSubmit = prefs.aiDirectSubmit
-        restoreSessions = prefs.restoreSessions
         checkForUpdates = prefs.checkForUpdates
     }
 
@@ -185,7 +183,6 @@ private struct SyncSnapshot: Codable {
         prefs.escDismissAI = escDismissAI
         prefs.hostAutoFillClear = hostAutoFillClear
         prefs.aiDirectSubmit = aiDirectSubmit
-        prefs.restoreSessions = restoreSessions
         prefs.checkForUpdates = checkForUpdates
     }
 }

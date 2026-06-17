@@ -36,8 +36,6 @@ struct TerminalTabContentView: View {
     var body: some View {
         ZStack {
             switch tab.session?.connectionState ?? .disconnected {
-            case .restored:
-                restoredView
             case .disconnected:
                 disconnectedView
             case .connecting:
@@ -90,30 +88,6 @@ struct TerminalTabContentView: View {
                 Text("\(tab.hostItem.username)@\(tab.hostItem.host):\(tab.hostItem.port)")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var restoredView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 40))
-                .foregroundStyle(.blue.opacity(0.6))
-
-            Text(i18n.t(.restoredSession))
-                .font(.headline)
-
-            Text(i18n.t(.offline))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            if let onReconnect {
-                Button(i18n.t(.reconnect), systemImage: "bolt") {
-                    onReconnect()
-                }
-                .buttonStyle(.borderedProminent)
-                .padding(.top, 8)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -191,7 +191,7 @@ struct ServerInfoPanel: View {
                 }
                 .buttonStyle(.bordered)
 
-            case .restored, .disconnected:
+            case .disconnected:
                 Button { onReconnect() } label: {
                     Label(i18n.t(.connect), systemImage: "bolt.fill")
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -227,14 +227,12 @@ struct ServerInfoPanel: View {
         case .connected: .green
         case .connecting, .reconnecting: .yellow
         case .disconnected: .red
-        case .restored: .blue
         }
     }
 
     private func statusText(_ state: SSHConnectionState) -> String {
         let i18n = i18n
         switch state {
-        case .restored: return i18n.t(.restoredSession)
         case .disconnected: return i18n.t(.disconnected)
         case .connecting: return i18n.t(.connectingTo)
         case .connected: return i18n.t(.connected)

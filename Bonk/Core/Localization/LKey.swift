@@ -11,7 +11,6 @@ enum LKey: String, CaseIterable {
     // General
     case language, launchBehavior = "launch_behavior"
     case whenLaunch = "when_launch"
-    case restoreSessions = "restore_sessions"
     case checkUpdates = "check_updates"
 
     // Appearance
@@ -158,8 +157,6 @@ enum LKey: String, CaseIterable {
     // TerminalView
     case connectingTo = "connecting_to"
     case disconnected, reconnecting
-    case restoredSession = "restored_session"
-    case offline
 
     // TerminalTabView
     case rename, enterNewName = "enter_new_name"
@@ -240,7 +237,6 @@ enum LKey: String, CaseIterable {
     // Sessions
     case sessions, noSessions = "no_sessions"
     case noSessionsHint = "no_sessions_hint"
-    case saveSession = "save_session"
 
     // Port Forwarding
     case portForwarding = "port_forwarding"

@@ -7,15 +7,12 @@
   "ai": "AI",
   "integrations": "集成",
   "account": "账户",
-
   "language": "语言",
   "launch_behavior": "启动行为",
   "when_launch": "Bonk 启动时",
-  "restore_sessions": "恢复上次会话",
   "check_updates": "自动检查更新",
   "welcome_screen": "显示欢迎界面",
   "restart_hint": "重启 Bonk 以使语言更改完全生效。",
-
   "theme": "主题",
   "light": "浅色",
   "dark": "深色",
@@ -28,7 +25,6 @@
   "font_family": "字体",
   "font_size": "字号",
   "line_height": "行高",
-
   "display": "显示",
   "cursor_style": "光标样式",
   "cursor_blink": "光标闪烁",
@@ -38,7 +34,6 @@
   "cursor_block": "块状",
   "cursor_underline": "下划线",
   "cursor_bar": "条形",
-
   "shortcuts": "快捷键",
   "new_terminal": "新建终端",
   "close_tab": "关闭标签页",
@@ -49,7 +44,6 @@
   "input": "输入",
   "option_meta": "Option 作为 Meta 键",
   "mouse_reporting": "鼠标报告",
-
   "enable_ai_features": "启用 AI 功能",
   "active_provider": "活动提供方",
   "none": "无",
@@ -61,7 +55,6 @@
   "add_provider": "添加提供方…",
   "add_custom_provider": "添加自定义提供方…",
   "add_provider_type": "添加提供方",
-
   "api_key": "API Key",
   "api_key_set": "已设置 API 密钥",
   "test_connection": "测试连接",
@@ -78,31 +71,26 @@
   "api_key_deleted": "API 密钥将被永久删除。",
   "provider_deleted_hint": "提供方配置和存储的 API 密钥将被删除。",
   "local": "本地",
-
   "inline_suggestions": "行内建议",
   "enable_inline_suggestions": "在输入时启用内联建议",
   "configure_provider_hint": "配置活动提供方以启用内联建议。",
   "debounce": "防抖",
   "inline_suggestions_footer": "内联建议会在输入时出现。按 Tab 接受，按 Esc 取消。",
-
   "context": "上下文",
   "include_terminal_output": "包含终端输出",
   "include_command_history": "包含命令历史",
   "include_env_info": "包含环境信息",
-
   "privacy": "隐私",
   "connection_policy": "连接策略",
   "always_allow": "始终允许",
   "ask_each_time": "每次询问",
   "never": "从不",
-
   "services": "服务",
   "docker": "Docker",
   "not_detected": "未检测到",
   "kubernetes": "Kubernetes",
   "plugins": "插件",
   "installed": "已安装",
-
   "license": "许可证",
   "license_key": "许可证密钥",
   "not_activated": "未激活",
@@ -117,7 +105,6 @@
   "sync_prefs": "同步偏好设置",
   "last_synced": "上次同步",
   "sync_now": "立即同步",
-
   "ai_assistant": "AI 助手",
   "terminal_assistant": "终端助手",
   "ai_thinking": "思考中...",
@@ -139,7 +126,6 @@
   "host_auto_fill_clear": "点击清空主机名（自动填充模式）",
   "ai_direct_submit": "选中文本直接提交给 AI",
   "ai_stopped": "已停止",
-
   "ai_not_enabled": "请在设置中启用 AI 后使用此功能。",
   "go_to_settings": "前往设置",
   "enable_ai_hint": "请先在设置 → AI 中启用 AI。",
@@ -156,7 +142,6 @@
   "ai_mode_ask_desc": "仅回答问题",
   "ai_mode_edit_desc": "推荐终端命令",
   "ai_mode_agent_desc": "自动执行命令",
-
   "add_type": "添加 %@",
   "other": "其他…",
   "model_id": "Model ID",
@@ -180,17 +165,14 @@
   "complete_sign_in": "完成登录",
   "signed_in_as": "已登录为 %@",
   "starting_service": "正在启动服务…",
-
   "custom": "自定义",
   "not_configured": "未配置",
-
   "about": "关于",
   "ok": "好",
   "server_info": "服务器信息",
   "sftp_browser": "SFTP 浏览器",
   "connection_error": "连接错误",
   "unknown_error": "未知错误",
-
   "host_information": "主机信息",
   "paste_pem_key": "粘贴 PEM 编码的私钥",
   "add_host": "添加主机",
@@ -202,7 +184,6 @@
   "method": "方式",
   "password": "密码",
   "private_key": "私钥",
-
   "retry": "重试",
   "sftp_not_connected": "SFTP 未连接",
   "connect": "连接",
@@ -213,14 +194,10 @@
   "refresh": "刷新",
   "transfers": "传输列表",
   "done": "完成",
-
-  "connecting_to": "正在连接 %@…",
+  "connecting_to": "正在连接 %@...",
   "disconnected": "已断开",
-  "reconnecting": "正在重连 (%d/%d)…",
-  "restored_session": "已恢复会话",
-  "offline": "离线",
+  "reconnecting": "重连中 (%d/%d)...",
   "no_stream": "终端会话已启动但无输出流。",
-
   "rename": "重命名",
   "enter_new_name": "输入标签页新名称",
   "overwrite": "覆盖",
@@ -228,15 +205,12 @@
   "file_exists": "'%@' 已存在。是否覆盖？",
   "no_terminal": "未打开终端",
   "select_host": "从侧边栏选择一个主机",
-
   "select_host_info": "选择一个主机以查看服务器信息",
   "port": "端口",
-
   "duplicate": "复制",
   "duplicate_window": "在新窗口中复制",
   "close": "关闭",
   "reconnect": "重新连接",
-
   "host_details": "主机详情",
   "actions": "操作",
   "disconnect": "断开连接",
@@ -260,11 +234,9 @@
   "load_avg": "负载",
   "server_ip": "IP",
   "fetching": "获取中...",
-
   "open": "打开",
   "download": "下载",
   "delete": "删除",
-
   "groups": "分组",
   "add_group": "添加分组",
   "edit_group": "编辑分组",
@@ -276,10 +248,8 @@
   "no_icon": "无图标",
   "custom_color": "自定义…",
   "delete_group_confirm": "确定删除分组「%@」？该分组下的主机将变为未分组。",
-
   "search": "搜索",
   "system": "跟随系统",
-
   "keychain": "密钥管理",
   "add_credential": "添加凭证",
   "edit_credential": "编辑凭证",
@@ -339,7 +309,6 @@
   "no_active_session": "无活跃会话",
   "connect_to_host_first": "请先连接到主机以浏览文件。",
   "local_files": "本地文件",
-  "sftp_browser": "SFTP 浏览器",
   "jump_hosts": "跳板机",
   "add_jump_host": "添加跳板机",
   "edit_jump_host": "编辑跳板机",
@@ -352,12 +321,8 @@
   "enable_broadcast": "开启广播",
   "snippets_history": "代码片段与历史",
   "sftp_browser_toolbar": "SFTP 浏览器",
-  "host": "主机",
-  "hostname": "主机名",
   "type": "类型",
-  "local": "本地",
   "remote": "远程",
-  "none": "无",
   "command_history": "命令历史",
   "no_commands": "暂无命令",
   "rerun_command": "重新执行",
@@ -371,16 +336,12 @@
   "pane": "面板",
   "output": "输出",
   "dangerous_command": "危险命令",
-  "confirm_command": "确认命令",
   "could_not_diagnose": "无法诊断。",
   "failed": "失败",
-  "connecting_to": "正在连接 %@...",
-  "reconnecting": "重连中 (%d/%d)...",
   "press_shortcut": "按下快捷键...",
   "not_set": "未设置",
   "unfavorite": "取消收藏",
   "favorite": "收藏",
-
   "menu_ai": "AI",
   "restart_required": "需要重启",
   "restart_message": "请重启应用以将语言更改应用到所有组件。",

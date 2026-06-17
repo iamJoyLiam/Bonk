@@ -30,7 +30,6 @@ final class UserPreferences {
     var hostAutoFillClear: Bool // true = clear on tap, false = allow edit
     var aiDirectSubmit: Bool // true = directly submit selected text, false = show in input
     // General
-    var restoreSessions: Bool
     var checkForUpdates: Bool
 
     init(
@@ -47,7 +46,6 @@ final class UserPreferences {
         escDismissAI: Bool = true,
         hostAutoFillClear: Bool = true,
         aiDirectSubmit: Bool = true,
-        restoreSessions: Bool = false,
         checkForUpdates: Bool = true
     ) {
         self.fontSize = fontSize
@@ -63,7 +61,6 @@ final class UserPreferences {
         self.escDismissAI = escDismissAI
         self.hostAutoFillClear = hostAutoFillClear
         self.aiDirectSubmit = aiDirectSubmit
-        self.restoreSessions = restoreSessions
         self.checkForUpdates = checkForUpdates
     }
 }

@@ -68,12 +68,6 @@ import SwiftTerm
             }
             guard !text.isEmpty else { return }
 
-            // Save to session buffer cache for session restore
-            if let sessionID = terminalSessionID {
-                let bytes = Array(text.utf8)
-                SessionBufferCache.shared.appendOutput(bytes, for: sessionID)
-            }
-
             Task { @MainActor [weak self] in
                 self?.terminalView?.feed(text: text)
             }
