@@ -205,7 +205,10 @@ final class SessionManager {
         for host in hosts {
             let tab = TerminalTab(hostItem: host)
             tabs.append(tab)
-            // Mark this tab as needing buffer restore
+
+            // Get or create session from SessionStore
+            let session = sessionStore.session(for: tab)
+            tab.session = session
             tab.pendingRestore = true
         }
         if !tabs.isEmpty { activeTabID = tabs.first?.id }

@@ -65,7 +65,19 @@ struct TerminalTabView: View {
         .onChange(of: searchCoordinator.searchText) { _, newValue in
             searchCoordinator.search(newValue)
         }
+        .onChange(of: sessionManager.activeTab?.id) { _, newTabID in
+            // Update SearchCoordinator when active tab changes
+            if let tabID = newTabID, let cached = TerminalViewCache.shared.retrieve(tabID) {
+                searchCoordinator.setTerminalView(cached.view)
+            }
+        }
         .onAppear {
+            // Set initial terminal view for SearchCoordinator
+            if let activeTab = sessionManager.activeTab,
+               let cached = TerminalViewCache.shared.retrieve(activeTab.id) {
+                searchCoordinator.setTerminalView(cached.view)
+            }
+
             // Subscribe to UI events via EventPublisher
             EventPublisher.shared.subscribe(UIEvent.self) { [self] event in
                 switch event {
