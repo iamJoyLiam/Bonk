@@ -9,6 +9,7 @@ import os.log
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
+import SwiftTerm
 
 /// Center area: tab bar + active terminal content.
 struct TerminalTabView: View {
@@ -21,6 +22,10 @@ struct TerminalTabView: View {
     @Query(sort: \HostItem.createdAt) var allHosts: [HostItem]
     @AppStorage("ai_enabled") var aiEnabled = false
     @State var showAIEnableAlert = false
+    @Binding var showSearch: Bool
+    @State private var searchText = ""
+    @State private var matchCount = 0
+    @State private var currentMatch = 0
 
     private var preferences: UserPreferences {
         allPreferences.first ?? UserPreferences()
@@ -41,6 +46,33 @@ struct TerminalTabView: View {
         ZStack {
             mainContent
             aiFloatingBubble
+
+            if showSearch {
+                VStack {
+                    TerminalSearchBar(
+                        searchText: $searchText,
+                        isPresented: $showSearch,
+                        matchCount: matchCount,
+                        currentMatch: currentMatch,
+                        onNext: { performSearch(.forward) },
+                        onPrevious: { performSearch(.backward) }
+                    )
+                    .padding(.top, 8)
+                    .padding(.trailing, 16)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            }
+        }
+        .onChange(of: searchText) { _, newValue in
+            if !newValue.isEmpty {
+                countMatches(newValue)
+                currentMatch = 0
+                performSearch(.forward)
+            } else {
+                matchCount = 0
+                currentMatch = 0
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .toggleAIChat)) { _ in
             if showAIChat {
@@ -179,6 +211,45 @@ struct TerminalTabView: View {
             )
             .zIndex(1)
         }
+    }
+
+    private enum SearchDirection { case forward, backward }
+
+    private func performSearch(_ direction: SearchDirection) {
+        guard !searchText.isEmpty,
+              let cached = TerminalViewCache.shared.retrieve(sessionManager.activeTab?.id ?? UUID()) else { return }
+        let found: Bool
+        switch direction {
+        case .forward:
+            found = cached.view.findNext(searchText)
+            if found { currentMatch = min(currentMatch + 1, matchCount) }
+        case .backward:
+            found = cached.view.findPrevious(searchText)
+            if found { currentMatch = max(currentMatch - 1, 1) }
+        }
+        if !found { currentMatch = 0 }
+    }
+
+    private func countMatches(_ term: String) {
+        guard let tab = sessionManager.activeTab,
+              let cached = TerminalViewCache.shared.retrieve(tab.id),
+              let terminal = cached.view.terminal else {
+            matchCount = 0
+            return
+        }
+        let start = Position(col: 0, row: 0)
+        let end = Position(col: terminal.cols - 1, row: terminal.rows - 1)
+        let text = terminal.getText(start: start, end: end)
+        let lowerText = text.lowercased()
+        let lowerTerm = term.lowercased()
+        var count = 0
+        var searchStart = lowerText.startIndex
+        while searchStart < lowerText.endIndex,
+              let range = lowerText[searchStart...].range(of: lowerTerm) {
+            count += 1
+            searchStart = range.upperBound
+        }
+        matchCount = count
     }
 
     /// Handle file drop on terminal view — upload to terminal's current directory.

@@ -40,11 +40,11 @@ final class WorkspaceManager {
 
     // MARK: - Title Bar Sheet Presentations
 
-    var isBroadcastEnabled = false
+    let broadcastManager = BroadcastManager()
+    var isBroadcastEnabled: Bool { broadcastManager.isEnabled }
     var isSerialPortPresented = false
     var isPortForwardingPresented = false
     var isSessionManagerPresented = false
-    var isAddHostPresented = false
 
     // MARK: - Right Panel Actions
 
@@ -61,6 +61,6 @@ final class WorkspaceManager {
     }
 
     func toggleBroadcast() {
-        isBroadcastEnabled.toggle()
+        broadcastManager.toggle()
     }
 }

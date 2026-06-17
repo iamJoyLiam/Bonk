@@ -12,6 +12,7 @@ final class SessionManager {
     var showError = false
     private let hostKeyStore = PersistentHostKeyStore()
     private let viewCache: TerminalViewCache
+    var broadcastManager: BroadcastManager?
     private var connectingTabs = Set<UUID>()
     private var modelContext: ModelContext?
 
@@ -33,6 +34,7 @@ final class SessionManager {
         let tab = TerminalTab(hostItem: host)
         tabs.append(tab)
         activeTabID = tab.id
+        syncBroadcastTargets()
         Task { await connectTab(tab) }
     }
 
@@ -48,6 +50,7 @@ final class SessionManager {
         if activeTabID == id {
             activeTabID = tabs.last?.id
         }
+        syncBroadcastTargets()
     }
 
     // MARK: - Connection
@@ -143,16 +146,63 @@ final class SessionManager {
     func sendInput(_ bytes: ArraySlice<UInt8>, to tabID: UUID) async throws {
         guard let tab = tabs.first(where: { $0.id == tabID }),
               let pty = tab.session?.ptySession else { return }
-        // Record command to history when Enter is pressed
-        if bytes.last == 13, bytes.count > 1 {
-            let command = String(bytes: bytes.dropLast(), encoding: .utf8) ?? ""
-            let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty {
-                tab.session?.commandHistory.commandStarted(trimmed)
-                tab.session?.commandHistory.commandFinished(exitCode: 0)
+        try await pty.sendInput(bytes)
+        // Broadcast to other target panes
+        if let broadcast = broadcastManager, broadcast.isEnabled {
+            for targetID in broadcast.targetPaneIDs {
+                guard targetID != tabID,
+                      let targetTab = tabs.first(where: { $0.id == targetID }),
+                      let targetPTY = targetTab.session?.ptySession else { continue }
+                try? await targetPTY.sendInput(bytes)
             }
         }
-        try await pty.sendInput(bytes)
+    }
+
+    // MARK: - Broadcast Sync
+
+    private func syncBroadcastTargets() {
+        broadcastManager?.allPaneIDs = tabs.map { $0.id }
+        let validIDs = Set(tabs.map { $0.id })
+        broadcastManager?.targetPaneIDs = broadcastManager?.targetPaneIDs.filter { validIDs.contains($0) } ?? []
+    }
+
+    // MARK: - Session Persistence
+
+    func saveSession(for hostItem: HostItem) {
+        guard let modelContext else { return }
+        let host = hostItem.host
+        let port = hostItem.port
+        let user = hostItem.username
+        let all = (try? modelContext.fetch(FetchDescriptor<SavedSession>())) ?? []
+        if let existing = all.first(where: { $0.host == host && $0.port == port && $0.username == user }) {
+            existing.recordConnection()
+        } else {
+            let session = SavedSession(from: hostItem)
+            modelContext.insert(session)
+        }
+    }
+
+    func restoreSessions() {
+        guard let modelContext else { return }
+        let desc = FetchDescriptor<SavedSession>(sortBy: [SortDescriptor(\.lastConnectedAt, order: .reverse)])
+        guard let saved = try? modelContext.fetch(desc) else { return }
+        let allHosts = (try? modelContext.fetch(FetchDescriptor<HostItem>())) ?? []
+        for entry in saved.prefix(10) {
+            if let host = allHosts.first(where: { $0.host == entry.host && $0.port == entry.port && $0.username == entry.username }) {
+                openTab(for: host)
+            }
+        }
+    }
+
+    func connectFromSession(_ saved: SavedSession) {
+        guard let modelContext else { return }
+        let allHosts = (try? modelContext.fetch(FetchDescriptor<HostItem>())) ?? []
+        if let host = allHosts.first(where: { $0.host == saved.host && $0.port == saved.port && $0.username == saved.username }) {
+            openTab(for: host)
+        } else {
+            lastError = "Host not found: \(saved.host)"
+            showError = true
+        }
     }
 
     // MARK: - Private

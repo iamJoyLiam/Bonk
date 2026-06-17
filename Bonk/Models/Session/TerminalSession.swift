@@ -14,7 +14,6 @@ final class TerminalSession {
     var connectedAt: Date?
     var errorMessage: String?
     var serverInfo: ServerInfo?
-    var commandHistory = CommandHistory()
     var stateObservationTask: Task<Void, Never>?
     var serverInfoTask: Task<Void, Never>?
 

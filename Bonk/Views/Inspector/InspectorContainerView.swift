@@ -76,10 +76,15 @@ struct CommandHistoryInspectorView: View {
     @Environment(I18n.self) var i18n
     @Environment(\.modelContext) private var modelContext
     @Bindable var sessionManager: SessionManager
-    @State private var snippetSource: CommandRecord?
 
-    private var history: CommandHistory? {
-        sessionManager.activeTab?.session?.commandHistory
+    // Placeholder: in production, this would be connected to a real CommandHistory model
+    @State private var historyEntries: [HistoryEntry] = []
+
+    struct HistoryEntry: Identifiable {
+        let id = UUID()
+        let command: String
+        let timestamp: Date
+        let exitCode: Int32?
     }
 
     var body: some View {
@@ -93,14 +98,14 @@ struct CommandHistoryInspectorView: View {
                     .font(.system(size: 13, weight: .medium))
                 Spacer()
                 Button {
-                    history?.clear()
+                    historyEntries.removeAll()
                 } label: {
                     Image(systemName: "trash")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
                 .help(i18n.t(.clearHistory))
-                .disabled(history?.commands.isEmpty != false)
+                .disabled(historyEntries.isEmpty)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -108,8 +113,7 @@ struct CommandHistoryInspectorView: View {
             Divider()
 
             // History list
-            let commands = history?.commands ?? []
-            if commands.isEmpty {
+            if historyEntries.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "clock")
                         .font(.system(size: 36))
@@ -122,55 +126,39 @@ struct CommandHistoryInspectorView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(commands) { entry in
+                        ForEach(historyEntries) { entry in
                             historyRow(entry)
                         }
                     }
                 }
             }
         }
-        .sheet(item: $snippetSource) { entry in
-            SnippetEditSheet(snippet: nil, modelContext: modelContext, initialCommand: entry.command)
-                .environment(i18n)
-        }
     }
 
     @ViewBuilder
-    private func historyRow(_ entry: CommandRecord) -> some View {
+    private func historyRow(_ entry: HistoryEntry) -> some View {
         HStack(spacing: 10) {
-            // Status icon
-            if entry.exitCode != nil {
-                Image(systemName: entry.isSuccess ? "checkmark.circle.fill" : "xmark.circle.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(entry.isSuccess ? .green : .red)
-            } else {
-                Image(systemName: "circle")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.tertiary)
-            }
+            Image(systemName: entry.exitCode == 0 ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(entry.exitCode == 0 ? .green : .red)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text(entry.command)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                HStack(spacing: 6) {
-                    Text(entry.startTime, style: .time)
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                    Text(entry.durationFormatted)
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                }
-            }
+            Text(entry.command)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
 
             Spacer()
+
+            Text(entry.timestamp, style: .time)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .contentShape(Rectangle())
         .contextMenu {
             Button {
+                // Re-execute command
                 if let activeTab = sessionManager.activeTab {
                     let bytes = Array(entry.command.utf8 + [13])
                     Task { try? await sessionManager.sendInput(bytes[...], to: activeTab.id) }
@@ -180,7 +168,13 @@ struct CommandHistoryInspectorView: View {
             }
 
             Button {
-                snippetSource = entry
+                // Save to snippets
+                let snippet = Snippet(
+                    name: entry.command,
+                    command: entry.command,
+                    category: "History"
+                )
+                modelContext.insert(snippet)
             } label: {
                 Label(i18n.t(.saveToSnippets), systemImage: "text.badge.plus")
             }
@@ -188,6 +182,7 @@ struct CommandHistoryInspectorView: View {
             Divider()
 
             Button {
+                // Copy command
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(entry.command, forType: .string)
             } label: {
