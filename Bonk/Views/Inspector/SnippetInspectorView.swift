@@ -210,6 +210,10 @@ struct SnippetInspectorView: View {
     private func insertSnippet(_ snippet: Snippet) {
         let resolved = snippet.resolve()
         sessionManager.sendTextToActiveTab(resolved)
+        // 归还焦点到终端
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            NotificationCenter.default.post(name: .focusTerminal, object: nil)
+        }
     }
 }
 
