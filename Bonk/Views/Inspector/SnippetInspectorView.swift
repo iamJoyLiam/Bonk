@@ -2,7 +2,7 @@
 //  SnippetInspectorView.swift
 //  Bonk
 //
-//  Snippet panel inside the right inspector — quick insert, no full management.
+//  Snippet panel inside the right inspector — quick insert + edit.
 //
 
 import SwiftData
@@ -15,6 +15,12 @@ struct SnippetInspectorView: View {
     @Bindable var sessionManager: SessionManager
     @State private var searchText = ""
     @State private var showAddSheet = false
+    @State private var showAIGenerate = false
+    @State private var aiPrompt = ""
+    @State private var aiGeneratedCommand = ""
+    @State private var aiIsGenerating = false
+    @State private var editingSnippet: Snippet?
+    @State private var showAIResult = false
 
     private var filteredSnippets: [Snippet] {
         if searchText.isEmpty { return snippets }
@@ -22,12 +28,18 @@ struct SnippetInspectorView: View {
         return snippets.filter {
             $0.name.lowercased().contains(query)
                 || $0.command.lowercased().contains(query)
+                || $0.category.lowercased().contains(query)
         }
+    }
+
+    private var groupedSnippets: [(String, [Snippet])] {
+        let grouped = Dictionary(grouping: filteredSnippets) { $0.category }
+        return grouped.sorted { $0.key < $1.key }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Search
+            // Search + buttons
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
@@ -35,6 +47,26 @@ struct SnippetInspectorView: View {
                 TextField(i18n.t(.search), text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
+                Spacer()
+                Button { showAddSheet = true } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.plain)
+                .help(i18n.t(.addSnippet))
+
+                Button {
+                    if AIProviderStore.shared.activeProvider != nil {
+                        aiPrompt = ""; aiGeneratedCommand = ""; showAIGenerate = true
+                    }
+                } label: {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 12))
+                        .foregroundStyle(aiIsGenerating ? .orange : .secondary)
+                }
+                .buttonStyle(.plain)
+                .disabled(aiIsGenerating || AIProviderStore.shared.activeProvider == nil)
+                .help(AIProviderStore.shared.activeProvider == nil ? i18n.t(.configureProviderHint) : i18n.t(.aiAssistant))
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -50,9 +82,7 @@ struct SnippetInspectorView: View {
                     Text(i18n.t(.noSnippets))
                         .font(.headline)
                         .foregroundStyle(.secondary)
-                    Button {
-                        showAddSheet = true
-                    } label: {
+                    Button { showAddSheet = true } label: {
                         Label(i18n.t(.addSnippet), systemImage: "plus")
                     }
                     .buttonStyle(.borderedProminent)
@@ -62,49 +92,109 @@ struct SnippetInspectorView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(filteredSnippets) { snippet in
-                            snippetRow(snippet)
+                        ForEach(groupedSnippets, id: \.0) { category, items in
+                            // Category header
+                            HStack {
+                                Text(category)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.top, 10)
+                            .padding(.bottom, 4)
+
+                            ForEach(items) { snippet in
+                                snippetRow(snippet)
+                            }
                         }
                     }
                 }
             }
         }
         .sheet(isPresented: $showAddSheet) {
-            SnippetEditSheet(snippet: nil, modelContext: modelContext)
+            SnippetEditSheet(snippet: nil, modelContext: modelContext, existingCategories: Array(Set(snippets.map { $0.category })).sorted())
                 .environment(i18n)
+        }
+        .sheet(item: $editingSnippet) { snippet in
+            SnippetEditSheet(snippet: snippet, modelContext: modelContext, existingCategories: Array(Set(snippets.map { $0.category })).sorted())
+                .environment(i18n)
+        }
+        .sheet(isPresented: $showAIGenerate) {
+            AIGenerateSheet(
+                i18n: i18n,
+                prompt: $aiPrompt,
+                generatedCommand: $aiGeneratedCommand,
+                isGenerating: $aiIsGenerating,
+                onSave: { _ in showAIResult = true }
+            )
+            .onDisappear {
+                // Reset AI state when sheet dismisses (Esc or cancel)
+                if !showAIResult {
+                    aiPrompt = ""
+                    aiGeneratedCommand = ""
+                    aiIsGenerating = false
+                }
+            }
+        }
+        .sheet(isPresented: $showAIResult) {
+            SnippetEditSheet(
+                snippet: nil,
+                modelContext: modelContext,
+                initialCommand: aiGeneratedCommand,
+                initialName: aiPrompt,
+                initialCategory: "AI",
+                existingCategories: Array(Set(snippets.map { $0.category })).sorted()
+            )
+            .environment(i18n)
         }
     }
 
+    // MARK: - Snippet Row
+
     @ViewBuilder
     private func snippetRow(_ snippet: Snippet) -> some View {
-        Button {
-            insertSnippet(snippet)
-        } label: {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(snippet.name)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.primary)
-                    Text(snippet.command)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer()
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(snippet.name)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(snippet.command)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            // Insert button
+            Button { insertSnippet(snippet) } label: {
                 Image(systemName: "arrow.right.circle")
                     .font(.system(size: 14))
                     .foregroundStyle(.blue)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .help(i18n.t(.insertSnippet))
+
+            // Edit button
+            Button { editingSnippet = snippet } label: {
+                Image(systemName: "pencil")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(i18n.t(.editSnippet))
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
         .contextMenu {
-            Button {
-                insertSnippet(snippet)
-            } label: {
+            Button { insertSnippet(snippet) } label: {
                 Label(i18n.t(.insertSnippet), systemImage: "arrow.right.circle")
+            }
+            Button { editingSnippet = snippet } label: {
+                Label(i18n.t(.editSnippet), systemImage: "pencil")
             }
             Divider()
             Button(role: .destructive) {
@@ -115,10 +205,118 @@ struct SnippetInspectorView: View {
         }
     }
 
+    // MARK: - Actions
+
     private func insertSnippet(_ snippet: Snippet) {
         guard let activeTab = sessionManager.activeTab else { return }
         let resolved = snippet.resolve()
-        let bytes = Array(resolved.utf8 + [13]) // 13 = Enter
+        let bytes = Array(resolved.utf8 + [13])
         Task { try? await sessionManager.sendInput(bytes[...], to: activeTab.id) }
+    }
+}
+
+// MARK: - AI Generate Sheet
+
+struct AIGenerateSheet: View {
+    let i18n: I18n
+    @Binding var prompt: String
+    @Binding var generatedCommand: String
+    @Binding var isGenerating: Bool
+    let onSave: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var showError = false
+    @State private var errorMessage = ""
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                Text(i18n.t(.describeTask))
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                TextField(i18n.t(.describeTask), text: $prompt)
+                    .textFieldStyle(.roundedBorder)
+
+                if isGenerating {
+                    HStack {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(i18n.t(.aiThinking))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if !generatedCommand.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(i18n.t(.command))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(generatedCommand)
+                            .font(.system(size: 13, design: .monospaced))
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(nsColor: .controlBackgroundColor))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                }
+
+                Spacer()
+            }
+            .padding()
+            .navigationTitle(i18n.t(.aiAssistant))
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(i18n.t(.cancel)) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    HStack {
+                        Button {
+                            Task { await generate() }
+                        } label: {
+                            Label(i18n.t(.execute), systemImage: "sparkles")
+                        }
+                        .disabled(prompt.isEmpty || isGenerating)
+
+                        if !generatedCommand.isEmpty {
+                            Button {
+                                onSave(generatedCommand)
+                                dismiss()
+                            } label: {
+                                Label(i18n.t(.save), systemImage: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+            .alert(errorMessage, isPresented: $showError) {
+                Button(i18n.t(.ok)) {}
+            }
+        }
+        .frame(width: 420, height: 320)
+    }
+
+    private func generate() async {
+        isGenerating = true
+        generatedCommand = ""
+        defer { isGenerating = false }
+
+        let systemPrompt = """
+        You are a terminal command generator. Convert the user's description into a single terminal command.
+        Return ONLY the command, no explanation, no markdown, no code blocks.
+        If the description is in Chinese, still return an English terminal command.
+        """
+        let aiService = AIService.shared
+        aiService.activeProvider = AIProviderStore.shared.activeProvider
+        await aiService.chat("\(systemPrompt)\n\nUser: \(prompt)", context: TerminalContext())
+        if let response = aiService.currentExplanation, !response.isEmpty {
+            let cleaned = response
+                .components(separatedBy: .newlines).first ?? response
+                .replacingOccurrences(of: "`", with: "")
+                .trimmingCharacters(in: .whitespaces)
+            generatedCommand = cleaned
+        } else if let error = aiService.lastError {
+            errorMessage = error
+            showError = true
+        }
     }
 }

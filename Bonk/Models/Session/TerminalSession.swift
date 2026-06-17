@@ -14,6 +14,9 @@ final class TerminalSession {
     var connectedAt: Date?
     var errorMessage: String?
     var serverInfo: ServerInfo?
+    var commandHistory = CommandHistory()
+    /// Accumulated input buffer for command history recording.
+    var inputBuffer: String = ""
     var stateObservationTask: Task<Void, Never>?
     var serverInfoTask: Task<Void, Never>?
 

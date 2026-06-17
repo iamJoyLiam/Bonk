@@ -39,7 +39,9 @@ final class BroadcastManager {
     /// Toggle broadcast mode on/off.
     func toggle() {
         isEnabled.toggle()
-        if !isEnabled {
+        if isEnabled {
+            targetPaneIDs = Set(allPaneIDs)
+        } else {
             targetPaneIDs = []
         }
     }

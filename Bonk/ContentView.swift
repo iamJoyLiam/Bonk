@@ -11,6 +11,7 @@ struct ContentView: View {
     #if os(macOS)
         @State private var workspace = WorkspaceManager()
         @State private var showInspector = false
+        @State private var showAddHostSheet = false
         @State private var showTerminalSearch = false
         @State private var sftpWindow: NSWindow?
     #endif
@@ -45,6 +46,7 @@ struct ContentView: View {
             ensurePreferences()
             AIDataMigration.migrateIfNeeded(context: modelContext)
             sessionManager.setModelContext(modelContext)
+            AIProviderStore.shared.setModelContext(modelContext)
             sessionManager.broadcastManager = workspace.broadcastManager
             if preferences.restoreSessions {
                 sessionManager.restoreSessions()
@@ -55,53 +57,36 @@ struct ContentView: View {
         } message: {
             Text(sessionManager.lastError ?? i18n.t(.unknownError))
         }
-        // Menu bar notification bridges
-        .onReceive(NotificationCenter.default.publisher(for: .menuCloseTab)) { _ in
-            if let id = sessionManager.activeTabID {
-                Task { await sessionManager.closeTab(id) }
-            }
+        // Menu actions via FocusedValue — synchronous
+        .focusedSceneValue(\.menuCloseTab) {
+            if let id = sessionManager.activeTabID { Task { await sessionManager.closeTab(id) } }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .menuConnect)) { _ in
+        .focusedSceneValue(\.menuNewTerminal) {
+            showAddHostSheet = true
+        }
+        .focusedSceneValue(\.menuConnect) {
             workspace.isSessionManagerPresented = true
         }
-        .onReceive(NotificationCenter.default.publisher(for: .menuDisconnect)) { _ in
-            if let id = sessionManager.activeTabID {
-                Task { await sessionManager.disconnectTab(id) }
-            }
+        .focusedSceneValue(\.menuDisconnect) {
+            if let id = sessionManager.activeTabID { Task { await sessionManager.disconnectTab(id) } }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .menuReconnect)) { _ in
-            if let id = sessionManager.activeTabID {
-                Task { await sessionManager.reconnectTab(id) }
-            }
+        .focusedSceneValue(\.menuReconnect) {
+            if let id = sessionManager.activeTabID { Task { await sessionManager.reconnectTab(id) } }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .menuToggleSFTP)) { _ in
-            toggleSFTPWindow()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .menuFind)) { _ in
-            showTerminalSearch = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .menuToggleAI)) { _ in
-            workspace.toggleRightPanel(.ai)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .menuShowSerialPort)) { _ in
-            workspace.isSerialPortPresented = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .menuShowSnippets)) { _ in
+        .focusedSceneValue(\.menuToggleSFTP) { toggleSFTPWindow() }
+        .focusedSceneValue(\.menuToggleAI) { workspace.toggleRightPanel(.ai) }
+        .focusedSceneValue(\.menuShowSerialPort) { workspace.isSerialPortPresented = true }
+        .focusedSceneValue(\.menuShowSnippets) {
             workspace.snippetsHistoryTab = .snippets
             workspace.activeRightPanel = .snippetsHistory
         }
-        .onReceive(NotificationCenter.default.publisher(for: .menuShowPortForwarding)) { _ in
-            workspace.isPortForwardingPresented = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .menuShowCommandHistory)) { _ in
+        .focusedSceneValue(\.menuShowPortForwarding) { workspace.isPortForwardingPresented = true }
+        .focusedSceneValue(\.menuShowCommandHistory) {
             workspace.snippetsHistoryTab = .history
             workspace.activeRightPanel = .snippetsHistory
         }
-        .onReceive(NotificationCenter.default.publisher(for: .menuChangeTheme)) { notification in
-            if let themeID = notification.object as? String {
-                themeManager.setActive(themeID)
-            }
-        }
+        .focusedSceneValue(\.menuChangeTheme) { themeID in themeManager.setActive(themeID) }
+        .focusedSceneValue(\.menuFind) { showTerminalSearch = true }
     }
 
     // MARK: - macOS Layout (2-column NavigationSplitView + .inspector)
@@ -186,7 +171,15 @@ struct ContentView: View {
                 if isOpen { openSFTPWindow() }
             }
             // Sheets
-            .sheet(isPresented: $workspace.isSerialPortPresented) {
+            .sheet(isPresented: $showAddHostSheet) {
+            NavigationStack {
+                AddHostSheet(defaultPort: preferences.defaultPort) { host in
+                    modelContext.insert(host)
+                }
+                .environment(i18n)
+            }
+        }
+        .sheet(isPresented: $workspace.isSerialPortPresented) {
                 SerialPortView(isPresented: $workspace.isSerialPortPresented, onConnect: { _ in })
                     .environment(i18n)
             }

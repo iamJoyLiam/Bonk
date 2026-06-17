@@ -68,7 +68,6 @@ struct TerminalTabView: View {
             if !newValue.isEmpty {
                 countMatches(newValue)
                 currentMatch = 0
-                performSearch(.forward)
             } else {
                 matchCount = 0
                 currentMatch = 0
@@ -222,12 +221,11 @@ struct TerminalTabView: View {
         switch direction {
         case .forward:
             found = cached.view.findNext(searchText)
-            if found { currentMatch = min(currentMatch + 1, matchCount) }
+            if found { currentMatch = currentMatch >= matchCount ? 1 : currentMatch + 1 }
         case .backward:
             found = cached.view.findPrevious(searchText)
-            if found { currentMatch = max(currentMatch - 1, 1) }
+            if found { currentMatch = currentMatch <= 1 ? matchCount : currentMatch - 1 }
         }
-        if !found { currentMatch = 0 }
     }
 
     private func countMatches(_ term: String) {

@@ -146,6 +146,29 @@ final class SessionManager {
     func sendInput(_ bytes: ArraySlice<UInt8>, to tabID: UUID) async throws {
         guard let tab = tabs.first(where: { $0.id == tabID }),
               let pty = tab.session?.ptySession else { return }
+        // Record command to history: accumulate chars, record on Enter
+        if bytes == [13] {
+            // Enter pressed — record accumulated input buffer
+            if let inputBuffer = tab.session?.inputBuffer, !inputBuffer.isEmpty {
+                let trimmed = inputBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    tab.session?.commandHistory.commandStarted(trimmed)
+                    tab.session?.commandHistory.commandFinished(exitCode: 0)
+                }
+                tab.session?.inputBuffer = ""
+            }
+        } else {
+            // Accumulate typed characters (exclude control chars except backspace)
+            for byte in bytes {
+                if byte == 127 || byte == 8 {
+                    // Backspace/Delete — remove last char
+                    tab.session?.inputBuffer = String(tab.session?.inputBuffer.dropLast() ?? "")
+                } else if byte >= 32 {
+                    // Printable character
+                    tab.session?.inputBuffer = (tab.session?.inputBuffer ?? "") + String(UnicodeScalar(byte))
+                }
+            }
+        }
         try await pty.sendInput(bytes)
         // Broadcast to other target panes
         if let broadcast = broadcastManager, broadcast.isEnabled {
@@ -189,9 +212,12 @@ final class SessionManager {
         let allHosts = (try? modelContext.fetch(FetchDescriptor<HostItem>())) ?? []
         for entry in saved.prefix(10) {
             if let host = allHosts.first(where: { $0.host == entry.host && $0.port == entry.port && $0.username == entry.username }) {
-                openTab(for: host)
+                // Add tab without auto-connecting
+                let tab = TerminalTab(hostItem: host)
+                tabs.append(tab)
             }
         }
+        if !tabs.isEmpty { activeTabID = tabs.first?.id }
     }
 
     func connectFromSession(_ saved: SavedSession) {
