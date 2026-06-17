@@ -185,6 +185,8 @@ final class SessionManager {
         for host in hosts {
             let tab = TerminalTab(hostItem: host)
             tabs.append(tab)
+            // Mark this tab as needing buffer restore
+            tab.pendingRestore = true
         }
         if !tabs.isEmpty { activeTabID = tabs.first?.id }
     }

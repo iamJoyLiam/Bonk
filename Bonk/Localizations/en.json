@@ -414,5 +414,6 @@
   "shortcut_clear_terminal": "Clear Terminal",
   "no_active_provider": "No active AI provider configured",
   "api_key_not_set": "API key not set for %@",
+  "ai_no_response": "AI returned an empty response. Please try again.",
   "needs_restart": "Needs Restart"
 }

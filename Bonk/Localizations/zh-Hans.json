@@ -414,5 +414,6 @@
   "shortcut_clear_terminal": "清屏",
   "no_active_provider": "未配置活动 AI 提供方",
   "api_key_not_set": "%@ 未设置 API 密钥",
+  "ai_no_response": "AI 返回了空响应，请重试。",
   "needs_restart": "需要重启"
 }

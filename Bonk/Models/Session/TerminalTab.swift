@@ -11,6 +11,8 @@ final class TerminalTab: Identifiable {
     var currentDirectory: String?
     /// Color label for the tab (like macOS Finder labels).
     var colorLabel: String?
+    /// Whether this tab needs to restore its buffer from cache.
+    var pendingRestore = false
 
     /// Active connection session (nil when disconnected or never connected).
     var session: TerminalSession?

@@ -374,6 +374,7 @@ enum LKey: String, CaseIterable {
     // AI errors
     case noActiveProvider = "no_active_provider"
     case apiKeyNotSet = "api_key_not_set"
+    case aiNoResponse = "ai_no_response"
 
     // I18n restart
     case needsRestart = "needs_restart"

@@ -229,6 +229,8 @@ struct TerminalTabView: View {
             found = cached.view.findPrevious(searchText)
             if found { currentMatch = currentMatch <= 1 ? matchCount : currentMatch - 1 }
         }
+        // Force redraw to show selection highlight
+        cached.view.needsDisplay = true
     }
 
     private func countMatches(_ term: String) {

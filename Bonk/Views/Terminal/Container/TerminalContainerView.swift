@@ -241,7 +241,8 @@ import SwiftUI
                 onSend: onSend,
                 onResize: onResize,
                 onTitleChange: onTitleChange,
-                copyOnSelect: copyOnSelect
+                copyOnSelect: copyOnSelect,
+                sessionID: tabID.uuidString
             )
             terminal.terminalDelegate = coordinator
             coordinator.terminalView = terminal
@@ -255,6 +256,17 @@ import SwiftUI
 
             let cached = CachedTerminalView(tabID: tabID, view: terminal, coordinator: coordinator)
             TerminalViewCache.shared.store(tabID: tabID, view: terminal, coordinator: coordinator)
+
+            // Restore cached terminal output if available
+            let sessionID = tabID.uuidString
+            if let cachedBytes = SessionBufferCache.shared.readOutput(for: sessionID) {
+                // Feed cached bytes to terminal (replay history)
+                terminal.feed(byteArray: cachedBytes[...])
+                // Add a separator line
+                let separator = "\r\n\u{001B}[90m--- Restored Session ---\u{001B}[0m\r\n"
+                terminal.feed(text: separator)
+            }
+
             return cached
         }
 
@@ -313,6 +325,8 @@ import SwiftUI
         var themeObserver: NSObjectProtocol?
         private nonisolated(unsafe) var mouseUpMonitor: Any?
         var fontObserver: NSObjectProtocol?
+        /// Session ID for terminal output caching (used for session restore).
+        var terminalSessionID: String?
 
         var feedTask: Task<Void, Never>? {
             get { lock.lock(); defer { lock.unlock() }; return _feedTask }
@@ -343,12 +357,14 @@ import SwiftUI
             onSend: @escaping @Sendable (ArraySlice<UInt8>) -> Void,
             onResize: (@Sendable (Int, Int) -> Void)?,
             onTitleChange: (@Sendable (String) -> Void)?,
-            copyOnSelect: Bool
+            copyOnSelect: Bool,
+            sessionID: String? = nil
         ) {
             _onSend = onSend
             _onResize = onResize
             _onTitleChange = onTitleChange
             self.copyOnSelect = copyOnSelect
+            self.terminalSessionID = sessionID
         }
 
         deinit {
