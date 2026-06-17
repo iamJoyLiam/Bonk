@@ -50,7 +50,7 @@ struct ContentView: View {
             AIProviderStore.shared.setModelContext(modelContext)
             sessionManager.broadcastManager = workspace.broadcastManager
             if preferences.restoreSessions {
-                sessionManager.restoreSessions(autoConnect: true)
+                sessionManager.restoreSessions()
             }
         }
         .alert(i18n.t(.connectionError), isPresented: $sessionManager.showError) {

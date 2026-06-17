@@ -217,6 +217,8 @@
   "connecting_to": "正在连接 %@…",
   "disconnected": "已断开",
   "reconnecting": "正在重连 (%d/%d)…",
+  "restored_session": "已恢复会话",
+  "offline": "离线",
   "no_stream": "终端会话已启动但无输出流。",
 
   "rename": "重命名",

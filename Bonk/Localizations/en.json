@@ -217,6 +217,8 @@
   "connecting_to": "Connecting to %@…",
   "disconnected": "Disconnected",
   "reconnecting": "Reconnecting (%d/%d)…",
+  "restored_session": "Restored Session",
+  "offline": "Offline",
   "no_stream": "Terminal session started but no output stream available.",
 
   "rename": "Rename",

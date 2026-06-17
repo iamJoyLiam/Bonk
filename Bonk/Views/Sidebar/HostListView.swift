@@ -290,6 +290,7 @@ struct HostListView: View {
         case .connected: .green
         case .connecting, .reconnecting: .yellow
         case .disconnected: .gray
+        case .restored: .blue
         }
         Circle()
             .fill(color)

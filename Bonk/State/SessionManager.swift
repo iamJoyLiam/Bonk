@@ -200,24 +200,19 @@ final class SessionManager {
         sessionPersistence.saveSession(for: hostItem)
     }
 
-    func restoreSessions(autoConnect: Bool = false) {
+    func restoreSessions() {
         let hosts = sessionPersistence.restoreHosts()
         for host in hosts {
             let tab = TerminalTab(hostItem: host)
             tabs.append(tab)
 
-            // Get or create session from SessionStore
+            // Create session with restored state (no SSH connection)
             let session = sessionStore.session(for: tab)
+            session.connectionState = .restored
             tab.session = session
-            tab.pendingRestore = true
         }
         if !tabs.isEmpty {
             activeTabID = tabs.first?.id
-
-            // Auto-connect if requested
-            if autoConnect, let firstTab = tabs.first {
-                Task { await connectTab(firstTab) }
-            }
         }
     }
 

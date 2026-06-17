@@ -117,6 +117,7 @@ extension TerminalTabView {
         case .connected: .yellow
         case .connecting, .reconnecting: .yellow.opacity(0.5)
         case .disconnected: .secondary.opacity(0.4)
+        case .restored: .blue.opacity(0.6)
         }
     }
 

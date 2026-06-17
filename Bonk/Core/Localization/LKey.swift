@@ -158,6 +158,8 @@ enum LKey: String, CaseIterable {
     // TerminalView
     case connectingTo = "connecting_to"
     case disconnected, reconnecting
+    case restoredSession = "restored_session"
+    case offline
 
     // TerminalTabView
     case rename, enterNewName = "enter_new_name"

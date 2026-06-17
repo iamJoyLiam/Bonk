@@ -44,6 +44,7 @@ public enum SSHAuthMethod: Sendable, Hashable {
 // MARK: - Connection State
 
 public enum SSHConnectionState: Sendable, Equatable {
+    case restored
     case disconnected
     case connecting
     case connected
@@ -54,11 +55,17 @@ public enum SSHConnectionState: Sendable, Equatable {
         return false
     }
 
+    public var isRestored: Bool {
+        if case .restored = self { return true }
+        return false
+    }
+
     public var colorName: String {
         switch self {
         case .connected: "green"
         case .connecting, .reconnecting: "yellow"
         case .disconnected: "gray"
+        case .restored: "blue"
         }
     }
 }
