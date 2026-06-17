@@ -13,7 +13,6 @@ final class SessionManager {
     private let hostKeyStore = PersistentHostKeyStore()
     private let viewCache: TerminalViewCache
     var broadcastManager: BroadcastManager?
-    private var connectingTabs = Set<UUID>()
     private var modelContext: ModelContext?
 
     /// Handles input processing, command history, and broadcast.
@@ -21,6 +20,9 @@ final class SessionManager {
 
     /// Handles session persistence (save/restore).
     let sessionPersistence = SessionPersistence()
+
+    /// Centralized session store for lifecycle management.
+    let sessionStore = SessionStore.shared
 
     init(viewCache: TerminalViewCache = .shared) {
         self.viewCache = viewCache
@@ -42,6 +44,11 @@ final class SessionManager {
         tabs.append(tab)
         activeTabID = tab.id
         syncBroadcastTargets()
+
+        // Get or create session from SessionStore
+        let session = sessionStore.session(for: tab)
+        tab.session = session
+
         Task { await connectTab(tab) }
     }
 
@@ -53,6 +60,7 @@ final class SessionManager {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
         await disconnectTab(id)
         viewCache.remove(id)
+        sessionStore.removeSession(id)
         tabs.removeAll(where: { $0.id == id })
         if activeTabID == id {
             activeTabID = tabs.last?.id
@@ -64,14 +72,17 @@ final class SessionManager {
 
     func connectTab(_ tab: TerminalTab) async {
         Log.session.info("[CONNECT] Starting connectTab for \(tab.hostItem.host):\(tab.hostItem.port)")
-        guard !connectingTabs.contains(tab.id) else {
+
+        // Check if already connecting via SessionStore
+        guard !sessionStore.isConnecting(tab.id) else {
             Log.session.warning("[CONNECT] Already connecting to \(tab.hostItem.host), skipping")
             return
         }
-        connectingTabs.insert(tab.id)
-        defer { connectingTabs.remove(tab.id) }
+        sessionStore.markConnecting(tab.id)
+        defer { sessionStore.markConnected(tab.id) }
 
-        let session = TerminalSession(tabID: tab.id)
+        // Get or create session from SessionStore
+        let session = sessionStore.session(for: tab)
         tab.session = session
         session.connectionState = .connecting
         session.errorMessage = nil
@@ -124,7 +135,7 @@ final class SessionManager {
 
     func disconnectTab(_ id: UUID) async {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
-        await tab.session?.sshService?.disconnect()
+        await sessionStore.disconnect(id)
         tab.session?.disconnect()
         tab.session = nil
     }
@@ -235,10 +246,7 @@ final class SessionManager {
         }
 
         session.ptySession = ptySession
-        Log.session.info("[PTY] Creating output stream...")
-        let streamResult = ptySession.makeOutputStream()
-        session.outputStream = streamResult.stream
-        Log.session.info("[PTY] Output stream created")
+        Log.session.info("[PTY] PTY session assigned (output stream will be created by TerminalContainerView)")
 
         ptySession.osc7Detector.onCWDChange = { [weak tab] cwd in
             Task { @MainActor in
