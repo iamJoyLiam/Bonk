@@ -23,7 +23,11 @@ struct TerminalTabView: View {
     @AppStorage("ai_enabled") var aiEnabled = false
     @State var showAIEnableAlert = false
     @Binding var showSearch: Bool
-    @State private var searchCoordinator = SearchCoordinator()
+    @State private var searchText = ""
+    @State private var matchCount = 0
+    @State private var currentMatch = 0
+    @State private var searchDebounceTask: Task<Void, Never>?
+    @State private var searchOverlay: SearchHighlightOverlay?
 
     private var preferences: UserPreferences {
         allPreferences.first ?? UserPreferences()
@@ -48,12 +52,12 @@ struct TerminalTabView: View {
             if showSearch {
                 VStack {
                     TerminalSearchBar(
-                        searchText: $searchCoordinator.searchText,
+                        searchText: $searchText,
                         isPresented: $showSearch,
-                        matchCount: searchCoordinator.matchCount,
-                        currentMatch: searchCoordinator.currentMatch,
-                        onNext: { searchCoordinator.nextMatch() },
-                        onPrevious: { searchCoordinator.previousMatch() }
+                        matchCount: matchCount,
+                        currentMatch: currentMatch,
+                        onNext: { performSearch(.forward) },
+                        onPrevious: { performSearch(.backward) }
                     )
                     .padding(.top, 8)
                     .padding(.trailing, 16)
@@ -62,36 +66,27 @@ struct TerminalTabView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
         }
-        .onChange(of: searchCoordinator.searchText) { _, newValue in
-            searchCoordinator.search(newValue)
-        }
-        .onChange(of: sessionManager.activeTab?.id) { _, newTabID in
-            // Update SearchCoordinator when active tab changes
-            if let tabID = newTabID, let cached = TerminalViewCache.shared.retrieve(tabID) {
-                searchCoordinator.setTerminalView(cached.view)
+        .onChange(of: searchText) { _, newValue in
+            searchDebounceTask?.cancel()
+            if newValue.isEmpty {
+                matchCount = 0
+                currentMatch = 0
+                return
+            }
+            searchDebounceTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(200))
+                guard !Task.isCancelled else { return }
+                countMatches(newValue)
+                currentMatch = 0
             }
         }
-        .onAppear {
-            // Set initial terminal view for SearchCoordinator
-            if let activeTab = sessionManager.activeTab,
-               let cached = TerminalViewCache.shared.retrieve(activeTab.id) {
-                searchCoordinator.setTerminalView(cached.view)
-            }
-
-            // Subscribe to UI events via EventPublisher
-            EventPublisher.shared.subscribe(UIEvent.self) { [self] event in
-                switch event {
-                case .showAI:
-                    if showAIChat {
-                        showAIChat = false
-                        selectedTextForAI = ""
-                        focusTerminal()
-                    } else {
-                        requestSelectionAndShowAI()
-                    }
-                default:
-                    break
-                }
+        .onReceive(NotificationCenter.default.publisher(for: .toggleAIChat)) { _ in
+            if showAIChat {
+                showAIChat = false
+                selectedTextForAI = ""
+                focusTerminal()
+            } else {
+                requestSelectionAndShowAI()
             }
         }
         .renameAlert(i18n: i18n, renamingTab: $renamingTab, renameText: $renameText)
@@ -218,6 +213,82 @@ struct TerminalTabView: View {
                 }
             )
             .zIndex(1)
+        }
+    }
+
+    private enum SearchDirection { case forward, backward }
+
+    private func performSearch(_ direction: SearchDirection) {
+        guard !searchText.isEmpty,
+              let cached = TerminalViewCache.shared.retrieve(sessionManager.activeTab?.id ?? UUID()),
+              let terminal = cached.view.terminal else { return }
+
+        // 确保覆盖层已创建
+        if searchOverlay == nil {
+            let overlay = SearchHighlightOverlay(terminalView: cached.view)
+            cached.view.addSubview(overlay)
+            searchOverlay = overlay
+        }
+
+        // 使用 SwiftTerm 的 findNext/findPrevious 来更新当前匹配
+        let found: Bool
+        switch direction {
+        case .forward:
+            found = cached.view.findNext(searchText)
+            if found { currentMatch = currentMatch >= matchCount ? 1 : currentMatch + 1 }
+        case .backward:
+            found = cached.view.findPrevious(searchText)
+            if found { currentMatch = currentMatch <= 1 ? matchCount : currentMatch - 1 }
+        }
+
+        if found {
+            // 更新覆盖层高亮
+            searchOverlay?.updateHighlights(
+                searchText: searchText,
+                terminal: terminal,
+                currentMatchIndex: currentMatch - 1
+            )
+        }
+    }
+
+    private func countMatches(_ term: String) {
+        guard let tab = sessionManager.activeTab,
+              let cached = TerminalViewCache.shared.retrieve(tab.id),
+              let terminal = cached.view.terminal else {
+            matchCount = 0
+            searchOverlay?.clearHighlights()
+            return
+        }
+
+        // 确保覆盖层已创建
+        if searchOverlay == nil {
+            let overlay = SearchHighlightOverlay(terminalView: cached.view)
+            cached.view.addSubview(overlay)
+            searchOverlay = overlay
+        }
+
+        // Get text from visible buffer
+        let start = Position(col: 0, row: 0)
+        let end = Position(col: terminal.cols - 1, row: terminal.rows - 1)
+        let text = terminal.getText(start: start, end: end)
+        let lowerText = text.lowercased()
+        let lowerTerm = term.lowercased()
+        var count = 0
+        var searchStart = lowerText.startIndex
+        while searchStart < lowerText.endIndex,
+              let range = lowerText[searchStart...].range(of: lowerTerm) {
+            count += 1
+            searchStart = range.upperBound
+        }
+        matchCount = count
+
+        // 更新覆盖层高亮
+        if count > 0 {
+            searchOverlay?.updateHighlights(
+                searchText: term,
+                terminal: terminal,
+                currentMatchIndex: -1
+            )
         }
     }
 
