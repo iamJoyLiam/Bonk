@@ -16,12 +16,19 @@ final class SessionManager {
     private var connectingTabs = Set<UUID>()
     private var modelContext: ModelContext?
 
+    /// Handles input processing, command history, and broadcast.
+    let inputHandler = InputHandler()
+
+    /// Handles session persistence (save/restore).
+    let sessionPersistence = SessionPersistence()
+
     init(viewCache: TerminalViewCache = .shared) {
         self.viewCache = viewCache
     }
 
     func setModelContext(_ context: ModelContext) {
         modelContext = context
+        sessionPersistence.setModelContext(context)
     }
 
     var activeTab: TerminalTab? {
@@ -144,41 +151,19 @@ final class SessionManager {
     }
 
     func sendInput(_ bytes: ArraySlice<UInt8>, to tabID: UUID) async throws {
-        guard let tab = tabs.first(where: { $0.id == tabID }),
-              let pty = tab.session?.ptySession else { return }
-        // Record command to history: accumulate chars, record on Enter
-        if bytes == [13] {
-            // Enter pressed — record accumulated input buffer
-            if let inputBuffer = tab.session?.inputBuffer, !inputBuffer.isEmpty {
-                let trimmed = inputBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    tab.session?.commandHistory.commandStarted(trimmed)
-                    tab.session?.commandHistory.commandFinished(exitCode: 0)
-                }
-                tab.session?.inputBuffer = ""
-            }
-        } else {
-            // Accumulate typed characters (exclude control chars except backspace)
-            for byte in bytes {
-                if byte == 127 || byte == 8 {
-                    // Backspace/Delete — remove last char
-                    tab.session?.inputBuffer = String(tab.session?.inputBuffer.dropLast() ?? "")
-                } else if byte >= 32 {
-                    // Printable character
-                    tab.session?.inputBuffer = (tab.session?.inputBuffer ?? "") + String(UnicodeScalar(byte))
-                }
-            }
-        }
-        try await pty.sendInput(bytes)
-        // Broadcast to other target panes
-        if let broadcast = broadcastManager, broadcast.isEnabled {
-            for targetID in broadcast.targetPaneIDs {
-                guard targetID != tabID,
-                      let targetTab = tabs.first(where: { $0.id == targetID }),
-                      let targetPTY = targetTab.session?.ptySession else { continue }
-                try? await targetPTY.sendInput(bytes)
-            }
-        }
+        guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
+        try await inputHandler.sendInput(
+            bytes,
+            to: tab,
+            broadcastManager: broadcastManager,
+            allTabs: tabs
+        )
+    }
+
+    /// Convenience: send text to the active tab (auto-appends Enter).
+    func sendTextToActiveTab(_ text: String) {
+        guard let tab = activeTab else { return }
+        Task { try? await inputHandler.sendText(text, to: tab, broadcastManager: broadcastManager, allTabs: tabs) }
     }
 
     // MARK: - Broadcast Sync
@@ -192,38 +177,20 @@ final class SessionManager {
     // MARK: - Session Persistence
 
     func saveSession(for hostItem: HostItem) {
-        guard let modelContext else { return }
-        let host = hostItem.host
-        let port = hostItem.port
-        let user = hostItem.username
-        let all = (try? modelContext.fetch(FetchDescriptor<SavedSession>())) ?? []
-        if let existing = all.first(where: { $0.host == host && $0.port == port && $0.username == user }) {
-            existing.recordConnection()
-        } else {
-            let session = SavedSession(from: hostItem)
-            modelContext.insert(session)
-        }
+        sessionPersistence.saveSession(for: hostItem)
     }
 
     func restoreSessions() {
-        guard let modelContext else { return }
-        let desc = FetchDescriptor<SavedSession>(sortBy: [SortDescriptor(\.lastConnectedAt, order: .reverse)])
-        guard let saved = try? modelContext.fetch(desc) else { return }
-        let allHosts = (try? modelContext.fetch(FetchDescriptor<HostItem>())) ?? []
-        for entry in saved.prefix(10) {
-            if let host = allHosts.first(where: { $0.host == entry.host && $0.port == entry.port && $0.username == entry.username }) {
-                // Add tab without auto-connecting
-                let tab = TerminalTab(hostItem: host)
-                tabs.append(tab)
-            }
+        let hosts = sessionPersistence.restoreHosts()
+        for host in hosts {
+            let tab = TerminalTab(hostItem: host)
+            tabs.append(tab)
         }
         if !tabs.isEmpty { activeTabID = tabs.first?.id }
     }
 
     func connectFromSession(_ saved: SavedSession) {
-        guard let modelContext else { return }
-        let allHosts = (try? modelContext.fetch(FetchDescriptor<HostItem>())) ?? []
-        if let host = allHosts.first(where: { $0.host == saved.host && $0.port == saved.port && $0.username == saved.username }) {
+        if let host = sessionPersistence.findHost(for: saved) {
             openTab(for: host)
         } else {
             lastError = "Host not found: \(saved.host)"

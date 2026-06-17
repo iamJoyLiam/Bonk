@@ -32,6 +32,7 @@ final class CachedTerminalView {
 }
 
 /// Caches SwiftTerm TerminalView instances to preserve scroll position and state.
+/// Uses LRU eviction when cache exceeds maxCachedTabs.
 @MainActor
 final class TerminalViewCache {
     static let shared = TerminalViewCache()
@@ -39,19 +40,35 @@ final class TerminalViewCache {
     /// Cached terminal views keyed by tab ID.
     private var cache: [UUID: CachedTerminalView] = [:]
 
+    /// LRU access order (most recently used at the end).
+    private var accessOrder: [UUID] = []
+
+    /// Maximum number of cached tabs before eviction.
+    private let maxCachedTabs = 10
+
+    private init() {
+        // Memory pressure handling is done via evictIfNeeded during store operations
+    }
+
     /// Store a terminal view for a tab.
     func store(tabID: UUID, view: SwiftTerm.TerminalView, coordinator: NSObject) {
         cache[tabID] = CachedTerminalView(tabID: tabID, view: view, coordinator: coordinator)
+        updateAccessOrder(tabID)
+        evictIfNeeded(except: tabID)
     }
 
     /// Retrieve a cached terminal view for a tab.
     func retrieve(_ tabID: UUID) -> CachedTerminalView? {
-        cache[tabID]
+        if cache[tabID] != nil {
+            updateAccessOrder(tabID)
+        }
+        return cache[tabID]
     }
 
     /// Remove a cached terminal view.
     func remove(_ tabID: UUID) {
         cache.removeValue(forKey: tabID)
+        accessOrder.removeAll { $0 == tabID }
     }
 
     /// Connect output stream to a cached view with backpressure callback.
@@ -65,6 +82,32 @@ final class TerminalViewCache {
         cached.onBytesProcessed = onBytesProcessed
         if let coordinator = cached.coordinator as? ContainerTerminalCoordinator {
             coordinator.startFeeding(from: stream, onBytesProcessed: onBytesProcessed)
+        }
+    }
+
+    /// Evict all cached views except the active tab (used on memory pressure).
+    func evictAllExceptActive(activeTabID: UUID?) {
+        for (id, _) in cache where id != activeTabID {
+            cache.removeValue(forKey: id)
+        }
+        accessOrder = activeTabID.map { [$0] } ?? []
+    }
+
+    // MARK: - LRU Private
+
+    private func updateAccessOrder(_ tabID: UUID) {
+        accessOrder.removeAll { $0 == tabID }
+        accessOrder.append(tabID)
+    }
+
+    private func evictIfNeeded(except keepTabID: UUID) {
+        while cache.count > maxCachedTabs {
+            if let evictID = accessOrder.first(where: { $0 != keepTabID }) {
+                cache.removeValue(forKey: evictID)
+                accessOrder.removeAll { $0 == evictID }
+            } else {
+                break
+            }
         }
     }
 }

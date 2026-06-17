@@ -201,12 +201,12 @@ struct SFTPWindowView: View {
     // MARK: - Helpers
 
     private func loadLocalFiles() {
-        let fm = FileManager.default
-        guard let contents = try? fm.contentsOfDirectory(atPath: localPath) else { return }
+        let fileManager = FileManager.default
+        guard let contents = try? fileManager.contentsOfDirectory(atPath: localPath) else { return }
 
         localFiles = contents.compactMap { name -> LocalFileEntry? in
             let path = (localPath as NSString).appendingPathComponent(name)
-            guard let attrs = try? fm.attributesOfItem(atPath: path) else { return nil }
+            guard let attrs = try? fileManager.attributesOfItem(atPath: path) else { return nil }
             let isDir = attrs[.type] as? FileAttributeType == .typeDirectory
             let size = attrs[.size] as? UInt64 ?? 0
             return LocalFileEntry(name: name, path: path, isDirectory: isDir, size: size)

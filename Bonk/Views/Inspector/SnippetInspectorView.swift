@@ -208,10 +208,8 @@ struct SnippetInspectorView: View {
     // MARK: - Actions
 
     private func insertSnippet(_ snippet: Snippet) {
-        guard let activeTab = sessionManager.activeTab else { return }
         let resolved = snippet.resolve()
-        let bytes = Array(resolved.utf8 + [13])
-        Task { try? await sessionManager.sendInput(bytes[...], to: activeTab.id) }
+        sessionManager.sendTextToActiveTab(resolved)
     }
 }
 
