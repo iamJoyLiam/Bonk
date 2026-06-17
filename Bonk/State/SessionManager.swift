@@ -121,6 +121,9 @@ final class SessionManager {
             session.connectedAt = Date()
             Log.session.info("[CONNECT] State set to .connected, opening PTY...")
 
+            // Publish connected event
+            EventPublisher.shared.publish(SessionEvent.connected(tabID: tab.id))
+
             try await setupPTYSession(for: tab, session: session, service: service)
             Log.session.info("[CONNECT] PTY session established successfully")
         } catch {
@@ -130,6 +133,9 @@ final class SessionManager {
             session.errorMessage = error.localizedDescription
             lastError = error.localizedDescription
             showError = true
+
+            // Publish error event
+            EventPublisher.shared.publish(SessionEvent.error(tabID: tab.id, error: error))
         }
     }
 
@@ -138,6 +144,9 @@ final class SessionManager {
         await sessionStore.disconnect(id)
         tab.session?.disconnect()
         tab.session = nil
+
+        // Publish disconnected event
+        EventPublisher.shared.publish(SessionEvent.disconnected(tabID: id))
     }
 
     func reconnectTab(_ id: UUID) async {

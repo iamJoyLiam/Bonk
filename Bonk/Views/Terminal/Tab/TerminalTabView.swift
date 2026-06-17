@@ -65,13 +65,21 @@ struct TerminalTabView: View {
         .onChange(of: searchCoordinator.searchText) { _, newValue in
             searchCoordinator.search(newValue)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .toggleAIChat)) { _ in
-            if showAIChat {
-                showAIChat = false
-                selectedTextForAI = ""
-                focusTerminal()
-            } else {
-                requestSelectionAndShowAI()
+        .onAppear {
+            // Subscribe to UI events via EventPublisher
+            EventPublisher.shared.subscribe(UIEvent.self) { [self] event in
+                switch event {
+                case .showAI:
+                    if showAIChat {
+                        showAIChat = false
+                        selectedTextForAI = ""
+                        focusTerminal()
+                    } else {
+                        requestSelectionAndShowAI()
+                    }
+                default:
+                    break
+                }
             }
         }
         .renameAlert(i18n: i18n, renamingTab: $renamingTab, renameText: $renameText)

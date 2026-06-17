@@ -60,6 +60,8 @@ final class SearchCoordinator {
         let found = terminalView.findNext(searchText)
         if found {
             currentMatch = currentMatch >= matchCount ? 1 : currentMatch + 1
+            // Publish search results updated event
+            EventPublisher.shared.publish(SearchEvent.resultsUpdated(current: currentMatch, total: matchCount))
         }
     }
 
@@ -69,6 +71,8 @@ final class SearchCoordinator {
         let found = terminalView.findPrevious(searchText)
         if found {
             currentMatch = currentMatch <= 1 ? matchCount : currentMatch - 1
+            // Publish search results updated event
+            EventPublisher.shared.publish(SearchEvent.resultsUpdated(current: currentMatch, total: matchCount))
         }
     }
 

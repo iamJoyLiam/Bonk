@@ -8,6 +8,7 @@ struct ContentView: View {
     @StateObject private var themeManager = TerminalThemeManager.shared
 
     @State private var sessionManager = SessionManager()
+    @State private var appStore = AppStore.shared
     #if os(macOS)
         @State private var workspace = WorkspaceManager()
         @State private var showInspector = false
@@ -86,7 +87,10 @@ struct ContentView: View {
             workspace.activeRightPanel = .snippetsHistory
         }
         .focusedSceneValue(\.menuChangeTheme) { themeID in themeManager.setActive(themeID) }
-        .focusedSceneValue(\.menuFind) { showTerminalSearch = true }
+        .focusedSceneValue(\.menuFind) {
+            appStore.dispatch(.toggleSearch)
+            showTerminalSearch = appStore.uiState.showSearch
+        }
     }
 
     // MARK: - macOS Layout (2-column NavigationSplitView + .inspector)
