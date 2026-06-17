@@ -15,6 +15,9 @@ struct JumpHostView: View {
 
     @State private var showAddSheet = false
     @State private var editingHost: JumpHost?
+    @State private var jumpHostService = JumpHostService.shared
+    @State private var testingHostID: UUID?
+    @State private var testResult: Bool?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -112,11 +115,35 @@ struct JumpHostView: View {
             } label: {
                 Label("Edit", systemImage: "pencil")
             }
+            Button {
+                testConnection(host)
+            } label: {
+                Label(i18n.t(.testConnection), systemImage: "network")
+            }
+            .disabled(testingHostID == host.id)
             Divider()
             Button(role: .destructive) {
                 modelContext.delete(host)
             } label: {
                 Label(i18n.t(.delete), systemImage: "trash")
+            }
+        }
+    }
+
+    private func testConnection(_ host: JumpHost) {
+        testingHostID = host.id
+        testResult = nil
+
+        Task {
+            // 使用密码认证进行测试
+            let credential = SSHAuthMethod.password("test")
+            let result = try? await jumpHostService.testConnection(
+                jumpHost: host,
+                credential: credential
+            )
+            await MainActor.run {
+                testResult = result
+                testingHostID = nil
             }
         }
     }

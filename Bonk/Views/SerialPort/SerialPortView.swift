@@ -14,6 +14,9 @@ struct SerialPortView: View {
     @State private var config = SerialPortConfig()
     @State private var availablePorts: [String] = []
     @State private var isScanning = false
+    @State private var serialPortService = SerialPortService.shared
+    @State private var showError = false
+    @State private var errorMessage = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -118,17 +121,13 @@ struct SerialPortView: View {
 
     private func scanPorts() {
         isScanning = true
-        // Scan for available serial ports
-        // This would use IOKit or a serial port library
-        // For now, show common port paths
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            availablePorts = [
-                "/dev/tty.usbserial",
-                "/dev/tty.usbmodem",
-                "/dev/tty.SLAB_USBtoUART",
-                "/dev/tty.wchusbserial",
-            ]
-            isScanning = false
+        // 使用 SerialPortService 扫描真实端口
+        DispatchQueue.global(qos: .userInitiated).async {
+            let ports = serialPortService.scanPorts()
+            DispatchQueue.main.async {
+                availablePorts = ports
+                isScanning = false
+            }
         }
     }
 }

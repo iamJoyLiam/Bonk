@@ -18,6 +18,7 @@ struct PortForwardView: View {
 
     @State private var showAddSheet = false
     @State private var editingRule: PortForward?
+    @State private var portForwardService = PortForwardService.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -103,7 +104,7 @@ struct PortForwardView: View {
 
             // Toggle
             Button {
-                rule.isActive.toggle()
+                toggleForward(rule)
             } label: {
                 Image(systemName: rule.isActive ? "stop.circle.fill" : "play.circle.fill")
                     .font(.system(size: 18))
@@ -123,6 +124,21 @@ struct PortForwardView: View {
                 modelContext.delete(rule)
             } label: {
                 Label(i18n.t(.delete), systemImage: "trash")
+            }
+        }
+    }
+
+    private func toggleForward(_ rule: PortForward) {
+        Task {
+            if rule.isActive {
+                await portForwardService.stop(config: rule)
+            } else {
+                do {
+                    try await portForwardService.start(config: rule)
+                } catch {
+                    // Handle error
+                    print("Port forward error: \(error)")
+                }
             }
         }
     }
