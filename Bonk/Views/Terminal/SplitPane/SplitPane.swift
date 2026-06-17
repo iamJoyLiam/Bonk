@@ -134,11 +134,12 @@ indirect enum SplitPane {
 extension SplitPane: Equatable {
     static func == (lhs: SplitPane, rhs: SplitPane) -> Bool {
         switch (lhs, rhs) {
-        case let (.single(a), .single(b)): a.id == b.id
-        case let (.horizontal(l1, r1, ratio1), .horizontal(l2, r2, ratio2)):
-            l1 == l2 && r1 == r2 && ratio1 == ratio2
-        case let (.vertical(t1, b1, ratio1), .vertical(t2, b2, ratio2)):
-            t1 == t2 && b1 == b2 && ratio1 == ratio2
+        case let (.single(left), .single(right)):
+            left.id == right.id
+        case let (.horizontal(leftPane1, rightPane1, ratio1), .horizontal(leftPane2, rightPane2, ratio2)):
+            leftPane1 == leftPane2 && rightPane1 == rightPane2 && ratio1 == ratio2
+        case let (.vertical(topPane1, bottomPane1, ratio1), .vertical(topPane2, bottomPane2, ratio2)):
+            topPane1 == topPane2 && bottomPane1 == bottomPane2 && ratio1 == ratio2
         default: false
         }
     }

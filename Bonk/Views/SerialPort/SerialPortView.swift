@@ -79,14 +79,14 @@ struct SerialPortView: View {
                     }
 
                     Picker(i18n.t(.parity), selection: $config.parity) {
-                        ForEach(SerialPortConfig.Parity.allCases, id: \.self) { p in
-                            Text(p.displayName).tag(p)
+                        ForEach(SerialPortConfig.Parity.allCases, id: \.self) { parity in
+                            Text(parity.displayName).tag(parity)
                         }
                     }
 
                     Picker(i18n.t(.flowControl), selection: $config.flowControl) {
-                        ForEach(SerialPortConfig.FlowControl.allCases, id: \.self) { fc in
-                            Text(fc.displayName).tag(fc)
+                        ForEach(SerialPortConfig.FlowControl.allCases, id: \.self) { flowControl in
+                            Text(flowControl.displayName).tag(flowControl)
                         }
                     }
                 }

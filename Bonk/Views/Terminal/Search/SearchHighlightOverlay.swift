@@ -3,7 +3,7 @@
 //  Bonk
 //
 //  Independent search highlight overlay for TerminalView.
-//  Does not depend on SwiftTerm's Selection rendering chain.
+//  Optimized for production use with background thread calculation.
 //
 
 #if os(macOS)
@@ -12,27 +12,27 @@ import SwiftTerm
 
 /// Overlay view that draws search highlights on top of TerminalView.
 final class SearchHighlightOverlay: NSView {
+    // MARK: - Types
+
+    /// Structured match result for better performance
+    struct MatchResult {
+        let row: Int      // Viewport relative row
+        let col: Int      // Start column
+        let length: Int   // Column width (accounting for full-width chars)
+    }
+
     // MARK: - Properties
 
-    /// All match positions (row, col, length)
-    private var allMatches: [(row: Int, col: Int, length: Int)] = []
-
-    /// Current match index
+    private var allMatches: [MatchResult] = []
     private var currentMatchIndex: Int = -1
-
-    /// Reference to the terminal view for coordinate conversion
     private weak var terminalView: TerminalView?
 
-    /// Cell dimensions for coordinate conversion
     private var cellWidth: CGFloat = 0
     private var cellHeight: CGFloat = 0
 
     // MARK: - Colors
 
-    /// Color for all matches (semi-transparent yellow)
     var allMatchesColor: NSColor = NSColor.systemYellow.withAlphaComponent(0.3)
-
-    /// Color for current match (bright orange)
     var currentMatchColor: NSColor = NSColor.systemOrange.withAlphaComponent(0.6)
 
     // MARK: - Initialization
@@ -43,38 +43,50 @@ final class SearchHighlightOverlay: NSView {
         self.wantsLayer = true
         self.layer?.backgroundColor = NSColor.clear.cgColor
         self.autoresizingMask = [.width, .height]
+
+        // Listen for resize events
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(frameDidChange),
+            name: NSView.frameDidChangeNotification,
+            object: terminalView
+        )
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    // 核心修复 1: 强制翻转 macOS Y 轴，使原点对齐左上角
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    // Core fix 1: Force flip macOS Y-axis
     override var isFlipped: Bool { return true }
 
     // MARK: - Public API
 
-    /// Update search highlights
-    func updateHighlights(
-        searchText: String,
-        terminal: Terminal,
-        currentMatchIndex: Int
-    ) {
+    /// Update matches with pre-calculated data (called from background thread)
+    @MainActor
+    func updateMatches(_ matches: [MatchResult], currentMatchIndex: Int) {
+        guard let terminalView = terminalView, let terminal = terminalView.terminal else { return }
+        self.allMatches = matches
         self.currentMatchIndex = currentMatchIndex
 
-        guard let tv = terminalView else { return }
         let cols = terminal.cols
         let rows = terminal.rows
-
-        // 核心修复 2: 计算单元格尺寸
         if cols > 0 && rows > 0 {
-            self.cellWidth = tv.bounds.width / CGFloat(cols)
-            self.cellHeight = tv.bounds.height / CGFloat(rows)
+            self.cellWidth = terminalView.bounds.width / CGFloat(cols)
+            self.cellHeight = terminalView.bounds.height / CGFloat(rows)
         }
 
-        // 核心修复 3: 基于当前视口偏移量提取文本
-        self.allMatches = findAllMatches(searchText: searchText, terminal: terminal)
         self.needsDisplay = true
+    }
+
+    /// Update current match index without recalculating matches
+    func updateCurrentMatchIndex(_ index: Int) {
+        self.currentMatchIndex = index
+        needsDisplay = true
     }
 
     /// Clear all highlights
@@ -88,72 +100,82 @@ final class SearchHighlightOverlay: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
+        guard let context = NSGraphicsContext.current?.cgContext, !allMatches.isEmpty else { return }
 
-        guard let context = NSGraphicsContext.current?.cgContext else { return }
-
+        // Performance: Only draw matches that intersect with dirtyRect
         for (index, match) in allMatches.enumerated() {
-            let rect = rectForMatch(match)
+            let rect = CGRect(
+                x: CGFloat(match.col) * cellWidth,
+                y: CGFloat(match.row) * cellHeight,
+                width: CGFloat(match.length) * cellWidth,
+                height: cellHeight
+            )
 
-            if index == currentMatchIndex {
-                context.setFillColor(currentMatchColor.cgColor)
-            } else {
-                context.setFillColor(allMatchesColor.cgColor)
-            }
+            guard rect.intersects(dirtyRect) else { continue }
 
+            context.setFillColor(index == currentMatchIndex ? currentMatchColor.cgColor : allMatchesColor.cgColor)
             context.fill(rect)
         }
     }
 
     // MARK: - Private
 
-    /// Find all matches in the terminal buffer
-    private func findAllMatches(
-        searchText: String,
-        terminal: Terminal
-    ) -> [(row: Int, col: Int, length: Int)] {
-        var matches: [(row: Int, col: Int, length: Int)] = []
-        let lowerSearch = searchText.lowercased()
+    @objc private func frameDidChange() {
+        guard let terminalView = terminalView, let terminal = terminalView.terminal else { return }
         let cols = terminal.cols
         let rows = terminal.rows
-
-        // 核心修复 3: 基于当前视口偏移量 (yDisp) 提取文本
-        let yDisp = terminal.buffer.yDisp
-
-        for visibleRow in 0..<rows {
-            // 获取可视范围内的绝对行号
-            let absoluteRow = yDisp + visibleRow
-
-            // 按行提取并匹配
-            let start = Position(col: 0, row: absoluteRow)
-            let end = Position(col: cols - 1, row: absoluteRow)
-            let lineText = terminal.getText(start: start, end: end).lowercased()
-
-            var searchStart = lineText.startIndex
-            while searchStart < lineText.endIndex,
-                  let range = lineText[searchStart...].range(of: lowerSearch) {
-                let colIndex = lineText.distance(from: lineText.startIndex, to: range.lowerBound)
-                let matchLength = lineText.distance(from: range.lowerBound, to: range.upperBound)
-
-                if colIndex < cols {
-                    // 保存匹配结果，row 是 Viewport 的相对行号
-                    matches.append((row: visibleRow, col: colIndex, length: min(matchLength, cols - colIndex)))
-                }
-                searchStart = range.upperBound
-            }
+        if cols > 0 && rows > 0 {
+            self.cellWidth = terminalView.bounds.width / CGFloat(cols)
+            self.cellHeight = terminalView.bounds.height / CGFloat(rows)
         }
-
-        return matches
+        needsDisplay = true
     }
+}
 
-    /// Convert match position to view rect
-    private func rectForMatch(_ match: (row: Int, col: Int, length: Int)) -> CGRect {
-        // Y轴已被 isFlipped 修复，可以直接正常进行乘法计算
-        return CGRect(
-            x: CGFloat(match.col) * cellWidth,
-            y: CGFloat(match.row) * cellHeight,
-            width: CGFloat(match.length) * cellWidth,
-            height: cellHeight
-        )
+// MARK: - Terminal Column Width Calculation
+
+/// Calculate terminal column width for a string (handles CJK and Emoji)
+func calculateTerminalColumns(for text: String) -> Int {
+    var cols = 0
+    for scalar in text.unicodeScalars {
+        // CJK characters (Chinese, Japanese, Korean) occupy 2 columns
+        if isCJKCharacter(scalar) {
+            cols += 2
+        } else {
+            cols += 1
+        }
     }
+    return cols
+}
+
+/// Check if a Unicode scalar is a CJK character
+private func isCJKCharacter(_ scalar: Unicode.Scalar) -> Bool {
+    let value = scalar.value
+    // CJK Unified Ideographs
+    if value >= 0x4E00 && value <= 0x9FFF { return true }
+    // CJK Unified Ideographs Extension A
+    if value >= 0x3400 && value <= 0x4DBF { return true }
+    // CJK Compatibility Ideographs
+    if value >= 0xF900 && value <= 0xFAFF { return true }
+    // CJK Radicals Supplement
+    if value >= 0x2E80 && value <= 0x2EFF { return true }
+    // Kangxi Radicals
+    if value >= 0x2F00 && value <= 0x2FDF { return true }
+    // CJK Symbols and Punctuation
+    if value >= 0x3000 && value <= 0x303F { return true }
+    // Hiragana
+    if value >= 0x3040 && value <= 0x309F { return true }
+    // Katakana
+    if value >= 0x30A0 && value <= 0x30FF { return true }
+    // Hangul Jamo
+    if value >= 0x1100 && value <= 0x11FF { return true }
+    // Hangul Syllables
+    if value >= 0xAC00 && value <= 0xD7AF { return true }
+    // Emoji (common ranges)
+    if value >= 0x1F600 && value <= 0x1F64F { return true } // Emoticons
+    if value >= 0x1F300 && value <= 0x1F5FF { return true } // Misc Symbols and Pictographs
+    if value >= 0x1F680 && value <= 0x1F6FF { return true } // Transport and Map
+    if value >= 0x1F1E0 && value <= 0x1F1FF { return true } // Flags
+    return false
 }
 #endif

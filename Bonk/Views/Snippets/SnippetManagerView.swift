@@ -109,7 +109,11 @@ struct SnippetManagerView: View {
                 .environment(i18n)
         }
         .sheet(item: $editingSnippet) { snippet in
-            SnippetEditSheet(snippet: snippet, modelContext: modelContext, existingCategories: Array(Set(snippets.map { $0.category })).sorted())
+            SnippetEditSheet(
+                    snippet: snippet,
+                    modelContext: modelContext,
+                    existingCategories: Array(Set(snippets.map { $0.category })).sorted()
+                )
                 .environment(i18n)
         }
     }

@@ -152,8 +152,8 @@ struct PortForwardEditSheet: View {
 
                 Section(i18n.t(.type)) {
                     Picker(i18n.t(.type), selection: $type) {
-                        ForEach(PortForward.ForwardType.allCases, id: \.self) { t in
-                            Text(t.displayName).tag(t)
+                        ForEach(PortForward.ForwardType.allCases, id: \.self) { forwardType in
+                            Text(forwardType.displayName).tag(forwardType)
                         }
                     }
                     .pickerStyle(.segmented)

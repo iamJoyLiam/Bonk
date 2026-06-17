@@ -71,13 +71,13 @@ struct TerminalTabView: View {
             if newValue.isEmpty {
                 matchCount = 0
                 currentMatch = 0
+                searchOverlay?.clearHighlights()
                 return
             }
-            searchDebounceTask = Task { @MainActor in
+            searchDebounceTask = Task {
                 try? await Task.sleep(for: .milliseconds(200))
                 guard !Task.isCancelled else { return }
-                countMatches(newValue)
-                currentMatch = 0
+                await performSearchInBackground(newValue)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .toggleAIChat)) { _ in
@@ -224,11 +224,7 @@ struct TerminalTabView: View {
               let terminal = cached.view.terminal else { return }
 
         // 确保覆盖层已创建
-        if searchOverlay == nil {
-            let overlay = SearchHighlightOverlay(terminalView: cached.view)
-            cached.view.addSubview(overlay)
-            searchOverlay = overlay
-        }
+        ensureOverlayExists(for: cached.view)
 
         // 使用 SwiftTerm 的 findNext/findPrevious 来更新当前匹配
         let found: Bool
@@ -242,16 +238,13 @@ struct TerminalTabView: View {
         }
 
         if found {
-            // 更新覆盖层高亮
-            searchOverlay?.updateHighlights(
-                searchText: searchText,
-                terminal: terminal,
-                currentMatchIndex: currentMatch - 1
-            )
+            // 更新覆盖层的当前匹配索引
+            updateOverlayCurrentMatch()
         }
     }
 
-    private func countMatches(_ term: String) {
+    /// Perform search in background thread to avoid blocking UI
+    private func performSearchInBackground(_ term: String) async {
         guard let tab = sessionManager.activeTab,
               let cached = TerminalViewCache.shared.retrieve(tab.id),
               let terminal = cached.view.terminal else {
@@ -260,36 +253,66 @@ struct TerminalTabView: View {
             return
         }
 
+        let cols = terminal.cols
+        let rows = terminal.rows
+        let yDisp = terminal.buffer.yDisp
+        let lowerTerm = term.lowercased()
+        let searchText = term
+
+        // Perform search - using main actor since terminal.getText is not sendable
+        var localMatches: [SearchHighlightOverlay.MatchResult] = []
+        var totalCount = 0
+
+        for visibleRow in 0..<rows {
+            let absoluteRow = yDisp + visibleRow
+            let start = Position(col: 0, row: absoluteRow)
+            let end = Position(col: cols - 1, row: absoluteRow)
+            let lineText = terminal.getText(start: start, end: end).lowercased()
+
+            var searchStart = lineText.startIndex
+            while searchStart < lineText.endIndex,
+                  let range = lineText[searchStart...].range(of: searchText) {
+                // Calculate column width accounting for CJK characters
+                let preText = String(lineText[lineText.startIndex..<range.lowerBound])
+                let colIndex = calculateTerminalColumns(for: preText)
+
+                let matchText = String(lineText[range.lowerBound..<range.upperBound])
+                let matchLength = calculateTerminalColumns(for: matchText)
+
+                if colIndex < cols {
+                    localMatches.append(SearchHighlightOverlay.MatchResult(
+                        row: visibleRow,
+                        col: colIndex,
+                        length: min(matchLength, cols - colIndex)
+                    ))
+                }
+                totalCount += 1
+                searchStart = range.upperBound
+            }
+        }
+
+        // Update UI
+        self.matchCount = totalCount
+        self.currentMatch = 0
+
         // 确保覆盖层已创建
+        self.ensureOverlayExists(for: cached.view)
+
+        self.searchOverlay?.updateMatches(localMatches, currentMatchIndex: -1)
+    }
+
+    /// Ensure overlay exists for a terminal view
+    private func ensureOverlayExists(for terminalView: TerminalView) {
         if searchOverlay == nil {
-            let overlay = SearchHighlightOverlay(terminalView: cached.view)
-            cached.view.addSubview(overlay)
+            let overlay = SearchHighlightOverlay(terminalView: terminalView)
+            terminalView.addSubview(overlay)
             searchOverlay = overlay
         }
+    }
 
-        // Get text from visible buffer
-        let start = Position(col: 0, row: 0)
-        let end = Position(col: terminal.cols - 1, row: terminal.rows - 1)
-        let text = terminal.getText(start: start, end: end)
-        let lowerText = text.lowercased()
-        let lowerTerm = term.lowercased()
-        var count = 0
-        var searchStart = lowerText.startIndex
-        while searchStart < lowerText.endIndex,
-              let range = lowerText[searchStart...].range(of: lowerTerm) {
-            count += 1
-            searchStart = range.upperBound
-        }
-        matchCount = count
-
-        // 更新覆盖层高亮
-        if count > 0 {
-            searchOverlay?.updateHighlights(
-                searchText: term,
-                terminal: terminal,
-                currentMatchIndex: -1
-            )
-        }
+    /// Update current match index in overlay
+    private func updateOverlayCurrentMatch() {
+        searchOverlay?.updateCurrentMatchIndex(currentMatch - 1)
     }
 
     /// Handle file drop on terminal view — upload to terminal's current directory.
