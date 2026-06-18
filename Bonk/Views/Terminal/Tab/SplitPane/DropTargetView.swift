@@ -17,6 +17,7 @@ enum DropPosition {
 }
 
 struct DropTargetView: View {
+    @Environment(I18n.self) var i18n
     let onDrop: (UUID, DropPosition) -> Void
     @State private var isDragOver = false
     @State private var dropPosition: DropPosition = .right
@@ -27,7 +28,6 @@ struct DropTargetView: View {
                 DropTargetNSView(
                     isDragOver: $isDragOver,
                     dropPosition: $dropPosition,
-                    frameSize: geometry.size,
                     onDrop: onDrop
                 )
 
@@ -47,45 +47,39 @@ struct DropTargetView: View {
         let iconLabel = VStack(spacing: 8) {
             Image(systemName: "plus.rectangle.on.rectangle")
                 .font(.system(size: 24))
-            Text("Drop to split")
+            Text(i18n.t(.dropToSplit))
                 .font(.caption)
         }
         .foregroundStyle(Color.accentColor)
 
-        switch dropPosition {
-        case .left:
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.accentColor, lineWidth: 3)
-                .frame(width: size.width / 2 - inset * 2)
-                .overlay { iconLabel }
-                .position(x: size.width / 4, y: size.height / 2)
-        case .right:
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.accentColor, lineWidth: 3)
-                .frame(width: size.width / 2 - inset * 2)
-                .overlay { iconLabel }
-                .position(x: size.width * 3 / 4, y: size.height / 2)
-        case .top:
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.accentColor, lineWidth: 3)
-                .frame(height: size.height / 2 - inset * 2)
-                .overlay { iconLabel }
-                .position(x: size.width / 2, y: size.height / 4)
-        case .bottom:
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.accentColor, lineWidth: 3)
-                .frame(height: size.height / 2 - inset * 2)
-                .overlay { iconLabel }
-                .position(x: size.width / 2, y: size.height * 3 / 4)
+        let frame: (width: CGFloat?, height: CGFloat?) = switch dropPosition {
+        case .left: (size.width / 2 - inset * 2, nil)
+        case .right: (size.width / 2 - inset * 2, nil)
+        case .top: (nil, size.height / 2 - inset * 2)
+        case .bottom: (nil, size.height / 2 - inset * 2)
         }
+
+        let position: CGPoint = switch dropPosition {
+        case .left: CGPoint(x: size.width / 4, y: size.height / 2)
+        case .right: CGPoint(x: size.width * 3 / 4, y: size.height / 2)
+        case .top: CGPoint(x: size.width / 2, y: size.height / 4)
+        case .bottom: CGPoint(x: size.width / 2, y: size.height * 3 / 4)
+        }
+
+        RoundedRectangle(cornerRadius: 8)
+            .stroke(Color.accentColor, lineWidth: 3)
+            .frame(width: frame.width, height: frame.height)
+            .overlay { iconLabel }
+            .position(position)
     }
 }
+
+// MARK: - AppKit NSView
 
 private class DropTargetNSViewType: NSView {
     var onDrop: ((UUID, DropPosition) -> Void)?
     var isDragOver: Binding<Bool>?
     var dropPosition: Binding<DropPosition>?
-    var frameSize: CGSize = .zero
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -96,25 +90,19 @@ private class DropTargetNSViewType: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    /// 根据鼠标位置计算最近的边
     private func calculateDropPosition(_ sender: NSDraggingInfo) -> DropPosition {
         let location = convert(sender.draggingLocation, from: nil)
         let w = bounds.width
         let h = bounds.height
 
-        let distLeft = location.x
-        let distRight = w - location.x
-        let distTop = h - location.y
-        let distBottom = location.y
+        let distances: [(DropPosition, CGFloat)] = [
+            (.left, location.x),
+            (.right, w - location.x),
+            (.top, h - location.y),
+            (.bottom, location.y)
+        ]
 
-        let minDist = min(distLeft, distRight, distTop, distBottom)
-
-        switch minDist {
-        case distLeft: return .left
-        case distRight: return .right
-        case distTop: return .top
-        default: return .bottom
-        }
+        return distances.min(by: { $0.1 < $1.1 })?.0 ?? .right
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
@@ -157,10 +145,11 @@ private class DropTargetNSViewType: NSView {
     }
 }
 
+// MARK: - NSViewRepresentable
+
 private struct DropTargetNSView: NSViewRepresentable {
     @Binding var isDragOver: Bool
     @Binding var dropPosition: DropPosition
-    let frameSize: CGSize
     let onDrop: (UUID, DropPosition) -> Void
 
     func makeNSView(context: Context) -> DropTargetNSViewType {
@@ -168,7 +157,6 @@ private struct DropTargetNSView: NSViewRepresentable {
         v.onDrop = onDrop
         v.isDragOver = $isDragOver
         v.dropPosition = $dropPosition
-        v.frameSize = frameSize
         return v
     }
 
@@ -176,7 +164,6 @@ private struct DropTargetNSView: NSViewRepresentable {
         nsView.onDrop = onDrop
         nsView.isDragOver = $isDragOver
         nsView.dropPosition = $dropPosition
-        nsView.frameSize = frameSize
     }
 }
 #endif

@@ -16,19 +16,16 @@ indirect enum LayoutNode: Identifiable {
     /// Vertical split (top-bottom layout).
     case vertical(children: [LayoutNode])
 
+    /// Stable identity for SwiftUI diffing.
+    /// Container nodes use a hash of children IDs.
     var id: UUID {
         switch self {
-        case .pane(let state): state.id
-        case .horizontal: UUID()
-        case .vertical: UUID()
-        }
-    }
-
-    /// Get the pane ID if this is a leaf node.
-    var paneID: UUID {
-        switch self {
-        case .pane(let state): state.id
-        case .horizontal, .vertical: UUID()
+        case .pane(let state):
+            return state.id
+        case .horizontal(let children):
+            return LayoutNode.stableID(for: children, prefix: "h")
+        case .vertical(let children):
+            return LayoutNode.stableID(for: children, prefix: "v")
         }
     }
 
@@ -57,19 +54,6 @@ indirect enum LayoutNode: Identifiable {
         }
     }
 
-    /// Find the node containing a specific pane ID.
-    func findNode(containing paneID: UUID) -> LayoutNode? {
-        switch self {
-        case .pane(let state):
-            return state.id == paneID ? self : nil
-        case .horizontal(let children), .vertical(let children):
-            for child in children {
-                if let found = child.findNode(containing: paneID) { return found }
-            }
-            return nil
-        }
-    }
-
     /// Get all pane IDs in this tree.
     var allPaneIDs: [UUID] {
         switch self {
@@ -86,6 +70,17 @@ indirect enum LayoutNode: Identifiable {
         case .horizontal(let children), .vertical(let children):
             children.reduce(0) { $0 + $1.paneCount }
         }
+    }
+
+    // MARK: - Private
+
+    /// Generate a stable UUID for container nodes based on children.
+    private static func stableID(for children: [LayoutNode], prefix: String) -> UUID {
+        let childIDs = children.map { $0.id.uuidString }.joined(separator: "-")
+        let hash = "\(prefix):\(childIDs)".hashValue
+        // Use a deterministic UUID based on hash
+        let hashValue = Int32(truncatingIfNeeded: hash)
+        return UUID(uuidString: String(format: "%08x-0000-0000-0000-000000000000", UInt32(bitPattern: hashValue))) ?? UUID()
     }
 }
 

@@ -2,12 +2,11 @@
 //  PaneTerminalView.swift
 //  Bonk
 //
-//  A single pane in the layout, wrapping TerminalContainerView.
+//  A single pane in the layout.
 //
 
 import SwiftUI
 
-/// A single pane in the layout, wrapping TerminalContainerView.
 struct PaneTerminalView: View {
     @Environment(I18n.self) var i18n
     let paneState: PaneState
@@ -21,7 +20,6 @@ struct PaneTerminalView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Pane title bar (only show when there are multiple panes)
             if tab.layout.root.paneCount > 1 {
                 paneTitleBar
             }
@@ -59,24 +57,19 @@ struct PaneTerminalView: View {
                 onReconnect: { Task { await sessionManager.reconnectTab(tab.id) } }
             )
         }
-        // Dim inactive panes
         .opacity(isActive ? 1.0 : 0.7)
         .contextMenu {
-            Button {
-                sessionManager.splitHorizontal()
-            } label: {
-                Label("Split Right", systemImage: "rectangle.split.1x2")
+            Button { sessionManager.splitHorizontal() } label: {
+                Label(i18n.t(.splitRight), systemImage: "rectangle.split.1x2")
             }
-            Button {
-                sessionManager.splitVertical()
-            } label: {
-                Label("Split Down", systemImage: "rectangle.split.2x1")
+            Button { sessionManager.splitVertical() } label: {
+                Label(i18n.t(.splitDown), systemImage: "rectangle.split.2x1")
             }
             Divider()
             Button(role: .destructive) {
                 sessionManager.closePane(paneState.id, in: tab)
             } label: {
-                Label("Close Pane", systemImage: "xmark")
+                Label(i18n.t(.closePane), systemImage: "xmark")
             }
             .disabled(tab.layout.root.paneCount <= 1)
         }
@@ -92,7 +85,6 @@ struct PaneTerminalView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Spacer()
-            // Close pane button
             Button {
                 sessionManager.closePane(paneState.id, in: tab)
             } label: {
@@ -101,7 +93,7 @@ struct PaneTerminalView: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .help("Close this pane")
+            .help(i18n.t(.closePane))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 4)

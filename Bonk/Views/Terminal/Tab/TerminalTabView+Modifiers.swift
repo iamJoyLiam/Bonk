@@ -115,6 +115,7 @@ struct OverwriteDialogModifier: ViewModifier {
     @Binding var pendingTab: TerminalTab?
     @Binding var overwriteAlways: Bool
     @Bindable var sessionManager: SessionManager
+    let onUpload: (URL, TerminalTab) -> Void
 
     func body(content: Content) -> some View {
         content
@@ -125,21 +126,17 @@ struct OverwriteDialogModifier: ViewModifier {
                 Button(i18n.t(.overwrite)) {
                     guard let url = pendingURL, let tab = pendingTab else { return }
                     pendingURL = nil; pendingTab = nil
-                    Task { await performUpload(url, tab: tab) }
+                    onUpload(url, tab)
                 }
                 Button(i18n.t(.alwaysOverwrite)) {
                     guard let url = pendingURL, let tab = pendingTab else { return }
                     overwriteAlways = true; pendingURL = nil; pendingTab = nil
-                    Task { await performUpload(url, tab: tab) }
+                    onUpload(url, tab)
                 }
                 Button(i18n.t(.cancel), role: .cancel) {
                     pendingURL = nil; pendingTab = nil
                 }
             }
-    }
-
-    private func performUpload(_ url: URL, tab: TerminalTab) async {
-        // Implementation in TerminalTabView+SFTP
     }
 }
 
@@ -168,12 +165,14 @@ extension View {
         pendingURL: Binding<URL?>,
         pendingTab: Binding<TerminalTab?>,
         overwriteAlways: Binding<Bool>,
-        sessionManager: SessionManager
+        sessionManager: SessionManager,
+        onUpload: @escaping (URL, TerminalTab) -> Void
     ) -> some View {
         modifier(OverwriteDialogModifier(
             i18n: i18n, isPresented: isPresented,
             pendingURL: pendingURL, pendingTab: pendingTab,
-            overwriteAlways: overwriteAlways, sessionManager: sessionManager
+            overwriteAlways: overwriteAlways, sessionManager: sessionManager,
+            onUpload: onUpload
         ))
     }
 }

@@ -179,65 +179,60 @@ final class SessionManager {
 
     /// Add a pane from source tab to target tab (for drag-to-split).
     func addPaneFromTab(_ sourceTabID: UUID, to targetTabID: UUID, position: DropPosition = .right) {
-        print("[SPLIT] addPaneFromTab: source=\(sourceTabID), target=\(targetTabID), position=\(position)")
+        Log.session.info("[SPLIT] addPaneFromTab: source=\(sourceTabID), target=\(targetTabID)")
 
         guard sourceTabID != targetTabID else {
-            print("[SPLIT] ❌ Source and target are the same tab")
+            Log.session.warning("[SPLIT] Source and target are the same tab, ignoring")
             return
         }
 
         guard let sourceTab = tabs.first(where: { $0.id == sourceTabID }),
               let targetTab = tabs.first(where: { $0.id == targetTabID }) else {
-            print("[SPLIT] ❌ Tab not found")
+            Log.session.warning("[SPLIT] Tab not found")
             return
         }
 
         guard let sourcePane = sourceTab.layout.root.paneState else {
-            print("[SPLIT] ❌ Source tab has no pane state")
+            Log.session.warning("[SPLIT] Source tab has no pane state")
             return
         }
 
         guard let sourcePTY = sourcePane.ptySession else {
-            print("[SPLIT] ❌ Source pane has no PTY session")
+            Log.session.warning("[SPLIT] Source pane has no PTY session")
             return
         }
 
-        print("[SPLIT] ✅ Source has PTY session, creating new pane in target")
-
-        // 根据位置创建分割
+        // Create new pane based on position
         let newPane: PaneState
         switch position {
         case .left, .top:
-            // TODO: 支持在前面插入，目前统一在后面添加
+            // TODO: Support insert-before, currently always appends
             newPane = targetTab.layout.splitHorizontal()
         case .right, .bottom:
             newPane = targetTab.layout.splitHorizontal()
         }
         newPane.title = sourceTab.hostItem.host
 
-        // 移动 PTY 会话
+        // Move PTY session from source to new pane
         newPane.ptySession = sourcePTY
         sourcePane.ptySession = nil
 
-        // 移动终端视图缓存
+        // Move terminal view cache
         if let cached = TerminalViewCache.shared.retrieve(sourcePane.id) {
-            print("[SPLIT] ✅ Moving terminal view cache")
             TerminalViewCache.shared.store(tabID: newPane.id, view: cached.view, coordinator: cached.coordinator)
             TerminalViewCache.shared.remove(sourcePane.id)
         }
 
-        // 更新 Tab 标题
+        // Update tab title and switch to target
         updateTabTitleForSplit(targetTab)
-
-        // 切换到目标 Tab
         activeTabID = targetTabID
 
-        // 删除源 Tab（不关闭连接，PTY 已移动）
+        // Remove source tab (connection stays alive, PTY was moved)
         tabs.removeAll(where: { $0.id == sourceTabID })
         sessionStore.removeSession(sourceTabID)
         syncBroadcastTargets()
 
-        print("[SPLIT] ✅ Split complete. Target tab now has \(targetTab.layout.root.paneCount) panes")
+        Log.session.info("[SPLIT] Complete. Target tab now has \(targetTab.layout.root.paneCount) panes")
     }
 
     // MARK: - Connection

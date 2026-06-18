@@ -47,10 +47,15 @@ struct SFTPTransfer: Identifiable {
     let totalBytes: UInt64
     var transferredBytes: UInt64
     var isComplete: Bool
+    var isCancelled: Bool = false
     var error: String?
 
     var progress: Double {
         guard totalBytes > 0 else { return 0 }
         return Double(transferredBytes) / Double(totalBytes)
+    }
+
+    var isActive: Bool {
+        !isComplete && !isCancelled
     }
 }

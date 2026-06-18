@@ -25,6 +25,13 @@ struct GeneralSettingsView: View {
             Section(i18n.t(.hostInformation)) {
                 Toggle(i18n.t(.hostAutoFillClear), isOn: $preferences.hostAutoFillClear)
             }
+
+            Section("SFTP") {
+                Toggle(i18n.t(.sftpOverwriteAlways), isOn: Binding(
+                    get: { preferences.sftpOverwriteAlways ?? false },
+                    set: { preferences.sftpOverwriteAlways = $0 }
+                ))
+            }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)

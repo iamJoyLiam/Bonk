@@ -250,6 +250,11 @@ enum LKey: String, CaseIterable {
     case splitHorizontal = "split_horizontal"
     case splitVertical = "split_vertical"
     case closePane = "close_pane"
+    case splitRight = "split_right"
+    case splitDown = "split_down"
+    case dropToSplit = "drop_to_split"
+    case sftpOverwriteAlways = "sftp_overwrite_always"
+    case overwritingTo = "overwriting_to"
 
     // Serial Port
     case serialPort = "serial_port"

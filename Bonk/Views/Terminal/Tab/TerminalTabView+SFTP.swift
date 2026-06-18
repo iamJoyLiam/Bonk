@@ -26,23 +26,20 @@ extension TerminalTabView {
         }
     }
 
-    /// Resolve the upload directory from PTY session or SFTP.
+    /// Resolve the upload directory from cached CWD or SFTP.
     func resolveUploadDir(tab: TerminalTab, sftp: SFTPService) async -> String {
-        // Use PTY getCWD to get actual interactive shell directory
-        if let ptyCWD = await tab.session?.ptySession?.getCWD(), ptyCWD.hasPrefix("/") {
-            tab.currentDirectory = ptyCWD
-            return ptyCWD
+        // 1. Use cached CWD (updated by OSC 7 detection in background)
+        if let cwd = tab.currentDirectory, cwd.hasPrefix("/") {
+            return cwd
         }
-        // Fallback to tracked CWD
-        if let cwd = tab.currentDirectory, cwd.hasPrefix("/") { return cwd }
-        // Last resort: SFTP current path
+        // 2. Fallback to SFTP current path
         return sftp.currentPath
     }
 
     /// Handle file drop: check existence, show dialog only if file already exists.
     func handleDrop(url: URL, tab: TerminalTab) async {
-        if overwriteAlways {
-            await performUpload(url, tab: tab)
+        if preferences.sftpOverwriteAlways ?? false {
+            await performUpload(url, tab: tab, isOverwrite: true)
             return
         }
         guard tab.session?.sshService != nil else {
@@ -72,7 +69,7 @@ extension TerminalTabView {
     }
 
     /// Upload file to the specified tab's server.
-    func performUpload(_ url: URL, tab: TerminalTab, uploadDir: String? = nil) async {
+    func performUpload(_ url: URL, tab: TerminalTab, uploadDir: String? = nil, isOverwrite: Bool = false) async {
         guard tab.session?.sshService != nil else {
             dropMessage = i18n.t(.noSSHConnection)
             try? await Task.sleep(for: .seconds(2))
@@ -88,7 +85,9 @@ extension TerminalTabView {
         }
         let filename = url.lastPathComponent
         let remotePath = (targetDir.hasSuffix("/") ? targetDir : targetDir + "/") + filename
-        dropMessage = i18n.tr(.uploadingTo, args: filename, targetDir)
+        dropMessage = isOverwrite
+            ? i18n.tr(.overwritingTo, args: filename, targetDir)
+            : i18n.tr(.uploadingTo, args: filename, targetDir)
         uploadProgress = 0
 
         // 启动进度监控

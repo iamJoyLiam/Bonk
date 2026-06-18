@@ -169,15 +169,15 @@ struct SFTPWindowView: View {
         VStack(spacing: 4) {
             ForEach(sftp.transfers) { transfer in
                 HStack(spacing: 8) {
-                    Image(systemName: transfer.isComplete ? "checkmark.circle.fill" : "arrow.down.circle")
+                    Image(systemName: transfer.isCancelled ? "xmark.circle.fill" : (transfer.isComplete ? "checkmark.circle.fill" : "arrow.down.circle"))
                         .font(.system(size: 12))
-                        .foregroundStyle(transfer.isComplete ? .green : .blue)
+                        .foregroundStyle(transfer.isCancelled ? .orange : (transfer.isComplete ? .green : .blue))
 
                     Text(transfer.filename)
                         .font(.system(size: 11))
                         .lineLimit(1)
 
-                    if !transfer.isComplete {
+                    if transfer.isActive {
                         ProgressView(value: transfer.progress)
                             .progressViewStyle(.linear)
                     }
@@ -188,6 +188,18 @@ struct SFTPWindowView: View {
                         Text(error)
                             .font(.system(size: 10))
                             .foregroundStyle(.red)
+                    }
+
+                    // Cancel button for active transfers
+                    if transfer.isActive {
+                        Button {
+                            sftp.cancelTransfer(transfer.id)
+                        } label: {
+                            Image(systemName: "xmark.circle")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }

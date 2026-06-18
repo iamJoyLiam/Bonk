@@ -173,6 +173,13 @@ final class SFTPService {
         }
     }
 
+    /// Cancel a specific transfer.
+    func cancelTransfer(_ transferID: UUID) {
+        if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+            transfers[idx].isCancelled = true
+        }
+    }
+
     /// Upload a local file to the remote path. Streams in chunks to avoid OOM.
     func upload(_ localURL: URL, to remotePath: String? = nil) async throws {
         guard let sftp = sftpClient else { throw SFTPServiceError.notConnected }
@@ -201,6 +208,14 @@ final class SFTPService {
                 var updateCounter = 0
 
                 while true {
+                    // Check for cancellation
+                    let isCancelled = await MainActor.run { [self] in
+                        transfers.first(where: { $0.id == transferID })?.isCancelled ?? false
+                    }
+                    if isCancelled {
+                        throw SFTPServiceError.transferCancelled
+                    }
+
                     guard let chunkData = try handle.read(upToCount: chunkSize), !chunkData.isEmpty else { break }
                     var buffer = ByteBuffer(data: chunkData)
                     try await file.write(buffer, at: offset)
@@ -225,7 +240,11 @@ final class SFTPService {
             }
         } catch {
             if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                transfers[idx].error = error.localizedDescription
+                if error is SFTPServiceError && (error as! SFTPServiceError) == .transferCancelled {
+                    transfers[idx].isCancelled = true
+                } else {
+                    transfers[idx].error = error.localizedDescription
+                }
             }
             throw error
         }
@@ -273,12 +292,14 @@ final class SFTPService {
     }
 }
 
-enum SFTPServiceError: LocalizedError {
+enum SFTPServiceError: LocalizedError, Equatable {
     case notConnected
+    case transferCancelled
 
     var errorDescription: String? {
         switch self {
         case .notConnected: "SFTP session not connected."
+        case .transferCancelled: "Transfer cancelled."
         }
     }
 }

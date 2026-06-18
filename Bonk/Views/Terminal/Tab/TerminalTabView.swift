@@ -29,7 +29,7 @@ struct TerminalTabView: View {
     @State private var searchDebounceTask: Task<Void, Never>?
     @State private var searchOverlay: SearchHighlightOverlay?
 
-    private var preferences: UserPreferences {
+    var preferences: UserPreferences {
         allPreferences.first ?? UserPreferences()
     }
 
@@ -40,7 +40,6 @@ struct TerminalTabView: View {
     @State var pendingUploadURL: URL?
     @State var pendingUploadTab: TerminalTab?
     @State var showOverwriteAlert = false
-    @State var overwriteAlways = false
     @State var showAIChat = false
     @State var selectedTextForAI = ""
     @State var selectionObserver: NSObjectProtocol?
@@ -101,9 +100,14 @@ struct TerminalTabView: View {
             isPresented: $showOverwriteAlert,
             pendingURL: $pendingUploadURL,
             pendingTab: $pendingUploadTab,
-            overwriteAlways: $overwriteAlways,
+            overwriteAlways: Binding(
+                get: { preferences.sftpOverwriteAlways ?? false },
+                set: { preferences.sftpOverwriteAlways = $0 }
+            ),
             sessionManager: sessionManager
-        )
+        ) { url, tab in
+            Task { await performUpload(url, tab: tab, isOverwrite: true) }
+        }
         .onChange(of: renamingTab?.id) { _, _ in
             if let tab = renamingTab { renameText = tab.title }
         }

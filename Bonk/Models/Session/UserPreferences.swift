@@ -31,6 +31,8 @@ final class UserPreferences {
     var aiDirectSubmit: Bool // true = directly submit selected text, false = show in input
     // General
     var checkForUpdates: Bool
+    // SFTP — optional for backward compatibility
+    var sftpOverwriteAlways: Bool?
 
     init(
         fontSize: Double = 14,
@@ -46,7 +48,8 @@ final class UserPreferences {
         escDismissAI: Bool = true,
         hostAutoFillClear: Bool = true,
         aiDirectSubmit: Bool = true,
-        checkForUpdates: Bool = true
+        checkForUpdates: Bool = true,
+        sftpOverwriteAlways: Bool? = nil
     ) {
         self.fontSize = fontSize
         self.fontFamily = fontFamily
@@ -62,5 +65,6 @@ final class UserPreferences {
         self.hostAutoFillClear = hostAutoFillClear
         self.aiDirectSubmit = aiDirectSubmit
         self.checkForUpdates = checkForUpdates
+        self.sftpOverwriteAlways = sftpOverwriteAlways
     }
 }
