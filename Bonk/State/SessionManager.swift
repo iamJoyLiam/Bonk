@@ -6,8 +6,11 @@ import SwiftUI
 @Observable
 @MainActor
 final class SessionManager {
+    /// All tabs (each tab is a workspace with its own split layout).
     private(set) var tabs: [TerminalTab] = []
+
     var activeTabID: UUID?
+
     var lastError: String?
     var showError = false
     private let hostKeyStore = PersistentHostKeyStore()
@@ -30,7 +33,14 @@ final class SessionManager {
     }
 
     var activeTab: TerminalTab? {
-        tabs.first(where: { $0.id == activeTabID })
+        guard let id = activeTabID else { return nil }
+        return tabs.first(where: { $0.id == id })
+    }
+
+    /// The active pane state in the active tab.
+    var activePane: PaneState? {
+        guard let tab = activeTab else { return nil }
+        return tab.layout.findPane(id: tab.activePaneID)
     }
 
     // MARK: - Tab Management
@@ -41,7 +51,6 @@ final class SessionManager {
         activeTabID = tab.id
         syncBroadcastTargets()
 
-        // Get or create session from SessionStore
         let session = sessionStore.session(for: tab)
         tab.session = session
 
@@ -55,13 +64,180 @@ final class SessionManager {
     func closeTab(_ id: UUID) async {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
         await disconnectTab(id)
-        viewCache.remove(id)
+        // Clean up all pane views
+        for paneID in tab.paneIDs {
+            viewCache.remove(paneID)
+        }
         sessionStore.removeSession(id)
         tabs.removeAll(where: { $0.id == id })
+
         if activeTabID == id {
             activeTabID = tabs.last?.id
         }
         syncBroadcastTargets()
+    }
+
+    /// Copy a tab (create a new tab with the same host).
+    func copyTab(_ id: UUID) {
+        guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        let newTab = TerminalTab(hostItem: tab.hostItem)
+        newTab.title = "\(tab.title) (copy)"
+        tabs.append(newTab)
+        activeTabID = newTab.id
+        syncBroadcastTargets()
+
+        let session = sessionStore.session(for: newTab)
+        newTab.session = session
+        Task { await connectTab(newTab) }
+    }
+
+    // MARK: - Split Pane
+
+    /// Split the active pane horizontally (left-right).
+    func splitHorizontal() {
+        guard let tab = activeTab else { return }
+        let newPane = tab.layout.splitHorizontal()
+        tab.activePaneID = newPane.id
+        updateTabTitleForSplit(tab)
+
+        Task { await connectPane(tab: tab, pane: newPane) }
+    }
+
+    /// Split the active pane vertically (top-bottom).
+    func splitVertical() {
+        guard let tab = activeTab else { return }
+        let newPane = tab.layout.splitVertical()
+        tab.activePaneID = newPane.id
+        updateTabTitleForSplit(tab)
+
+        Task { await connectPane(tab: tab, pane: newPane) }
+    }
+
+    /// Update tab title to indicate split state.
+    private func updateTabTitleForSplit(_ tab: TerminalTab) {
+        let paneCount = tab.layout.root.paneCount
+        if paneCount > 1 {
+            // When split, rename to Workspace
+            tab.title = "Workspace"
+        } else {
+            // Revert to original name
+            tab.title = tab.hostItem.name
+        }
+    }
+
+    /// Close the active pane in the active tab.
+    func closePane() {
+        guard let tab = activeTab else { return }
+        // Don't close if it's the last pane
+        guard tab.layout.root.paneCount > 1 else { return }
+
+        let paneID = tab.activePaneID
+        if tab.layout.closeActivePane() {
+            // Clean up the closed pane
+            viewCache.remove(paneID)
+            // Update active pane
+            tab.activePaneID = tab.layout.activePaneID
+            // Update tab title
+            updateTabTitleForSplit(tab)
+        }
+    }
+
+    /// Close a specific pane in a tab.
+    func closePane(_ paneID: UUID, in tab: TerminalTab) {
+        // Don't close if it's the last pane
+        guard tab.layout.root.paneCount > 1 else { return }
+
+        if tab.layout.closePane(id: paneID) {
+            // Clean up the closed pane
+            viewCache.remove(paneID)
+            // Update active pane if needed
+            if tab.activePaneID == paneID {
+                tab.activePaneID = tab.layout.activePaneID
+            }
+            // Update tab title
+            updateTabTitleForSplit(tab)
+        }
+    }
+
+    /// Connect a new pane (open PTY session).
+    private func connectPane(tab: TerminalTab, pane: PaneState) async {
+        guard let service = tab.session?.sshService else { return }
+        do {
+            let ptySession = try await service.openPTY()
+            pane.ptySession = ptySession
+        } catch {
+            Log.session.error("[SPLIT] Failed to open PTY for new pane: \(error.localizedDescription)")
+        }
+    }
+
+    /// Select a pane within the active tab.
+    func selectPane(_ paneID: UUID) {
+        guard let tab = activeTab else { return }
+        tab.layout.selectPane(paneID)
+        tab.activePaneID = paneID
+    }
+
+    /// Add a pane from source tab to target tab (for drag-to-split).
+    func addPaneFromTab(_ sourceTabID: UUID, to targetTabID: UUID, position: DropPosition = .right) {
+        print("[SPLIT] addPaneFromTab: source=\(sourceTabID), target=\(targetTabID), position=\(position)")
+
+        guard sourceTabID != targetTabID else {
+            print("[SPLIT] ❌ Source and target are the same tab")
+            return
+        }
+
+        guard let sourceTab = tabs.first(where: { $0.id == sourceTabID }),
+              let targetTab = tabs.first(where: { $0.id == targetTabID }) else {
+            print("[SPLIT] ❌ Tab not found")
+            return
+        }
+
+        guard let sourcePane = sourceTab.layout.root.paneState else {
+            print("[SPLIT] ❌ Source tab has no pane state")
+            return
+        }
+
+        guard let sourcePTY = sourcePane.ptySession else {
+            print("[SPLIT] ❌ Source pane has no PTY session")
+            return
+        }
+
+        print("[SPLIT] ✅ Source has PTY session, creating new pane in target")
+
+        // 根据位置创建分割
+        let newPane: PaneState
+        switch position {
+        case .left, .top:
+            // TODO: 支持在前面插入，目前统一在后面添加
+            newPane = targetTab.layout.splitHorizontal()
+        case .right, .bottom:
+            newPane = targetTab.layout.splitHorizontal()
+        }
+        newPane.title = sourceTab.hostItem.host
+
+        // 移动 PTY 会话
+        newPane.ptySession = sourcePTY
+        sourcePane.ptySession = nil
+
+        // 移动终端视图缓存
+        if let cached = TerminalViewCache.shared.retrieve(sourcePane.id) {
+            print("[SPLIT] ✅ Moving terminal view cache")
+            TerminalViewCache.shared.store(tabID: newPane.id, view: cached.view, coordinator: cached.coordinator)
+            TerminalViewCache.shared.remove(sourcePane.id)
+        }
+
+        // 更新 Tab 标题
+        updateTabTitleForSplit(targetTab)
+
+        // 切换到目标 Tab
+        activeTabID = targetTabID
+
+        // 删除源 Tab（不关闭连接，PTY 已移动）
+        tabs.removeAll(where: { $0.id == sourceTabID })
+        sessionStore.removeSession(sourceTabID)
+        syncBroadcastTargets()
+
+        print("[SPLIT] ✅ Split complete. Target tab now has \(targetTab.layout.root.paneCount) panes")
     }
 
     // MARK: - Connection
@@ -69,7 +245,6 @@ final class SessionManager {
     func connectTab(_ tab: TerminalTab) async {
         Log.session.info("[CONNECT] Starting connectTab for \(tab.hostItem.host):\(tab.hostItem.port)")
 
-        // Check if already connecting via SessionStore
         guard !sessionStore.isConnecting(tab.id) else {
             Log.session.warning("[CONNECT] Already connecting to \(tab.hostItem.host), skipping")
             return
@@ -77,50 +252,38 @@ final class SessionManager {
         sessionStore.markConnecting(tab.id)
         defer { sessionStore.markConnected(tab.id) }
 
-        // Get or create session from SessionStore
         let session = sessionStore.session(for: tab)
         tab.session = session
         session.connectionState = .connecting
         session.errorMessage = nil
-        Log.session.info("[CONNECT] State set to .connecting")
 
         guard let config = resolveConnectionConfig(for: tab, session: session) else {
             Log.session.error("[CONNECT] Failed to resolve connection config")
             return
         }
-        Log.session.info("[CONNECT] Config resolved, creating SSHNetworkService")
 
         let service = SSHNetworkService(hostKeyStore: hostKeyStore)
         session.sshService = service
-        Log.session.info("[CONNECT] SSHNetworkService created, starting state observation")
         observeStateChanges(for: tab, session: session, service: service)
 
         do {
-            Log.session.info("[CONNECT] Calling service.connect()...")
             try await service.connect(config: config)
-            Log.session.info("[CONNECT] service.connect() returned successfully")
 
-            guard tabs.contains(where: { $0.id == tab.id }) else {
-                Log.session.warning("[CONNECT] Tab was closed during connection, aborting")
-                return
-            }
+            guard tabs.contains(where: { $0.id == tab.id }) else { return }
 
-            Log.session.info("[CONNECT] Enabling reconnection...")
             await service.enableReconnection(attempts: 3)
 
-            guard tabs.contains(where: { $0.id == tab.id }) else {
-                Log.session.warning("[CONNECT] Tab was closed after reconnection setup, aborting")
-                return
-            }
+            guard tabs.contains(where: { $0.id == tab.id }) else { return }
 
             session.connectionState = .connected
             session.connectedAt = Date()
-            Log.session.info("[CONNECT] State set to .connected, opening PTY...")
 
-            // Publish connected event
             EventPublisher.shared.publish(SessionEvent.connected(tabID: tab.id))
 
-            try await setupPTYSession(for: tab, session: session, service: service)
+            // Connect the first pane
+            if let firstPane = tab.layout.root.paneState {
+                try await setupPTYSession(for: tab, pane: firstPane, session: session, service: service)
+            }
             Log.session.info("[CONNECT] PTY session established successfully")
         } catch {
             Log.session.error("[CONNECT] Connection failed: \(error.localizedDescription)")
@@ -130,7 +293,6 @@ final class SessionManager {
             lastError = error.localizedDescription
             showError = true
 
-            // Publish error event
             EventPublisher.shared.publish(SessionEvent.error(tabID: tab.id, error: error))
         }
     }
@@ -138,10 +300,13 @@ final class SessionManager {
     func disconnectTab(_ id: UUID) async {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
         await sessionStore.disconnect(id)
+        // Close all pane PTY sessions
+        for paneID in tab.paneIDs {
+            tab.layout.findPane(id: paneID)?.ptySession?.close()
+        }
         tab.session?.disconnect()
         tab.session = nil
 
-        // Publish disconnected event
         EventPublisher.shared.publish(SessionEvent.disconnected(tabID: id))
     }
 
@@ -153,10 +318,12 @@ final class SessionManager {
 
     // MARK: - Input
 
-    func resizePTY(cols: Int, rows: Int, tabID: UUID) async throws {
-        guard let tab = tabs.first(where: { $0.id == tabID }),
-              let service = tab.session?.sshService else { return }
-        try await service.resizePTY(cols: cols, rows: rows)
+    func resizePTY(cols: Int, rows: Int, tabID: UUID, paneID: UUID? = nil) async throws {
+        guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
+        let targetPaneID = paneID ?? tab.activePaneID
+        guard let pane = tab.layout.findPane(id: targetPaneID),
+              let pty = pane.ptySession else { return }
+        try await pty.resize(cols: cols, rows: rows)
     }
 
     func updateTabTitle(_ title: String, tabID: UUID) {
@@ -166,28 +333,43 @@ final class SessionManager {
         }
     }
 
-    func sendInput(_ bytes: ArraySlice<UInt8>, to tabID: UUID) async throws {
+    func sendInput(_ bytes: ArraySlice<UInt8>, to tabID: UUID, paneID: UUID? = nil) async throws {
         guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
         try await inputHandler.sendInput(
             bytes,
             to: tab,
+            paneID: paneID,
             broadcastManager: broadcastManager,
             allTabs: tabs
         )
     }
 
-    /// Convenience: send text to the active tab (auto-appends Enter).
+    /// Convenience: send text to the active pane (auto-appends Enter).
     func sendTextToActiveTab(_ text: String) {
         guard let tab = activeTab else { return }
-        Task { try? await inputHandler.sendText(text, to: tab, broadcastManager: broadcastManager, allTabs: tabs) }
+        Task {
+            try? await inputHandler.sendText(
+                text,
+                to: tab,
+                broadcastManager: broadcastManager,
+                allTabs: tabs
+            )
+        }
     }
 
     // MARK: - Broadcast Sync
 
     private func syncBroadcastTargets() {
-        broadcastManager?.allPaneIDs = tabs.map { $0.id }
-        let validIDs = Set(tabs.map { $0.id })
+        let allPaneIDs = tabs.flatMap { $0.paneIDs }
+        broadcastManager?.allPaneIDs = allPaneIDs
+        let validIDs = Set(allPaneIDs)
         broadcastManager?.targetPaneIDs = broadcastManager?.targetPaneIDs.filter { validIDs.contains($0) } ?? []
+    }
+
+    /// Toggle broadcast mode.
+    func toggleBroadcast() {
+        broadcastManager?.toggle()
+        syncBroadcastTargets()
     }
 
     // MARK: - Private
@@ -214,7 +396,7 @@ final class SessionManager {
         )
     }
 
-    private func setupPTYSession(for tab: TerminalTab, session: TerminalSession, service: SSHNetworkService) async throws {
+    private func setupPTYSession(for tab: TerminalTab, pane: PaneState, session: TerminalSession, service: SSHNetworkService) async throws {
         Log.session.info("[PTY] Opening PTY session...")
         let ptySession = try await service.openPTY()
         Log.session.info("[PTY] PTY session opened successfully")
@@ -224,18 +406,17 @@ final class SessionManager {
             return
         }
 
-        session.ptySession = ptySession
-        Log.session.info("[PTY] PTY session assigned (output stream will be created by TerminalContainerView)")
+        pane.ptySession = ptySession
+        session.ptySession = ptySession // Keep for backward compatibility
+        Log.session.info("[PTY] PTY session assigned to pane")
 
         ptySession.osc7Detector.onCWDChange = { [weak tab] cwd in
             Task { @MainActor in
                 tab?.currentDirectory = cwd
             }
         }
-        Log.session.info("[PTY] OSC 7 detector wired")
 
         tab.hostItem.lastConnectedAt = Date()
-        Log.session.info("[PTY] PTY setup complete")
 
         session.serverInfoTask?.cancel()
         session.serverInfoTask = Task { [weak session] in
@@ -275,10 +456,12 @@ final class SessionManager {
                 switch state {
                 case .connected:
                     if let newPTY = await service.consumePendingPTY() {
-                        session.ptySession?.close()
-                        session.ptySession = newPTY
-                        let streamResult = newPTY.makeOutputStream()
-                        session.outputStream = streamResult.stream
+                        // Update the first pane's PTY session
+                        if let firstPane = tab.layout.root.paneState {
+                            firstPane.ptySession?.close()
+                            firstPane.ptySession = newPTY
+                            session.ptySession = newPTY
+                        }
                         session.connectedAt = Date()
                         session.errorMessage = nil
                     }

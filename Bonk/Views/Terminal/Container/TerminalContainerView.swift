@@ -156,44 +156,33 @@ import SwiftUI
 
         func updateNSView(_ nsView: NSView, context: Context) {
             guard context.coordinator.lastTabID != activeTabID else {
-                // Tab didn't change, just update settings
                 if let cached = TerminalViewCache.shared.retrieve(activeTabID) {
-                    let terminalView = cached.view
-                    // 验证：cache 返回的 view 是否在当前窗口的子视图树中
-                    let isInHierarchy = terminalView.superview != nil
-                    let isSubviewOfContainer = nsView.subviews.contains(terminalView)
                     updateSettings(for: cached)
-                    // Update copy-on-select monitor when setting changes
                     if let coord = cached.coordinator as? ContainerTerminalCoordinator {
                         coord.updateCopyOnSelect(copyOnSelect)
                     }
-                } else {}
+                }
                 return
             }
 
             let oldTabID = context.coordinator.lastTabID
             context.coordinator.lastTabID = activeTabID
 
-            // 1. Remove old terminal view from container (keep in cache)
             if let oldID = oldTabID, let oldCached = TerminalViewCache.shared.retrieve(oldID) {
                 oldCached.view.removeFromSuperview()
             }
 
-            // 2. Get or create new terminal view
             let cached: CachedTerminalView = if let existing = TerminalViewCache.shared.retrieve(activeTabID) {
                 existing
             } else {
                 createTerminalView(for: activeTabID, context: context)
             }
 
-            // 3. Add to container with constraints (with padding)
             cached.view.translatesAutoresizingMaskIntoConstraints = false
             nsView.addSubview(cached.view)
 
-            // Remove old constraints if any
             NSLayoutConstraint.deactivate(cached.constraints)
 
-            // Create new constraints with padding
             cached.constraints = [
                 cached.view.leadingAnchor.constraint(equalTo: nsView.leadingAnchor, constant: 8),
                 cached.view.trailingAnchor.constraint(equalTo: nsView.trailingAnchor, constant: -8),
@@ -202,23 +191,17 @@ import SwiftUI
             ]
             NSLayoutConstraint.activate(cached.constraints)
 
-            // 4. Focus
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 nsView.window?.makeFirstResponder(cached.view)
             }
         }
 
-        static func dismantleNSView(_: NSView, coordinator _: ContainerCoordinator) {
-            // Don't clear cache - views persist
-        }
+        static func dismantleNSView(_: NSView, coordinator _: ContainerCoordinator) {}
 
         // MARK: - Helpers
 
-        /// Create a safe font with nil-checking and fallback to system monospaced font.
-        /// Prevents silent failure when a font name doesn't match any installed font.
         private func createSafeFont(family: String, size: CGFloat) -> NSFont {
             guard !family.isEmpty, family != "SF Mono" else {
-                // SF Mono is the system monospaced font, use the system API directly
                 return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
             }
             guard let targetFont = NSFont(name: family, size: size) else {
@@ -247,9 +230,6 @@ import SwiftUI
             terminal.terminalDelegate = coordinator
             coordinator.terminalView = terminal
 
-            // Note: Output stream needs to be connected externally
-            // The container will receive output via the feed task when connected
-
             coordinator.observeThemeChanges()
             coordinator.installCopyOnSelectMonitor()
             TerminalScrollFix.register(terminal)
@@ -265,7 +245,6 @@ import SwiftUI
             cached.view.translatesAutoresizingMaskIntoConstraints = false
             containerView.addSubview(cached.view)
 
-            // Store constraints for later management
             cached.constraints = [
                 cached.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
                 cached.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -8),
@@ -275,7 +254,6 @@ import SwiftUI
             NSLayoutConstraint.activate(cached.constraints)
             context.coordinator.lastTabID = tabID
 
-            // Focus the terminal when first created
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 containerView.window?.makeFirstResponder(cached.view)
             }
@@ -285,11 +263,7 @@ import SwiftUI
             let terminal = cached.view
             let newFont = createSafeFont(family: fontFamily, size: CGFloat(fontSize))
 
-            let oldFont = terminal.font
-
             terminal.font = newFont
-
-            let afterFont = terminal.font
 
             terminal.terminal.setCursorStyle(mapCursorStyle(cursorStyle, blink: cursorBlink))
             if terminal.terminal.options.scrollback != scrollbackLines {
@@ -321,10 +295,9 @@ import SwiftUI
             set { lock.lock(); defer { lock.unlock() }; _feedTask = newValue }
         }
 
-        // Batch feed throttling — reduces MainActor.run calls under heavy output
         let batchBuffer = OSAllocatedUnfairLock<String>(uncheckedState: "")
         let batchFlushScheduled = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
-        static let batchThreshold = 4096 // 4 KB — flush immediately when buffer reaches this size
+        static let batchThreshold = 4096
 
         var onSend: @Sendable (ArraySlice<UInt8>) -> Void {
             get { lock.lock(); defer { lock.unlock() }; return _onSend }
@@ -385,7 +358,6 @@ import SwiftUI
             }
         }
 
-        /// Update copy-on-select when the setting changes at runtime.
         func updateCopyOnSelect(_ enabled: Bool) {
             copyOnSelect = enabled
             if enabled, mouseUpMonitor == nil {

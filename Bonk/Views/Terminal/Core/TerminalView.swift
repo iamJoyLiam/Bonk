@@ -24,15 +24,6 @@ struct TerminalTabContentView: View {
     let onTitleChange: (@Sendable (String) -> Void)?
     let onReconnect: (() -> Void)?
 
-    private var terminalBackground: Color {
-        if colorScheme.id == "transparent" { return .clear }
-        #if os(macOS)
-            return Color(nsColor: .controlBackgroundColor)
-        #else
-            return Color(uiColor: .systemBackground)
-        #endif
-    }
-
     var body: some View {
         ZStack {
             switch tab.session?.connectionState ?? .disconnected {
@@ -85,12 +76,12 @@ struct TerminalTabContentView: View {
             VStack(spacing: 6) {
                 Text(i18n.tr(.connectingTo, args: tab.hostItem.host))
                     .font(.headline)
+
                 Text("\(tab.hostItem.username)@\(tab.hostItem.host):\(tab.hostItem.port)")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var disconnectedView: some View {
@@ -118,17 +109,21 @@ struct TerminalTabContentView: View {
                 .padding(.top, 8)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func reconnectingView(attempt: Int, max: Int) -> some View {
         VStack(spacing: 16) {
             ProgressView()
                 .controlSize(.large)
+
             Text(i18n.tr(.reconnecting, args: attempt, max))
                 .font(.headline)
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var terminalBackground: SwiftUI.Color {
+        if colorScheme.id == "transparent" { return .clear }
+        return SwiftUI.Color(nsColor: .controlBackgroundColor)
     }
 }

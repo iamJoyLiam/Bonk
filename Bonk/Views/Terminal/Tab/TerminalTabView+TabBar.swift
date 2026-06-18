@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 extension TerminalTabView {
     var tabBar: some View {
@@ -80,6 +81,13 @@ extension TerminalTabView {
         .buttonStyle(.plain)
         .onHover { hovering in
             // Hover state would need @State tracking — simplified for now
+        }
+        .draggable(TabDragPayload(id: tab.id)) {
+            Text(tab.title)
+                .font(.system(size: 11))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 16).fill(.bar))
         }
     }
 

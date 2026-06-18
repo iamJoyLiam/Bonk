@@ -10,40 +10,52 @@ import Foundation
 /// Processes terminal input with command history recording and broadcast support.
 @Observable @MainActor
 final class InputHandler {
-    /// Send input bytes to a terminal tab, recording command history and broadcasting if enabled.
+    /// Send input bytes to a terminal pane, recording command history and broadcasting if enabled.
     func sendInput(
         _ bytes: ArraySlice<UInt8>,
         to tab: TerminalTab,
+        paneID: UUID? = nil,
         broadcastManager: BroadcastManager?,
         allTabs: [TerminalTab]
     ) async throws {
+        let targetPaneID = paneID ?? tab.activePaneID
+
         // 1. Record command history
         recordCommandIfNeeded(bytes, to: tab)
 
-        // 2. Send to PTY
-        guard let pty = tab.session?.ptySession else { return }
+        // 2. Send to the target pane's PTY
+        guard let pane = tab.layout.findPane(id: targetPaneID),
+              let pty = pane.ptySession else { return }
         try await pty.sendInput(bytes)
 
         // 3. Broadcast to other target panes
         if let broadcast = broadcastManager, broadcast.isEnabled {
-            for targetID in broadcast.targetPaneIDs {
-                guard targetID != tab.id,
-                      let targetTab = allTabs.first(where: { $0.id == targetID }),
-                      let targetPTY = targetTab.session?.ptySession else { continue }
-                try? await targetPTY.sendInput(bytes)
+            for broadcastTargetID in broadcast.targetPaneIDs {
+                // Skip the pane we already sent to
+                guard broadcastTargetID != targetPaneID else { continue }
+
+                // Find the pane in any tab
+                for targetTab in allTabs {
+                    if let targetPane = targetTab.layout.findPane(id: broadcastTargetID),
+                       let targetPTY = targetPane.ptySession {
+                        try? await targetPTY.sendInput(bytes)
+                        break
+                    }
+                }
             }
         }
     }
 
-    /// Convenience: send text string to a tab (auto-appends Enter).
+    /// Convenience: send text string to a pane (auto-appends Enter).
     func sendText(
         _ text: String,
         to tab: TerminalTab,
+        paneID: UUID? = nil,
         broadcastManager: BroadcastManager? = nil,
         allTabs: [TerminalTab] = []
     ) async throws {
         let bytes = Array(text.utf8 + [13])
-        try await sendInput(bytes[...], to: tab, broadcastManager: broadcastManager, allTabs: allTabs)
+        try await sendInput(bytes[...], to: tab, paneID: paneID, broadcastManager: broadcastManager, allTabs: allTabs)
     }
 
     // MARK: - Private

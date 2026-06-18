@@ -87,6 +87,9 @@ struct ContentView: View {
             appStore.dispatch(.toggleSearch)
             showTerminalSearch = appStore.uiState.showSearch
         }
+        .focusedSceneValue(\.menuSplitHorizontal) { sessionManager.splitHorizontal() }
+        .focusedSceneValue(\.menuSplitVertical) { sessionManager.splitVertical() }
+        .focusedSceneValue(\.menuClosePane) { sessionManager.closePane() }
     }
 
     // MARK: - macOS Layout (2-column NavigationSplitView + .inspector)

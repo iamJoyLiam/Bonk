@@ -83,3 +83,10 @@ progress.md
 # Build artifacts
 releases/
 CLAUDE.md
+AGENTS.md
+
+# Documents
+docs/
+
+# Web
+website/

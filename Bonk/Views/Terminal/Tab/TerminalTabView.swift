@@ -2,7 +2,7 @@
 //  TerminalTabView.swift
 //  Bonk
 //
-//  Created by Joy Liam on 2026/5/25.
+//  Terminal tab view with split pane support.
 //
 
 import os.log
@@ -112,86 +112,20 @@ struct TerminalTabView: View {
     private var mainContent: some View {
         VStack(spacing: 0) {
             if !sessionManager.tabs.isEmpty { tabBar }
+            // Render the active tab's layout
             if let activeTab = sessionManager.activeTab {
-                terminalContent(for: activeTab)
+                TabLayoutView(
+                    tab: activeTab,
+                    sessionManager: sessionManager,
+                    colorScheme: colorScheme,
+                    preferences: preferences,
+                    cursorStyle: cursorStyle,
+                    cursorBlink: cursorBlink
+                )
             } else {
                 emptyState
             }
         }
-    }
-
-    // MARK: - Terminal Content
-
-    @ViewBuilder
-    private func terminalContent(for activeTab: TerminalTab) -> some View {
-        TerminalContainerView(
-            activeTab: activeTab,
-            colorScheme: colorScheme,
-            fontSize: preferences.fontSize,
-            fontFamily: preferences.fontFamily,
-            lineHeight: preferences.lineHeight,
-            scrollbackLines: preferences.scrollbackLines,
-            cursorStyle: cursorStyle,
-            cursorBlink: cursorBlink,
-            copyOnSelect: preferences.copyOnSelect,
-            onSend: { data in
-                Task {
-                    do {
-                        try await sessionManager.sendInput(data, to: activeTab.id)
-                    } catch {
-                        sessionManager.lastError = error.localizedDescription
-                        sessionManager.showError = true
-                    }
-                }
-            },
-            onResize: { cols, rows in
-                Task {
-                    do {
-                        try await sessionManager.resizePTY(cols: cols, rows: rows, tabID: activeTab.id)
-                    } catch {}
-                }
-            },
-            onTitleChange: { sessionManager.updateTabTitle($0, tabID: activeTab.id) },
-            onReconnect: { Task { await sessionManager.reconnectTab(activeTab.id) } }
-        )
-        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-            for provider in providers {
-                provider.loadItem(forTypeIdentifier: "public.file-url") { data, _ in
-                    guard let data = data as? Data,
-                          let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
-                    Task { @MainActor in await handleTerminalDrop(url: url, tab: activeTab) }
-                }
-            }
-            return true
-        }
-        .contextMenu { terminalContextMenu }
-    }
-
-    // MARK: - Context Menu
-
-    @ViewBuilder
-    private var terminalContextMenu: some View {
-        Button { requestSelectionAndShowAI() } label: {
-            Label(i18n.t(.aiAssistant), systemImage: "sparkles")
-        }
-        Divider()
-        Button { copySelectedText() } label: {
-            Label(i18n.t(.copy), systemImage: "doc.on.doc")
-        }
-        .keyboardShortcut("c", modifiers: .command)
-        Button { pasteToTerminal() } label: {
-            Label(i18n.t(.aiPaste), systemImage: "doc.on.clipboard")
-        }
-        .keyboardShortcut("v", modifiers: .command)
-        Button { selectAllText() } label: {
-            Label(i18n.t(.selectAll), systemImage: "selection.pin.in.out")
-        }
-        .keyboardShortcut("a", modifiers: .command)
-        Divider()
-        Button { clearTerminal() } label: {
-            Label(i18n.t(.clearTerminalCmd), systemImage: "trash")
-        }
-        .keyboardShortcut("k", modifiers: .command)
     }
 
     // MARK: - AI Floating Bubble
@@ -220,13 +154,12 @@ struct TerminalTabView: View {
 
     private func performSearch(_ direction: SearchDirection) {
         guard !searchText.isEmpty,
-              let cached = TerminalViewCache.shared.retrieve(sessionManager.activeTab?.id ?? UUID()),
+              let tab = sessionManager.activeTab,
+              let cached = TerminalViewCache.shared.retrieve(tab.activePaneID),
               let terminal = cached.view.terminal else { return }
 
-        // 确保覆盖层已创建
         ensureOverlayExists(for: cached.view)
 
-        // 使用 SwiftTerm 的 findNext/findPrevious 来更新当前匹配
         let found: Bool
         switch direction {
         case .forward:
@@ -238,15 +171,13 @@ struct TerminalTabView: View {
         }
 
         if found {
-            // 更新覆盖层的当前匹配索引
             updateOverlayCurrentMatch()
         }
     }
 
-    /// Perform search in background thread to avoid blocking UI
     private func performSearchInBackground(_ term: String) async {
         guard let tab = sessionManager.activeTab,
-              let cached = TerminalViewCache.shared.retrieve(tab.id),
+              let cached = TerminalViewCache.shared.retrieve(tab.activePaneID),
               let terminal = cached.view.terminal else {
             matchCount = 0
             searchOverlay?.clearHighlights()
@@ -256,10 +187,8 @@ struct TerminalTabView: View {
         let cols = terminal.cols
         let rows = terminal.rows
         let yDisp = terminal.buffer.yDisp
-        let lowerTerm = term.lowercased()
         let searchText = term
 
-        // Perform search - using main actor since terminal.getText is not sendable
         var localMatches: [SearchHighlightOverlay.MatchResult] = []
         var totalCount = 0
 
@@ -272,7 +201,6 @@ struct TerminalTabView: View {
             var searchStart = lineText.startIndex
             while searchStart < lineText.endIndex,
                   let range = lineText[searchStart...].range(of: searchText) {
-                // Calculate column width accounting for CJK characters
                 let preText = String(lineText[lineText.startIndex..<range.lowerBound])
                 let colIndex = calculateTerminalColumns(for: preText)
 
@@ -291,17 +219,14 @@ struct TerminalTabView: View {
             }
         }
 
-        // Update UI
         self.matchCount = totalCount
         self.currentMatch = 0
 
-        // 确保覆盖层已创建
         self.ensureOverlayExists(for: cached.view)
 
         self.searchOverlay?.updateMatches(localMatches, currentMatchIndex: -1)
     }
 
-    /// Ensure overlay exists for a terminal view
     private func ensureOverlayExists(for terminalView: TerminalView) {
         if searchOverlay == nil {
             let overlay = SearchHighlightOverlay(terminalView: terminalView)
@@ -310,12 +235,10 @@ struct TerminalTabView: View {
         }
     }
 
-    /// Update current match index in overlay
     private func updateOverlayCurrentMatch() {
         searchOverlay?.updateCurrentMatchIndex(currentMatch - 1)
     }
 
-    /// Handle file drop on terminal view — upload to terminal's current directory.
     private func handleTerminalDrop(url: URL, tab: TerminalTab) async {
         guard tab.session?.sshService != nil else {
             dropMessage = i18n.t(.noSSHConnection)
