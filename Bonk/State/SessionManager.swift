@@ -429,11 +429,23 @@ final class SessionManager {
     }
 
     private func parseCWD(from title: String) -> String? {
+        // Pattern: "user@host:/absolute/path" or "user@host:~/path"
         if let colonRange = title.range(of: ": ") {
             let afterColon = String(title[colonRange.upperBound...])
             let path = afterColon.components(separatedBy: " ").first ?? afterColon
             if path.hasPrefix("/") { return path }
+            // Handle ~ paths (assume home directory)
+            if path.hasPrefix("~") {
+                let home = "/root" // Default for most SSH connections
+                let relativePath = path.dropFirst()
+                if relativePath.isEmpty { return home }
+                if relativePath.hasPrefix("/") {
+                    return home + String(relativePath)
+                }
+                return home + "/" + String(relativePath)
+            }
         }
+        // Pattern: "/absolute/path" as title
         if title.hasPrefix("/") {
             return title.components(separatedBy: " ").first ?? title
         }

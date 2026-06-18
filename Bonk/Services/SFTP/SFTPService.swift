@@ -180,8 +180,23 @@ final class SFTPService {
         }
     }
 
-    /// Upload a local file to the remote path. Streams in chunks to avoid OOM.
-    func upload(_ localURL: URL, to remotePath: String? = nil) async throws {
+    /// Upload a local file to the remote path. Returns an AsyncStream of progress (0.0 - 1.0).
+    func upload(_ localURL: URL, to remotePath: String? = nil) -> AsyncThrowingStream<Double, Error> {
+        AsyncThrowingStream { continuation in
+            Task { [weak self] in
+                guard let self else { continuation.finish(); return }
+                do {
+                    try await self.performUpload(localURL, to: remotePath, continuation: continuation)
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Internal upload implementation.
+    private func performUpload(_ localURL: URL, to remotePath: String?, continuation: AsyncThrowingStream<Double, Error>.Continuation) async throws {
         guard let sftp = sftpClient else { throw SFTPServiceError.notConnected }
 
         let filename = localURL.lastPathComponent
@@ -206,6 +221,7 @@ final class SFTPService {
                 var offset: UInt64 = 0
                 let chunkSize = 32768
                 var updateCounter = 0
+                var lastReportedProgress: Double = -1
 
                 while true {
                     // Check for cancellation
@@ -222,28 +238,40 @@ final class SFTPService {
                     offset += UInt64(chunkData.count)
                     updateCounter += 1
 
-                    // Update progress every 10 chunks to reduce MainActor hops
+                    // Throttled progress update: only when progress changes by ~1%
                     if updateCounter % 10 == 0 || offset == totalBytes {
+                        let progress = totalBytes > 0 ? Double(offset) / Double(totalBytes) : 1.0
                         let off = offset
+
                         await MainActor.run { [self] in
                             if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
                                 transfers[idx].transferredBytes = off
                             }
                         }
+
+                        // Only yield if progress changed meaningfully (>= 1%)
+                        if progress - lastReportedProgress >= 0.01 || offset == totalBytes {
+                            lastReportedProgress = progress
+                            continuation.yield(progress)
+                        }
                     }
                 }
+
                 await MainActor.run { [self] in
                     if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
                         transfers[idx].isComplete = true
                     }
                 }
+                continuation.yield(1.0)
             }
         } catch {
-            if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                if error is SFTPServiceError && (error as! SFTPServiceError) == .transferCancelled {
-                    transfers[idx].isCancelled = true
-                } else {
-                    transfers[idx].error = error.localizedDescription
+            await MainActor.run { [self] in
+                if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                    if let sftpError = error as? SFTPServiceError, sftpError == .transferCancelled {
+                        transfers[idx].isCancelled = true
+                    } else {
+                        transfers[idx].error = error.localizedDescription
+                    }
                 }
             }
             throw error

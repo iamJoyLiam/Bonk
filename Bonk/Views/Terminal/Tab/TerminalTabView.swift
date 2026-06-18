@@ -33,10 +33,9 @@ struct TerminalTabView: View {
         allPreferences.first ?? UserPreferences()
     }
 
+    let uploadManager = UploadManager.shared
     @State var renamingTab: TerminalTab?
     @State private var renameText = ""
-    @State var dropMessage: String?
-    @State var uploadProgress: Double?
     @State var pendingUploadURL: URL?
     @State var pendingUploadTab: TerminalTab?
     @State var showOverwriteAlert = false
@@ -91,9 +90,23 @@ struct TerminalTabView: View {
         }
         .renameAlert(i18n: i18n, renamingTab: $renamingTab, renameText: $renameText)
         .aiEnableAlert(i18n: i18n, isPresented: $showAIEnableAlert)
-        .dropOverlay(message: $dropMessage, uploadProgress: uploadProgress)
-        .fileDropHandler(sessionManager: sessionManager, dropMessage: $dropMessage) { url, tab in
-            Task { await handleDrop(url: url, tab: tab) }
+        .dropOverlay(message: Binding(
+            get: { uploadManager.dropMessage },
+            set: { uploadManager.dropMessage = $0 }
+        ), uploadProgress: uploadManager.uploadProgress)
+        .fileDropHandler(sessionManager: sessionManager, dropMessage: Binding(
+            get: { uploadManager.dropMessage },
+            set: { uploadManager.dropMessage = $0 }
+        )) { url, tab in
+            Task {
+                let uploaded = await uploadManager.handleDrop(url: url, tab: tab, overwriteAlways: preferences.sftpOverwriteAlways ?? false, i18n: i18n)
+                if !uploaded {
+                    // File exists, show overwrite dialog
+                    pendingUploadURL = url
+                    pendingUploadTab = tab
+                    showOverwriteAlert = true
+                }
+            }
         }
         .overwriteDialog(
             i18n: i18n,
@@ -106,7 +119,7 @@ struct TerminalTabView: View {
             ),
             sessionManager: sessionManager
         ) { url, tab in
-            Task { await performUpload(url, tab: tab, isOverwrite: true) }
+            Task { await uploadManager.performUpload(url, tab: tab, isOverwrite: true, i18n: i18n) }
         }
         .onChange(of: renamingTab?.id) { _, _ in
             if let tab = renamingTab { renameText = tab.title }
@@ -247,12 +260,6 @@ struct TerminalTabView: View {
     }
 
     private func handleTerminalDrop(url: URL, tab: TerminalTab) async {
-        guard tab.session?.sshService != nil else {
-            dropMessage = i18n.t(.noSSHConnection)
-            try? await Task.sleep(for: .seconds(2))
-            dropMessage = nil
-            return
-        }
-        await performUpload(url, tab: tab)
+        await uploadManager.performUpload(url, tab: tab, i18n: i18n)
     }
 }
