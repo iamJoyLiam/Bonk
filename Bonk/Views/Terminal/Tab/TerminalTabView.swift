@@ -36,6 +36,7 @@ struct TerminalTabView: View {
     @State var renamingTab: TerminalTab?
     @State private var renameText = ""
     @State var dropMessage: String?
+    @State var uploadProgress: Double?
     @State var pendingUploadURL: URL?
     @State var pendingUploadTab: TerminalTab?
     @State var showOverwriteAlert = false
@@ -91,8 +92,10 @@ struct TerminalTabView: View {
         }
         .renameAlert(i18n: i18n, renamingTab: $renamingTab, renameText: $renameText)
         .aiEnableAlert(i18n: i18n, isPresented: $showAIEnableAlert)
-        .dropOverlay(message: $dropMessage)
-        .fileDropHandler(sessionManager: sessionManager, dropMessage: $dropMessage)
+        .dropOverlay(message: $dropMessage, uploadProgress: uploadProgress)
+        .fileDropHandler(sessionManager: sessionManager, dropMessage: $dropMessage) { url, tab in
+            Task { await handleDrop(url: url, tab: tab) }
+        }
         .overwriteDialog(
             i18n: i18n,
             isPresented: $showOverwriteAlert,

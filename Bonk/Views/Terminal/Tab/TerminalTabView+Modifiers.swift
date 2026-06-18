@@ -53,18 +53,28 @@ struct AIEnableAlertModifier: ViewModifier {
 
 struct DropOverlayModifier: ViewModifier {
     @Binding var message: String?
+    var uploadProgress: Double? = nil
 
     func body(content: Content) -> some View {
         content
             .overlay(alignment: .bottom) {
                 if let msg = message {
-                    Text(msg)
-                        .font(.caption)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
-                        .padding(.bottom, 12)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    VStack(spacing: 4) {
+                        Text(msg)
+                            .font(.caption)
+                            .lineLimit(1)
+
+                        if let progress = uploadProgress {
+                            ProgressView(value: progress)
+                                .progressViewStyle(.linear)
+                                .frame(maxWidth: 200)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .padding(.bottom, 12)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
     }
@@ -75,6 +85,7 @@ struct DropOverlayModifier: ViewModifier {
 struct FileDropHandlerModifier: ViewModifier {
     @Bindable var sessionManager: SessionManager
     @Binding var dropMessage: String?
+    let onFileDrop: (URL, TerminalTab) -> Void
 
     func body(content: Content) -> some View {
         content
@@ -86,7 +97,7 @@ struct FileDropHandlerModifier: ViewModifier {
                         guard let data = data as? Data,
                               let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
                         Task { @MainActor in
-                            // Drop handling delegated to terminal content's own handler
+                            onFileDrop(url, activeTab)
                         }
                     }
                 }
@@ -107,7 +118,10 @@ struct OverwriteDialogModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .confirmationDialog(i18n.t(.fileExists), isPresented: $isPresented) {
+            .confirmationDialog(
+                pendingURL.map { i18n.tr(.fileExists, args: $0.lastPathComponent) } ?? i18n.t(.fileExists),
+                isPresented: $isPresented
+            ) {
                 Button(i18n.t(.overwrite)) {
                     guard let url = pendingURL, let tab = pendingTab else { return }
                     pendingURL = nil; pendingTab = nil
@@ -120,10 +134,6 @@ struct OverwriteDialogModifier: ViewModifier {
                 }
                 Button(i18n.t(.cancel), role: .cancel) {
                     pendingURL = nil; pendingTab = nil
-                }
-            } message: {
-                if let url = pendingURL {
-                    Text(i18n.t(.fileExists).replacingOccurrences(of: "%@", with: url.lastPathComponent))
                 }
             }
     }
@@ -144,12 +154,12 @@ extension View {
         modifier(AIEnableAlertModifier(i18n: i18n, isPresented: isPresented))
     }
 
-    func dropOverlay(message: Binding<String?>) -> some View {
-        modifier(DropOverlayModifier(message: message))
+    func dropOverlay(message: Binding<String?>, uploadProgress: Double? = nil) -> some View {
+        modifier(DropOverlayModifier(message: message, uploadProgress: uploadProgress))
     }
 
-    func fileDropHandler(sessionManager: SessionManager, dropMessage: Binding<String?>) -> some View {
-        modifier(FileDropHandlerModifier(sessionManager: sessionManager, dropMessage: dropMessage))
+    func fileDropHandler(sessionManager: SessionManager, dropMessage: Binding<String?>, onFileDrop: @escaping (URL, TerminalTab) -> Void) -> some View {
+        modifier(FileDropHandlerModifier(sessionManager: sessionManager, dropMessage: dropMessage, onFileDrop: onFileDrop))
     }
 
     func overwriteDialog(

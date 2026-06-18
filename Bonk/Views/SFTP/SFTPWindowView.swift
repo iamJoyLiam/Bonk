@@ -180,7 +180,6 @@ struct SFTPWindowView: View {
                     if !transfer.isComplete {
                         ProgressView(value: transfer.progress)
                             .progressViewStyle(.linear)
-                            .frame(maxWidth: 120)
                     }
 
                     Spacer()
@@ -195,6 +194,7 @@ struct SFTPWindowView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
         .background(Color(nsColor: .controlBackgroundColor))
     }
 

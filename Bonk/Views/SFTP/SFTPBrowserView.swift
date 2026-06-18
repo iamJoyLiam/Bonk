@@ -76,11 +76,7 @@ struct SFTPBrowserView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
-            // Transfer progress
-            if let service = sftpService, !service.transfers.isEmpty {
-                Divider()
-                transferPanel(service)
-            }
+            // Transfer progress 已移至 SFTPWindowView 统一显示
         }
         .frame(minWidth: 240)
         .alert(i18n.t(.newFolder), isPresented: $showNewFolder) {
@@ -288,69 +284,6 @@ struct SFTPBrowserView: View {
                 }
             }
             return true
-        }
-    }
-
-    // MARK: - Transfer Panel
-
-    private func transferPanel(_ service: SFTPService) -> some View {
-        let activeTransfers = service.transfers.filter { !$0.isComplete }
-        let completedTransfers = service.transfers.filter(\.isComplete)
-
-        return VStack(alignment: .leading, spacing: 4) {
-            if !activeTransfers.isEmpty {
-                Text(i18n.t(.transfers))
-                    .font(.caption.bold())
-                    .padding(.horizontal, 12)
-                    .padding(.top, 6)
-            }
-
-            ForEach(activeTransfers) { transfer in
-                HStack(spacing: 8) {
-                    Image(systemName: "arrow.down.circle")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.blue)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(transfer.filename)
-                            .font(.system(size: 11))
-                            .lineLimit(1)
-                        ProgressView(value: transfer.progress)
-                            .frame(height: 3)
-                    }
-
-                    Spacer()
-
-                    if let error = transfer.error {
-                        Text(error)
-                            .font(.caption2)
-                            .foregroundStyle(.red)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 2)
-            }
-
-            // Show completed briefly then auto-remove
-            ForEach(completedTransfers) { transfer in
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.green)
-                    Text("\(transfer.filename) done")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 2)
-            }
-        }
-        .padding(.bottom, 6)
-        .task {
-            // Auto-remove completed transfers after 3 seconds
-            try? await Task.sleep(for: .seconds(3))
-            service.transfers.removeAll { $0.isComplete }
         }
     }
 

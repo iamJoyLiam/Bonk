@@ -89,12 +89,29 @@ extension TerminalTabView {
         let filename = url.lastPathComponent
         let remotePath = (targetDir.hasSuffix("/") ? targetDir : targetDir + "/") + filename
         dropMessage = i18n.tr(.uploadingTo, args: filename, targetDir)
+        uploadProgress = 0
+
+        // 启动进度监控
+        let progressTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(200))
+                if let transfer = sftp.transfers.last(where: { $0.filename == filename && !$0.isComplete }) {
+                    uploadProgress = transfer.progress
+                }
+            }
+        }
+
         do {
             try await sftp.upload(url, to: remotePath)
+            progressTask.cancel()
+            uploadProgress = 1.0
             dropMessage = i18n.tr(.uploadSuccess, args: filename, targetDir)
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(1))
+            uploadProgress = nil
             dropMessage = nil
         } catch {
+            progressTask.cancel()
+            uploadProgress = nil
             Log.sftp.error("Upload failed: \(error.localizedDescription)")
             dropMessage = i18n.tr(.uploadFailed, args: error.localizedDescription)
             try? await Task.sleep(for: .seconds(3))
