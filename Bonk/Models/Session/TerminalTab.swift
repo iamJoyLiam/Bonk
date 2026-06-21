@@ -18,7 +18,10 @@ final class TerminalTab: Identifiable {
     var layout: TabLayout
 
     /// Currently active (focused) pane ID.
-    var activePaneID: UUID
+    var activePaneID: UUID?
+
+    /// Whether local broadcast is enabled (all panes in this tab receive input).
+    var isBroadcastEnabled: Bool = false
 
     /// All pane IDs in this tab.
     var paneIDs: [UUID] {
@@ -52,18 +55,36 @@ final class TerminalTab: Identifiable {
     }
 }
 
+/// Session binding mode for a pane.
+enum SessionMode: Equatable {
+    /// Independent PTY session (default).
+    case independent
+    /// Linked to another pane's PTY session (shared view).
+    case linked(sourcePaneID: UUID)
+}
+
 /// Represents a single pane's state within a tab.
 @Observable @MainActor
 final class PaneState: Identifiable {
     let id: UUID
-    /// The PTY session for this pane (independent terminal instance).
+    /// The PTY session for this pane.
     var ptySession: PTYSession?
-    /// Whether this pane is currently active (focused).
-    var isActive: Bool = false
-    /// Display title for this pane (e.g., working directory or custom name).
+    /// Session binding mode.
+    var sessionMode: SessionMode = .independent
+    /// Display title for this pane.
     var title: String = ""
 
     init() {
         id = UUID()
+    }
+
+    /// The effective PTY session (own or linked source).
+    func effectivePTY(allPanes: [PaneState]) -> PTYSession? {
+        switch sessionMode {
+        case .independent:
+            return ptySession
+        case .linked(let sourceID):
+            return allPanes.first(where: { $0.id == sourceID })?.ptySession ?? ptySession
+        }
     }
 }

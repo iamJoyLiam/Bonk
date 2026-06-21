@@ -140,6 +140,36 @@ struct OverwriteDialogModifier: ViewModifier {
     }
 }
 
+// MARK: - Pane Navigation
+
+struct PaneNavigationModifier: ViewModifier {
+    let navigate: (NavigationDirection) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onKeyPress(.init("l"), phases: .down) { press in
+                guard press.modifiers.contains([.command, .option]) else { return .ignored }
+                navigate(.right)
+                return .handled
+            }
+            .onKeyPress(.init("h"), phases: .down) { press in
+                guard press.modifiers.contains([.command, .option]) else { return .ignored }
+                navigate(.left)
+                return .handled
+            }
+            .onKeyPress(.init("k"), phases: .down) { press in
+                guard press.modifiers.contains([.command, .option]) else { return .ignored }
+                navigate(.up)
+                return .handled
+            }
+            .onKeyPress(.init("j"), phases: .down) { press in
+                guard press.modifiers.contains([.command, .option]) else { return .ignored }
+                navigate(.down)
+                return .handled
+            }
+    }
+}
+
 // MARK: - View Extensions
 
 extension View {
@@ -174,5 +204,9 @@ extension View {
             overwriteAlways: overwriteAlways, sessionManager: sessionManager,
             onUpload: onUpload
         ))
+    }
+
+    func paneNavigation(_ navigate: @escaping (NavigationDirection) -> Void) -> some View {
+        modifier(PaneNavigationModifier(navigate: navigate))
     }
 }

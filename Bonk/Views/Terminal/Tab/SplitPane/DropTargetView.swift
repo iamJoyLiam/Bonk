@@ -2,18 +2,22 @@
 //  DropTargetView.swift
 //  Bonk
 //
-//  AppKit drop target with region indicator
+//  AppKit drop target - forwards events to terminal view directly.
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
-
-#if os(macOS)
-import AppKit
 
 /// Drop position enum
 enum DropPosition {
     case left, right, top, bottom
+
+    var isHorizontal: Bool {
+        self == .left || self == .right
+    }
+
+    var isVertical: Bool {
+        self == .top || self == .bottom
+    }
 }
 
 struct DropTargetView: View {
@@ -28,14 +32,13 @@ struct DropTargetView: View {
                 DropTargetNSView(
                     isDragOver: $isDragOver,
                     dropPosition: $dropPosition,
+                    frameSize: geometry.size,
                     onDrop: onDrop
                 )
 
                 if isDragOver {
                     dropIndicator(in: geometry.size)
                         .allowsHitTesting(false)
-                        .transition(.opacity)
-                        .animation(.easeInOut(duration: 0.15), value: isDragOver)
                 }
             }
         }
@@ -80,14 +83,108 @@ private class DropTargetNSViewType: NSView {
     var onDrop: ((UUID, DropPosition) -> Void)?
     var isDragOver: Binding<Bool>?
     var dropPosition: Binding<DropPosition>?
+    var frameSize: CGSize = .zero
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        registerForDraggedTypes([.init(UTType.bonkTabID.identifier)])
+        registerForDraggedTypes([.string])
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    // Return self so drag events work
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        return self
+    }
+
+    // Find the terminal view in sibling views and forward events
+    private func findTerminalView() -> NSView? {
+        guard let superview else { return nil }
+        for subview in superview.subviews {
+            if subview !== self && subview is NSView {
+                // Check if this view or its subviews contain SwiftTerm
+                if findSwiftTerm(in: subview) != nil {
+                    return subview
+                }
+            }
+        }
+        return nil
+    }
+
+    private func findSwiftTerm(in view: NSView) -> NSView? {
+        let typeName = String(describing: type(of: view))
+        if typeName.contains("TerminalView") || typeName.contains("SwiftTerm") {
+            return view
+        }
+        for subview in view.subviews {
+            if let found = findSwiftTerm(in: subview) {
+                return found
+            }
+        }
+        return nil
+    }
+
+    // Forward mouse events to the terminal view
+    override func mouseDown(with event: NSEvent) {
+        if let terminal = findTerminalView() {
+            terminal.mouseDown(with: event)
+        } else {
+            super.mouseDown(with: event)
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if let terminal = findTerminalView() {
+            terminal.mouseUp(with: event)
+        } else {
+            super.mouseUp(with: event)
+        }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        if let terminal = findTerminalView() {
+            terminal.mouseDragged(with: event)
+        } else {
+            super.mouseDragged(with: event)
+        }
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        if let terminal = findTerminalView() {
+            terminal.rightMouseDown(with: event)
+        } else {
+            super.rightMouseDown(with: event)
+        }
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if let terminal = findTerminalView() {
+            terminal.keyDown(with: event)
+        } else {
+            super.keyDown(with: event)
+        }
+    }
+
+    override func keyUp(with event: NSEvent) {
+        if let terminal = findTerminalView() {
+            terminal.keyUp(with: event)
+        } else {
+            super.keyUp(with: event)
+        }
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        if let terminal = findTerminalView() {
+            terminal.scrollWheel(with: event)
+        } else {
+            super.scrollWheel(with: event)
+        }
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        return true
     }
 
     private func calculateDropPosition(_ sender: NSDraggingInfo) -> DropPosition {
@@ -95,18 +192,23 @@ private class DropTargetNSViewType: NSView {
         let w = bounds.width
         let h = bounds.height
 
-        let distances: [(DropPosition, CGFloat)] = [
-            (.left, location.x),
-            (.right, w - location.x),
-            (.top, h - location.y),
-            (.bottom, location.y)
-        ]
+        let distLeft = location.x
+        let distRight = w - location.x
+        let distTop = h - location.y
+        let distBottom = location.y
 
-        return distances.min(by: { $0.1 < $1.1 })?.0 ?? .right
+        let minDist = min(distLeft, distRight, distTop, distBottom)
+
+        switch minDist {
+        case distLeft: return .left
+        case distRight: return .right
+        case distTop: return .top
+        default: return .bottom
+        }
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        if sender.draggingPasteboard.types?.contains(.init(UTType.bonkTabID.identifier)) == true {
+        if sender.draggingPasteboard.types?.contains(.string) == true {
             isDragOver?.wrappedValue = true
             dropPosition?.wrappedValue = calculateDropPosition(sender)
             return .copy
@@ -124,19 +226,21 @@ private class DropTargetNSViewType: NSView {
     }
 
     override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        true
+        return true
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         let position = calculateDropPosition(sender)
         isDragOver?.wrappedValue = false
 
-        guard let data = sender.draggingPasteboard.data(forType: .init(UTType.bonkTabID.identifier)),
-              let payload = try? JSONDecoder().decode(TabDragPayload.self, from: data) else {
+        guard let uuidString = sender.draggingPasteboard.string(forType: .string),
+              let tabID = UUID(uuidString: uuidString) else {
+            print("[DROP] ❌ Failed to get UUID from pasteboard")
             return false
         }
 
-        onDrop?(payload.id, position)
+        print("[DROP] ✅ Decoded: \(tabID), position: \(position)")
+        onDrop?(tabID, position)
         return true
     }
 
@@ -150,6 +254,7 @@ private class DropTargetNSViewType: NSView {
 private struct DropTargetNSView: NSViewRepresentable {
     @Binding var isDragOver: Bool
     @Binding var dropPosition: DropPosition
+    let frameSize: CGSize
     let onDrop: (UUID, DropPosition) -> Void
 
     func makeNSView(context: Context) -> DropTargetNSViewType {
@@ -157,6 +262,7 @@ private struct DropTargetNSView: NSViewRepresentable {
         v.onDrop = onDrop
         v.isDragOver = $isDragOver
         v.dropPosition = $dropPosition
+        v.frameSize = frameSize
         return v
     }
 
@@ -164,6 +270,6 @@ private struct DropTargetNSView: NSViewRepresentable {
         nsView.onDrop = onDrop
         nsView.isDragOver = $isDragOver
         nsView.dropPosition = $dropPosition
+        nsView.frameSize = frameSize
     }
 }
-#endif

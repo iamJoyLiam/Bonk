@@ -18,7 +18,7 @@ final class InputHandler {
         broadcastManager: BroadcastManager?,
         allTabs: [TerminalTab]
     ) async throws {
-        let targetPaneID = paneID ?? tab.activePaneID
+        guard let targetPaneID = paneID ?? tab.activePaneID else { return }
 
         // 1. Record command history
         recordCommandIfNeeded(bytes, to: tab)

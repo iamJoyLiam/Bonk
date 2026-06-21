@@ -42,90 +42,133 @@ struct TerminalTabView: View {
     @State var showAIChat = false
     @State var selectedTextForAI = ""
     @State var selectionObserver: NSObjectProtocol?
+    @State private var isTabBarDragOver = false
 
     var body: some View {
+        mainView
+            .onChange(of: searchText) { _, newValue in
+                handleSearchTextChange(newValue)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .toggleAIChat)) { _ in
+                toggleAIChat()
+            }
+            .renameAlert(i18n: i18n, renamingTab: $renamingTab, renameText: $renameText)
+            .aiEnableAlert(i18n: i18n, isPresented: $showAIEnableAlert)
+            .dropOverlay(message: uploadManagerBinding, uploadProgress: uploadManager.uploadProgress)
+            .fileDropHandler(sessionManager: sessionManager, dropMessage: uploadManagerBinding) { url, tab in
+                handleFileDrop(url: url, tab: tab)
+            }
+            .overwriteDialog(
+                i18n: i18n,
+                isPresented: $showOverwriteAlert,
+                pendingURL: $pendingUploadURL,
+                pendingTab: $pendingUploadTab,
+                overwriteAlways: overwriteAlwaysBinding,
+                sessionManager: sessionManager
+            ) { url, tab in
+                Task { await uploadManager.performUpload(url, tab: tab, isOverwrite: true, i18n: i18n) }
+            }
+            .onChange(of: renamingTab?.id) { _, _ in
+                if let tab = renamingTab { renameText = tab.title }
+            }
+            .paneNavigation(navigatePane)
+    }
+
+    @ViewBuilder
+    private var mainView: some View {
         ZStack {
             mainContent
             aiFloatingBubble
-
-            if showSearch {
-                VStack {
-                    TerminalSearchBar(
-                        searchText: $searchText,
-                        isPresented: $showSearch,
-                        matchCount: matchCount,
-                        currentMatch: currentMatch,
-                        onNext: { performSearch(.forward) },
-                        onPrevious: { performSearch(.backward) }
-                    )
-                    .padding(.top, 8)
-                    .padding(.trailing, 16)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            }
-        }
-        .onChange(of: searchText) { _, newValue in
-            searchDebounceTask?.cancel()
-            if newValue.isEmpty {
-                matchCount = 0
-                currentMatch = 0
-                searchOverlay?.clearHighlights()
-                return
-            }
-            searchDebounceTask = Task {
-                try? await Task.sleep(for: .milliseconds(200))
-                guard !Task.isCancelled else { return }
-                await performSearchInBackground(newValue)
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .toggleAIChat)) { _ in
-            if showAIChat {
-                showAIChat = false
-                selectedTextForAI = ""
-                focusTerminal()
-            } else {
-                requestSelectionAndShowAI()
-            }
-        }
-        .renameAlert(i18n: i18n, renamingTab: $renamingTab, renameText: $renameText)
-        .aiEnableAlert(i18n: i18n, isPresented: $showAIEnableAlert)
-        .dropOverlay(message: Binding(
-            get: { uploadManager.dropMessage },
-            set: { uploadManager.dropMessage = $0 }
-        ), uploadProgress: uploadManager.uploadProgress)
-        .fileDropHandler(sessionManager: sessionManager, dropMessage: Binding(
-            get: { uploadManager.dropMessage },
-            set: { uploadManager.dropMessage = $0 }
-        )) { url, tab in
-            Task {
-                let uploaded = await uploadManager.handleDrop(url: url, tab: tab, overwriteAlways: preferences.sftpOverwriteAlways ?? false, i18n: i18n)
-                if !uploaded {
-                    // File exists, show overwrite dialog
-                    pendingUploadURL = url
-                    pendingUploadTab = tab
-                    showOverwriteAlert = true
-                }
-            }
-        }
-        .overwriteDialog(
-            i18n: i18n,
-            isPresented: $showOverwriteAlert,
-            pendingURL: $pendingUploadURL,
-            pendingTab: $pendingUploadTab,
-            overwriteAlways: Binding(
-                get: { preferences.sftpOverwriteAlways ?? false },
-                set: { preferences.sftpOverwriteAlways = $0 }
-            ),
-            sessionManager: sessionManager
-        ) { url, tab in
-            Task { await uploadManager.performUpload(url, tab: tab, isOverwrite: true, i18n: i18n) }
-        }
-        .onChange(of: renamingTab?.id) { _, _ in
-            if let tab = renamingTab { renameText = tab.title }
+            if showSearch { searchBar }
         }
     }
 
+    private var searchBar: some View {
+        VStack {
+            TerminalSearchBar(
+                searchText: $searchText,
+                isPresented: $showSearch,
+                matchCount: matchCount,
+                currentMatch: currentMatch,
+                onNext: { performSearch(.forward) },
+                onPrevious: { performSearch(.backward) }
+            )
+            .padding(.top, 8)
+            .padding(.trailing, 16)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+    }
+
+    private func navigatePane(_ direction: NavigationDirection) {
+        guard let tab = sessionManager.activeTab else { return }
+        FocusManager.shared.navigate(direction: direction, in: tab)
+        tab.activePaneID = FocusManager.shared.focusedPaneID
+    }
+
+    private func handleSearchTextChange(_ newValue: String) {
+        searchDebounceTask?.cancel()
+        if newValue.isEmpty {
+            matchCount = 0
+            currentMatch = 0
+            searchOverlay?.clearHighlights()
+            return
+        }
+        searchDebounceTask = Task {
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled else { return }
+            await performSearchInBackground(newValue)
+        }
+    }
+
+    private func toggleAIChat() {
+        if showAIChat {
+            showAIChat = false
+            selectedTextForAI = ""
+            focusTerminal()
+        } else {
+            requestSelectionAndShowAI()
+        }
+    }
+
+    private func handleFileDrop(url: URL, tab: TerminalTab) {
+        Task {
+            let uploaded = await uploadManager.handleDrop(url: url, tab: tab, overwriteAlways: preferences.sftpOverwriteAlways ?? false, i18n: i18n)
+            if !uploaded {
+                pendingUploadURL = url
+                pendingUploadTab = tab
+                showOverwriteAlert = true
+            }
+        }
+    }
+
+    private var uploadManagerBinding: Binding<String?> {
+        Binding(
+            get: { uploadManager.dropMessage },
+            set: { uploadManager.dropMessage = $0 }
+        )
+    }
+
+    private var overwriteAlwaysBinding: Binding<Bool> {
+        Binding(
+            get: { preferences.sftpOverwriteAlways ?? false },
+            set: { preferences.sftpOverwriteAlways = $0 }
+        )
+    }
+}
+
+// MARK: - Optional Bool Binding Helper
+
+extension Binding where Value == Bool? {
+    var orFalse: Binding<Bool> {
+        Binding<Bool>(
+            get: { self.wrappedValue ?? false },
+            set: { self.wrappedValue = $0 }
+        )
+    }
+}
+
+extension TerminalTabView {
     // MARK: - Main Content
 
     @ViewBuilder
@@ -145,6 +188,23 @@ struct TerminalTabView: View {
             } else {
                 emptyState
             }
+        }
+        // Drop target on the entire VStack
+        .onDrop(of: [.utf8PlainText], isTargeted: $isTabBarDragOver) { providers, location in
+            guard let provider = providers.first,
+                  let activeTab = sessionManager.activeTab else { return false }
+            _ = provider.loadObject(ofClass: NSString.self) { string, _ in
+                guard let uuidString = string as? String,
+                      let sourceTabID = UUID(uuidString: uuidString),
+                      sourceTabID != activeTab.id else { return }
+                Task { @MainActor in
+                    // Calculate position from drop location
+                    // For now, always split right (can be enhanced later)
+                    print("[DROP] ✅ source=\(sourceTabID), target=\(activeTab.id)")
+                    sessionManager.addPaneFromTab(sourceTabID, to: activeTab.id, position: .right)
+                }
+            }
+            return true
         }
     }
 
@@ -175,7 +235,8 @@ struct TerminalTabView: View {
     private func performSearch(_ direction: SearchDirection) {
         guard !searchText.isEmpty,
               let tab = sessionManager.activeTab,
-              let cached = TerminalViewCache.shared.retrieve(tab.activePaneID),
+              let paneID = tab.activePaneID,
+              let cached = TerminalViewCache.shared.retrieve(paneID),
               let terminal = cached.view.terminal else { return }
 
         ensureOverlayExists(for: cached.view)
@@ -197,7 +258,8 @@ struct TerminalTabView: View {
 
     private func performSearchInBackground(_ term: String) async {
         guard let tab = sessionManager.activeTab,
-              let cached = TerminalViewCache.shared.retrieve(tab.activePaneID),
+              let paneID = tab.activePaneID,
+              let cached = TerminalViewCache.shared.retrieve(paneID),
               let terminal = cached.view.terminal else {
             matchCount = 0
             searchOverlay?.clearHighlights()

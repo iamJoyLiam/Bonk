@@ -45,50 +45,14 @@ extension TerminalTabView {
         let isActive = sessionManager.activeTabID == tab.id
         let state = tab.session?.connectionState ?? .disconnected
 
-        Button { sessionManager.selectTab(tab.id) } label: {
-            HStack(spacing: 6) {
-                // Status dot
-                Circle()
-                    .fill(statusDotColor(state))
-                    .frame(width: 6, height: 6)
-
-                // Title
-                Text(tab.title)
-                    .font(.system(size: 11, weight: isActive ? .semibold : .regular))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-
-                // Close button (always present, opacity varies)
-                Button {
-                    Task { await sessionManager.closeTab(tab.id) }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 7, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .frame(minWidth: 80, maxWidth: 160)
-            .background { capsuleBackground(tab: tab, isActive: isActive) }
-            .overlay(alignment: .bottom) {
-                if isActive {
-                    capsuleUnderline(tab: tab)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            // Hover state would need @State tracking — simplified for now
-        }
-        .draggable(TabDragPayload(id: tab.id)) {
-            Text(tab.title)
-                .font(.system(size: 11))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
-                .background(RoundedRectangle(cornerRadius: 16).fill(.bar))
-        }
+        DraggableTabCapsule(
+            tab: tab,
+            isActive: isActive,
+            state: state,
+            sessionManager: sessionManager,
+            onSelect: { sessionManager.selectTab(tab.id) },
+            onClose: { Task { await sessionManager.closeTab(tab.id) } }
+        )
     }
 
     // MARK: - Capsule Background

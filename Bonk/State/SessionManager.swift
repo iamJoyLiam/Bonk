@@ -13,6 +13,12 @@ final class SessionManager {
 
     var lastError: String?
     var showError = false
+    /// Global broadcast mode (all tabs receive input).
+    var isGlobalBroadcastEnabled: Bool = false
+    /// Currently dragging tab ID (memory state for drag-and-drop).
+    var draggingTabID: UUID?
+    /// Target tab ID when dragging over a tab (for showing indicator).
+    var dragTargetTabID: UUID?
     private let hostKeyStore = PersistentHostKeyStore()
     private let viewCache: TerminalViewCache
     var broadcastManager: BroadcastManager?
@@ -39,8 +45,8 @@ final class SessionManager {
 
     /// The active pane state in the active tab.
     var activePane: PaneState? {
-        guard let tab = activeTab else { return nil }
-        return tab.layout.findPane(id: tab.activePaneID)
+        guard let tab = activeTab, let paneID = tab.activePaneID else { return nil }
+        return tab.layout.findPane(id: paneID)
     }
 
     // MARK: - Tab Management
@@ -98,6 +104,7 @@ final class SessionManager {
         guard let tab = activeTab else { return }
         let newPane = tab.layout.splitHorizontal()
         tab.activePaneID = newPane.id
+        FocusManager.shared.focus(newPane.id)
         updateTabTitleForSplit(tab)
 
         Task { await connectPane(tab: tab, pane: newPane) }
@@ -108,6 +115,7 @@ final class SessionManager {
         guard let tab = activeTab else { return }
         let newPane = tab.layout.splitVertical()
         tab.activePaneID = newPane.id
+        FocusManager.shared.focus(newPane.id)
         updateTabTitleForSplit(tab)
 
         Task { await connectPane(tab: tab, pane: newPane) }
@@ -117,21 +125,48 @@ final class SessionManager {
     private func updateTabTitleForSplit(_ tab: TerminalTab) {
         let paneCount = tab.layout.root.paneCount
         if paneCount > 1 {
-            // When split, rename to Workspace
             tab.title = "Workspace"
         } else {
-            // Revert to original name
             tab.title = tab.hostItem.name
+        }
+    }
+
+    /// Link target pane to source pane's PTY session (shared view mode).
+    func linkPanes(sourceID: UUID, targetID: UUID, in tab: TerminalTab) {
+        guard let sourcePane = tab.layout.findPane(id: sourceID),
+              let targetPane = tab.layout.findPane(id: targetID) else { return }
+        targetPane.sessionMode = .linked(sourcePaneID: sourceID)
+        targetPane.ptySession = sourcePane.ptySession
+    }
+
+    /// Unlink a pane (restore independent mode).
+    func unlinkPane(_ paneID: UUID, in tab: TerminalTab) {
+        guard let pane = tab.layout.findPane(id: paneID) else { return }
+        if case .linked = pane.sessionMode {
+            pane.sessionMode = .independent
+            pane.ptySession = nil
+            // Open new PTY for the unlinked pane
+            Task { await openPTYForPane(tab: tab, pane: pane) }
+        }
+    }
+
+    /// Open a new PTY session for a pane.
+    private func openPTYForPane(tab: TerminalTab, pane: PaneState) async {
+        guard let service = tab.session?.sshService else { return }
+        do {
+            let ptySession = try await service.openPTY()
+            pane.ptySession = ptySession
+        } catch {
+            Log.session.error("[SPLIT] Failed to open PTY: \(error.localizedDescription)")
         }
     }
 
     /// Close the active pane in the active tab.
     func closePane() {
-        guard let tab = activeTab else { return }
+        guard let tab = activeTab, let paneID = tab.activePaneID else { return }
         // Don't close if it's the last pane
         guard tab.layout.root.paneCount > 1 else { return }
 
-        let paneID = tab.activePaneID
         if tab.layout.closeActivePane() {
             // Clean up the closed pane
             viewCache.remove(paneID)
@@ -314,8 +349,8 @@ final class SessionManager {
     // MARK: - Input
 
     func resizePTY(cols: Int, rows: Int, tabID: UUID, paneID: UUID? = nil) async throws {
-        guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
-        let targetPaneID = paneID ?? tab.activePaneID
+        guard let tab = tabs.first(where: { $0.id == tabID }),
+              let targetPaneID = paneID ?? tab.activePaneID else { return }
         guard let pane = tab.layout.findPane(id: targetPaneID),
               let pty = pane.ptySession else { return }
         try await pty.resize(cols: cols, rows: rows)
@@ -329,27 +364,55 @@ final class SessionManager {
     }
 
     func sendInput(_ bytes: ArraySlice<UInt8>, to tabID: UUID, paneID: UUID? = nil) async throws {
-        guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
-        try await inputHandler.sendInput(
-            bytes,
-            to: tab,
-            paneID: paneID,
-            broadcastManager: broadcastManager,
-            allTabs: tabs
-        )
+        guard let tab = tabs.first(where: { $0.id == tabID }),
+              let targetPaneID = paneID ?? tab.activePaneID else { return }
+
+        // Send to target pane
+        guard let pane = tab.layout.findPane(id: targetPaneID),
+              let pty = pane.ptySession else { return }
+        try await pty.sendInput(bytes)
+
+        // Broadcast to other panes if enabled
+        if tab.isBroadcastEnabled {
+            // Local broadcast: send to all panes in this tab
+            for otherPaneID in tab.paneIDs where otherPaneID != targetPaneID {
+                if let otherPane = tab.layout.findPane(id: otherPaneID),
+                   let otherPTY = otherPane.ptySession {
+                    try? await otherPTY.sendInput(bytes)
+                }
+            }
+        } else if isGlobalBroadcastEnabled {
+            // Global broadcast: send to all panes in all tabs
+            for otherTab in tabs where otherTab.id != tabID {
+                for otherPaneID in otherTab.paneIDs {
+                    if let otherPane = otherTab.layout.findPane(id: otherPaneID),
+                       let otherPTY = otherPane.ptySession {
+                        try? await otherPTY.sendInput(bytes)
+                    }
+                }
+            }
+        }
     }
 
     /// Convenience: send text to the active pane (auto-appends Enter).
     func sendTextToActiveTab(_ text: String) {
-        guard let tab = activeTab else { return }
+        guard let tab = activeTab, let paneID = tab.activePaneID else { return }
         Task {
-            try? await inputHandler.sendText(
-                text,
-                to: tab,
-                broadcastManager: broadcastManager,
-                allTabs: tabs
-            )
+            var bytes = Array(text.utf8)[...]
+            bytes.append(13) // Enter key
+            try? await sendInput(bytes, to: tab.id, paneID: paneID)
         }
+    }
+
+    /// Toggle local broadcast for a tab.
+    func toggleTabBroadcast(_ tabID: UUID) {
+        guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
+        tab.isBroadcastEnabled.toggle()
+    }
+
+    /// Toggle global broadcast.
+    func toggleGlobalBroadcast() {
+        isGlobalBroadcastEnabled.toggle()
     }
 
     // MARK: - Broadcast Sync
