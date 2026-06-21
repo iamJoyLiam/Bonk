@@ -43,6 +43,7 @@ struct TerminalTabView: View {
     @State var selectedTextForAI = ""
     @State var selectionObserver: NSObjectProtocol?
     @State private var isTabBarDragOver = false
+    @State private var dropPosition: DropPosition = .right
 
     var body: some View {
         mainView
@@ -177,14 +178,35 @@ extension TerminalTabView {
             if !sessionManager.tabs.isEmpty { tabBar }
             // Render the active tab's layout
             if let activeTab = sessionManager.activeTab {
-                TabLayoutView(
-                    tab: activeTab,
-                    sessionManager: sessionManager,
-                    colorScheme: colorScheme,
-                    preferences: preferences,
-                    cursorStyle: cursorStyle,
-                    cursorBlink: cursorBlink
-                )
+                ZStack {
+                    TabLayoutView(
+                        tab: activeTab,
+                        sessionManager: sessionManager,
+                        colorScheme: colorScheme,
+                        preferences: preferences,
+                        cursorStyle: cursorStyle,
+                        cursorBlink: cursorBlink
+                    )
+
+                    // Drop indicator (full area)
+                    if isTabBarDragOver {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.accentColor, lineWidth: 3)
+                            .padding(4)
+                            .allowsHitTesting(false)
+                            .overlay {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "plus.rectangle.on.rectangle")
+                                        .font(.system(size: 24))
+                                    Text("Drop to split")
+                                        .font(.caption)
+                                }
+                                .foregroundStyle(Color.accentColor)
+                            }
+                            .transition(.opacity)
+                            .animation(.easeInOut(duration: 0.15), value: isTabBarDragOver)
+                    }
+                }
             } else {
                 emptyState
             }
@@ -199,13 +221,68 @@ extension TerminalTabView {
                       sourceTabID != activeTab.id else { return }
                 Task { @MainActor in
                     // Calculate position from drop location
-                    // For now, always split right (can be enhanced later)
-                    print("[DROP] ✅ source=\(sourceTabID), target=\(activeTab.id)")
-                    sessionManager.addPaneFromTab(sourceTabID, to: activeTab.id, position: .right)
+                    let pos = calculateDropPosition(from: location)
+                    print("[DROP] ✅ source=\(sourceTabID), target=\(activeTab.id), pos=\(pos)")
+                    sessionManager.addPaneFromTab(sourceTabID, to: activeTab.id, position: pos)
                 }
             }
             return true
         }
+    }
+
+    // MARK: - Drop Region Indicator
+
+    @ViewBuilder
+    private var dropRegionIndicator: some View {
+        GeometryReader { geometry in
+            let size = geometry.size
+            let inset: CGFloat = 4
+            let center = regionCenter(in: size)
+
+            ZStack {
+                // Region highlight
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.accentColor, lineWidth: 3)
+                    .frame(
+                        width: dropPosition.isHorizontal ? size.width / 2 - inset * 2 : nil,
+                        height: dropPosition.isVertical ? size.height / 2 - inset * 2 : nil
+                    )
+                    .position(center)
+
+                // Icon
+                VStack(spacing: 8) {
+                    Image(systemName: "plus.rectangle.on.rectangle")
+                        .font(.system(size: 24))
+                    Text("Drop to split")
+                        .font(.caption)
+                }
+                .foregroundStyle(Color.accentColor)
+                .position(center)
+            }
+        }
+    }
+
+    private func regionCenter(in size: CGSize) -> CGPoint {
+        switch dropPosition {
+        case .left: return CGPoint(x: size.width / 4, y: size.height / 2)
+        case .right: return CGPoint(x: size.width * 3 / 4, y: size.height / 2)
+        case .top: return CGPoint(x: size.width / 2, y: size.height / 4)
+        case .bottom: return CGPoint(x: size.width / 2, y: size.height * 3 / 4)
+        }
+    }
+
+    private func calculateDropPosition(from location: CGPoint) -> DropPosition {
+        // Use window size to determine region
+        guard let window = NSApp.mainWindow else { return .right }
+        let size = window.contentView?.bounds.size ?? CGSize(width: 800, height: 600)
+
+        let distances: [(DropPosition, CGFloat)] = [
+            (.left, location.x),
+            (.right, size.width - location.x),
+            (.top, location.y),
+            (.bottom, size.height - location.y)
+        ]
+        return distances.min(by: { $0.1 < $1.1 })?.0 ?? .right
     }
 
     // MARK: - AI Floating Bubble
