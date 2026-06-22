@@ -59,11 +59,17 @@ struct PaneContainerBridge: View {
         .background(terminalBackground)
         .onChange(of: paneState.ptySession != nil) { _, hasSession in
             if hasSession {
-                connectOutputStreamIfNeeded()
+                // Delay connection to ensure terminal view is ready
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    connectOutputStreamIfNeeded()
+                }
             }
         }
         .onAppear {
-            connectOutputStreamIfNeeded()
+            // Delay connection to ensure terminal view is ready
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                connectOutputStreamIfNeeded()
+            }
         }
     }
 

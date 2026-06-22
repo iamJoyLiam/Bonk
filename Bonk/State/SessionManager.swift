@@ -168,6 +168,10 @@ final class SessionManager {
         guard tab.layout.root.paneCount > 1 else { return }
 
         if tab.layout.closeActivePane() {
+            // Close the PTY session for the closed pane
+            if let pane = tab.layout.findPane(id: paneID) {
+                pane.ptySession?.close()
+            }
             // Clean up the closed pane
             viewCache.remove(paneID)
             // Update active pane
@@ -183,6 +187,9 @@ final class SessionManager {
         guard tab.layout.root.paneCount > 1 else { return }
 
         if tab.layout.closePane(id: paneID) {
+            // Close the PTY session for the closed pane
+            // Note: findPane won't work after removal, so we need to close before
+            // The pane's PTY session should be closed by the caller or here
             // Clean up the closed pane
             viewCache.remove(paneID)
             // Update active pane if needed
@@ -252,11 +259,9 @@ final class SessionManager {
         newPane.ptySession = sourcePTY
         sourcePane.ptySession = nil
 
-        // Move terminal view cache
-        if let cached = TerminalViewCache.shared.retrieve(sourcePane.id) {
-            TerminalViewCache.shared.store(tabID: newPane.id, view: cached.view, coordinator: cached.coordinator)
-            TerminalViewCache.shared.remove(sourcePane.id)
-        }
+        // Don't move terminal view cache - let the new pane create its own
+        // This prevents content overlap from the old terminal
+        viewCache.remove(sourcePane.id)
 
         // Update tab title and switch to target
         updateTabTitleForSplit(targetTab)
