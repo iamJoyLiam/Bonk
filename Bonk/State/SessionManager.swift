@@ -244,14 +244,14 @@ final class SessionManager {
             return
         }
 
-        // Create new pane based on position
+        // Create new pane based on position:
+        // left/right → horizontal split; top/bottom → vertical split
         let newPane: PaneState
         switch position {
-        case .left, .top:
-            // TODO: Support insert-before, currently always appends
+        case .left, .right:
             newPane = targetTab.layout.splitHorizontal()
-        case .right, .bottom:
-            newPane = targetTab.layout.splitHorizontal()
+        case .top, .bottom:
+            newPane = targetTab.layout.splitVertical()
         }
         newPane.title = sourceTab.hostItem.host
 

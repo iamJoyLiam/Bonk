@@ -44,6 +44,7 @@ struct TerminalTabView: View {
     @State var selectionObserver: NSObjectProtocol?
     @State private var isTabBarDragOver = false
     @State private var dropPosition: DropPosition = .right
+    @State private var dragTrackingTimer: Timer?
 
     var body: some View {
         mainView
@@ -71,6 +72,36 @@ struct TerminalTabView: View {
             }
             .onChange(of: renamingTab?.id) { _, _ in
                 if let tab = renamingTab { renameText = tab.title }
+            }
+            .onChange(of: isTabBarDragOver) { _, isDragging in
+                if isDragging {
+                    dragTrackingTimer?.invalidate()
+                    dragTrackingTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { _ in
+                        Task { @MainActor in
+                            guard let window = NSApp.mainWindow,
+                                  let contentView = window.contentView else { return }
+                            let screenLoc = NSEvent.mouseLocation
+                            let windowLoc = window.convertPoint(fromScreen: screenLoc)
+                            // AppKit: origin at bottom-left. Convert to top-left for SwiftUI-style distances.
+                            let x = windowLoc.x
+                            let y = contentView.bounds.height - windowLoc.y
+                            let w = contentView.bounds.width
+                            let h = contentView.bounds.height
+                            guard w > 0, h > 0 else { return }
+                            let dL = x, dR = w - x, dT = y, dB = h - y
+                            let m = min(dL, dR, dT, dB)
+                            switch m {
+                            case dL: dropPosition = .left
+                            case dR: dropPosition = .right
+                            case dT: dropPosition = .top
+                            default: dropPosition = .bottom
+                            }
+                        }
+                    }
+                } else {
+                    dragTrackingTimer?.invalidate()
+                    dragTrackingTimer = nil
+                }
             }
             .paneNavigation(navigatePane)
     }
@@ -188,21 +219,10 @@ extension TerminalTabView {
                         cursorBlink: cursorBlink
                     )
 
-                    // Drop indicator (full area)
+                    // Region indicator (driven by Timer polling during drag)
                     if isTabBarDragOver {
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.accentColor, lineWidth: 3)
-                            .padding(4)
+                        dropRegionIndicator
                             .allowsHitTesting(false)
-                            .overlay {
-                                VStack(spacing: 8) {
-                                    Image(systemName: "plus.rectangle.on.rectangle")
-                                        .font(.system(size: 24))
-                                    Text("Drop to split")
-                                        .font(.caption)
-                                }
-                                .foregroundStyle(Color.accentColor)
-                            }
                             .transition(.opacity)
                             .animation(.easeInOut(duration: 0.15), value: isTabBarDragOver)
                     }
@@ -211,8 +231,9 @@ extension TerminalTabView {
                 emptyState
             }
         }
-        // Drop target on the entire VStack
-        .onDrop(of: [.utf8PlainText], isTargeted: $isTabBarDragOver) { providers, location in
+        .onDrop(of: [.utf8PlainText, .plainText, .text], isTargeted: $isTabBarDragOver) { providers, location in
+            dragTrackingTimer?.invalidate()
+            dragTrackingTimer = nil
             guard let provider = providers.first,
                   let activeTab = sessionManager.activeTab else { return false }
             _ = provider.loadObject(ofClass: NSString.self) { string, _ in
@@ -220,9 +241,20 @@ extension TerminalTabView {
                       let sourceTabID = UUID(uuidString: uuidString),
                       sourceTabID != activeTab.id else { return }
                 Task { @MainActor in
-                    // Calculate position from drop location
-                    let pos = calculateDropPosition(from: location)
-                    print("[DROP] ✅ source=\(sourceTabID), target=\(activeTab.id), pos=\(pos)")
+                    let size = NSApp.mainWindow?.contentView?.bounds.size ?? CGSize(width: 800, height: 600)
+                    // SwiftUI location: origin at top-left, y increases downward
+                    let distLeft = location.x
+                    let distRight = size.width - location.x
+                    let distTop = location.y                    // distance from top edge
+                    let distBottom = size.height - location.y   // distance from bottom edge
+                    let m = min(distLeft, distRight, distTop, distBottom)
+                    let pos: DropPosition
+                    switch m {
+                    case distLeft: pos = .left
+                    case distRight: pos = .right
+                    case distTop: pos = .top
+                    default: pos = .bottom
+                    }
                     sessionManager.addPaneFromTab(sourceTabID, to: activeTab.id, position: pos)
                 }
             }
@@ -269,20 +301,6 @@ extension TerminalTabView {
         case .top: return CGPoint(x: size.width / 2, y: size.height / 4)
         case .bottom: return CGPoint(x: size.width / 2, y: size.height * 3 / 4)
         }
-    }
-
-    private func calculateDropPosition(from location: CGPoint) -> DropPosition {
-        // Use window size to determine region
-        guard let window = NSApp.mainWindow else { return .right }
-        let size = window.contentView?.bounds.size ?? CGSize(width: 800, height: 600)
-
-        let distances: [(DropPosition, CGFloat)] = [
-            (.left, location.x),
-            (.right, size.width - location.x),
-            (.top, location.y),
-            (.bottom, size.height - location.y)
-        ]
-        return distances.min(by: { $0.1 < $1.1 })?.0 ?? .right
     }
 
     // MARK: - AI Floating Bubble
