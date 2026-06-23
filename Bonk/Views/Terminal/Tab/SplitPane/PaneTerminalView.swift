@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftTerm
 
 struct PaneTerminalView: View {
     @Environment(I18n.self) var i18n
@@ -219,14 +220,42 @@ struct PaneTerminalView: View {
 
     @ViewBuilder
     private var contextMenuContent: some View {
+        // Copy/Paste
+        Button {
+            if let cached = TerminalViewCache.shared.retrieve(paneState.id),
+               let selection = cached.view.getSelection(), !selection.isEmpty {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(selection, forType: .string)
+            }
+        } label: {
+            Label("Copy", systemImage: "doc.on.doc")
+        }
+
+        Button {
+            if let text = NSPasteboard.general.string(forType: .string) {
+                sendInput(ArraySlice(text.utf8))
+            }
+        } label: {
+            Label("Paste", systemImage: "doc.on.clipboard")
+        }
+
+        Button {
+            if let cached = TerminalViewCache.shared.retrieve(paneState.id) {
+                cached.view.selectAll()
+            }
+        } label: {
+            Label("Select All", systemImage: "selection.pin.in.out")
+        }
+
+        Divider()
+
+        // Split pane options
         Button { sessionManager.splitHorizontal() } label: {
             Label(i18n.t(.splitRight), systemImage: "rectangle.split.1x2")
         }
         Button { sessionManager.splitVertical() } label: {
             Label(i18n.t(.splitDown), systemImage: "rectangle.split.2x1")
         }
-
-        Divider()
 
         // Link/Unlink options
         if case .independent = paneState.sessionMode {
@@ -249,6 +278,16 @@ struct PaneTerminalView: View {
 
         Divider()
 
+        // AI Assistant
+        Button {
+            NotificationCenter.default.post(name: .toggleAIChat, object: nil)
+        } label: {
+            Label("AI Assistant", systemImage: "sparkles")
+        }
+
+        Divider()
+
+        // Close pane
         Button(role: .destructive) {
             sessionManager.closePane(paneState.id, in: tab)
         } label: {

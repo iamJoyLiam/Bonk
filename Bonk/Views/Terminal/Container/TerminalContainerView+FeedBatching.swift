@@ -21,7 +21,7 @@ import SwiftTerm
 
             feedTask = Task { [weak self] in
                 guard let self else { return }
-                try? await Task.sleep(for: .milliseconds(150))
+                try? await Task.sleep(for: .milliseconds(50))  // Reduced from 150ms to 50ms
                 for await text in stream {
                     guard !Task.isCancelled else { break }
                     let byteCount = text.utf8.count
