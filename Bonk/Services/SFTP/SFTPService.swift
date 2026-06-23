@@ -27,9 +27,9 @@ final class SFTPService {
     func connect(using sshService: SSHNetworkService) async throws {
         Log.sftp.info("Opening SFTP session...")
         let client = try await sshService.openSFTPClient()
-        self.sftpClient = client
-        self.currentPath = try await client.getRealPath(atPath: ".")
-        Log.sftp.info("SFTP connected, initial path: \(self.currentPath)")
+        sftpClient = client
+        currentPath = try await client.getRealPath(atPath: ".")
+        Log.sftp.info("SFTP connected, initial path: \(currentPath)")
         // Brief delay to ensure SFTP session is fully initialized
         try? await Task.sleep(for: .milliseconds(200))
         try await listDirectory()
