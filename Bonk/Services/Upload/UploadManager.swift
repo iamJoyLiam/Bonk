@@ -117,10 +117,17 @@ final class UploadManager {
         }
 
         // 2. PTY getCWD — sends pwd through PTY channel (reliable, ~100ms)
-        if let ptyCWD = await tab.session?.ptySession?.getCWD(), ptyCWD.hasPrefix("/") {
-            logger.info("[UPLOAD] Using PTY getCWD: \(ptyCWD)")
-            tab.currentDirectory = ptyCWD
-            return ptyCWD
+        // Try up to 3 times to get a valid path
+        for attempt in 1...3 {
+            if let ptyCWD = await tab.session?.ptySession?.getCWD(), ptyCWD.hasPrefix("/") {
+                logger.info("[UPLOAD] Using PTY getCWD (attempt \(attempt)): \(ptyCWD)")
+                tab.currentDirectory = ptyCWD
+                return ptyCWD
+            }
+            // Small delay between retries
+            if attempt < 3 {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
         }
 
         // 3. SFTP initial path

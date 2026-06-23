@@ -139,6 +139,9 @@ extension PaneTerminalView {
                 // Clear cached CWD to force fresh path detection
                 tab.currentDirectory = nil
 
+                // Small delay to ensure terminal has processed any cd commands
+                try? await Task.sleep(for: .milliseconds(200))
+
                 let overwriteAlways = preferences.sftpOverwriteAlways ?? false
                 let uploaded = await uploadManager.handleDrop(
                     url: url,
