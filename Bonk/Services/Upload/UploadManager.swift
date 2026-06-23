@@ -57,7 +57,13 @@ final class UploadManager {
     }
 
     /// Upload a file with AsyncStream progress.
-    func performUpload(_ url: URL, tab: TerminalTab, uploadDir: String? = nil, isOverwrite: Bool = false, i18n: I18n) async {
+    func performUpload(
+        _ url: URL,
+        tab: TerminalTab,
+        uploadDir: String? = nil,
+        isOverwrite: Bool = false,
+        i18n: I18n
+    ) async {
         guard tab.session?.sshService != nil else {
             showMessage(i18n.t(.noSSHConnection), i18n: i18n)
             return

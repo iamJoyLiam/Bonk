@@ -66,8 +66,11 @@ struct GroupSettingsView: View {
                     // Expand chevron
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) {
-                            if isExpanded { expandedGroups.remove(group.id) }
-                            else { expandedGroups.insert(group.id) }
+                            if isExpanded {
+                                expandedGroups.remove(group.id)
+                            } else {
+                                expandedGroups.insert(group.id)
+                            }
                         }
                     } label: {
                         Image(systemName: "chevron.right")

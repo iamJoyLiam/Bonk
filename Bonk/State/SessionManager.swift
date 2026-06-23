@@ -564,7 +564,12 @@ final class SessionManager {
         )
     }
 
-    private func setupPTYSession(for tab: TerminalTab, pane: PaneState, session: TerminalSession, service: SSHNetworkService) async throws {
+    private func setupPTYSession(
+        for tab: TerminalTab,
+        pane: PaneState,
+        session: TerminalSession,
+        service: SSHNetworkService
+    ) async throws {
         Log.session.info("[PTY] Opening PTY session...")
         let ptySession = try await service.openPTY()
         Log.session.info("[PTY] PTY session opened successfully")

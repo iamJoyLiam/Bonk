@@ -105,8 +105,13 @@ struct SnippetManagerView: View {
         }
         .frame(minWidth: 400, minHeight: 300)
         .sheet(isPresented: $showAddSheet) {
-            SnippetEditSheet(snippet: nil, modelContext: modelContext, existingCategories: Array(Set(snippets.map(\.category))).sorted())
-                .environment(i18n)
+            let categories = Array(Set(snippets.map(\.category))).sorted()
+            SnippetEditSheet(
+                snippet: nil,
+                modelContext: modelContext,
+                existingCategories: categories
+            )
+            .environment(i18n)
         }
         .sheet(item: $editingSnippet) { snippet in
             SnippetEditSheet(

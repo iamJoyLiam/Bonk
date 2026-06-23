@@ -80,7 +80,11 @@ indirect enum LayoutNode: Identifiable {
         let hash = "\(prefix):\(childIDs)".hashValue
         // Use a deterministic UUID based on hash
         let hashValue = Int32(truncatingIfNeeded: hash)
-        return UUID(uuidString: String(format: "%08x-0000-0000-0000-000000000000", UInt32(bitPattern: hashValue))) ?? UUID()
+        let uuidString = String(
+            format: "%08x-0000-0000-0000-000000000000",
+            UInt32(bitPattern: hashValue)
+        )
+        return UUID(uuidString: uuidString) ?? UUID()
     }
 }
 

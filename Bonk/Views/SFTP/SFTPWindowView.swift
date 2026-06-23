@@ -167,9 +167,14 @@ struct SFTPWindowView: View {
         VStack(spacing: 4) {
             ForEach(sftp.transfers) { transfer in
                 HStack(spacing: 8) {
-                    Image(systemName: transfer.isCancelled ? "xmark.circle.fill" : (transfer.isComplete ? "checkmark.circle.fill" : "arrow.down.circle"))
+                    let iconName = transfer.isCancelled
+                        ? "xmark.circle.fill"
+                        : (transfer.isComplete ? "checkmark.circle.fill" : "arrow.down.circle")
+                    Image(systemName: iconName)
                         .font(.system(size: 12))
-                        .foregroundStyle(transfer.isCancelled ? .orange : (transfer.isComplete ? .green : .blue))
+                        .foregroundStyle(
+                            transfer.isCancelled ? .orange : (transfer.isComplete ? .green : .blue)
+                        )
 
                     Text(transfer.filename)
                         .font(.system(size: 11))
@@ -267,7 +272,8 @@ struct SFTPWindowView: View {
             await performUpload(url)
             return
         }
-        let remotePath = (sftp.currentPath.hasSuffix("/") ? sftp.currentPath : sftp.currentPath + "/") + url.lastPathComponent
+        let basePath = sftp.currentPath.hasSuffix("/") ? sftp.currentPath : sftp.currentPath + "/"
+        let remotePath = basePath + url.lastPathComponent
         switch await sftp.fileExists(at: remotePath) {
         case true:
             pendingUploadURL = url

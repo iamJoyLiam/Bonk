@@ -66,7 +66,11 @@ struct SnippetInspectorView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(aiIsGenerating || AIProviderStore.shared.activeProvider == nil)
-                .help(AIProviderStore.shared.activeProvider == nil ? i18n.t(.configureProviderHint) : i18n.t(.aiAssistant))
+                .help(
+                    AIProviderStore.shared.activeProvider == nil
+                        ? i18n.t(.configureProviderHint)
+                        : i18n.t(.aiAssistant)
+                )
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -113,12 +117,22 @@ struct SnippetInspectorView: View {
             }
         }
         .sheet(isPresented: $showAddSheet) {
-            SnippetEditSheet(snippet: nil, modelContext: modelContext, existingCategories: Array(Set(snippets.map(\.category))).sorted())
-                .environment(i18n)
+            let categories = Array(Set(snippets.map(\.category))).sorted()
+            SnippetEditSheet(
+                snippet: nil,
+                modelContext: modelContext,
+                existingCategories: categories
+            )
+            .environment(i18n)
         }
         .sheet(item: $editingSnippet) { snippet in
-            SnippetEditSheet(snippet: snippet, modelContext: modelContext, existingCategories: Array(Set(snippets.map(\.category))).sorted())
-                .environment(i18n)
+            let categories = Array(Set(snippets.map(\.category))).sorted()
+            SnippetEditSheet(
+                snippet: snippet,
+                modelContext: modelContext,
+                existingCategories: categories
+            )
+            .environment(i18n)
         }
         .sheet(isPresented: $showAIGenerate) {
             AIGenerateSheet(

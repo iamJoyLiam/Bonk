@@ -251,7 +251,10 @@ extension AIChatSidebarView {
             Image(systemName: "list.bullet.clipboard").foregroundStyle(.blue)
             Text(i18n.t(.executionPlan)).font(.system(size: 12, weight: .semibold))
             Spacer()
-            Text(String(format: i18n.t(.stepsCount), plan.steps.count)).font(.system(size: 10)).foregroundStyle(.tertiary)
+            let stepsCount = String(format: i18n.t(.stepsCount), plan.steps.count)
+            Text(stepsCount)
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
         }
     }
 

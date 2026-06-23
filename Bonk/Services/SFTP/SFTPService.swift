@@ -196,7 +196,11 @@ final class SFTPService {
     }
 
     /// Internal upload implementation.
-    private func performUpload(_ localURL: URL, to remotePath: String?, continuation: AsyncThrowingStream<Double, Error>.Continuation) async throws {
+    private func performUpload(
+        _ localURL: URL,
+        to remotePath: String?,
+        continuation: AsyncThrowingStream<Double, Error>.Continuation
+    ) async throws {
         guard let sftp = sftpClient else { throw SFTPServiceError.notConnected }
 
         let filename = localURL.lastPathComponent

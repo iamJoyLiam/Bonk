@@ -130,7 +130,13 @@ struct TerminalTabView: View {
         print("[HANDLE_DROP] 🚀 handleFileDrop called, url=\(url.path), tab=\(tab.title)")
         Task {
             print("[HANDLE_DROP] 📤 Calling uploadManager.handleDrop...")
-            let uploaded = await uploadManager.handleDrop(url: url, tab: tab, overwriteAlways: preferences.sftpOverwriteAlways ?? false, i18n: i18n)
+            let overwriteAlways = preferences.sftpOverwriteAlways ?? false
+            let uploaded = await uploadManager.handleDrop(
+                url: url,
+                tab: tab,
+                overwriteAlways: overwriteAlways,
+                i18n: i18n
+            )
             print("[HANDLE_DROP] 📥 handleDrop returned, uploaded=\(uploaded)")
             if !uploaded {
                 pendingUploadURL = url

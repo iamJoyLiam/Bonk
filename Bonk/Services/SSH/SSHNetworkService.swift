@@ -277,12 +277,16 @@ public actor SSHNetworkService {
                     Log.ssh.error("Fatal SSH error, aborting reconnect: \(error.localizedDescription)")
                     throw error
                 case .notConnected, .connectionFailed, .reconnectExhausted:
-                    Log.ssh.warning("Recoverable SSH error (attempt \(attempt + 1)/\(maxAttempts)): \(error.localizedDescription)")
+                    Log.ssh.warning(
+                        "Recoverable SSH error (attempt \(attempt + 1)/\(maxAttempts)): \(error.localizedDescription)"
+                    )
                     attempt += 1
                 }
             } catch {
                 // Generic errors (network timeouts, DNS failures, etc.) — retry
-                Log.ssh.warning("Reconnect attempt \(attempt + 1)/\(maxAttempts) failed: \(error.localizedDescription)")
+                Log.ssh.warning(
+                    "Reconnect attempt \(attempt + 1)/\(maxAttempts) failed: \(error.localizedDescription)"
+                )
                 attempt += 1
             }
         }

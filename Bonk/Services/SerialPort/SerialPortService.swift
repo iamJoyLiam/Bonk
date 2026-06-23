@@ -43,10 +43,8 @@ final class SerialPortService {
             "/dev/tty.URT1",
         ]
 
-        for path in commonPaths {
-            if FileManager.default.fileExists(atPath: path) {
-                ports.append(path)
-            }
+        for path in commonPaths where FileManager.default.fileExists(atPath: path) {
+            ports.append(path)
         }
 
         // Also check /dev/tty.* pattern

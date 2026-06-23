@@ -190,7 +190,10 @@ struct PaneTerminalView: View {
             Button {
                 sessionManager.toggleTabBroadcast(tab.id)
             } label: {
-                Image(systemName: tab.isBroadcastEnabled ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
+                let iconName = tab.isBroadcastEnabled
+                    ? "antenna.radiowaves.left.and.right"
+                    : "antenna.radiowaves.left.and.right.slash"
+                Image(systemName: iconName)
                     .font(.caption)
                     .foregroundStyle(tab.isBroadcastEnabled ? .orange : .secondary)
             }
@@ -281,8 +284,11 @@ struct PaneTerminalView: View {
             Button {
                 sessionManager.toggleTabBroadcast(tab.id)
             } label: {
-                Label(tab.isBroadcastEnabled ? "Disable Broadcast" : "Enable Broadcast",
-                      systemImage: tab.isBroadcastEnabled ? "antenna.radiowaves.left.and.right.slash" : "antenna.radiowaves.left.and.right")
+                let title = tab.isBroadcastEnabled ? "Disable Broadcast" : "Enable Broadcast"
+                let icon = tab.isBroadcastEnabled
+                    ? "antenna.radiowaves.left.and.right.slash"
+                    : "antenna.radiowaves.left.and.right"
+                Label(title, systemImage: icon)
             }
         }
 
