@@ -138,48 +138,60 @@ final class SerialPortService {
     private func configurePort(config: SerialPortConfig) throws {
         var tty = termios()
 
-        // Get current settings
         guard tcgetattr(fileDescriptor, &tty) == 0 else {
             throw SerialPortError.configureFailed
         }
 
-        // Set baud rate
         let baudRate = speed_t(config.baudRate)
         cfsetispeed(&tty, baudRate)
         cfsetospeed(&tty, baudRate)
 
-        // Set data bits
+        setDataBits(config.dataBits, tty: &tty)
+        setStopBits(config.stopBits, tty: &tty)
+        setParity(config.parity, tty: &tty)
+        setFlowControl(config.flowControl, tty: &tty)
+
+        tty.c_iflag &= ~UInt(ICRNL | INLCR | IGNCR | ISTRIP)
+        tty.c_oflag &= ~UInt(OPOST | ONLCR | OCRNL | ONOCR | ONLRET)
+        tty.c_lflag &= ~UInt(ICANON | ECHO | ECHOE | ISIG | IEXTEN)
+
+        guard tcsetattr(fileDescriptor, TCSANOW, &tty) == 0 else {
+            throw SerialPortError.configureFailed
+        }
+    }
+
+    private func setDataBits(_ bits: Int, tty: inout termios) {
         tty.c_cflag &= ~UInt(CSIZE)
-        switch config.dataBits {
+        switch bits {
         case 5: tty.c_cflag |= UInt(CS5)
         case 6: tty.c_cflag |= UInt(CS6)
         case 7: tty.c_cflag |= UInt(CS7)
-        case 8: tty.c_cflag |= UInt(CS8)
         default: tty.c_cflag |= UInt(CS8)
         }
+    }
 
-        // Set stop bits
-        if config.stopBits == 2 {
+    private func setStopBits(_ bits: Int, tty: inout termios) {
+        if bits == 2 {
             tty.c_cflag |= UInt(CSTOPB)
         } else {
             tty.c_cflag &= ~UInt(CSTOPB)
         }
+    }
 
-        // Set parity
-        switch config.parity {
+    private func setParity(_ parity: SerialPortConfig.Parity, tty: inout termios) {
+        switch parity {
         case .none:
-            tty.c_cflag &= ~UInt(PARENB)
-            tty.c_cflag &= ~UInt(PARODD)
+            tty.c_cflag &= ~UInt(PARENB | PARODD)
         case .odd:
-            tty.c_cflag |= UInt(PARENB)
-            tty.c_cflag |= UInt(PARODD)
+            tty.c_cflag |= UInt(PARENB | PARODD)
         case .even:
             tty.c_cflag |= UInt(PARENB)
             tty.c_cflag &= ~UInt(PARODD)
         }
+    }
 
-        // Set flow control
-        switch config.flowControl {
+    private func setFlowControl(_ flowControl: SerialPortConfig.FlowControl, tty: inout termios) {
+        switch flowControl {
         case .none:
             tty.c_cflag &= ~UInt(CRTSCTS)
             tty.c_iflag &= ~UInt(IXON | IXOFF | IXANY)
@@ -189,18 +201,6 @@ final class SerialPortService {
         case .software:
             tty.c_cflag &= ~UInt(CRTSCTS)
             tty.c_iflag |= UInt(IXON | IXOFF | IXANY)
-        }
-
-        // Set input mode
-        tty.c_iflag &= ~UInt(ICRNL | INLCR | IGNCR | ISTRIP)
-        tty.c_oflag &= ~UInt(OPOST | ONLCR | OCRNL | ONOCR | ONLRET)
-
-        // Set local mode
-        tty.c_lflag &= ~UInt(ICANON | ECHO | ECHOE | ISIG | IEXTEN)
-
-        // Apply settings
-        guard tcsetattr(fileDescriptor, TCSANOW, &tty) == 0 else {
-            throw SerialPortError.configureFailed
         }
     }
 

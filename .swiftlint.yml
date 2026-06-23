@@ -6,7 +6,7 @@ excluded:
   - DerivedData
   - .build
   - Packages
-  - Bonk/Models/SFSymbolNames.swift  # Auto-generated, 8000+ lines
+  - Bonk/Models/Resources/SFSymbolNames.swift  # Auto-generated, 8000+ lines
   - .claude
 
 # Rule configuration

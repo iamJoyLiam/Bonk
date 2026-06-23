@@ -236,4 +236,4 @@ struct PaneTerminalView: View {
         case .linked: "link"
         }
     }
-
+}

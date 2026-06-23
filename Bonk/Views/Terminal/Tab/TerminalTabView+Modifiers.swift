@@ -159,6 +159,7 @@ extension View {
         modifier(DropOverlayModifier(message: message, uploadProgress: uploadProgress))
     }
 
+    // swiftlint:disable:next function_parameter_count
     func overwriteDialog(
         i18n: I18n,
         isPresented: Binding<Bool>,

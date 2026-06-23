@@ -1,4 +1,5 @@
 // Auto-generated from macOS CoreGlyphs. Do not edit manually.
+// swiftlint:disable:this file_length
 
 import Foundation
 

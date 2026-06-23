@@ -121,10 +121,10 @@ final class PortForwardService {
             .serverChannelOption(ChannelOptions.backlog, value: 256)
             .childChannelInitializer { channel in
                 do {
-                    let settings = SSHChannelType.DirectTCPIP(
+                    let settings = try SSHChannelType.DirectTCPIP(
                         targetHost: remoteHost,
                         targetPort: remotePort,
-                        originatorAddress: try SocketAddress(ipAddress: "127.0.0.1", port: 0)
+                        originatorAddress: SocketAddress(ipAddress: "127.0.0.1", port: 0)
                     )
 
                     let promise = channel.eventLoop.makePromise(of: Void.self)
@@ -281,4 +281,3 @@ private final class DataPipeHandler: ChannelInboundHandler {
         context.fireErrorCaught(error)
     }
 }
-

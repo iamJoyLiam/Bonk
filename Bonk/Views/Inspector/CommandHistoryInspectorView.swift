@@ -77,79 +77,91 @@ struct CommandHistoryInspectorView: View {
 
     private func historyRow(_ entry: CommandRecord) -> some View {
         HStack(spacing: 10) {
-            if entry.exitCode != nil {
-                Image(systemName: entry.isSuccess ? "checkmark.circle.fill" : "xmark.circle.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(entry.isSuccess ? .green : .red)
-            } else {
-                Image(systemName: "circle")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.tertiary)
-            }
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(entry.command)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                HStack(spacing: 6) {
-                    Text(entry.startTime, style: .time)
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                    Text(entry.durationFormatted)
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-
+            statusIcon(for: entry)
+            commandInfo(for: entry)
             Spacer()
-
-            // Execute button
-            Button {
-                sessionManager.sendTextToActiveTab(entry.command)
-            } label: {
-                Image(systemName: "arrow.right.circle")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.blue)
-            }
-            .buttonStyle(.plain)
-            .help(i18n.t(.rerunCommand))
-
-            // Delete button
-            Button {
-                history?.commands.removeAll { $0.id == entry.id }
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-            }
-            .buttonStyle(.plain)
-            .help(i18n.t(.delete))
+            actionButtons(for: entry)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .contentShape(Rectangle())
-        .contextMenu {
-            Button {
-                sessionManager.sendTextToActiveTab(entry.command)
-            } label: {
-                Label(i18n.t(.rerunCommand), systemImage: "arrow.clockwise")
-            }
+        .contextMenu { historyContextMenu(for: entry) }
+    }
 
-            Button {
-                snippetSource = entry
-            } label: {
-                Label(i18n.t(.saveToSnippets), systemImage: "text.badge.plus")
-            }
+    @ViewBuilder
+    private func statusIcon(for entry: CommandRecord) -> some View {
+        if entry.exitCode != nil {
+            Image(systemName: entry.isSuccess ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(entry.isSuccess ? .green : .red)
+        } else {
+            Image(systemName: "circle")
+                .font(.system(size: 12))
+                .foregroundStyle(.tertiary)
+        }
+    }
 
-            Divider()
-
-            Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(entry.command, forType: .string)
-            } label: {
-                Label(i18n.t(.copy), systemImage: "doc.on.doc")
+    private func commandInfo(for entry: CommandRecord) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(entry.command)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            HStack(spacing: 6) {
+                Text(entry.startTime, style: .time)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                Text(entry.durationFormatted)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.tertiary)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func actionButtons(for entry: CommandRecord) -> some View {
+        Button {
+            sessionManager.sendTextToActiveTab(entry.command)
+        } label: {
+            Image(systemName: "arrow.right.circle")
+                .font(.system(size: 14))
+                .foregroundStyle(.blue)
+        }
+        .buttonStyle(.plain)
+        .help(i18n.t(.rerunCommand))
+
+        Button {
+            history?.commands.removeAll { $0.id == entry.id }
+        } label: {
+            Image(systemName: "trash")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+        }
+        .buttonStyle(.plain)
+        .help(i18n.t(.delete))
+    }
+
+    @ViewBuilder
+    private func historyContextMenu(for entry: CommandRecord) -> some View {
+        Button {
+            sessionManager.sendTextToActiveTab(entry.command)
+        } label: {
+            Label(i18n.t(.rerunCommand), systemImage: "arrow.clockwise")
+        }
+
+        Button {
+            snippetSource = entry
+        } label: {
+            Label(i18n.t(.saveToSnippets), systemImage: "text.badge.plus")
+        }
+
+        Divider()
+
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(entry.command, forType: .string)
+        } label: {
+            Label(i18n.t(.copy), systemImage: "doc.on.doc")
         }
     }
 }

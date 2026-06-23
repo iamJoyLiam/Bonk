@@ -222,44 +222,10 @@ final class SFTPService {
 
         do {
             try await sftp.withFile(filePath: remote, flags: [.write, .create, .truncate]) { file in
-                var offset: UInt64 = 0
-                let chunkSize = 32768
-                var updateCounter = 0
-                var lastReportedProgress: Double = -1
-
-                while true {
-                    // Check for cancellation
-                    let isCancelled = await MainActor.run { [self] in
-                        transfers.first(where: { $0.id == transferID })?.isCancelled ?? false
-                    }
-                    if isCancelled {
-                        throw SFTPServiceError.transferCancelled
-                    }
-
-                    guard let chunkData = try handle.read(upToCount: chunkSize), !chunkData.isEmpty else { break }
-                    var buffer = ByteBuffer(data: chunkData)
-                    try await file.write(buffer, at: offset)
-                    offset += UInt64(chunkData.count)
-                    updateCounter += 1
-
-                    // Throttled progress update: only when progress changes by ~1%
-                    if updateCounter % 10 == 0 || offset == totalBytes {
-                        let progress = totalBytes > 0 ? Double(offset) / Double(totalBytes) : 1.0
-                        let off = offset
-
-                        await MainActor.run { [self] in
-                            if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                                transfers[idx].transferredBytes = off
-                            }
-                        }
-
-                        // Only yield if progress changed meaningfully (>= 1%)
-                        if progress - lastReportedProgress >= 0.01 || offset == totalBytes {
-                            lastReportedProgress = progress
-                            continuation.yield(progress)
-                        }
-                    }
-                }
+                try await writeChunks(
+                    handle: handle, file: file, totalBytes: totalBytes,
+                    transferID: transferID, continuation: continuation
+                )
 
                 await MainActor.run { [self] in
                     if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
@@ -282,6 +248,49 @@ final class SFTPService {
         }
 
         try await listDirectory()
+    }
+
+    /// Write file chunks with throttled progress updates.
+    private func writeChunks(
+        handle: FileHandle,
+        file: SFTPFile,
+        totalBytes: UInt64,
+        transferID: UUID,
+        continuation: AsyncThrowingStream<Double, Error>.Continuation
+    ) async throws {
+        var offset: UInt64 = 0
+        let chunkSize = 32768
+        var updateCounter = 0
+        var lastReportedProgress: Double = -1
+
+        while true {
+            let isCancelled = await MainActor.run { [self] in
+                transfers.first(where: { $0.id == transferID })?.isCancelled ?? false
+            }
+            if isCancelled { throw SFTPServiceError.transferCancelled }
+
+            guard let chunkData = try handle.read(upToCount: chunkSize), !chunkData.isEmpty else { break }
+            var buffer = ByteBuffer(data: chunkData)
+            try await file.write(buffer, at: offset)
+            offset += UInt64(chunkData.count)
+            updateCounter += 1
+
+            if updateCounter % 10 == 0 || offset == totalBytes {
+                let progress = totalBytes > 0 ? Double(offset) / Double(totalBytes) : 1.0
+                let off = offset
+
+                await MainActor.run { [self] in
+                    if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                        transfers[idx].transferredBytes = off
+                    }
+                }
+
+                if progress - lastReportedProgress >= 0.01 || offset == totalBytes {
+                    lastReportedProgress = progress
+                    continuation.yield(progress)
+                }
+            }
+        }
     }
 
     /// Check if a file exists at the given absolute path.

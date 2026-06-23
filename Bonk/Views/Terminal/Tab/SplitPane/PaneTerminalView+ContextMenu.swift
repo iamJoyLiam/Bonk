@@ -5,8 +5,8 @@
 //  Context menu, drop indicator, and drag handlers for PaneTerminalView.
 //
 
-import SwiftUI
 import SwiftTerm
+import SwiftUI
 
 extension PaneTerminalView {
     // MARK: - Context Menu

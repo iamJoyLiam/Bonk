@@ -94,13 +94,13 @@ extension LayoutNode: Equatable {
     static func == (lhs: LayoutNode, rhs: LayoutNode) -> Bool {
         switch (lhs, rhs) {
         case let (.pane(leftState), .pane(rightState)):
-            return leftState.id == rightState.id
+            leftState.id == rightState.id
         case let (.horizontal(leftChildren), .horizontal(rightChildren)):
-            return leftChildren == rightChildren
+            leftChildren == rightChildren
         case let (.vertical(leftChildren), .vertical(rightChildren)):
-            return leftChildren == rightChildren
+            leftChildren == rightChildren
         default:
-            return false
+            false
         }
     }
 }

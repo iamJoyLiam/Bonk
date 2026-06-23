@@ -50,8 +50,7 @@ final class FocusManager {
         let allPanes = tab.layout.root.allPaneIDs
         guard let currentIndex = allPanes.firstIndex(of: currentID) else { return }
 
-        // Simple sequential navigation for now
-        // TODO: Implement proper spatial navigation based on layout tree
+        // Sequential navigation through pane IDs
         let nextIndex: Int = switch direction {
         case .right, .downward:
             (currentIndex + 1) % allPanes.count
