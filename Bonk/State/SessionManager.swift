@@ -217,10 +217,6 @@ final class SessionManager {
             return
         }
 
-        // Debug: Print pane title
-        Log.session.info("[UNSPLIT] Pane title: '\(pane.title)', tab hostItem name: '\(tab.hostItem.name)'")
-        Log.session.info("[UNSPLIT] Source hostItem name: '\(tab.sourceHostItem?.name ?? "nil")'")
-
         // Get the pane's title for the new tab
         // Always use sourceHostItem name if available (from drag-to-split)
         // Otherwise, use pane's title or tab's hostItem name
@@ -233,17 +229,25 @@ final class SessionManager {
             paneTitle = tab.hostItem.name
         }
 
-        // Debug: Print final title
-        Log.session.info("[UNSPLIT] Final title for new tab: '\(paneTitle)'")
-
         // Create a new tab for this pane with the source hostItem
         // Always use sourceHostItem if available, otherwise use tab's hostItem
         let newTab = TerminalTab(hostItem: tab.sourceHostItem ?? tab.hostItem)
         newTab.title = paneTitle  // Use pane's title (e.g., "195")
 
-        // Insert the new tab at the same position as the original tab (left side)
-        if let index = tabs.firstIndex(where: { $0.id == tab.id }) {
-            tabs.insert(newTab, at: index)
+        // Insert the new tab based on pane position
+        // Find the pane's position in the layout to determine where to insert the new tab
+        let allPaneIDs = tab.layout.root.allPaneIDs
+        let paneIndex = allPaneIDs.firstIndex(of: paneID) ?? 0
+        let isLastPane = paneIndex == allPaneIDs.count - 1
+
+        if let tabIndex = tabs.firstIndex(where: { $0.id == tab.id }) {
+            if isLastPane {
+                // If it's the last pane, insert after the original tab
+                tabs.insert(newTab, at: tabIndex + 1)
+            } else {
+                // If it's not the last pane, insert before the original tab
+                tabs.insert(newTab, at: tabIndex)
+            }
         } else {
             tabs.append(newTab)
         }
@@ -268,6 +272,7 @@ final class SessionManager {
             }
             // Update tab title - restore original name if only one pane left
             if tab.layout.root.paneCount <= 1 {
+                // Restore the original tab title (use hostItem name, not "Workspace")
                 tab.title = tab.hostItem.name
                 // Clear source hostItem after unsplit
                 tab.sourceHostItem = nil
@@ -331,33 +336,18 @@ final class SessionManager {
             newPane = targetTab.layout.splitVertical()
         }
 
-        // Debug: Print source tab info
-        Log.session.info("[SPLIT] Source tab ID: \(sourceTabID)")
-        Log.session.info("[SPLIT] Target tab ID: \(targetTabID)")
-        Log.session.info("[SPLIT] Source tab hostItem name: '\(sourceTab.hostItem.name)'")
-        Log.session.info("[SPLIT] Target tab hostItem name: '\(targetTab.hostItem.name)'")
-        Log.session.info("[SPLIT] New pane ID: \(newPane.id)")
-        Log.session.info("[SPLIT] Position: \(position.rawValue)")
-
         // Set new pane title to source tab name
         newPane.title = sourceTab.hostItem.name
-        Log.session.info("[SPLIT] New pane title set to: '\(newPane.title)'")
 
         // Store source hostItem for unsplit
         targetTab.sourceHostItem = sourceTab.hostItem
 
-        // Set the target pane's title if it's empty
-        // Find the target pane by looking for the pane that is NOT the new pane
+        // Set the target pane's title to target tab's hostItem name
         let allPaneIDs = targetTab.layout.root.allPaneIDs
-        Log.session.info("[SPLIT] All pane IDs: \(allPaneIDs)")
         for paneID in allPaneIDs {
             if paneID != newPane.id {
                 if let targetPane = targetTab.layout.findPane(id: paneID) {
-                    Log.session.info("[SPLIT] Target pane ID: \(paneID)")
-                    Log.session.info("[SPLIT] Target pane title before: '\(targetPane.title)'")
-                    // Always set target pane title to target tab's hostItem name
                     targetPane.title = targetTab.hostItem.name
-                    Log.session.info("[SPLIT] Target pane title after: '\(targetPane.title)'")
                 }
             }
         }
@@ -365,9 +355,7 @@ final class SessionManager {
         // Adjust pane order based on position
         // If position is .left or .top, swap the panes so new pane is first
         if position == .left || position == .top {
-            // Swap the panes in the layout
             targetTab.layout.swapPanes()
-            Log.session.info("[SPLIT] Swapped panes for position: \(position.rawValue)")
         }
 
         // Move PTY session from source to new pane

@@ -184,9 +184,6 @@ struct PaneTerminalView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .onAppear {
-                    print("[PANE_TITLE] Pane ID: \(paneState.id), title: '\(paneState.title)', tab hostItem name: '\(tab.hostItem.name)'")
-                }
 
             Spacer()
 
