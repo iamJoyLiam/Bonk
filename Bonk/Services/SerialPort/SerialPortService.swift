@@ -170,7 +170,7 @@ final class SerialPortService {
         }
     }
 
-    private func setStopBits(_ bits: Int, tty: inout termios) {
+    private func setStopBits(_ bits: Double, tty: inout termios) {
         if bits == 2 {
             tty.c_cflag |= UInt(CSTOPB)
         } else {

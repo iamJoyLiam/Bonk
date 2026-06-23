@@ -19,16 +19,16 @@ struct PaneTerminalView: View {
     let cursorStyle: String
     let cursorBlink: Bool
 
-    @State private var focusManager = FocusManager.shared
-    @State private var isDragOver = false
-    @State private var dropPosition: DropPosition = .right
-    @State private var terminalNSView: NSView?
+    @State var focusManager = FocusManager.shared
+    @State var isDragOver = false
+    @State var dropPosition: DropPosition = .right
+    @State var terminalNSView: NSView?
 
     // Upload state
     let uploadManager = UploadManager.shared
-    @State private var pendingUploadURL: URL?
-    @State private var pendingUploadTab: TerminalTab?
-    @State private var showOverwriteAlert = false
+    @State var pendingUploadURL: URL?
+    @State var pendingUploadTab: TerminalTab?
+    @State var showOverwriteAlert = false
 
     var body: some View {
         VStack(spacing: 0) {

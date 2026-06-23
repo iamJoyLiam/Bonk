@@ -5,6 +5,7 @@
 //  SOCKS5 protocol handler for dynamic port forwarding.
 //
 
+import Citadel
 import NIO
 import NIOSSH
 

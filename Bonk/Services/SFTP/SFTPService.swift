@@ -222,7 +222,7 @@ final class SFTPService {
 
         do {
             try await sftp.withFile(filePath: remote, flags: [.write, .create, .truncate]) { file in
-                try await writeChunks(
+                try await self.writeChunks(
                     handle: handle, file: file, totalBytes: totalBytes,
                     transferID: transferID, continuation: continuation
                 )

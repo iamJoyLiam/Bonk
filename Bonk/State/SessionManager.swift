@@ -7,7 +7,7 @@ import SwiftUI
 @MainActor
 final class SessionManager {
     /// All tabs (each tab is a workspace with its own split layout).
-    private(set) var tabs: [TerminalTab] = []
+    var tabs: [TerminalTab] = []
 
     var activeTabID: UUID?
 
@@ -19,10 +19,10 @@ final class SessionManager {
     var draggingTabID: UUID?
     /// Target tab ID when dragging over a tab (for showing indicator).
     var dragTargetTabID: UUID?
-    private let hostKeyStore = PersistentHostKeyStore()
-    private let viewCache: TerminalViewCache
+    let hostKeyStore = PersistentHostKeyStore()
+    let viewCache: TerminalViewCache
     var broadcastManager: BroadcastManager?
-    private var modelContext: ModelContext?
+    var modelContext: ModelContext?
 
     /// Handles input processing, command history, and broadcast.
     let inputHandler = InputHandler()
@@ -249,7 +249,7 @@ final class SessionManager {
 
     // MARK: - Broadcast Sync
 
-    private func syncBroadcastTargets() {
+    func syncBroadcastTargets() {
         let allPaneIDs = tabs.flatMap(\.paneIDs)
         broadcastManager?.allPaneIDs = allPaneIDs
         let validIDs = Set(allPaneIDs)

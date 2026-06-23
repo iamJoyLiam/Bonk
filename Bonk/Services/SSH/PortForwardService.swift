@@ -13,7 +13,7 @@ import NIOSSH
 import os.log
 
 /// Wrapper to make SSHClient sendable for port forwarding.
-private final class SSHClientBox: @unchecked Sendable {
+final class SSHClientBox: @unchecked Sendable {
     let client: SSHClient
     init(_ client: SSHClient) {
         self.client = client
@@ -252,7 +252,7 @@ enum PortForwardError: LocalizedError {
 // MARK: - Data Pipe Handler
 
 /// Bidirectional data pipe between two channels.
-private final class DataPipeHandler: ChannelInboundHandler {
+final class DataPipeHandler: ChannelInboundHandler {
     typealias InboundIn = ByteBuffer
 
     private let target: Channel

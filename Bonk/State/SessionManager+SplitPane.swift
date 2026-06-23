@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os.log
 
 extension SessionManager {
     // MARK: - Split Pane
@@ -98,9 +99,6 @@ extension SessionManager {
         guard tab.layout.root.paneCount > 1 else { return }
 
         if tab.layout.closePane(id: paneID) {
-            // Close the PTY session for the closed pane
-            // Note: findPane won't work after removal, so we need to close before
-            // The pane's PTY session should be closed by the caller or here
             // Clean up the closed pane
             viewCache.remove(paneID)
             // Update active pane if needed
@@ -129,8 +127,6 @@ extension SessionManager {
         }
 
         // Get the pane's title for the new tab
-        // Always use sourceHostItem name if available (from drag-to-split)
-        // Otherwise, use pane's title or tab's hostItem name
         let paneTitle: String = if let sourceHostItem = tab.sourceHostItem {
             sourceHostItem.name
         } else if !pane.title.isEmpty {
@@ -140,22 +136,18 @@ extension SessionManager {
         }
 
         // Create a new tab for this pane with the source hostItem
-        // Always use sourceHostItem if available, otherwise use tab's hostItem
         let newTab = TerminalTab(hostItem: tab.sourceHostItem ?? tab.hostItem)
-        newTab.title = paneTitle // Use pane's title (e.g., "195")
+        newTab.title = paneTitle
 
         // Insert the new tab based on pane position
-        // Find the pane's position in the layout to determine where to insert the new tab
         let allPaneIDs = tab.layout.root.allPaneIDs
         let paneIndex = allPaneIDs.firstIndex(of: paneID) ?? 0
         let isLastPane = paneIndex == allPaneIDs.count - 1
 
         if let tabIndex = tabs.firstIndex(where: { $0.id == tab.id }) {
             if isLastPane {
-                // If it's the last pane, insert after the original tab
                 tabs.insert(newTab, at: tabIndex + 1)
             } else {
-                // If it's not the last pane, insert before the original tab
                 tabs.insert(newTab, at: tabIndex)
             }
         } else {
@@ -173,18 +165,14 @@ extension SessionManager {
             newPane.ptySession = ptySession
         }
 
-        // Remove the pane from the original tab (keep original tab's connection intact)
+        // Remove the pane from the original tab
         if tab.layout.closePane(id: paneID) {
             viewCache.remove(paneID)
-            // Update active pane if needed
             if tab.activePaneID == paneID {
                 tab.activePaneID = tab.layout.activePaneID
             }
-            // Update tab title - restore original name if only one pane left
             if tab.layout.root.paneCount <= 1 {
-                // Restore the original tab title (use hostItem name, not "Workspace")
                 tab.title = tab.hostItem.name
-                // Clear source hostItem after unsplit
                 tab.sourceHostItem = nil
             }
         }
@@ -237,8 +225,7 @@ extension SessionManager {
             return
         }
 
-        // Create new pane based on position:
-        // left/right → horizontal split; top/bottom → vertical split
+        // Create new pane based on position
         let newPane: PaneState = switch position {
         case .left, .right:
             targetTab.layout.splitHorizontal()
@@ -261,7 +248,6 @@ extension SessionManager {
         }
 
         // Adjust pane order based on position
-        // If position is .left or .top, swap the panes so new pane is first
         if position == .left || position == .top {
             targetTab.layout.swapPanes()
         }
@@ -270,15 +256,14 @@ extension SessionManager {
         newPane.ptySession = sourcePTY
         sourcePane.ptySession = nil
 
-        // Don't move terminal view cache - let the new pane create its own
-        // This prevents content overlap from the old terminal
+        // Don't move terminal view cache
         viewCache.remove(sourcePane.id)
 
         // Update tab title and switch to target
         updateTabTitleForSplit(targetTab)
         activeTabID = targetTabID
 
-        // Remove source tab (connection stays alive, PTY was moved)
+        // Remove source tab
         tabs.removeAll(where: { $0.id == sourceTabID })
         sessionStore.removeSession(sourceTabID)
         syncBroadcastTargets()

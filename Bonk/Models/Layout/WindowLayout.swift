@@ -139,8 +139,8 @@ final class TabLayout {
                     direction: direction,
                     newPane: newPane
                 )
-                if updated != newChildren[i] {
-                    newChildren[i] = updated
+                if updated != newChildren[index] {
+                    newChildren[index] = updated
                     // Preserve original container type
                     switch node {
                     case .horizontal: return .horizontal(children: newChildren)

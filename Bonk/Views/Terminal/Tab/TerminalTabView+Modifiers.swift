@@ -133,12 +133,12 @@ struct PaneNavigationModifier: ViewModifier {
             }
             .onKeyPress(.init("k"), phases: .down) { press in
                 guard press.modifiers.contains([.command, .option]) else { return .ignored }
-                navigate(.up)
+                navigate(.upward)
                 return .handled
             }
             .onKeyPress(.init("j"), phases: .down) { press in
                 guard press.modifiers.contains([.command, .option]) else { return .ignored }
-                navigate(.down)
+                navigate(.downward)
                 return .handled
             }
     }
