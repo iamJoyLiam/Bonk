@@ -248,6 +248,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         }
 
         let resumed = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
+        let pwdSent = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
 
         let observerID = UUID()
         let path: String? = await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
@@ -257,6 +258,10 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                 dict[observerID] = { @Sendable (chunk: String) in
                     resumed.withLock { alreadyResumed in
                         guard !alreadyResumed else { return }
+
+                        // Only process output after pwd command is sent
+                        guard pwdSent.withLock({ $0 }) else { return }
+
                         let lines = chunk.components(separatedBy: "\r\n")
                         for raw in lines {
                             let clean = raw
@@ -280,9 +285,15 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             }
 
             Task {
+                // Small delay before sending pwd to ensure previous output is processed
+                try? await Task.sleep(for: .milliseconds(100))
+
                 var buf = ByteBuffer()
                 buf.writeString("pwd\n")
                 try? await writer.write(buf)
+
+                // Mark pwd as sent
+                pwdSent.withLock { $0 = true }
             }
 
             Task {

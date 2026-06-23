@@ -42,9 +42,6 @@ struct TerminalTabView: View {
     @State var showAIChat = false
     @State var selectedTextForAI = ""
     @State var selectionObserver: NSObjectProtocol?
-    @State private var isTabBarDragOver = false
-    @State private var dropPosition: DropPosition = .right
-    @State private var dragTrackingTimer: Timer?
 
     var body: some View {
         mainView
@@ -57,9 +54,6 @@ struct TerminalTabView: View {
             .renameAlert(i18n: i18n, renamingTab: $renamingTab, renameText: $renameText)
             .aiEnableAlert(i18n: i18n, isPresented: $showAIEnableAlert)
             .dropOverlay(message: uploadManagerBinding, uploadProgress: uploadManager.uploadProgress)
-            .fileDropHandler(sessionManager: sessionManager, dropMessage: uploadManagerBinding) { url, tab in
-                handleFileDrop(url: url, tab: tab)
-            }
             .overwriteDialog(
                 i18n: i18n,
                 isPresented: $showOverwriteAlert,
@@ -72,36 +66,6 @@ struct TerminalTabView: View {
             }
             .onChange(of: renamingTab?.id) { _, _ in
                 if let tab = renamingTab { renameText = tab.title }
-            }
-            .onChange(of: isTabBarDragOver) { _, isDragging in
-                if isDragging {
-                    dragTrackingTimer?.invalidate()
-                    dragTrackingTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { _ in
-                        Task { @MainActor in
-                            guard let window = NSApp.mainWindow,
-                                  let contentView = window.contentView else { return }
-                            let screenLoc = NSEvent.mouseLocation
-                            let windowLoc = window.convertPoint(fromScreen: screenLoc)
-                            // AppKit: origin at bottom-left. Convert to top-left for SwiftUI-style distances.
-                            let x = windowLoc.x
-                            let y = contentView.bounds.height - windowLoc.y
-                            let w = contentView.bounds.width
-                            let h = contentView.bounds.height
-                            guard w > 0, h > 0 else { return }
-                            let dL = x, dR = w - x, dT = y, dB = h - y
-                            let m = min(dL, dR, dT, dB)
-                            switch m {
-                            case dL: dropPosition = .left
-                            case dR: dropPosition = .right
-                            case dT: dropPosition = .top
-                            default: dropPosition = .bottom
-                            }
-                        }
-                    }
-                } else {
-                    dragTrackingTimer?.invalidate()
-                    dragTrackingTimer = nil
-                }
             }
             .paneNavigation(navigatePane)
     }
@@ -164,12 +128,16 @@ struct TerminalTabView: View {
     }
 
     private func handleFileDrop(url: URL, tab: TerminalTab) {
+        print("[HANDLE_DROP] 🚀 handleFileDrop called, url=\(url.path), tab=\(tab.title)")
         Task {
+            print("[HANDLE_DROP] 📤 Calling uploadManager.handleDrop...")
             let uploaded = await uploadManager.handleDrop(url: url, tab: tab, overwriteAlways: preferences.sftpOverwriteAlways ?? false, i18n: i18n)
+            print("[HANDLE_DROP] 📥 handleDrop returned, uploaded=\(uploaded)")
             if !uploaded {
                 pendingUploadURL = url
                 pendingUploadTab = tab
                 showOverwriteAlert = true
+                print("[HANDLE_DROP] ⚠️ File exists, showing overwrite dialog")
             }
         }
     }
@@ -209,97 +177,17 @@ extension TerminalTabView {
             if !sessionManager.tabs.isEmpty { tabBar }
             // Render the active tab's layout
             if let activeTab = sessionManager.activeTab {
-                ZStack {
-                    TabLayoutView(
-                        tab: activeTab,
-                        sessionManager: sessionManager,
-                        colorScheme: colorScheme,
-                        preferences: preferences,
-                        cursorStyle: cursorStyle,
-                        cursorBlink: cursorBlink
-                    )
-
-                    // Region indicator (driven by Timer polling during drag)
-                    if isTabBarDragOver {
-                        dropRegionIndicator
-                            .allowsHitTesting(false)
-                            .transition(.opacity)
-                            .animation(.easeInOut(duration: 0.15), value: isTabBarDragOver)
-                    }
-                }
+                TabLayoutView(
+                    tab: activeTab,
+                    sessionManager: sessionManager,
+                    colorScheme: colorScheme,
+                    preferences: preferences,
+                    cursorStyle: cursorStyle,
+                    cursorBlink: cursorBlink
+                )
             } else {
                 emptyState
             }
-        }
-        .onDrop(of: [.utf8PlainText, .plainText, .text], isTargeted: $isTabBarDragOver) { providers, location in
-            dragTrackingTimer?.invalidate()
-            dragTrackingTimer = nil
-            guard let provider = providers.first,
-                  let activeTab = sessionManager.activeTab else { return false }
-            _ = provider.loadObject(ofClass: NSString.self) { string, _ in
-                guard let uuidString = string as? String,
-                      let sourceTabID = UUID(uuidString: uuidString),
-                      sourceTabID != activeTab.id else { return }
-                Task { @MainActor in
-                    let size = NSApp.mainWindow?.contentView?.bounds.size ?? CGSize(width: 800, height: 600)
-                    // SwiftUI location: origin at top-left, y increases downward
-                    let distLeft = location.x
-                    let distRight = size.width - location.x
-                    let distTop = location.y                    // distance from top edge
-                    let distBottom = size.height - location.y   // distance from bottom edge
-                    let m = min(distLeft, distRight, distTop, distBottom)
-                    let pos: DropPosition
-                    switch m {
-                    case distLeft: pos = .left
-                    case distRight: pos = .right
-                    case distTop: pos = .top
-                    default: pos = .bottom
-                    }
-                    sessionManager.addPaneFromTab(sourceTabID, to: activeTab.id, position: pos)
-                }
-            }
-            return true
-        }
-    }
-
-    // MARK: - Drop Region Indicator
-
-    @ViewBuilder
-    private var dropRegionIndicator: some View {
-        GeometryReader { geometry in
-            let size = geometry.size
-            let inset: CGFloat = 4
-            let center = regionCenter(in: size)
-
-            ZStack {
-                // Region highlight
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.accentColor, lineWidth: 3)
-                    .frame(
-                        width: dropPosition.isHorizontal ? size.width / 2 - inset * 2 : nil,
-                        height: dropPosition.isVertical ? size.height / 2 - inset * 2 : nil
-                    )
-                    .position(center)
-
-                // Icon
-                VStack(spacing: 8) {
-                    Image(systemName: "plus.rectangle.on.rectangle")
-                        .font(.system(size: 24))
-                    Text("Drop to split")
-                        .font(.caption)
-                }
-                .foregroundStyle(Color.accentColor)
-                .position(center)
-            }
-        }
-    }
-
-    private func regionCenter(in size: CGSize) -> CGPoint {
-        switch dropPosition {
-        case .left: return CGPoint(x: size.width / 4, y: size.height / 2)
-        case .right: return CGPoint(x: size.width * 3 / 4, y: size.height / 2)
-        case .top: return CGPoint(x: size.width / 2, y: size.height / 4)
-        case .bottom: return CGPoint(x: size.width / 2, y: size.height * 3 / 4)
         }
     }
 

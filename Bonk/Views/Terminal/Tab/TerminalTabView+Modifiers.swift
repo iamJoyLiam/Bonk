@@ -80,32 +80,6 @@ struct DropOverlayModifier: ViewModifier {
     }
 }
 
-// MARK: - File Drop Handler
-
-struct FileDropHandlerModifier: ViewModifier {
-    @Bindable var sessionManager: SessionManager
-    @Binding var dropMessage: String?
-    let onFileDrop: (URL, TerminalTab) -> Void
-
-    func body(content: Content) -> some View {
-        content
-            .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-                guard let activeTab = sessionManager.activeTab,
-                      activeTab.session?.connectionState.isConnected == true else { return false }
-                for provider in providers {
-                    provider.loadItem(forTypeIdentifier: "public.file-url") { data, _ in
-                        guard let data = data as? Data,
-                              let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
-                        Task { @MainActor in
-                            onFileDrop(url, activeTab)
-                        }
-                    }
-                }
-                return true
-            }
-    }
-}
-
 // MARK: - Overwrite Dialog
 
 struct OverwriteDialogModifier: ViewModifier {
@@ -183,10 +157,6 @@ extension View {
 
     func dropOverlay(message: Binding<String?>, uploadProgress: Double? = nil) -> some View {
         modifier(DropOverlayModifier(message: message, uploadProgress: uploadProgress))
-    }
-
-    func fileDropHandler(sessionManager: SessionManager, dropMessage: Binding<String?>, onFileDrop: @escaping (URL, TerminalTab) -> Void) -> some View {
-        modifier(FileDropHandlerModifier(sessionManager: sessionManager, dropMessage: dropMessage, onFileDrop: onFileDrop))
     }
 
     func overwriteDialog(
