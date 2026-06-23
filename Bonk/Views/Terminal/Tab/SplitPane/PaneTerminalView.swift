@@ -180,20 +180,42 @@ struct PaneTerminalView: View {
             Image(systemName: paneTitleIcon)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text(tab.hostItem.host)
+            Text(paneState.title.isEmpty ? tab.hostItem.name : paneState.title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .onAppear {
+                    print("[PANE_TITLE] Pane ID: \(paneState.id), title: '\(paneState.title)', tab hostItem name: '\(tab.hostItem.name)'")
+                }
 
             Spacer()
 
-            // Broadcast indicator
-            if tab.isBroadcastEnabled {
-                Image(systemName: "antenna.radiowaves.left.and.right")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
+            // Broadcast toggle button
+            Button {
+                sessionManager.toggleTabBroadcast(tab.id)
+            } label: {
+                Image(systemName: tab.isBroadcastEnabled ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
+                    .font(.caption)
+                    .foregroundStyle(tab.isBroadcastEnabled ? .orange : .secondary)
+            }
+            .buttonStyle(.plain)
+            .help(tab.isBroadcastEnabled ? "Disable Broadcast" : "Enable Broadcast")
+
+            // Unsplit button (only show when there are multiple panes)
+            if tab.layout.root.paneCount > 1 {
+                Button {
+                    sessionManager.unsplitPane(paneState.id, from: tab)
+                } label: {
+                    Image(systemName: "rectangle.split.1x2")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(90))
+                }
+                .buttonStyle(.plain)
+                .help("Unsplit (move to new tab)")
             }
 
+            // Close pane button
             Button {
                 sessionManager.closePane(paneState.id, in: tab)
             } label: {
@@ -257,22 +279,13 @@ struct PaneTerminalView: View {
             Label(i18n.t(.splitDown), systemImage: "rectangle.split.2x1")
         }
 
-        // Link/Unlink options
-        if case .independent = paneState.sessionMode {
-            Menu("Link to Pane") {
-                ForEach(tab.layout.root.allPaneIDs.filter { $0 != paneState.id }, id: \.self) { otherID in
-                    Button {
-                        sessionManager.linkPanes(sourceID: otherID, targetID: paneState.id, in: tab)
-                    } label: {
-                        Text("Pane \(otherID.uuidString.prefix(4))")
-                    }
-                }
-            }
-        } else {
+        // Broadcast option (only show when there are multiple panes)
+        if tab.layout.root.paneCount > 1 {
             Button {
-                sessionManager.unlinkPane(paneState.id, in: tab)
+                sessionManager.toggleTabBroadcast(tab.id)
             } label: {
-                Label("Unlink Pane", systemImage: "link.badge.xmark")
+                Label(tab.isBroadcastEnabled ? "Disable Broadcast" : "Enable Broadcast",
+                      systemImage: tab.isBroadcastEnabled ? "antenna.radiowaves.left.and.right.slash" : "antenna.radiowaves.left.and.right")
             }
         }
 

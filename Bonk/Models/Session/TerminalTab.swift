@@ -10,6 +10,9 @@ final class TerminalTab: Identifiable {
     var colorLabel: String?
     var pendingRestore = false
 
+    /// Source tab hostItem for unsplit (preserves original hostItem after drag-to-split)
+    var sourceHostItem: HostItem?
+
     /// Active connection session (nil when disconnected or never connected).
     var session: TerminalSession?
 

@@ -201,6 +201,83 @@ final class SessionManager {
         }
     }
 
+    /// Unsplit a pane: move it to a new tab instead of closing it.
+    /// The new tab reuses the existing SSH connection and PTY session (preserves history).
+    func unsplitPane(_ paneID: UUID, from tab: TerminalTab) {
+        // Don't unsplit if it's the only pane
+        guard tab.layout.root.paneCount > 1 else { return }
+
+        // Find the pane to unsplit
+        guard let pane = tab.layout.findPane(id: paneID) else { return }
+
+        // Get the PTY session before removing
+        guard let ptySession = pane.ptySession else {
+            // If no PTY session, just close the pane
+            closePane(paneID, in: tab)
+            return
+        }
+
+        // Debug: Print pane title
+        Log.session.info("[UNSPLIT] Pane title: '\(pane.title)', tab hostItem name: '\(tab.hostItem.name)'")
+        Log.session.info("[UNSPLIT] Source hostItem name: '\(tab.sourceHostItem?.name ?? "nil")'")
+
+        // Get the pane's title for the new tab
+        // Always use sourceHostItem name if available (from drag-to-split)
+        // Otherwise, use pane's title or tab's hostItem name
+        let paneTitle: String
+        if let sourceHostItem = tab.sourceHostItem {
+            paneTitle = sourceHostItem.name
+        } else if !pane.title.isEmpty {
+            paneTitle = pane.title
+        } else {
+            paneTitle = tab.hostItem.name
+        }
+
+        // Debug: Print final title
+        Log.session.info("[UNSPLIT] Final title for new tab: '\(paneTitle)'")
+
+        // Create a new tab for this pane with the source hostItem
+        // Always use sourceHostItem if available, otherwise use tab's hostItem
+        let newTab = TerminalTab(hostItem: tab.sourceHostItem ?? tab.hostItem)
+        newTab.title = paneTitle  // Use pane's title (e.g., "195")
+
+        // Insert the new tab at the same position as the original tab (left side)
+        if let index = tabs.firstIndex(where: { $0.id == tab.id }) {
+            tabs.insert(newTab, at: index)
+        } else {
+            tabs.append(newTab)
+        }
+
+        // Create a new session for the new tab, reusing the SSH connection
+        let newSession = TerminalSession(tabID: newTab.id)
+        newSession.sshService = tab.session?.sshService
+        newSession.connectionState = .connected
+        newTab.session = newSession
+
+        // Move the PTY session to the new tab (preserves history)
+        if let newPane = newTab.layout.root.paneState {
+            newPane.ptySession = ptySession
+        }
+
+        // Remove the pane from the original tab (keep original tab's connection intact)
+        if tab.layout.closePane(id: paneID) {
+            viewCache.remove(paneID)
+            // Update active pane if needed
+            if tab.activePaneID == paneID {
+                tab.activePaneID = tab.layout.activePaneID
+            }
+            // Update tab title - restore original name if only one pane left
+            if tab.layout.root.paneCount <= 1 {
+                tab.title = tab.hostItem.name
+                // Clear source hostItem after unsplit
+                tab.sourceHostItem = nil
+            }
+        }
+
+        // Set the new tab as active
+        activeTabID = newTab.id
+    }
+
     /// Connect a new pane (open PTY session).
     private func connectPane(tab: TerminalTab, pane: PaneState) async {
         guard let service = tab.session?.sshService else { return }
@@ -253,7 +330,45 @@ final class SessionManager {
         case .top, .bottom:
             newPane = targetTab.layout.splitVertical()
         }
-        newPane.title = sourceTab.hostItem.host
+
+        // Debug: Print source tab info
+        Log.session.info("[SPLIT] Source tab ID: \(sourceTabID)")
+        Log.session.info("[SPLIT] Target tab ID: \(targetTabID)")
+        Log.session.info("[SPLIT] Source tab hostItem name: '\(sourceTab.hostItem.name)'")
+        Log.session.info("[SPLIT] Target tab hostItem name: '\(targetTab.hostItem.name)'")
+        Log.session.info("[SPLIT] New pane ID: \(newPane.id)")
+        Log.session.info("[SPLIT] Position: \(position.rawValue)")
+
+        // Set new pane title to source tab name
+        newPane.title = sourceTab.hostItem.name
+        Log.session.info("[SPLIT] New pane title set to: '\(newPane.title)'")
+
+        // Store source hostItem for unsplit
+        targetTab.sourceHostItem = sourceTab.hostItem
+
+        // Set the target pane's title if it's empty
+        // Find the target pane by looking for the pane that is NOT the new pane
+        let allPaneIDs = targetTab.layout.root.allPaneIDs
+        Log.session.info("[SPLIT] All pane IDs: \(allPaneIDs)")
+        for paneID in allPaneIDs {
+            if paneID != newPane.id {
+                if let targetPane = targetTab.layout.findPane(id: paneID) {
+                    Log.session.info("[SPLIT] Target pane ID: \(paneID)")
+                    Log.session.info("[SPLIT] Target pane title before: '\(targetPane.title)'")
+                    // Always set target pane title to target tab's hostItem name
+                    targetPane.title = targetTab.hostItem.name
+                    Log.session.info("[SPLIT] Target pane title after: '\(targetPane.title)'")
+                }
+            }
+        }
+
+        // Adjust pane order based on position
+        // If position is .left or .top, swap the panes so new pane is first
+        if position == .left || position == .top {
+            // Swap the panes in the layout
+            targetTab.layout.swapPanes()
+            Log.session.info("[SPLIT] Swapped panes for position: \(position.rawValue)")
+        }
 
         // Move PTY session from source to new pane
         newPane.ptySession = sourcePTY
@@ -378,22 +493,25 @@ final class SessionManager {
         try await pty.sendInput(bytes)
 
         // Broadcast to other panes if enabled
-        if tab.isBroadcastEnabled {
-            // Local broadcast: send to all panes in this tab
-            for otherPaneID in tab.paneIDs where otherPaneID != targetPaneID {
-                if let otherPane = tab.layout.findPane(id: otherPaneID),
-                   let otherPTY = otherPane.ptySession {
-                    try? await otherPTY.sendInput(bytes)
-                }
-            }
-        } else if isGlobalBroadcastEnabled {
-            // Global broadcast: send to all panes in all tabs
-            for otherTab in tabs where otherTab.id != tabID {
+        let isGlobalBroadcast = broadcastManager?.isEnabled ?? false
+        if isGlobalBroadcast {
+            // Global broadcast: send to ALL panes in ALL tabs (including current tab)
+            for otherTab in tabs {
                 for otherPaneID in otherTab.paneIDs {
+                    // Skip the target pane we already sent to
+                    if otherTab.id == tabID && otherPaneID == targetPaneID { continue }
                     if let otherPane = otherTab.layout.findPane(id: otherPaneID),
                        let otherPTY = otherPane.ptySession {
                         try? await otherPTY.sendInput(bytes)
                     }
+                }
+            }
+        } else if tab.isBroadcastEnabled {
+            // Local broadcast: send to all panes in this tab only
+            for otherPaneID in tab.paneIDs where otherPaneID != targetPaneID {
+                if let otherPane = tab.layout.findPane(id: otherPaneID),
+                   let otherPTY = otherPane.ptySession {
+                    try? await otherPTY.sendInput(bytes)
                 }
             }
         }

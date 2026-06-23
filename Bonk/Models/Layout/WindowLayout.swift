@@ -35,6 +35,26 @@ final class TabLayout {
         split(direction: .vertical)
     }
 
+    /// Swap the order of panes in the root container.
+    /// Used to adjust pane order after drag-to-split.
+    func swapPanes() {
+        root = swapPanes(in: root)
+    }
+
+    /// Recursively swap panes in a container.
+    private func swapPanes(in node: LayoutNode) -> LayoutNode {
+        switch node {
+        case .pane:
+            return node
+        case .horizontal(let children):
+            let swapped = children.reversed()
+            return .horizontal(children: Array(swapped))
+        case .vertical(let children):
+            let swapped = children.reversed()
+            return .vertical(children: Array(swapped))
+        }
+    }
+
     // MARK: - Close Operations
 
     /// Close the active pane. Returns true if closed, false if last pane.
