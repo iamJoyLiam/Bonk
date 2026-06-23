@@ -2,3 +2,4 @@
 --trailingcommas always
 --elseposition same-line
 --guardelse same-line
+--disable redundantSelf
