@@ -28,7 +28,7 @@ final class AgentEngine {
 
     private let providerStore: AIProviderStore
     private let conversationStore: AIConversationStore
-    internal let sanitizer = AIOutputSanitizer.self
+    let sanitizer = AIOutputSanitizer.self
     private var lastUIUpdate = Date.distantPast
 
     // Plan approval state
@@ -175,6 +175,7 @@ final class AgentEngine {
     }
 
     // MARK: - Agent Mode (Plan → Approve → Execute)
+
     // Implementation moved to AgentPlanExecutor.swift
 
     /// Append an agent message to in-memory list and optionally persist to SwiftData.

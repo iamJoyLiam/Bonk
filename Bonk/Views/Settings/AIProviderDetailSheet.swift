@@ -288,5 +288,4 @@ struct AIProviderDetailSheet: View {
             }
         }
     }
-
 }

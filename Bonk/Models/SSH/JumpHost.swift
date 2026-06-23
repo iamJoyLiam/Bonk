@@ -26,14 +26,14 @@ final class JumpHost {
         username: String,
         authType: String = "password"
     ) {
-        self.id = UUID()
+        id = UUID()
         self.name = name
         self.host = host
         self.port = port
         self.username = username
         self.authType = authType
-        self.sortOrder = 0
-        self.createdAt = Date()
+        sortOrder = 0
+        createdAt = Date()
     }
 
     /// Display string for the jump host.

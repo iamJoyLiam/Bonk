@@ -114,10 +114,10 @@ struct GroupSettingsView: View {
                         .padding(.vertical, 4)
                         .padding(.leading, 32)
                     }
-                    .onMove { from, to in moveHosts(in: group, from: from, to: to) }
+                    .onMove { from, destination in moveHosts(in: group, from: from, to: destination) }
                 }
             }
-            .onMove { from, to in moveGroups(from: from, to: to) }
+            .onMove { from, destination in moveGroups(from: from, to: destination) }
         }
     }
 

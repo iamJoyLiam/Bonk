@@ -297,7 +297,7 @@ import SwiftUI
 
         let batchBuffer = OSAllocatedUnfairLock<String>(uncheckedState: "")
         let batchFlushScheduled = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
-        static let batchThreshold = 16384  // Increased from 4096 to 16KB for better performance
+        static let batchThreshold = 16384 // Increased from 4096 to 16KB for better performance
 
         var onSend: @Sendable (ArraySlice<UInt8>) -> Void {
             get { lock.lock(); defer { lock.unlock() }; return _onSend }
@@ -319,7 +319,7 @@ import SwiftUI
             onResize: (@Sendable (Int, Int) -> Void)?,
             onTitleChange: (@Sendable (String) -> Void)?,
             copyOnSelect: Bool,
-            sessionID: String? = nil
+            sessionID _: String? = nil
         ) {
             _onSend = onSend
             _onResize = onResize

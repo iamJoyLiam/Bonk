@@ -70,7 +70,7 @@ struct SerialPortView: View {
                     }
 
                     Picker(i18n.t(.dataBits), selection: $config.dataBits) {
-                        ForEach(5...8, id: \.self) { bits in
+                        ForEach(5 ... 8, id: \.self) { bits in
                             Text("\(bits)").tag(bits)
                         }
                     }

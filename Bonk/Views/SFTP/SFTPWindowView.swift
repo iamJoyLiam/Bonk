@@ -81,7 +81,6 @@ struct SFTPWindowView: View {
 
     // MARK: - Local File Panel
 
-    @ViewBuilder
     private var localFilePanel: some View {
         VStack(spacing: 0) {
             // Header — matches SFTPBrowserView.header
@@ -164,7 +163,6 @@ struct SFTPWindowView: View {
 
     // MARK: - Transfer Panel
 
-    @ViewBuilder
     private func transferPanel(sftp: SFTPService) -> some View {
         VStack(spacing: 4) {
             ForEach(sftp.transfers) { transfer in
@@ -333,29 +331,29 @@ struct LocalFileRow: View {
                 .foregroundStyle(iconColor)
                 .frame(width: 20)
 
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(file.name)
-                            .font(.system(size: 12))
-                            .lineLimit(1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(file.name)
+                    .font(.system(size: 12))
+                    .lineLimit(1)
 
-                        HStack(spacing: 8) {
-                            if file.isDirectory {
-                                Text("Folder")
-                                    .font(.system(size: 9))
-                                    .foregroundStyle(.tertiary)
-                            } else {
-                                let ext = (file.name as NSString).pathExtension
-                                if !ext.isEmpty {
-                                    Text(ext.uppercased())
-                                        .font(.system(size: 9).monospaced())
-                                        .foregroundStyle(.tertiary)
-                                }
-                                Text(formatSize(file.size))
-                                    .font(.system(size: 9))
-                                    .foregroundStyle(.tertiary)
-                            }
+                HStack(spacing: 8) {
+                    if file.isDirectory {
+                        Text("Folder")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
+                    } else {
+                        let ext = (file.name as NSString).pathExtension
+                        if !ext.isEmpty {
+                            Text(ext.uppercased())
+                                .font(.system(size: 9).monospaced())
+                                .foregroundStyle(.tertiary)
                         }
+                        Text(formatSize(file.size))
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
                     }
+                }
+            }
 
             Spacer()
         }

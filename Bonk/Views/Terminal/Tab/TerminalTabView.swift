@@ -7,9 +7,9 @@
 
 import os.log
 import SwiftData
+import SwiftTerm
 import SwiftUI
 import UniformTypeIdentifiers
-import SwiftTerm
 
 /// Center area: tab bar + active terminal content.
 struct TerminalTabView: View {
@@ -70,7 +70,6 @@ struct TerminalTabView: View {
             .paneNavigation(navigatePane)
     }
 
-    @ViewBuilder
     private var mainView: some View {
         ZStack {
             mainContent
@@ -171,7 +170,6 @@ extension Binding where Value == Bool? {
 extension TerminalTabView {
     // MARK: - Main Content
 
-    @ViewBuilder
     private var mainContent: some View {
         VStack(spacing: 0) {
             if !sessionManager.tabs.isEmpty { tabBar }
@@ -243,7 +241,8 @@ extension TerminalTabView {
         guard let tab = sessionManager.activeTab,
               let paneID = tab.activePaneID,
               let cached = TerminalViewCache.shared.retrieve(paneID),
-              let terminal = cached.view.terminal else {
+              let terminal = cached.view.terminal else
+        {
             matchCount = 0
             searchOverlay?.clearHighlights()
             return
@@ -257,7 +256,7 @@ extension TerminalTabView {
         var localMatches: [SearchHighlightOverlay.MatchResult] = []
         var totalCount = 0
 
-        for visibleRow in 0..<rows {
+        for visibleRow in 0 ..< rows {
             let absoluteRow = yDisp + visibleRow
             let start = Position(col: 0, row: absoluteRow)
             let end = Position(col: cols - 1, row: absoluteRow)
@@ -265,11 +264,12 @@ extension TerminalTabView {
 
             var searchStart = lineText.startIndex
             while searchStart < lineText.endIndex,
-                  let range = lineText[searchStart...].range(of: searchText) {
-                let preText = String(lineText[lineText.startIndex..<range.lowerBound])
+                  let range = lineText[searchStart...].range(of: searchText)
+            {
+                let preText = String(lineText[lineText.startIndex ..< range.lowerBound])
                 let colIndex = calculateTerminalColumns(for: preText)
 
-                let matchText = String(lineText[range.lowerBound..<range.upperBound])
+                let matchText = String(lineText[range.lowerBound ..< range.upperBound])
                 let matchLength = calculateTerminalColumns(for: matchText)
 
                 if colIndex < cols {
@@ -284,12 +284,12 @@ extension TerminalTabView {
             }
         }
 
-        self.matchCount = totalCount
-        self.currentMatch = 0
+        matchCount = totalCount
+        currentMatch = 0
 
-        self.ensureOverlayExists(for: cached.view)
+        ensureOverlayExists(for: cached.view)
 
-        self.searchOverlay?.updateMatches(localMatches, currentMatchIndex: -1)
+        searchOverlay?.updateMatches(localMatches, currentMatchIndex: -1)
     }
 
     private func ensureOverlayExists(for terminalView: TerminalView) {

@@ -75,7 +75,7 @@ enum AIProviderNetworking {
         } catch {
             let preview = String(data: data.prefix(200), encoding: .utf8) ?? "non-utf8"
             throw URLError(.cannotParseResponse, userInfo: [
-                NSLocalizedDescriptionKey: "Parse error: \(error.localizedDescription). Response: \(preview)"
+                NSLocalizedDescriptionKey: "Parse error: \(error.localizedDescription). Response: \(preview)",
             ])
         }
     }
@@ -262,7 +262,9 @@ enum AIProviderNetworking {
         guard let http = response as? HTTPURLResponse else { throw AIError.invalidResponse }
         guard http.statusCode == 200 else {
             var errorData = Data()
-            for try await byte in bytes { errorData.append(byte) }
+            for try await byte in bytes {
+                errorData.append(byte)
+            }
             let body = String(data: errorData, encoding: .utf8) ?? "Unknown error"
             throw AIError.apiError(statusCode: http.statusCode, message: body)
         }
@@ -300,7 +302,7 @@ enum AIProviderNetworking {
     /// Calls `onDelta` for each incremental chunk (caller controls UI cadence).
     static func parseStream(
         bytes: URLSession.AsyncBytes,
-        providerType: AIProviderType,
+        providerType _: AIProviderType,
         onDelta: ((String) -> Void)? = nil
     ) async throws -> String {
         var result = ""
@@ -318,8 +320,7 @@ enum AIProviderNetworking {
                 let json = String(line.dropFirst(6))
                 guard json != "[DONE]",
                       let data = json.data(using: .utf8),
-                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-                else { continue }
+                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
 
                 if let text = extractDelta(from: obj) {
                     result += text

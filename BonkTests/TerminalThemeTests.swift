@@ -51,17 +51,17 @@ final class TerminalThemeTests: XCTestCase {
 
     func testRGBAColorSwiftTermConversion() {
         let color = RGBAColor(1.0, 0.0, 0.0)  // pure red
-        let st = color.swiftTermColor
-        XCTAssertEqual(st.red, 65535)
-        XCTAssertEqual(st.green, 0)
-        XCTAssertEqual(st.blue, 0)
+        let swiftTermColor = color.swiftTermColor
+        XCTAssertEqual(swiftTermColor.red, 65535)
+        XCTAssertEqual(swiftTermColor.green, 0)
+        XCTAssertEqual(swiftTermColor.blue, 0)
     }
 
     func testColorSchemeEquatable() {
-        let a = LightTheme().colorScheme
-        let b = LightTheme().colorScheme
-        let c = DarkTheme().colorScheme
-        XCTAssertEqual(a, b)
-        XCTAssertNotEqual(a, c)
+        let lightScheme1 = LightTheme().colorScheme
+        let lightScheme2 = LightTheme().colorScheme
+        let darkScheme = DarkTheme().colorScheme
+        XCTAssertEqual(lightScheme1, lightScheme2)
+        XCTAssertNotEqual(lightScheme1, darkScheme)
     }
 }

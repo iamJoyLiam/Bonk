@@ -18,7 +18,9 @@ final class WorkspaceManager {
         case ai
         case snippetsHistory
 
-        var id: String { rawValue }
+        var id: String {
+            rawValue
+        }
     }
 
     var activeRightPanel: RightPanel = .none
@@ -29,7 +31,9 @@ final class WorkspaceManager {
         case snippets = "Snippets"
         case history = "History"
 
-        var id: String { rawValue }
+        var id: String {
+            rawValue
+        }
     }
 
     var snippetsHistoryTab: SnippetsHistoryTab = .snippets
@@ -41,7 +45,10 @@ final class WorkspaceManager {
     // MARK: - Title Bar Sheet Presentations
 
     let broadcastManager = BroadcastManager()
-    var isBroadcastEnabled: Bool { broadcastManager.isEnabled }
+    var isBroadcastEnabled: Bool {
+        broadcastManager.isEnabled
+    }
+
     var isSerialPortPresented = false
     var isPortForwardingPresented = false
 

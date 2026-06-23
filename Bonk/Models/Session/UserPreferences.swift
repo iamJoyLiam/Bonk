@@ -29,9 +29,9 @@ final class UserPreferences {
     var escDismissAI: Bool
     var hostAutoFillClear: Bool // true = clear on tap, false = allow edit
     var aiDirectSubmit: Bool // true = directly submit selected text, false = show in input
-    // General
+    /// General
     var checkForUpdates: Bool
-    // SFTP — optional for backward compatibility
+    /// SFTP — optional for backward compatibility
     var sftpOverwriteAlways: Bool?
 
     init(

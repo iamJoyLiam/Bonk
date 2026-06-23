@@ -76,7 +76,6 @@ struct JumpHostView: View {
         }
     }
 
-    @ViewBuilder
     private func hostRow(_ host: JumpHost) -> some View {
         HStack(spacing: 12) {
             // Icon

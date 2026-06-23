@@ -15,7 +15,9 @@ import os.log
 /// Wrapper to make SSHClient sendable for port forwarding.
 private final class SSHClientBox: @unchecked Sendable {
     let client: SSHClient
-    init(_ client: SSHClient) { self.client = client }
+    init(_ client: SSHClient) {
+        self.client = client
+    }
 }
 
 /// Port forwarding service for SSH tunnels.
@@ -29,7 +31,9 @@ final class PortForwardService {
     private var activeTasks: [UUID: Task<Void, Never>] = [:]
 
     /// Whether any forwarding is active.
-    var isActive: Bool { !activeTasks.isEmpty }
+    var isActive: Bool {
+        !activeTasks.isEmpty
+    }
 
     /// SSH client reference for creating channels.
     private var sshClient: SSHClient?
@@ -106,7 +110,7 @@ final class PortForwardService {
     /// Local port forwarding: listen on local port, forward through SSH to remote host.
     ///
     /// Equivalent to: `ssh -L localPort:remoteHost:remotePort user@host`
-    nonisolated private func startLocalForward(config: PortForward, clientBox: SSHClientBox) async throws {
+    private nonisolated func startLocalForward(config: PortForward, clientBox: SSHClientBox) async throws {
         let localHost = config.localHost
         let localPort = config.localPort
         let remoteHost = config.remoteHost
@@ -116,30 +120,34 @@ final class PortForwardService {
         let bootstrap = ServerBootstrap(group: group)
             .serverChannelOption(ChannelOptions.backlog, value: 256)
             .childChannelInitializer { channel in
-                let settings = SSHChannelType.DirectTCPIP(
-                    targetHost: remoteHost,
-                    targetPort: remotePort,
-                    originatorAddress: try! SocketAddress(ipAddress: "127.0.0.1", port: 0)
-                )
+                do {
+                    let settings = SSHChannelType.DirectTCPIP(
+                        targetHost: remoteHost,
+                        targetPort: remotePort,
+                        originatorAddress: try SocketAddress(ipAddress: "127.0.0.1", port: 0)
+                    )
 
-                let promise = channel.eventLoop.makePromise(of: Void.self)
-                Task {
-                    do {
-                        _ = try await clientBox.client.createDirectTCPIPChannel(using: settings) { sshChannel in
-                            let localToSSH = DataPipeHandler(target: sshChannel)
-                            let sshToLocal = DataPipeHandler(target: channel)
+                    let promise = channel.eventLoop.makePromise(of: Void.self)
+                    Task {
+                        do {
+                            _ = try await clientBox.client.createDirectTCPIPChannel(using: settings) { sshChannel in
+                                let localToSSH = DataPipeHandler(target: sshChannel)
+                                let sshToLocal = DataPipeHandler(target: channel)
 
-                            return channel.pipeline.addHandler(localToSSH).flatMap {
-                                sshChannel.pipeline.addHandler(sshToLocal)
+                                return channel.pipeline.addHandler(localToSSH).flatMap {
+                                    sshChannel.pipeline.addHandler(sshToLocal)
+                                }
                             }
+                            promise.succeed(())
+                        } catch {
+                            promise.fail(error)
                         }
-                        promise.succeed(())
-                    } catch {
-                        promise.fail(error)
                     }
-                }
 
-                return promise.futureResult
+                    return promise.futureResult
+                } catch {
+                    return channel.eventLoop.makeFailedFuture(error)
+                }
             }
             .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .childChannelOption(ChannelOptions.maxMessagesPerRead, value: 16)
@@ -164,7 +172,7 @@ final class PortForwardService {
     /// Remote port forwarding: request remote server to listen, forward connections back.
     ///
     /// Equivalent to: `ssh -R remotePort:localHost:localPort user@host`
-    nonisolated private func startRemoteForward(config: PortForward, clientBox: SSHClientBox) async throws {
+    private nonisolated func startRemoteForward(config: PortForward, clientBox: SSHClientBox) async throws {
         try await clientBox.client.runRemotePortForward(
             host: config.remoteHost,
             port: config.remotePort,
@@ -178,7 +186,7 @@ final class PortForwardService {
     /// Dynamic port forwarding: SOCKS5 proxy server.
     ///
     /// Equivalent to: `ssh -D localPort user@host`
-    nonisolated private func startDynamicForward(config: PortForward, clientBox: SSHClientBox) async throws {
+    private nonisolated func startDynamicForward(config: PortForward, clientBox: SSHClientBox) async throws {
         let localHost = config.localHost
         let localPort = config.localPort
 
@@ -228,15 +236,15 @@ enum PortForwardError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .alreadyRunning:
-            return "Port forwarding is already running"
+            "Port forwarding is already running"
         case .notRunning:
-            return "Port forwarding is not running"
+            "Port forwarding is not running"
         case .serviceUnavailable:
-            return "SSH connection not available for port forwarding"
-        case .socks5UnsupportedCommand(let cmd):
-            return "SOCKS5 unsupported command: \(cmd)"
+            "SSH connection not available for port forwarding"
+        case let .socks5UnsupportedCommand(cmd):
+            "SOCKS5 unsupported command: \(cmd)"
         case .socks5ConnectionFailed:
-            return "SOCKS5 failed to establish connection"
+            "SOCKS5 failed to establish connection"
         }
     }
 }
@@ -254,7 +262,7 @@ private final class DataPipeHandler: ChannelInboundHandler {
         self.target = target
     }
 
-    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+    func channelRead(context _: ChannelHandlerContext, data: NIOAny) {
         let buffer = unwrapInboundIn(data)
         target.writeAndFlush(buffer, promise: nil)
     }
@@ -291,7 +299,7 @@ private final class SOCKS5Handler: ChannelInboundHandler, @unchecked Sendable {
     }
 
     init(client: SSHClient) {
-        self.clientBox = SSHClientBox(client)
+        clientBox = SSHClientBox(client)
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -310,7 +318,8 @@ private final class SOCKS5Handler: ChannelInboundHandler, @unchecked Sendable {
     private func handleHandshake(context: ChannelHandlerContext, buffer: inout ByteBuffer) {
         guard let version = buffer.readInteger(as: UInt8.self),
               version == 5,
-              let nMethods = buffer.readInteger(as: UInt8.self) else {
+              let nMethods = buffer.readInteger(as: UInt8.self) else
+        {
             context.close(promise: nil)
             return
         }
@@ -330,8 +339,9 @@ private final class SOCKS5Handler: ChannelInboundHandler, @unchecked Sendable {
         guard let version = buffer.readInteger(as: UInt8.self),
               version == 5,
               let cmd = buffer.readInteger(as: UInt8.self),
-              let _ = buffer.readInteger(as: UInt8.self),
-              let atyp = buffer.readInteger(as: UInt8.self) else {
+              buffer.readInteger(as: UInt8.self) != nil,
+              let atyp = buffer.readInteger(as: UInt8.self) else
+        {
             context.close(promise: nil)
             return
         }
@@ -344,24 +354,26 @@ private final class SOCKS5Handler: ChannelInboundHandler, @unchecked Sendable {
         let host: String
         switch atyp {
         case 0x01:
-            guard let b1 = buffer.readInteger(as: UInt8.self),
-                  let b2 = buffer.readInteger(as: UInt8.self),
-                  let b3 = buffer.readInteger(as: UInt8.self),
-                  let b4 = buffer.readInteger(as: UInt8.self) else {
+            guard let byte1 = buffer.readInteger(as: UInt8.self),
+                  let byte2 = buffer.readInteger(as: UInt8.self),
+                  let byte3 = buffer.readInteger(as: UInt8.self),
+                  let byte4 = buffer.readInteger(as: UInt8.self) else
+            {
                 context.close(promise: nil)
                 return
             }
-            host = "\(b1).\(b2).\(b3).\(b4)"
+            host = "\(byte1).\(byte2).\(byte3).\(byte4)"
         case 0x03:
             guard let len = buffer.readInteger(as: UInt8.self),
-                  let domain = buffer.readString(length: Int(len)) else {
+                  let domain = buffer.readString(length: Int(len)) else
+            {
                 context.close(promise: nil)
                 return
             }
             host = domain
         case 0x04:
             var parts: [String] = []
-            for _ in 0..<8 {
+            for _ in 0 ..< 8 {
                 guard let part = buffer.readInteger(as: UInt16.self) else {
                     context.close(promise: nil)
                     return
@@ -379,10 +391,10 @@ private final class SOCKS5Handler: ChannelInboundHandler, @unchecked Sendable {
             return
         }
 
-        let settings = SSHChannelType.DirectTCPIP(
+        let settings = try SSHChannelType.DirectTCPIP(
             targetHost: host,
             targetPort: Int(port),
-            originatorAddress: try! SocketAddress(ipAddress: "127.0.0.1", port: 0)
+            originatorAddress: SocketAddress(ipAddress: "127.0.0.1", port: 0)
         )
 
         // Use nonisolated(unsafe) to capture context in Task
@@ -392,8 +404,8 @@ private final class SOCKS5Handler: ChannelInboundHandler, @unchecked Sendable {
 
         Task {
             do {
-                let sshChannel = try await clientBox.client.createDirectTCPIPChannel(using: settings) { ch in
-                    ch.eventLoop.makeSucceededVoidFuture()
+                let sshChannel = try await clientBox.client.createDirectTCPIPChannel(using: settings) { sshCh in
+                    sshCh.eventLoop.makeSucceededVoidFuture()
                 }
 
                 var reply = channel.allocator.buffer(capacity: 10)
@@ -432,7 +444,7 @@ private final class SOCKS5Handler: ChannelInboundHandler, @unchecked Sendable {
         context.close(promise: nil)
     }
 
-    func errorCaught(context: ChannelHandlerContext, error: Error) {
+    func errorCaught(context: ChannelHandlerContext, error _: Error) {
         context.close(promise: nil)
     }
 }

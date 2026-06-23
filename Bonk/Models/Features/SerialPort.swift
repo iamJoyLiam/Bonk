@@ -40,12 +40,12 @@ struct SerialPortConfig: Identifiable, Hashable {
         }
     }
 
-    static let defaultBaudRates = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600]
+    static let defaultBaudRates = [9600, 19200, 38400, 57600, 115_200, 230_400, 460_800, 921_600]
 
     init(
         name: String = "",
         path: String = "",
-        baudRate: Int = 115200,
+        baudRate: Int = 115_200,
         dataBits: Int = 8,
         stopBits: Double = 1,
         parity: Parity = .none,

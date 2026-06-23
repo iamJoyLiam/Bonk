@@ -29,7 +29,6 @@ struct InspectorContainerView: View {
 
     // MARK: - AI Panel (pure AI chat, no tabs)
 
-    @ViewBuilder
     private var aiPanel: some View {
         AIChatSidebarView(
             sshService: sessionManager.activeTab?.session?.sshService,
@@ -41,7 +40,6 @@ struct InspectorContainerView: View {
 
     // MARK: - Snippets/History Panel (with internal tab switch)
 
-    @ViewBuilder
     private var snippetsHistoryPanel: some View {
         VStack(spacing: 0) {
             // Tab switcher
@@ -64,7 +62,7 @@ struct InspectorContainerView: View {
                 SnippetInspectorView(sessionManager: sessionManager)
             case .history:
                 CommandHistoryInspectorView(
-                    snippetCategories: Array(Set(snippets.map { $0.category })).sorted(),
+                    snippetCategories: Array(Set(snippets.map(\.category))).sorted(),
                     sessionManager: sessionManager
                 )
             }

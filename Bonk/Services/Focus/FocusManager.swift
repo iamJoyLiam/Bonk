@@ -6,12 +6,12 @@
 //  Supports keyboard navigation with Cmd+Option+Arrow keys.
 //
 
-import Foundation
 import AppKit
+import Foundation
 
 /// Navigation direction for focus movement.
 enum NavigationDirection {
-    case left, right, up, down
+    case left, right, upward, downward
 }
 
 /// Manages keyboard focus across split panes.
@@ -52,12 +52,11 @@ final class FocusManager {
 
         // Simple sequential navigation for now
         // TODO: Implement proper spatial navigation based on layout tree
-        let nextIndex: Int
-        switch direction {
-        case .right, .down:
-            nextIndex = (currentIndex + 1) % allPanes.count
-        case .left, .up:
-            nextIndex = (currentIndex - 1 + allPanes.count) % allPanes.count
+        let nextIndex: Int = switch direction {
+        case .right, .downward:
+            (currentIndex + 1) % allPanes.count
+        case .left, .upward:
+            (currentIndex - 1 + allPanes.count) % allPanes.count
         }
 
         focusedPaneID = allPanes[nextIndex]

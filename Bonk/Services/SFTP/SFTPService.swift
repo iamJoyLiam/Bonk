@@ -29,7 +29,7 @@ final class SFTPService {
         let client = try await sshService.openSFTPClient()
         sftpClient = client
         currentPath = try await client.getRealPath(atPath: ".")
-        Log.sftp.info("SFTP connected, initial path: \(self.currentPath)")
+        Log.sftp.info("SFTP connected, initial path: \(currentPath)")
         // Brief delay to ensure SFTP session is fully initialized
         try? await Task.sleep(for: .milliseconds(200))
         try await listDirectory()
@@ -186,7 +186,7 @@ final class SFTPService {
             Task { [weak self] in
                 guard let self else { continuation.finish(); return }
                 do {
-                    try await self.performUpload(localURL, to: remotePath, continuation: continuation)
+                    try await performUpload(localURL, to: remotePath, continuation: continuation)
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)

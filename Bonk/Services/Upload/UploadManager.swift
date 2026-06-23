@@ -65,11 +65,10 @@ final class UploadManager {
 
         guard let sftp = await ensureSFTP(for: tab, i18n: i18n) else { return }
 
-        let targetDir: String
-        if let uploadDir {
-            targetDir = uploadDir
+        let targetDir: String = if let uploadDir {
+            uploadDir
         } else {
-            targetDir = await resolveUploadDir(tab: tab, sftp: sftp)
+            await resolveUploadDir(tab: tab, sftp: sftp)
         }
 
         let filename = url.lastPathComponent
@@ -149,7 +148,7 @@ final class UploadManager {
     }
 
     /// Show a temporary message.
-    private func showMessage(_ message: String, i18n: I18n) {
+    private func showMessage(_ message: String, i18n _: I18n) {
         dropMessage = message
         Task {
             try? await Task.sleep(for: .seconds(2))

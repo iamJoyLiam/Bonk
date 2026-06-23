@@ -74,7 +74,6 @@ struct PortForwardView: View {
         }
     }
 
-    @ViewBuilder
     private func ruleRow(_ rule: PortForward) -> some View {
         HStack(spacing: 12) {
             // Type icon

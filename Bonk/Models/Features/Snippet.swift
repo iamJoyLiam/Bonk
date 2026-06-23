@@ -24,13 +24,13 @@ final class Snippet {
         description: String = "",
         sortOrder: Int = 0
     ) {
-        self.id = UUID()
+        id = UUID()
         self.name = name
         self.command = command
         self.category = category
-        self.snippetDescription = description
+        snippetDescription = description
         self.sortOrder = sortOrder
-        self.createdAt = Date()
+        createdAt = Date()
     }
 
     /// Resolve variables in the command string.

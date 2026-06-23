@@ -105,20 +105,19 @@ struct SnippetManagerView: View {
         }
         .frame(minWidth: 400, minHeight: 300)
         .sheet(isPresented: $showAddSheet) {
-            SnippetEditSheet(snippet: nil, modelContext: modelContext, existingCategories: Array(Set(snippets.map { $0.category })).sorted())
+            SnippetEditSheet(snippet: nil, modelContext: modelContext, existingCategories: Array(Set(snippets.map(\.category))).sorted())
                 .environment(i18n)
         }
         .sheet(item: $editingSnippet) { snippet in
             SnippetEditSheet(
-                    snippet: snippet,
-                    modelContext: modelContext,
-                    existingCategories: Array(Set(snippets.map { $0.category })).sorted()
-                )
-                .environment(i18n)
+                snippet: snippet,
+                modelContext: modelContext,
+                existingCategories: Array(Set(snippets.map(\.category))).sorted()
+            )
+            .environment(i18n)
         }
     }
 
-    @ViewBuilder
     private func snippetRow(_ snippet: Snippet) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {

@@ -43,53 +43,52 @@ struct ContentView: View {
         #if os(macOS)
             .environment(workspace)
         #endif
-        .onAppear {
-            ensurePreferences()
-            AIDataMigration.migrateIfNeeded(context: modelContext)
-            sessionManager.setModelContext(modelContext)
-            AIProviderStore.shared.setModelContext(modelContext)
-            sessionManager.broadcastManager = workspace.broadcastManager
+            .onAppear {
+                ensurePreferences()
+                AIDataMigration.migrateIfNeeded(context: modelContext)
+                sessionManager.setModelContext(modelContext)
+                AIProviderStore.shared.setModelContext(modelContext)
+                sessionManager.broadcastManager = workspace.broadcastManager
+            }
+            .alert(i18n.t(.connectionError), isPresented: $sessionManager.showError) {
+                Button(i18n.t(.ok)) {}
+            } message: {
+                Text(sessionManager.lastError ?? i18n.t(.unknownError))
+            }
+            // Menu actions via FocusedValue — synchronous
+            .focusedSceneValue(\.menuCloseTab) {
+                if let id = sessionManager.activeTabID { Task { await sessionManager.closeTab(id) } }
+            }
+            .focusedSceneValue(\.menuNewTerminal) {
+                showAddHostSheet = true
+            }
 
-        }
-        .alert(i18n.t(.connectionError), isPresented: $sessionManager.showError) {
-            Button(i18n.t(.ok)) {}
-        } message: {
-            Text(sessionManager.lastError ?? i18n.t(.unknownError))
-        }
-        // Menu actions via FocusedValue — synchronous
-        .focusedSceneValue(\.menuCloseTab) {
-            if let id = sessionManager.activeTabID { Task { await sessionManager.closeTab(id) } }
-        }
-        .focusedSceneValue(\.menuNewTerminal) {
-            showAddHostSheet = true
-        }
-
-        .focusedSceneValue(\.menuDisconnect) {
-            if let id = sessionManager.activeTabID { Task { await sessionManager.disconnectTab(id) } }
-        }
-        .focusedSceneValue(\.menuReconnect) {
-            if let id = sessionManager.activeTabID { Task { await sessionManager.reconnectTab(id) } }
-        }
-        .focusedSceneValue(\.menuToggleSFTP) { toggleSFTPWindow() }
-        .focusedSceneValue(\.menuToggleAI) { workspace.toggleRightPanel(.ai) }
-        .focusedSceneValue(\.menuShowSerialPort) { workspace.isSerialPortPresented = true }
-        .focusedSceneValue(\.menuShowSnippets) {
-            workspace.snippetsHistoryTab = .snippets
-            workspace.activeRightPanel = .snippetsHistory
-        }
-        .focusedSceneValue(\.menuShowPortForwarding) { workspace.isPortForwardingPresented = true }
-        .focusedSceneValue(\.menuShowCommandHistory) {
-            workspace.snippetsHistoryTab = .history
-            workspace.activeRightPanel = .snippetsHistory
-        }
-        .focusedSceneValue(\.menuChangeTheme) { themeID in themeManager.setActive(themeID) }
-        .focusedSceneValue(\.menuFind) {
-            appStore.dispatch(.toggleSearch)
-            showTerminalSearch = appStore.uiState.showSearch
-        }
-        .focusedSceneValue(\.menuSplitHorizontal) { sessionManager.splitHorizontal() }
-        .focusedSceneValue(\.menuSplitVertical) { sessionManager.splitVertical() }
-        .focusedSceneValue(\.menuClosePane) { sessionManager.closePane() }
+            .focusedSceneValue(\.menuDisconnect) {
+                if let id = sessionManager.activeTabID { Task { await sessionManager.disconnectTab(id) } }
+            }
+            .focusedSceneValue(\.menuReconnect) {
+                if let id = sessionManager.activeTabID { Task { await sessionManager.reconnectTab(id) } }
+            }
+            .focusedSceneValue(\.menuToggleSFTP) { toggleSFTPWindow() }
+            .focusedSceneValue(\.menuToggleAI) { workspace.toggleRightPanel(.ai) }
+            .focusedSceneValue(\.menuShowSerialPort) { workspace.isSerialPortPresented = true }
+            .focusedSceneValue(\.menuShowSnippets) {
+                workspace.snippetsHistoryTab = .snippets
+                workspace.activeRightPanel = .snippetsHistory
+            }
+            .focusedSceneValue(\.menuShowPortForwarding) { workspace.isPortForwardingPresented = true }
+            .focusedSceneValue(\.menuShowCommandHistory) {
+                workspace.snippetsHistoryTab = .history
+                workspace.activeRightPanel = .snippetsHistory
+            }
+            .focusedSceneValue(\.menuChangeTheme) { themeID in themeManager.setActive(themeID) }
+            .focusedSceneValue(\.menuFind) {
+                appStore.dispatch(.toggleSearch)
+                showTerminalSearch = appStore.uiState.showSearch
+            }
+            .focusedSceneValue(\.menuSplitHorizontal) { sessionManager.splitHorizontal() }
+            .focusedSceneValue(\.menuSplitVertical) { sessionManager.splitVertical() }
+            .focusedSceneValue(\.menuClosePane) { sessionManager.closePane() }
     }
 
     // MARK: - macOS Layout (2-column NavigationSplitView + .inspector)
@@ -172,14 +171,14 @@ struct ContentView: View {
             }
             // Sheets
             .sheet(isPresented: $showAddHostSheet) {
-            NavigationStack {
-                AddHostSheet(defaultPort: preferences.defaultPort) { host in
-                    modelContext.insert(host)
+                NavigationStack {
+                    AddHostSheet(defaultPort: preferences.defaultPort) { host in
+                        modelContext.insert(host)
+                    }
+                    .environment(i18n)
                 }
-                .environment(i18n)
             }
-        }
-        .sheet(isPresented: $workspace.isSerialPortPresented) {
+            .sheet(isPresented: $workspace.isSerialPortPresented) {
                 SerialPortView(isPresented: $workspace.isSerialPortPresented, onConnect: { _ in })
                     .environment(i18n)
             }
@@ -222,7 +221,7 @@ struct ContentView: View {
             )
             window.center()
             window.makeKeyAndOrderFront(nil)
-            let delegate = SFTPWindowDelegate { self.sftpWindow = nil }
+            let delegate = SFTPWindowDelegate { sftpWindow = nil }
             window.delegate = delegate
             sftpWindow = window
         #endif
@@ -262,18 +261,18 @@ struct ContentView: View {
         #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
         #endif
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button { Task { await sessionManager.reconnectTab(tab.id) } } label: {
-                        Label(i18n.t(.reconnect), systemImage: "arrow.clockwise")
-                    }
-                    Button(role: .destructive) { Task { await sessionManager.closeTab(tab.id) } } label: {
-                        Label(i18n.t(.disconnect), systemImage: "bolt.slash")
-                    }
-                } label: { Image(systemName: "ellipsis.circle") }
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button { Task { await sessionManager.reconnectTab(tab.id) } } label: {
+                            Label(i18n.t(.reconnect), systemImage: "arrow.clockwise")
+                        }
+                        Button(role: .destructive) { Task { await sessionManager.closeTab(tab.id) } } label: {
+                            Label(i18n.t(.disconnect), systemImage: "bolt.slash")
+                        }
+                    } label: { Image(systemName: "ellipsis.circle") }
+                }
             }
-        }
     }
 }
 
@@ -287,7 +286,7 @@ struct ContentView: View {
             self.onClose = onClose
         }
 
-        func windowWillClose(_ notification: Notification) {
+        func windowWillClose(_: Notification) {
             onClose()
         }
     }

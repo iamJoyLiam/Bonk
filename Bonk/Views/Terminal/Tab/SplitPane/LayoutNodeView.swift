@@ -20,7 +20,7 @@ struct LayoutNodeView: View {
 
     var body: some View {
         switch node {
-        case .pane(let paneState):
+        case let .pane(paneState):
             PaneTerminalView(
                 paneState: paneState,
                 isActive: paneState.id == activePaneID,
@@ -35,7 +35,7 @@ struct LayoutNodeView: View {
                 sessionManager.selectPane(paneState.id)
             }
 
-        case .horizontal(let children):
+        case let .horizontal(children):
             HStack(spacing: 0) {
                 ForEach(Array(children.enumerated()), id: \.element.id) { index, child in
                     LayoutNodeView(
@@ -55,7 +55,7 @@ struct LayoutNodeView: View {
                 }
             }
 
-        case .vertical(let children):
+        case let .vertical(children):
             VStack(spacing: 0) {
                 ForEach(Array(children.enumerated()), id: \.element.id) { index, child in
                     LayoutNodeView(

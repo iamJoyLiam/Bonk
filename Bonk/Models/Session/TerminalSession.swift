@@ -20,7 +20,9 @@ final class TerminalSession {
     var stateObservationTask: Task<Void, Never>?
     var serverInfoTask: Task<Void, Never>?
 
-    var isConnected: Bool { connectionState.isConnected }
+    var isConnected: Bool {
+        connectionState.isConnected
+    }
 
     init(tabID: UUID) {
         self.tabID = tabID

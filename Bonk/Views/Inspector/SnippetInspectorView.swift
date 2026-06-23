@@ -113,11 +113,11 @@ struct SnippetInspectorView: View {
             }
         }
         .sheet(isPresented: $showAddSheet) {
-            SnippetEditSheet(snippet: nil, modelContext: modelContext, existingCategories: Array(Set(snippets.map { $0.category })).sorted())
+            SnippetEditSheet(snippet: nil, modelContext: modelContext, existingCategories: Array(Set(snippets.map(\.category))).sorted())
                 .environment(i18n)
         }
         .sheet(item: $editingSnippet) { snippet in
-            SnippetEditSheet(snippet: snippet, modelContext: modelContext, existingCategories: Array(Set(snippets.map { $0.category })).sorted())
+            SnippetEditSheet(snippet: snippet, modelContext: modelContext, existingCategories: Array(Set(snippets.map(\.category))).sorted())
                 .environment(i18n)
         }
         .sheet(isPresented: $showAIGenerate) {
@@ -144,7 +144,7 @@ struct SnippetInspectorView: View {
                 initialCommand: aiGeneratedCommand,
                 initialName: aiPrompt,
                 initialCategory: "AI",
-                existingCategories: Array(Set(snippets.map { $0.category })).sorted()
+                existingCategories: Array(Set(snippets.map(\.category))).sorted()
             )
             .environment(i18n)
         }
@@ -152,7 +152,6 @@ struct SnippetInspectorView: View {
 
     // MARK: - Snippet Row
 
-    @ViewBuilder
     private func snippetRow(_ snippet: Snippet) -> some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {

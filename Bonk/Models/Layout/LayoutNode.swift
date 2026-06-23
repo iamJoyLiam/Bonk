@@ -20,12 +20,12 @@ indirect enum LayoutNode: Identifiable {
     /// Container nodes use a hash of children IDs.
     var id: UUID {
         switch self {
-        case .pane(let state):
-            return state.id
-        case .horizontal(let children):
-            return LayoutNode.stableID(for: children, prefix: "h")
-        case .vertical(let children):
-            return LayoutNode.stableID(for: children, prefix: "v")
+        case let .pane(state):
+            state.id
+        case let .horizontal(children):
+            LayoutNode.stableID(for: children, prefix: "h")
+        case let .vertical(children):
+            LayoutNode.stableID(for: children, prefix: "v")
         }
     }
 
@@ -37,16 +37,16 @@ indirect enum LayoutNode: Identifiable {
 
     /// Get the pane state if this is a leaf node.
     var paneState: PaneState? {
-        if case .pane(let state) = self { return state }
+        if case let .pane(state) = self { return state }
         return nil
     }
 
     /// Find a pane by ID in this tree.
     func findPane(id: UUID) -> PaneState? {
         switch self {
-        case .pane(let state):
+        case let .pane(state):
             return state.id == id ? state : nil
-        case .horizontal(let children), .vertical(let children):
+        case let .horizontal(children), let .vertical(children):
             for child in children {
                 if let found = child.findPane(id: id) { return found }
             }
@@ -57,9 +57,9 @@ indirect enum LayoutNode: Identifiable {
     /// Get all pane IDs in this tree.
     var allPaneIDs: [UUID] {
         switch self {
-        case .pane(let state): [state.id]
-        case .horizontal(let children), .vertical(let children):
-            children.flatMap { $0.allPaneIDs }
+        case let .pane(state): [state.id]
+        case let .horizontal(children), let .vertical(children):
+            children.flatMap(\.allPaneIDs)
         }
     }
 
@@ -67,7 +67,7 @@ indirect enum LayoutNode: Identifiable {
     var paneCount: Int {
         switch self {
         case .pane: 1
-        case .horizontal(let children), .vertical(let children):
+        case let .horizontal(children), let .vertical(children):
             children.reduce(0) { $0 + $1.paneCount }
         }
     }
@@ -76,7 +76,7 @@ indirect enum LayoutNode: Identifiable {
 
     /// Generate a stable UUID for container nodes based on children.
     private static func stableID(for children: [LayoutNode], prefix: String) -> UUID {
-        let childIDs = children.map { $0.id.uuidString }.joined(separator: "-")
+        let childIDs = children.map(\.id.uuidString).joined(separator: "-")
         let hash = "\(prefix):\(childIDs)".hashValue
         // Use a deterministic UUID based on hash
         let hashValue = Int32(truncatingIfNeeded: hash)
@@ -89,10 +89,14 @@ indirect enum LayoutNode: Identifiable {
 extension LayoutNode: Equatable {
     static func == (lhs: LayoutNode, rhs: LayoutNode) -> Bool {
         switch (lhs, rhs) {
-        case (.pane(let l), .pane(let r)): l.id == r.id
-        case (.horizontal(let lc), .horizontal(let rc)): lc == rc
-        case (.vertical(let lc), .vertical(let rc)): lc == rc
-        default: false
+        case let (.pane(leftState), .pane(rightState)):
+            return leftState.id == rightState.id
+        case let (.horizontal(leftChildren), .horizontal(rightChildren)):
+            return leftChildren == rightChildren
+        case let (.vertical(leftChildren), .vertical(rightChildren)):
+            return leftChildren == rightChildren
+        default:
+            return false
         }
     }
 }

@@ -82,7 +82,9 @@ final class I18n: @unchecked Sendable {
 
     // MARK: Current saved choice
 
-    var savedChoice: String { _savedChoice }
+    var savedChoice: String {
+        _savedChoice
+    }
 
     // MARK: Translate
 

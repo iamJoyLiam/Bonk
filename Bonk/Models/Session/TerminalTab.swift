@@ -85,9 +85,9 @@ final class PaneState: Identifiable {
     func effectivePTY(allPanes: [PaneState]) -> PTYSession? {
         switch sessionMode {
         case .independent:
-            return ptySession
-        case .linked(let sourceID):
-            return allPanes.first(where: { $0.id == sourceID })?.ptySession ?? ptySession
+            ptySession
+        case let .linked(sourceID):
+            allPanes.first(where: { $0.id == sourceID })?.ptySession ?? ptySession
         }
     }
 }

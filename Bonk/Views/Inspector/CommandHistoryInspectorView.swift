@@ -75,7 +75,6 @@ struct CommandHistoryInspectorView: View {
         }
     }
 
-    @ViewBuilder
     private func historyRow(_ entry: CommandRecord) -> some View {
         HStack(spacing: 10) {
             if entry.exitCode != nil {

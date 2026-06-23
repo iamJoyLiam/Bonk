@@ -7,7 +7,7 @@
 
 import Foundation
 #if os(macOS)
-import AppKit
+    import AppKit
 #endif
 
 /// Pasteboard type for tab drag.

@@ -29,7 +29,9 @@ public actor SSHNetworkService {
     private let stateContinuation: AsyncStream<SSHConnectionState>.Continuation
 
     /// Expose client for port forwarding. Returns nil if not connected.
-    public var sshClient: SSHClient? { client }
+    public var sshClient: SSHClient? {
+        client
+    }
 
     private var client: SSHClient?
     private var config: SSHConnectionConfig?

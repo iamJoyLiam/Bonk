@@ -46,15 +46,15 @@ final class PortForward {
         remoteHost: String = "127.0.0.1",
         remotePort: Int
     ) {
-        self.id = UUID()
+        id = UUID()
         self.name = name
-        self.typeRaw = type.rawValue
+        typeRaw = type.rawValue
         self.localHost = localHost
         self.localPort = localPort
         self.remoteHost = remoteHost
         self.remotePort = remotePort
-        self.isActive = false
-        self.createdAt = Date()
+        isActive = false
+        createdAt = Date()
     }
 
     var displayDescription: String {

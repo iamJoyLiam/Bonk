@@ -37,7 +37,8 @@ final class InputHandler {
                 // Find the pane in any tab
                 for targetTab in allTabs {
                     if let targetPane = targetTab.layout.findPane(id: broadcastTargetID),
-                       let targetPTY = targetPane.ptySession {
+                       let targetPTY = targetPane.ptySession
+                    {
                         try? await targetPTY.sendInput(bytes)
                         break
                     }

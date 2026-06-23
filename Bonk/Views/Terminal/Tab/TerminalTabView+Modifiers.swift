@@ -53,7 +53,7 @@ struct AIEnableAlertModifier: ViewModifier {
 
 struct DropOverlayModifier: ViewModifier {
     @Binding var message: String?
-    var uploadProgress: Double? = nil
+    var uploadProgress: Double?
 
     func body(content: Content) -> some View {
         content

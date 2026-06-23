@@ -5,8 +5,8 @@
 //  A single pane in the layout, supporting independent and linked modes.
 //
 
-import SwiftUI
 import SwiftTerm
+import SwiftUI
 
 struct PaneTerminalView: View {
     @Environment(I18n.self) var i18n
@@ -105,7 +105,6 @@ struct PaneTerminalView: View {
 
     // MARK: - Pane Content
 
-    @ViewBuilder
     private var paneContent: some View {
         ZStack {
             switch paneState.sessionMode {
@@ -128,7 +127,7 @@ struct PaneTerminalView: View {
                     onReconnect: { Task { await sessionManager.reconnectTab(tab.id) } }
                 )
 
-            case .linked(let sourceID):
+            case let .linked(sourceID):
                 // Linked mode: show indicator that this pane is linked
                 if let sourcePane = tab.layout.findPane(id: sourceID) {
                     PaneContainerBridge(
@@ -242,7 +241,8 @@ struct PaneTerminalView: View {
         // Copy/Paste
         Button {
             if let cached = TerminalViewCache.shared.retrieve(paneState.id),
-               let selection = cached.view.getSelection(), !selection.isEmpty {
+               let selection = cached.view.getSelection(), !selection.isEmpty
+            {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(selection, forType: .string)
             }
@@ -308,7 +308,6 @@ struct PaneTerminalView: View {
 
     // MARK: - Drop Indicator
 
-    @ViewBuilder
     private var dropIndicator: some View {
         GeometryReader { geometry in
             let size = geometry.size
@@ -340,10 +339,10 @@ struct PaneTerminalView: View {
 
     private func regionCenter(in size: CGSize) -> CGPoint {
         switch dropPosition {
-        case .left: return CGPoint(x: size.width / 4, y: size.height / 2)
-        case .right: return CGPoint(x: size.width * 3 / 4, y: size.height / 2)
-        case .top: return CGPoint(x: size.width / 2, y: size.height / 4)
-        case .bottom: return CGPoint(x: size.width / 2, y: size.height * 3 / 4)
+        case .left: CGPoint(x: size.width / 4, y: size.height / 2)
+        case .right: CGPoint(x: size.width * 3 / 4, y: size.height / 2)
+        case .top: CGPoint(x: size.width / 2, y: size.height / 4)
+        case .bottom: CGPoint(x: size.width / 2, y: size.height * 3 / 4)
         }
     }
 

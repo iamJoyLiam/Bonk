@@ -96,7 +96,7 @@ indirect enum SplitPane {
             let leftAlive = newLeft.closePane(id: id)
             let rightAlive = newRight.closePane(id: id)
 
-            if leftAlive && rightAlive {
+            if leftAlive, rightAlive {
                 self = .horizontal(left: newLeft, right: newRight, ratio: ratio)
                 return true
             } else if leftAlive {
@@ -115,7 +115,7 @@ indirect enum SplitPane {
             let topAlive = newTop.closePane(id: id)
             let bottomAlive = newBottom.closePane(id: id)
 
-            if topAlive && bottomAlive {
+            if topAlive, bottomAlive {
                 self = .vertical(top: newTop, bottom: newBottom, ratio: ratio)
                 return true
             } else if topAlive {

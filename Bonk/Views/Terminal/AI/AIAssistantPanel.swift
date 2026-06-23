@@ -297,4 +297,3 @@ struct AIAssistantPanel: View {
         .frame(width: 200)
     }
 }
-

@@ -232,7 +232,7 @@ enum LKey: String, CaseIterable {
     case categoryTabs = "cat_tabs"
     case categoryTerminal = "cat_terminal"
     case clearTerminalCmd = "clear_terminal"
-    case command = "command"
+    case command
 
     // Sessions
     case sessions, noSessions = "no_sessions"
@@ -286,13 +286,13 @@ enum LKey: String, CaseIterable {
     case disableBroadcast = "disable_broadcast"
     case enableBroadcast = "enable_broadcast"
 
-    // Inspector
+    /// Inspector
     case snippetsHistory = "snippets_history"
 
-    // Toolbar
+    /// Toolbar
     case sftpBrowserToolbar = "sftp_browser_toolbar"
 
-    // Common
+    /// Common
     case type, remote
 
     // Command History
@@ -320,12 +320,12 @@ enum LKey: String, CaseIterable {
     case pressShortcut = "press_shortcut"
     case notSet = "not_set"
 
-    // Sessions
+    /// Sessions
     case unfavorite, favorite
 
     // MARK: - New keys for hardcoded string fixes
 
-    // BonkApp menu
+    /// BonkApp menu
     case menuAI = "menu_ai"
 
     // Restart alert (I18n)
@@ -342,7 +342,7 @@ enum LKey: String, CaseIterable {
     case exitCode = "exit_code"
     case waitingForOutput = "waiting_for_output"
 
-    // Broadcast
+    /// Broadcast
     case broadcastPanes = "broadcast_panes"
 
     // Copilot errors
@@ -379,6 +379,6 @@ enum LKey: String, CaseIterable {
     case apiKeyNotSet = "api_key_not_set"
     case aiNoResponse = "ai_no_response"
 
-    // I18n restart
+    /// I18n restart
     case needsRestart = "needs_restart"
 }

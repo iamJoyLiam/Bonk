@@ -2,6 +2,7 @@
 
 import Foundation
 
+// swiftlint:disable:next type_body_length
 enum SFSymbols {
     static let all: [String] = [
         "0.circle",

@@ -228,13 +228,13 @@ final class SerialPortService {
             let bytesRead = read(fileDescriptor, &buffer, bufferSize)
 
             if bytesRead > 0 {
-                let data = Data(buffer[0..<bytesRead])
+                let data = Data(buffer[0 ..< bytesRead])
                 DispatchQueue.main.async { [weak self] in
                     self?.receivedData.append(data)
                     self?.onDataReceived?(data)
                 }
             } else if bytesRead < 0 {
-                if errno != EAGAIN && errno != EWOULDBLOCK {
+                if errno != EAGAIN, errno != EWOULDBLOCK {
                     DispatchQueue.main.async { [weak self] in
                         self?.disconnect()
                         self?.lastError = "Read error: \(String(cString: strerror(errno)))"
@@ -262,19 +262,19 @@ enum SerialPortError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .alreadyConnected:
-            return "Already connected to a serial port"
+            "Already connected to a serial port"
         case .notConnected:
-            return "Not connected to a serial port"
-        case .portNotFound(let path):
-            return "Serial port not found: \(path)"
-        case .openFailed(let path):
-            return "Failed to open serial port: \(path)"
+            "Not connected to a serial port"
+        case let .portNotFound(path):
+            "Serial port not found: \(path)"
+        case let .openFailed(path):
+            "Failed to open serial port: \(path)"
         case .configureFailed:
-            return "Failed to configure serial port"
+            "Failed to configure serial port"
         case .writeFailed:
-            return "Failed to write to serial port"
+            "Failed to write to serial port"
         case .invalidData:
-            return "Invalid data"
+            "Invalid data"
         }
     }
 }

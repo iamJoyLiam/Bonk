@@ -57,7 +57,6 @@ extension TerminalTabView {
 
     // MARK: - Capsule Background
 
-    @ViewBuilder
     private func capsuleBackground(tab: TerminalTab, isActive: Bool) -> some View {
         RoundedRectangle(cornerRadius: 16, style: .continuous)
             .fill(capsuleFill(tab: tab, isActive: isActive))

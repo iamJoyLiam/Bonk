@@ -220,19 +220,18 @@ final class SessionManager {
         // Get the pane's title for the new tab
         // Always use sourceHostItem name if available (from drag-to-split)
         // Otherwise, use pane's title or tab's hostItem name
-        let paneTitle: String
-        if let sourceHostItem = tab.sourceHostItem {
-            paneTitle = sourceHostItem.name
+        let paneTitle: String = if let sourceHostItem = tab.sourceHostItem {
+            sourceHostItem.name
         } else if !pane.title.isEmpty {
-            paneTitle = pane.title
+            pane.title
         } else {
-            paneTitle = tab.hostItem.name
+            tab.hostItem.name
         }
 
         // Create a new tab for this pane with the source hostItem
         // Always use sourceHostItem if available, otherwise use tab's hostItem
         let newTab = TerminalTab(hostItem: tab.sourceHostItem ?? tab.hostItem)
-        newTab.title = paneTitle  // Use pane's title (e.g., "195")
+        newTab.title = paneTitle // Use pane's title (e.g., "195")
 
         // Insert the new tab based on pane position
         // Find the pane's position in the layout to determine where to insert the new tab
@@ -311,7 +310,8 @@ final class SessionManager {
         }
 
         guard let sourceTab = tabs.first(where: { $0.id == sourceTabID }),
-              let targetTab = tabs.first(where: { $0.id == targetTabID }) else {
+              let targetTab = tabs.first(where: { $0.id == targetTabID }) else
+        {
             Log.session.warning("[SPLIT] Tab not found")
             return
         }
@@ -328,12 +328,11 @@ final class SessionManager {
 
         // Create new pane based on position:
         // left/right → horizontal split; top/bottom → vertical split
-        let newPane: PaneState
-        switch position {
+        let newPane: PaneState = switch position {
         case .left, .right:
-            newPane = targetTab.layout.splitHorizontal()
+            targetTab.layout.splitHorizontal()
         case .top, .bottom:
-            newPane = targetTab.layout.splitVertical()
+            targetTab.layout.splitVertical()
         }
 
         // Set new pane title to source tab name
@@ -344,11 +343,9 @@ final class SessionManager {
 
         // Set the target pane's title to target tab's hostItem name
         let allPaneIDs = targetTab.layout.root.allPaneIDs
-        for paneID in allPaneIDs {
-            if paneID != newPane.id {
-                if let targetPane = targetTab.layout.findPane(id: paneID) {
-                    targetPane.title = targetTab.hostItem.name
-                }
+        for paneID in allPaneIDs where paneID != newPane.id {
+            if let targetPane = targetTab.layout.findPane(id: paneID) {
+                targetPane.title = targetTab.hostItem.name
             }
         }
 
@@ -487,9 +484,10 @@ final class SessionManager {
             for otherTab in tabs {
                 for otherPaneID in otherTab.paneIDs {
                     // Skip the target pane we already sent to
-                    if otherTab.id == tabID && otherPaneID == targetPaneID { continue }
+                    if otherTab.id == tabID, otherPaneID == targetPaneID { continue }
                     if let otherPane = otherTab.layout.findPane(id: otherPaneID),
-                       let otherPTY = otherPane.ptySession {
+                       let otherPTY = otherPane.ptySession
+                    {
                         try? await otherPTY.sendInput(bytes)
                     }
                 }
@@ -498,7 +496,8 @@ final class SessionManager {
             // Local broadcast: send to all panes in this tab only
             for otherPaneID in tab.paneIDs where otherPaneID != targetPaneID {
                 if let otherPane = tab.layout.findPane(id: otherPaneID),
-                   let otherPTY = otherPane.ptySession {
+                   let otherPTY = otherPane.ptySession
+                {
                     try? await otherPTY.sendInput(bytes)
                 }
             }
@@ -529,7 +528,7 @@ final class SessionManager {
     // MARK: - Broadcast Sync
 
     private func syncBroadcastTargets() {
-        let allPaneIDs = tabs.flatMap { $0.paneIDs }
+        let allPaneIDs = tabs.flatMap(\.paneIDs)
         broadcastManager?.allPaneIDs = allPaneIDs
         let validIDs = Set(allPaneIDs)
         broadcastManager?.targetPaneIDs = broadcastManager?.targetPaneIDs.filter { validIDs.contains($0) } ?? []

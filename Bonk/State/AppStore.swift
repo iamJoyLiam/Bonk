@@ -16,8 +16,8 @@ final class AppStore {
     // MARK: - State
 
     var sessions: [UUID: SessionState] = [:]
-    var searchState: SearchState = SearchState()
-    var uiState: UIState = UIState()
+    var searchState: SearchState = .init()
+    var uiState: UIState = .init()
 
     // MARK: - Sub-state Types
 
@@ -69,13 +69,13 @@ final class AppStore {
         var newState = state
 
         switch action {
-        case .selectTab(let id):
+        case let .selectTab(id):
             newState.uiState.activeTabID = id
 
-        case .updateSearchText(let text):
+        case let .updateSearchText(text):
             newState.searchState.searchText = text
 
-        case .updateSearchResults(let current, let total):
+        case let .updateSearchResults(current, total):
             newState.searchState.currentMatch = current
             newState.searchState.matchCount = total
 
@@ -94,7 +94,7 @@ final class AppStore {
         case .toggleInspector:
             newState.uiState.showInspector.toggle()
 
-        case .updateSessionState(let id, let state):
+        case let .updateSessionState(id, state):
             newState.sessions[id] = state
         }
 

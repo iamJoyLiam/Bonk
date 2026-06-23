@@ -51,7 +51,6 @@ struct SplitPaneContainer<Content: View>: View {
         }
     }
 
-    @ViewBuilder
     private func divider(isVertical: Bool, size: Double, totalSize: Double) -> some View {
         Rectangle()
             .fill(isDragging ? Color.accentColor : Color(nsColor: .separatorColor))

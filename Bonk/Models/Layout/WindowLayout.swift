@@ -18,7 +18,7 @@ final class TabLayout {
 
     init(root: LayoutNode) {
         self.root = root
-        self.activePaneID = root.paneState?.id ?? UUID()
+        activePaneID = root.paneState?.id ?? UUID()
     }
 
     // MARK: - Split Operations
@@ -46,10 +46,10 @@ final class TabLayout {
         switch node {
         case .pane:
             return node
-        case .horizontal(let children):
+        case let .horizontal(children):
             let swapped = children.reversed()
             return .horizontal(children: Array(swapped))
-        case .vertical(let children):
+        case let .vertical(children):
             let swapped = children.reversed()
             return .vertical(children: Array(swapped))
         }
@@ -70,7 +70,7 @@ final class TabLayout {
         switch result {
         case .empty, .lastPane:
             return false
-        case .updated(let node):
+        case let .updated(node):
             root = node
             if activePaneID == id {
                 activePaneID = node.allPaneIDs.first ?? id
@@ -99,8 +99,8 @@ final class TabLayout {
 
         func makeContainer(children: [LayoutNode]) -> LayoutNode {
             switch self {
-            case .horizontal: return .horizontal(children: children)
-            case .vertical: return .vertical(children: children)
+            case .horizontal: .horizontal(children: children)
+            case .vertical: .vertical(children: children)
             }
         }
     }
@@ -126,15 +126,15 @@ final class TabLayout {
         newPane: PaneState
     ) -> LayoutNode {
         switch node {
-        case .pane(let state):
+        case let .pane(state):
             guard state.id == targetPaneID else { return node }
             return direction.makeContainer(children: [.pane(state), .pane(newPane)])
 
-        case .horizontal(let children), .vertical(let children):
+        case let .horizontal(children), let .vertical(children):
             var newChildren = children
-            for i in 0..<newChildren.count {
+            for index in 0 ..< newChildren.count {
                 let updated = insertSplit(
-                    into: newChildren[i],
+                    into: newChildren[index],
                     targetPaneID: targetPaneID,
                     direction: direction,
                     newPane: newPane
@@ -162,10 +162,10 @@ final class TabLayout {
     /// Remove a pane from the tree, collapsing single-child containers.
     private func removePane(from node: LayoutNode, paneID: UUID) -> RemoveResult {
         switch node {
-        case .pane(let state):
+        case let .pane(state):
             return state.id == paneID ? .lastPane : .empty
 
-        case .horizontal(let children), .vertical(let children):
+        case let .horizontal(children), let .vertical(children):
             var newChildren: [LayoutNode] = []
             var removed = false
 
@@ -176,7 +176,7 @@ final class TabLayout {
                     newChildren.append(child)
                 case .lastPane:
                     removed = true
-                case .updated(let updatedNode):
+                case let .updated(updatedNode):
                     newChildren.append(updatedNode)
                     removed = true
                 }

@@ -35,7 +35,7 @@ struct CommandHistoryView: View {
             Divider()
 
             // Command list
-            if history.commands.isEmpty && history.currentCommand == nil {
+            if history.commands.isEmpty, history.currentCommand == nil {
                 VStack(spacing: 12) {
                     Image(systemName: "clock")
                         .font(.system(size: 36))
@@ -64,7 +64,6 @@ struct CommandHistoryView: View {
         .frame(minWidth: 400, minHeight: 300)
     }
 
-    @ViewBuilder
     private func commandRow(_ cmd: CommandRecord, isRunning: Bool) -> some View {
         HStack(spacing: 10) {
             // Status icon

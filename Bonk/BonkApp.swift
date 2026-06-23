@@ -66,10 +66,10 @@ struct BonkApp: App {
             AIMenuCommands(i18n: i18n)
         }
         #if os(macOS)
-        Settings {
-            SettingsContainerView().environment(i18n)
-        }
-        .modelContainer(sharedModelContainer)
+            Settings {
+                SettingsContainerView().environment(i18n)
+            }
+            .modelContainer(sharedModelContainer)
         #endif
     }
 
@@ -87,85 +87,85 @@ struct BonkApp: App {
 // MARK: - Menu Commands (FocusedValue)
 
 #if os(macOS)
-private struct FileMenuCommands: Commands {
-    let i18n: I18n
-    @FocusedValue(\.menuNewTerminal) private var newTerminal
-    @FocusedValue(\.menuCloseTab) private var closeTab
-    var body: some Commands {
-        CommandGroup(after: .newItem) {
-            Button(i18n.t(.newTerminal)) { newTerminal?() }.keyboardShortcut("t", modifiers: .command)
-            Button(i18n.t(.closeTab)) { closeTab?() }.keyboardShortcut("w", modifiers: .command)
-        }
-    }
-}
-
-private struct EditMenuCommands: Commands {
-    let i18n: I18n
-    @FocusedValue(\.menuFind) private var find
-    var body: some Commands {
-        CommandGroup(after: .pasteboard) {
-            Divider()
-            Button(i18n.t(.find)) { find?() }.keyboardShortcut("f", modifiers: .command)
-        }
-    }
-}
-
-private struct ViewMenuCommands: Commands {
-    let i18n: I18n
-    @FocusedValue(\.menuSplitHorizontal) private var splitHorizontal
-    @FocusedValue(\.menuSplitVertical) private var splitVertical
-    @FocusedValue(\.menuClosePane) private var closePane
-    @FocusedValue(\.menuToggleSFTP) private var toggleSFTP
-    @FocusedValue(\.menuChangeTheme) private var changeTheme
-    var body: some Commands {
-        CommandMenu(i18n.t(.menuView)) {
-            Button(i18n.t(.splitHorizontal)) { splitHorizontal?() }.keyboardShortcut("d", modifiers: .command)
-            Button(i18n.t(.splitVertical)) { splitVertical?() }.keyboardShortcut("d", modifiers: [.command, .shift])
-            Button(i18n.t(.closePane)) { closePane?() }.keyboardShortcut("w", modifiers: [.command, .shift])
-            Divider()
-            Button(i18n.t(.sftpBrowser)) { toggleSFTP?() }.keyboardShortcut("s", modifiers: [.command, .shift])
-            Divider()
-            Menu(i18n.t(.theme)) {
-                Button(i18n.t(.system)) { changeTheme?("system") }
-                ForEach(ThemeRegistry.all, id: \.id) { theme in Button(theme.name) { changeTheme?(theme.id) } }
+    private struct FileMenuCommands: Commands {
+        let i18n: I18n
+        @FocusedValue(\.menuNewTerminal) private var newTerminal
+        @FocusedValue(\.menuCloseTab) private var closeTab
+        var body: some Commands {
+            CommandGroup(after: .newItem) {
+                Button(i18n.t(.newTerminal)) { newTerminal?() }.keyboardShortcut("t", modifiers: .command)
+                Button(i18n.t(.closeTab)) { closeTab?() }.keyboardShortcut("w", modifiers: .command)
             }
         }
     }
-}
 
-private struct ConnectionMenuCommands: Commands {
-    let i18n: I18n
-    @FocusedValue(\.menuConnect) private var connect
-    @FocusedValue(\.menuDisconnect) private var disconnect
-    @FocusedValue(\.menuReconnect) private var reconnect
-    @FocusedValue(\.menuShowSnippets) private var showSnippets
-    @FocusedValue(\.menuShowCommandHistory) private var showCommandHistory
-    @FocusedValue(\.menuShowPortForwarding) private var showPortForwarding
-    @FocusedValue(\.menuShowSerialPort) private var showSerialPort
-    var body: some Commands {
-        CommandMenu(i18n.t(.menuConnection)) {
-            Button(i18n.t(.connect)) { connect?() }
-            Button(i18n.t(.disconnect)) { disconnect?() }
-            Button(i18n.t(.reconnect)) { reconnect?() }.keyboardShortcut("r", modifiers: .command)
-            Divider()
-            Button(i18n.t(.snippets)) { showSnippets?() }
-            Button(i18n.t(.commandHistory)) { showCommandHistory?() }
-            Divider()
-            Button(i18n.t(.portForwarding)) { showPortForwarding?() }
-            Button(i18n.t(.serialPort)) { showSerialPort?() }
+    private struct EditMenuCommands: Commands {
+        let i18n: I18n
+        @FocusedValue(\.menuFind) private var find
+        var body: some Commands {
+            CommandGroup(after: .pasteboard) {
+                Divider()
+                Button(i18n.t(.find)) { find?() }.keyboardShortcut("f", modifiers: .command)
+            }
         }
     }
-}
 
-private struct AIMenuCommands: Commands {
-    let i18n: I18n
-    @FocusedValue(\.menuToggleAI) private var toggleAI
-    var body: some Commands {
-        CommandMenu(i18n.t(.menuAI)) {
-            Button(i18n.t(.aiAssistant)) { toggleAI?() }.keyboardShortcut("k", modifiers: .command)
+    private struct ViewMenuCommands: Commands {
+        let i18n: I18n
+        @FocusedValue(\.menuSplitHorizontal) private var splitHorizontal
+        @FocusedValue(\.menuSplitVertical) private var splitVertical
+        @FocusedValue(\.menuClosePane) private var closePane
+        @FocusedValue(\.menuToggleSFTP) private var toggleSFTP
+        @FocusedValue(\.menuChangeTheme) private var changeTheme
+        var body: some Commands {
+            CommandMenu(i18n.t(.menuView)) {
+                Button(i18n.t(.splitHorizontal)) { splitHorizontal?() }.keyboardShortcut("d", modifiers: .command)
+                Button(i18n.t(.splitVertical)) { splitVertical?() }.keyboardShortcut("d", modifiers: [.command, .shift])
+                Button(i18n.t(.closePane)) { closePane?() }.keyboardShortcut("w", modifiers: [.command, .shift])
+                Divider()
+                Button(i18n.t(.sftpBrowser)) { toggleSFTP?() }.keyboardShortcut("s", modifiers: [.command, .shift])
+                Divider()
+                Menu(i18n.t(.theme)) {
+                    Button(i18n.t(.system)) { changeTheme?("system") }
+                    ForEach(ThemeRegistry.all, id: \.id) { theme in Button(theme.name) { changeTheme?(theme.id) } }
+                }
+            }
         }
     }
-}
+
+    private struct ConnectionMenuCommands: Commands {
+        let i18n: I18n
+        @FocusedValue(\.menuConnect) private var connect
+        @FocusedValue(\.menuDisconnect) private var disconnect
+        @FocusedValue(\.menuReconnect) private var reconnect
+        @FocusedValue(\.menuShowSnippets) private var showSnippets
+        @FocusedValue(\.menuShowCommandHistory) private var showCommandHistory
+        @FocusedValue(\.menuShowPortForwarding) private var showPortForwarding
+        @FocusedValue(\.menuShowSerialPort) private var showSerialPort
+        var body: some Commands {
+            CommandMenu(i18n.t(.menuConnection)) {
+                Button(i18n.t(.connect)) { connect?() }
+                Button(i18n.t(.disconnect)) { disconnect?() }
+                Button(i18n.t(.reconnect)) { reconnect?() }.keyboardShortcut("r", modifiers: .command)
+                Divider()
+                Button(i18n.t(.snippets)) { showSnippets?() }
+                Button(i18n.t(.commandHistory)) { showCommandHistory?() }
+                Divider()
+                Button(i18n.t(.portForwarding)) { showPortForwarding?() }
+                Button(i18n.t(.serialPort)) { showSerialPort?() }
+            }
+        }
+    }
+
+    private struct AIMenuCommands: Commands {
+        let i18n: I18n
+        @FocusedValue(\.menuToggleAI) private var toggleAI
+        var body: some Commands {
+            CommandMenu(i18n.t(.menuAI)) {
+                Button(i18n.t(.aiAssistant)) { toggleAI?() }.keyboardShortcut("k", modifiers: .command)
+            }
+        }
+    }
 #endif
 
 // MARK: - Notification Names (legacy)
@@ -190,15 +190,19 @@ extension Notification.Name {
 }
 
 #if os(macOS)
-private struct SettingsContainerView: View {
-    @Query private var allPreferences: [UserPreferences]
-    @Environment(\.modelContext) private var modelContext
-    private var preferences: UserPreferences { allPreferences.first ?? UserPreferences() }
-    private func ensurePreferences() {
-        if allPreferences.isEmpty { modelContext.insert(UserPreferences()) }
+    private struct SettingsContainerView: View {
+        @Query private var allPreferences: [UserPreferences]
+        @Environment(\.modelContext) private var modelContext
+        private var preferences: UserPreferences {
+            allPreferences.first ?? UserPreferences()
+        }
+
+        private func ensurePreferences() {
+            if allPreferences.isEmpty { modelContext.insert(UserPreferences()) }
+        }
+
+        var body: some View {
+            SettingsView(preferences: preferences).onAppear { ensurePreferences() }
+        }
     }
-    var body: some View {
-        SettingsView(preferences: preferences).onAppear { ensurePreferences() }
-    }
-}
 #endif

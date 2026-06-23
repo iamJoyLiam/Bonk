@@ -7,8 +7,8 @@
 //  Mouse/keyboard/scroll events pass through to terminal view.
 //
 
-import SwiftUI
 import AppKit
+import SwiftUI
 import UniformTypeIdentifiers
 
 // MARK: - Drop Position
@@ -33,7 +33,6 @@ enum DropPosition: String {
 /// - File drag: uploads via SFTP
 /// - Mouse/keyboard/scroll events: pass through to terminal view
 class DragDropNSView: NSView {
-
     // MARK: - Properties
 
     /// Terminal view (not used for event forwarding, kept for reference)
@@ -61,7 +60,8 @@ class DragDropNSView: NSView {
         setupDragTypes()
     }
 
-    required init?(coder: NSCoder) {
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
@@ -71,7 +71,7 @@ class DragDropNSView: NSView {
             .fileURL,
             .string,
             NSPasteboard.PasteboardType("public.data"),
-            NSPasteboard.PasteboardType("public.item")
+            NSPasteboard.PasteboardType("public.item"),
         ])
     }
 
@@ -79,13 +79,13 @@ class DragDropNSView: NSView {
 
     /// Return nil to let events pass through to terminal view
     /// Only drag events will be intercepted by the drag destination protocol
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        return nil
+    override func hitTest(_: NSPoint) -> NSView? {
+        nil
     }
 
     /// Accept first mouse without requiring focus
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
-        return true
+    override func acceptsFirstMouse(for _: NSEvent?) -> Bool {
+        true
     }
 
     // MARK: - Drag Destination
@@ -123,13 +123,13 @@ class DragDropNSView: NSView {
         return .copy
     }
 
-    override func draggingExited(_ sender: NSDraggingInfo?) {
+    override func draggingExited(_: NSDraggingInfo?) {
         isTrackingDrag = false
         onDragStateChange?(false, .right)
     }
 
-    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        return true
+    override func prepareForDragOperation(_: NSDraggingInfo) -> Bool {
+        true
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
@@ -146,7 +146,8 @@ class DragDropNSView: NSView {
 
         // Priority 2: Check for Tab UUID
         if let uuidString = pasteboard.string(forType: .string),
-           let tabID = UUID(uuidString: uuidString) {
+           let tabID = UUID(uuidString: uuidString)
+        {
             let position = calculateDropPosition(sender)
             onTabDrop?(tabID, position)
             return true
@@ -155,7 +156,7 @@ class DragDropNSView: NSView {
         return false
     }
 
-    override func concludeDragOperation(_ sender: NSDraggingInfo?) {
+    override func concludeDragOperation(_: NSDraggingInfo?) {
         isTrackingDrag = false
         onDragStateChange?(false, .right)
     }
@@ -165,14 +166,14 @@ class DragDropNSView: NSView {
     /// Calculate drop position based on mouse location
     private func calculateDropPosition(_ sender: NSDraggingInfo) -> DropPosition {
         let location = convert(sender.draggingLocation, from: nil)
-        let w = bounds.width
-        let h = bounds.height
+        let width = bounds.width
+        let height = bounds.height
 
-        guard w > 0, h > 0 else { return .right }
+        guard width > 0, height > 0 else { return .right }
 
         let distLeft = location.x
-        let distRight = w - location.x
-        let distTop = h - location.y
+        let distRight = width - location.x
+        let distTop = height - location.y
         let distBottom = location.y
 
         let minDist = min(distLeft, distRight, distTop, distBottom)
@@ -211,7 +212,7 @@ struct DragDropView: NSViewRepresentable {
     let onFileDrop: ([URL]) -> Void
     let onDragStateChange: (Bool, DropPosition) -> Void
 
-    func makeNSView(context: Context) -> DragDropNSView {
+    func makeNSView(context _: Context) -> DragDropNSView {
         let view = DragDropNSView()
         view.terminalView = terminalView
         view.onTabDrop = onTabDrop
@@ -220,7 +221,7 @@ struct DragDropView: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ nsView: DragDropNSView, context: Context) {
+    func updateNSView(_ nsView: DragDropNSView, context _: Context) {
         nsView.terminalView = terminalView
         nsView.onTabDrop = onTabDrop
         nsView.onFileDrop = onFileDrop

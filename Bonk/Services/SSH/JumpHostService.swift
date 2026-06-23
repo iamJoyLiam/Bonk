@@ -43,12 +43,12 @@ final class JumpHostService {
         jumpHost: JumpHost,
         targetHost: String,
         targetPort: Int,
-        jumpCredential: SSHAuthMethod,
+        jumpCredential _: SSHAuthMethod,
         targetCredential: SSHAuthMethod
     ) -> SSHConnectionConfig {
         // In a real implementation, this would create a tunnel config
         // For now, return a direct connection config
-        return SSHConnectionConfig(
+        SSHConnectionConfig(
             host: targetHost,
             port: UInt16(targetPort),
             username: jumpHost.username,

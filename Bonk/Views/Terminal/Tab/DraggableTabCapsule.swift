@@ -61,7 +61,6 @@ struct DraggableTabCapsule: View {
 
     // MARK: - Subviews
 
-    @ViewBuilder
     private var capsuleBackground: some View {
         RoundedRectangle(cornerRadius: 16, style: .continuous)
             .fill(capsuleFill)
@@ -74,7 +73,6 @@ struct DraggableTabCapsule: View {
         return isActive ? Color.primary.opacity(0.1) : Color.clear
     }
 
-    @ViewBuilder
     private var capsuleUnderline: some View {
         RoundedRectangle(cornerRadius: 16, style: .continuous)
             .fill(tab.resolvedColor ?? Color.primary.opacity(0.5))
