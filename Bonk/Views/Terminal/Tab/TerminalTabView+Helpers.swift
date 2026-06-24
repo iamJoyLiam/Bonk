@@ -40,7 +40,7 @@ extension TerminalTabView {
     /// Copy selected text from terminal.
     func copySelectedText() {
         NotificationCenter.default.post(name: .requestTerminalSelection, object: nil)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        Task { @MainActor in try? await Task.sleep(for: .milliseconds(100)); 
             if let selectedText = NSPasteboard.general.string(forType: .string), !selectedText.isEmpty {
                 // Text already copied by SwiftTerm's clipboard handler
             }
@@ -76,7 +76,7 @@ extension TerminalTabView {
 
     /// Focus the terminal view.
     func focusTerminal() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        Task { @MainActor in try? await Task.sleep(for: .milliseconds(100)); 
             NotificationCenter.default.post(name: .focusTerminal, object: nil)
         }
     }
@@ -110,7 +110,8 @@ extension TerminalTabView {
         NotificationCenter.default.post(name: .requestTerminalSelection, object: nil)
 
         // Fallback: if no response in 0.5 seconds, show AI chat
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
+        Task { @MainActor [self] in
+            try? await Task.sleep(for: .milliseconds(500))
             if selectionObserver != nil {
                 if let observer = selectionObserver {
                     NotificationCenter.default.removeObserver(observer)

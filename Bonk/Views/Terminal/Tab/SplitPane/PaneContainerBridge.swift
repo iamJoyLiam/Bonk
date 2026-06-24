@@ -60,14 +60,14 @@ import SwiftUI
             .onChange(of: paneState.ptySession != nil) { _, hasSession in
                 if hasSession {
                     // Delay connection to ensure terminal view is ready
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    Task { @MainActor in try? await Task.sleep(for: .milliseconds(200)); 
                         connectOutputStreamIfNeeded()
                     }
                 }
             }
             .onAppear {
                 // Delay connection to ensure terminal view is ready
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                Task { @MainActor in try? await Task.sleep(for: .milliseconds(200)); 
                     connectOutputStreamIfNeeded()
                 }
             }
@@ -195,7 +195,7 @@ import SwiftUI
             ]
             NSLayoutConstraint.activate(cached.constraints)
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            Task { @MainActor in try? await Task.sleep(for: .milliseconds(100)); 
                 nsView.window?.makeFirstResponder(cached.view)
             }
         }
@@ -259,7 +259,7 @@ import SwiftUI
             NSLayoutConstraint.activate(cached.constraints)
             context.coordinator.lastPaneID = paneID
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            Task { @MainActor in try? await Task.sleep(for: .milliseconds(100)); 
                 containerView.window?.makeFirstResponder(cached.view)
             }
         }

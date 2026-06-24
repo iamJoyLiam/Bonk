@@ -224,7 +224,7 @@ struct SnippetInspectorView: View {
         let resolved = snippet.resolve()
         sessionManager.sendTextToActiveTab(resolved)
         // 归还焦点到终端
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        Task { @MainActor in try? await Task.sleep(for: .milliseconds(100)); 
             NotificationCenter.default.post(name: .focusTerminal, object: nil)
         }
     }

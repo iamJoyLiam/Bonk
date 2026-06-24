@@ -174,7 +174,7 @@ struct AIAssistantPanel: View {
         .onAppear {
             providerStore.setModelContext(modelContext)
             aiService.activeProvider = providerStore.activeProvider
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            Task { @MainActor in try? await Task.sleep(for: .milliseconds(100)); 
                 isInputFocused = true
             }
             withAnimation(.linear(duration: 4.0).repeatForever(autoreverses: false)) {
@@ -183,7 +183,7 @@ struct AIAssistantPanel: View {
             // Auto submit if initial text provided
             if !initialText.isEmpty {
                 inputText = initialText
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                Task { @MainActor in try? await Task.sleep(for: .milliseconds(200)); 
                     submit()
                 }
             }
