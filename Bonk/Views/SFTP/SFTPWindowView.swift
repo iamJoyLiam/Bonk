@@ -6,8 +6,8 @@
 //  Left: local files, Right: remote files, Bottom: transfer progress.
 //
 
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct SFTPWindowView: View {
     @Environment(I18n.self) var i18n
@@ -68,7 +68,7 @@ struct SFTPWindowView: View {
             Button(i18n.t(.alwaysOverwrite)) {
                 if let url = pendingUploadURL {
                     overwriteAlways = true
-                    preferences.sftpOverwriteAlways = true  // 同步到设置
+                    preferences.sftpOverwriteAlways = true // 同步到设置
                     pendingUploadURL = nil
                     showOverwriteAlert = false
                     Task { await performUpload(url) }

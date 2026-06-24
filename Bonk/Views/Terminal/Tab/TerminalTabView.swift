@@ -62,7 +62,7 @@ struct TerminalTabView: View {
                 overwriteAlways: overwriteAlwaysBinding,
                 sessionManager: sessionManager
             ) { url, tab in
-                Task { await uploadManager.performUpload(url, tab: tab, isOverwrite: true, i18n: i18n) }
+                Task { await uploadManager.performUpload(url, tab: tab, i18n: i18n) }
             }
             .onChange(of: renamingTab?.id) { _, _ in
                 if let tab = renamingTab { renameText = tab.title }

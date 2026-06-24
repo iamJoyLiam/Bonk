@@ -127,61 +127,74 @@ final class SFTPService {
 
         do {
             try await sftp.withFile(filePath: entry.path, flags: .read) { file in
-                let chunkSize: UInt32 = 32768
-                var offset: UInt64 = 0
-                FileManager.default.createFile(atPath: localURL.path, contents: nil)
-                let handle = try FileHandle(forWritingTo: localURL)
-                defer { try? handle.close() }
+                try await self.downloadChunks(
+                    file: file, entry: entry, localURL: localURL,
+                    transferID: transferID
+                )
+            }
+            await self.markTransferComplete(transferID)
+            self.scheduleTransferRemoval(transferID, after: 3)
+        } catch {
+            await self.markTransferError(transferID, error: error)
+            self.scheduleTransferRemoval(transferID, after: 5)
+            throw error
+        }
+    }
 
-                var updateCounter = 0
-                while offset < entry.size {
-                    let toRead = min(UInt64(chunkSize), entry.size - offset)
-                    let data = try await file.read(from: offset, length: UInt32(toRead))
-                    guard data.readableBytes > 0 else { break }
-                    let bytes = Data(buffer: data)
-                    try handle.write(contentsOf: bytes)
-                    offset += UInt64(bytes.count)
-                    updateCounter += 1
-                    if updateCounter % 10 == 0 || offset >= entry.size {
-                        let off = offset
-                        await MainActor.run { [self] in
-                            if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                                transfers[idx].transferredBytes = off
-                            }
-                        }
-                    }
-                }
+    /// Download file chunks with progress updates.
+    private func downloadChunks(
+        file: SFTPFile, entry: SFTPFileEntry, localURL: URL,
+        transferID: UUID
+    ) async throws {
+        let chunkSize: UInt32 = 32768
+        var offset: UInt64 = 0
+        FileManager.default.createFile(atPath: localURL.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: localURL)
+        defer { try? handle.close() }
+
+        var updateCounter = 0
+        while offset < entry.size {
+            let toRead = min(UInt64(chunkSize), entry.size - offset)
+            let data = try await file.read(from: offset, length: UInt32(toRead))
+            guard data.readableBytes > 0 else { break }
+            let bytes = Data(buffer: data)
+            try handle.write(contentsOf: bytes)
+            offset += UInt64(bytes.count)
+            updateCounter += 1
+            if updateCounter % 10 == 0 || offset >= entry.size {
+                let off = offset
                 await MainActor.run { [self] in
                     if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                        transfers[idx].isComplete = true
-                        Log.sftp.debug("Transfer \(transferID) marked as complete")
+                        transfers[idx].transferredBytes = off
                     }
                 }
-
-                // Auto-remove completed transfer after 3 seconds
-                let transferIDToRemove = transferID
-                Log.sftp.debug("Scheduling auto-remove for transfer \(transferIDToRemove) in 3s")
-                Task { @MainActor [weak self] in
-                    try? await Task.sleep(for: .seconds(3))
-                    guard let self else { return }
-                    self.transfers.removeAll { $0.id == transferIDToRemove }
-                    Log.sftp.debug("Transfer \(transferIDToRemove) auto-removed, remaining: \(self.transfers.count)")
-                }
             }
-        } catch {
-            await MainActor.run { [self] in
-                if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                    transfers[idx].error = error.localizedDescription
-                }
-            }
+        }
+    }
 
-            // Auto-remove failed transfer after 5 seconds
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(5))
-                self?.transfers.removeAll { $0.id == transferID }
+    /// Mark a transfer as complete.
+    private func markTransferComplete(_ transferID: UUID) async {
+        await MainActor.run { [self] in
+            if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                transfers[idx].isComplete = true
             }
+        }
+    }
 
-            throw error
+    /// Mark a transfer as failed.
+    private func markTransferError(_ transferID: UUID, error: Error) async {
+        await MainActor.run { [self] in
+            if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                transfers[idx].error = error.localizedDescription
+            }
+        }
+    }
+
+    /// Schedule automatic removal of a transfer after a delay.
+    private func scheduleTransferRemoval(_ transferID: UUID, after seconds: TimeInterval) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            self?.transfers.removeAll { $0.id == transferID }
         }
     }
 

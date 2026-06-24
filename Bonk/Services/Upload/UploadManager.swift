@@ -29,7 +29,7 @@ final class UploadManager {
     /// Returns true if file was uploaded directly, false if file exists (caller should show dialog).
     func handleDrop(url: URL, tab: TerminalTab, overwriteAlways: Bool, i18n: I18n) async -> Bool {
         if overwriteAlways {
-            await performUpload(url, tab: tab, isOverwrite: true, i18n: i18n)
+            await performUpload(url, tab: tab, i18n: i18n)
             return true
         }
 
@@ -48,7 +48,7 @@ final class UploadManager {
         case true:
             return false // Caller should show dialog
         case false:
-            await performUpload(url, tab: tab, uploadDir: uploadDir, isOverwrite: false, i18n: i18n)
+            await performUpload(url, tab: tab, uploadDir: uploadDir, i18n: i18n)
             return true
         case nil:
             showMessage(i18n.t(.sftpConnectFailed), i18n: i18n)
@@ -61,7 +61,6 @@ final class UploadManager {
         _ url: URL,
         tab: TerminalTab,
         uploadDir: String? = nil,
-        isOverwrite: Bool = false,
         i18n: I18n
     ) async {
         guard tab.session?.sshService != nil else {
