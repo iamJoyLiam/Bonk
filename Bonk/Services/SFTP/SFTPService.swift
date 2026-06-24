@@ -41,11 +41,11 @@ final class SFTPService {
             Log.sftp.error("listDirectory failed: not connected")
             throw SFTPServiceError.notConnected
         }
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
+        self.isLoading = true
+        self.errorMessage = nil
+        defer { self.isLoading = false }
 
-        let targetPath = path ?? currentPath
+        let targetPath = path ?? self.currentPath
         let names = try await sftp.listDirectory(atPath: targetPath)
 
         var result: [SFTPFileEntry] = []
