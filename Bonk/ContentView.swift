@@ -218,6 +218,7 @@ struct ContentView: View {
                 rootView: SFTPWindowView(sessionManager: sessionManager)
                     .environment(i18n)
                     .environment(workspace)
+                    .modelContext(modelContext)
             )
             window.center()
             window.makeKeyAndOrderFront(nil)

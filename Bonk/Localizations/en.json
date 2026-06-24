@@ -202,7 +202,7 @@
   "enter_new_name": "Enter a new name for this tab",
   "overwrite": "Overwrite",
   "always_overwrite": "Always Overwrite",
-  "file_exists": "'%@' already exists. Overwrite?",
+  "file_exists": "%@ already exists. Overwrite?",
   "no_terminal": "No Terminal Open",
   "select_host": "Select a host from the sidebar",
   "select_host_info": "Select a host to view server info",

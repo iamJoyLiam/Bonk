@@ -202,7 +202,7 @@
   "enter_new_name": "输入标签页新名称",
   "overwrite": "覆盖",
   "always_overwrite": "始终覆盖",
-  "file_exists": "'%@' 已存在。是否覆盖？",
+  "file_exists": "%@ 已存在。是否覆盖？",
   "no_terminal": "未打开终端",
   "select_host": "从侧边栏选择一个主机",
   "select_host_info": "选择一个主机以查看服务器信息",

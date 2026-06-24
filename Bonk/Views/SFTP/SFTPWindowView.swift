@@ -7,10 +7,12 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct SFTPWindowView: View {
     @Environment(I18n.self) var i18n
     @Bindable var sessionManager: SessionManager
+    @Query private var allPreferences: [UserPreferences]
     @State private var localPath: String = (NSHomeDirectory() as NSString).appendingPathComponent("Downloads")
     @State private var localFiles: [LocalFileEntry] = []
     @State private var selectedRemote: SFTPFileEntry?
@@ -18,6 +20,10 @@ struct SFTPWindowView: View {
     @State private var pendingUploadURL: URL?
     @State private var showOverwriteAlert = false
     @State private var overwriteAlways = false
+
+    private var preferences: UserPreferences {
+        allPreferences.first ?? UserPreferences()
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -48,26 +54,29 @@ struct SFTPWindowView: View {
                 )
             }
         }
-        .confirmationDialog(i18n.t(.fileExists), isPresented: $showOverwriteAlert) {
+        .confirmationDialog(
+            pendingUploadURL.map { i18n.tr(.fileExists, args: $0.lastPathComponent) } ?? "",
+            isPresented: $showOverwriteAlert
+        ) {
             Button(i18n.t(.overwrite)) {
                 if let url = pendingUploadURL {
                     pendingUploadURL = nil
+                    showOverwriteAlert = false
                     Task { await performUpload(url) }
                 }
             }
             Button(i18n.t(.alwaysOverwrite)) {
                 if let url = pendingUploadURL {
                     overwriteAlways = true
+                    preferences.sftpOverwriteAlways = true  // 同步到设置
                     pendingUploadURL = nil
+                    showOverwriteAlert = false
                     Task { await performUpload(url) }
                 }
             }
             Button(i18n.t(.cancel), role: .cancel) {
                 pendingUploadURL = nil
-            }
-        } message: {
-            if let url = pendingUploadURL {
-                Text(i18n.t(.fileExists).replacingOccurrences(of: "%@", with: url.lastPathComponent))
+                showOverwriteAlert = false
             }
         }
         .frame(minWidth: 800, minHeight: 500)
@@ -204,6 +213,18 @@ struct SFTPWindowView: View {
                         }
                         .buttonStyle(.plain)
                     }
+
+                    // Remove button for completed/failed transfers
+                    if transfer.isComplete || transfer.error != nil {
+                        Button {
+                            sftp.removeTransfer(transfer.id)
+                        } label: {
+                            Image(systemName: "xmark.circle")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }
@@ -268,10 +289,15 @@ struct SFTPWindowView: View {
 
     private func checkAndUpload(_ url: URL) async {
         guard let sftp = sessionManager.activeTab?.session?.sftpService else { return }
-        if overwriteAlways {
+
+        // Check if overwrite is enabled in settings
+        let overwriteEnabled = preferences.sftpOverwriteAlways ?? false
+
+        if overwriteAlways || overwriteEnabled {
             await performUpload(url)
             return
         }
+
         let basePath = sftp.currentPath.hasSuffix("/") ? sftp.currentPath : sftp.currentPath + "/"
         let remotePath = basePath + url.lastPathComponent
         switch await sftp.fileExists(at: remotePath) {

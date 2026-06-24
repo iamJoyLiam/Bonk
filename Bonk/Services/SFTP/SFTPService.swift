@@ -154,13 +154,33 @@ final class SFTPService {
                 await MainActor.run { [self] in
                     if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
                         transfers[idx].isComplete = true
+                        Log.sftp.debug("Transfer \(transferID) marked as complete")
                     }
+                }
+
+                // Auto-remove completed transfer after 3 seconds
+                let transferIDToRemove = transferID
+                Log.sftp.debug("Scheduling auto-remove for transfer \(transferIDToRemove) in 3s")
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    guard let self else { return }
+                    self.transfers.removeAll { $0.id == transferIDToRemove }
+                    Log.sftp.debug("Transfer \(transferIDToRemove) auto-removed, remaining: \(self.transfers.count)")
                 }
             }
         } catch {
-            if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                transfers[idx].error = error.localizedDescription
+            await MainActor.run { [self] in
+                if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                    transfers[idx].error = error.localizedDescription
+                }
             }
+
+            // Auto-remove failed transfer after 5 seconds
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                self?.transfers.removeAll { $0.id == transferID }
+            }
+
             throw error
         }
     }
@@ -170,6 +190,11 @@ final class SFTPService {
         if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
             transfers[idx].isCancelled = true
         }
+    }
+
+    /// Remove a specific transfer from the list.
+    func removeTransfer(_ transferID: UUID) {
+        transfers.removeAll { $0.id == transferID }
     }
 
     /// Upload a local file to the remote path. Returns an AsyncStream of progress (0.0 - 1.0).
@@ -289,17 +314,17 @@ final class SFTPService {
     /// Returns nil when the check itself fails (e.g. network error).
     func fileExists(at path: String) async -> Bool? {
         guard let sftp = sftpClient else { return nil }
-        let parent = (path as NSString).deletingLastPathComponent
-        let filename = (path as NSString).lastPathComponent
-        guard !parent.isEmpty, !filename.isEmpty else { return nil }
         do {
-            let names = try await sftp.listDirectory(atPath: parent.isEmpty ? "/" : parent)
-            return names.contains { component in
-                component.components.contains { $0.filename == filename }
-            }
+            // Try to open the file for reading - this is the most reliable way
+            // because it doesn't rely on cached directory listings
+            let file = try await sftp.openFile(filePath: path, flags: [.read])
+            try await file.close()
+            Log.sftp.debug("fileExists check: \(path) -> true (openFile succeeded)")
+            return true
         } catch {
-            Log.sftp.warning("fileExists check failed for \(path): \(error.localizedDescription)")
-            return nil
+            // File doesn't exist or can't be opened
+            Log.sftp.debug("fileExists check: \(path) -> false (openFile failed: \(error.localizedDescription))")
+            return false
         }
     }
 

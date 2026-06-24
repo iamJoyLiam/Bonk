@@ -80,10 +80,8 @@ final class UploadManager {
         let filename = url.lastPathComponent
         let remotePath = (targetDir.hasSuffix("/") ? targetDir : targetDir + "/") + filename
 
-        // Show message
-        dropMessage = isOverwrite
-            ? i18n.tr(.overwritingTo, args: filename, targetDir)
-            : i18n.tr(.uploadingTo, args: filename, targetDir)
+        // Show upload message with progress
+        dropMessage = "\(filename) → \(targetDir)"
         uploadProgress = 0
 
         do {

@@ -76,22 +76,25 @@ struct PaneTerminalView: View {
             }
         }
         .confirmationDialog(
-            pendingUploadURL.map { i18n.tr(.fileExists, args: $0.lastPathComponent) } ?? i18n.t(.fileExists),
+            pendingUploadURL.map { i18n.tr(.fileExists, args: $0.lastPathComponent) } ?? "",
             isPresented: $showOverwriteAlert
         ) {
             Button(i18n.t(.overwrite)) {
                 guard let url = pendingUploadURL, let tab = pendingUploadTab else { return }
                 pendingUploadURL = nil; pendingUploadTab = nil
+                showOverwriteAlert = false
                 Task { await uploadManager.performUpload(url, tab: tab, isOverwrite: true, i18n: i18n) }
             }
             Button(i18n.t(.alwaysOverwrite)) {
                 guard let url = pendingUploadURL, let tab = pendingUploadTab else { return }
                 pendingUploadURL = nil; pendingUploadTab = nil
+                showOverwriteAlert = false
                 preferences.sftpOverwriteAlways = true
                 Task { await uploadManager.performUpload(url, tab: tab, isOverwrite: true, i18n: i18n) }
             }
             Button(i18n.t(.cancel), role: .cancel) {
                 pendingUploadURL = nil; pendingUploadTab = nil
+                showOverwriteAlert = false
             }
         }
         .onTapGesture {
