@@ -119,11 +119,6 @@ struct ContentView: View {
             }
             .navigationSplitViewStyle(.balanced)
             .toolbar {
-                // [⚡] — Quick Connect
-                ToolbarItem(placement: .principal) {
-                    QuickConnectButton(isPresented: $showQuickConnect)
-                }
-
                 // [📶] [🔌] [🔀] [⏱] — .principal tracks content column boundary
                 ToolbarItem(placement: .principal) {
                     ControlGroup {

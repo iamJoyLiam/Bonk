@@ -194,36 +194,14 @@ final class SessionManager {
         guard let tab = tabs.first(where: { $0.id == tabID }),
               let targetPaneID = paneID ?? tab.activePaneID else { return }
 
-        // Send to target pane
-        guard let pane = tab.layout.findPane(id: targetPaneID),
-              let pty = pane.ptySession else { return }
-        try await pty.sendInput(bytes)
-
-        // Broadcast to other panes if enabled
-        let isGlobalBroadcast = broadcastManager?.isEnabled ?? false
-        if isGlobalBroadcast {
-            // Global broadcast: send to ALL panes in ALL tabs (including current tab)
-            for otherTab in tabs {
-                for otherPaneID in otherTab.paneIDs {
-                    // Skip the target pane we already sent to
-                    if otherTab.id == tabID, otherPaneID == targetPaneID { continue }
-                    if let otherPane = otherTab.layout.findPane(id: otherPaneID),
-                       let otherPTY = otherPane.ptySession
-                    {
-                        try? await otherPTY.sendInput(bytes)
-                    }
-                }
-            }
-        } else if tab.isBroadcastEnabled {
-            // Local broadcast: send to all panes in this tab only
-            for otherPaneID in tab.paneIDs where otherPaneID != targetPaneID {
-                if let otherPane = tab.layout.findPane(id: otherPaneID),
-                   let otherPTY = otherPane.ptySession
-                {
-                    try? await otherPTY.sendInput(bytes)
-                }
-            }
-        }
+        // Use inputHandler to record command history and broadcast
+        try await inputHandler.sendInput(
+            bytes,
+            to: tab,
+            paneID: targetPaneID,
+            broadcastManager: broadcastManager,
+            allTabs: tabs
+        )
     }
 
     /// Convenience: send text to the active pane (auto-appends Enter).

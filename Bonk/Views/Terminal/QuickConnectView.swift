@@ -231,22 +231,3 @@ struct QuickConnectView: View {
         isPresented = false
     }
 }
-
-// MARK: - Quick Connect Button
-
-struct QuickConnectButton: View {
-    @Binding var isPresented: Bool
-
-    var body: some View {
-        Button {
-            isPresented = true
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 28, height: 28)
-        }
-        .buttonStyle(.plain)
-        .help("Quick Connect")
-    }
-}
