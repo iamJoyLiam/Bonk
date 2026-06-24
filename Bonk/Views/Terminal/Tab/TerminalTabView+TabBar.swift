@@ -13,28 +13,40 @@ extension TerminalTabView {
         HStack(spacing: 0) {
             // Tab area
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
+                HStack(spacing: 6) {
                     ForEach(sessionManager.tabs) { tab in
                         tabCapsule(tab)
                             .contextMenu { tabContextMenu(tab) }
                     }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-            }
 
-            // Right controls: + and chevron
-            HStack(spacing: 2) {
-                addButton
-                chevronMenu
+                    // + button at the end of tabs
+                    Button {
+                        showQuickConnect = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
             }
-            .padding(.trailing, 10)
         }
-        .frame(height: 38)
+        .frame(height: 44)
         .background {
             Rectangle()
                 .fill(.bar)
                 .overlay(alignment: .bottom) { Divider() }
+        }
+        .sheet(isPresented: $showQuickConnect) {
+            QuickConnectView(
+                sessionManager: sessionManager,
+                isPresented: $showQuickConnect,
+                defaultPort: 22
+            )
+            .environment(i18n)
         }
     }
 
@@ -81,68 +93,7 @@ extension TerminalTabView {
             .offset(y: 1)
     }
 
-    // MARK: - Status Dot Color
-
-    private func statusDotColor(_ state: SSHConnectionState) -> Color {
-        switch state {
-        case .connected: .yellow
-        case .connecting, .reconnecting: .yellow.opacity(0.5)
-        case .disconnected: .secondary.opacity(0.4)
-        }
-    }
-
-    // MARK: - Right Controls
-
-    private var addButton: some View {
-        Menu {
-            ForEach(allHosts) { host in
-                let isOpen = sessionManager.tabs.contains(where: { $0.hostItem.id == host.id })
-                Button {
-                    if isOpen {
-                        if let tab = sessionManager.tabs.first(where: { $0.hostItem.id == host.id }) {
-                            sessionManager.selectTab(tab.id)
-                        }
-                    } else {
-                        sessionManager.openTab(for: host)
-                    }
-                } label: {
-                    Label(host.name, systemImage: isOpen ? "checkmark" : "plus")
-                }
-            }
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 24, height: 24)
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-    }
-
-    private var chevronMenu: some View {
-        Menu {
-            ForEach(sessionManager.tabs) { tab in
-                Button { sessionManager.selectTab(tab.id) } label: {
-                    HStack {
-                        Circle()
-                            .fill(statusDotColor(tab.session?.connectionState ?? .disconnected))
-                            .frame(width: 6, height: 6)
-                        Text(tab.title)
-                        if sessionManager.activeTabID == tab.id {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
-        } label: {
-            Image(systemName: "chevron.down")
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 24, height: 24)
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-    }
+    // MARK: - Context Menu
 
     // MARK: - Context Menu
 

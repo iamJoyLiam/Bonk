@@ -38,13 +38,6 @@ struct PaneTerminalView: View {
 
             paneContent
         }
-        .opacity(isActive ? 1.0 : 0.6)
-        .overlay {
-            if tab.layout.root.paneCount > 1 {
-                RoundedRectangle(cornerRadius: 2)
-                    .stroke(isActive ? Color.accentColor : Color.clear, lineWidth: 2)
-            }
-        }
         .overlay {
             // Drag-and-drop overlay with indicator
             if isDragOver {
@@ -181,10 +174,10 @@ struct PaneTerminalView: View {
         HStack(spacing: 6) {
             Image(systemName: paneTitleIcon)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(isActive ? .primary : .secondary)
             Text(paneState.title.isEmpty ? tab.hostItem.name : paneState.title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(isActive ? .primary : .secondary)
                 .lineLimit(1)
 
             Spacer()
@@ -230,7 +223,7 @@ struct PaneTerminalView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.8))
+        .background(isActive ? Color(nsColor: .controlBackgroundColor).opacity(0.5) : Color.clear)
     }
 
     private var paneTitleIcon: String {

@@ -17,22 +17,22 @@ struct LightTheme: TerminalTheme {
         foreground: RGBAColor(0.15, 0.15, 0.15),
         cursor: RGBAColor(0.15, 0.15, 0.15),
         ansiColors: [
-            RGBAColor(0.00, 0.00, 0.00),
-            RGBAColor(0.80, 0.15, 0.10),
-            RGBAColor(0.15, 0.65, 0.25),
-            RGBAColor(0.75, 0.55, 0.00),
-            RGBAColor(0.15, 0.35, 0.75),
-            RGBAColor(0.65, 0.20, 0.65),
-            RGBAColor(0.15, 0.55, 0.60),
-            RGBAColor(0.70, 0.70, 0.70),
-            RGBAColor(0.45, 0.45, 0.45),
-            RGBAColor(0.80, 0.15, 0.10),
-            RGBAColor(0.15, 0.65, 0.25),
-            RGBAColor(0.75, 0.55, 0.00),
-            RGBAColor(0.15, 0.35, 0.75),
-            RGBAColor(0.65, 0.20, 0.65),
-            RGBAColor(0.15, 0.55, 0.60),
-            RGBAColor(0.95, 0.95, 0.95),
+            RGBAColor(0.00, 0.00, 0.00),  // black
+            RGBAColor(0.80, 0.15, 0.10),  // red
+            RGBAColor(0.10, 0.50, 0.20),  // green - darker for better contrast
+            RGBAColor(0.60, 0.40, 0.00),  // yellow - darker for better contrast
+            RGBAColor(0.15, 0.35, 0.75),  // blue
+            RGBAColor(0.65, 0.20, 0.65),  // magenta
+            RGBAColor(0.10, 0.40, 0.45),  // cyan - darker for better contrast
+            RGBAColor(0.40, 0.40, 0.40),  // white - darker for better contrast
+            RGBAColor(0.45, 0.45, 0.45),  // bright black
+            RGBAColor(0.80, 0.15, 0.10),  // bright red
+            RGBAColor(0.10, 0.50, 0.20),  // bright green
+            RGBAColor(0.60, 0.40, 0.00),  // bright yellow
+            RGBAColor(0.15, 0.35, 0.75),  // bright blue
+            RGBAColor(0.65, 0.20, 0.65),  // bright magenta
+            RGBAColor(0.10, 0.40, 0.45),  // bright cyan
+            RGBAColor(0.50, 0.50, 0.50),  // bright white
         ]
     )
 }

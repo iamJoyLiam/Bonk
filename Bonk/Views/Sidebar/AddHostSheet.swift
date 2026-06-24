@@ -12,6 +12,7 @@ struct AddHostSheet: View {
 
     let existingHost: HostItem?
     let defaultPort: Int
+    let initialHost: String?
     let onSave: (HostItem) -> Void
 
     @State private var name = ""
@@ -32,10 +33,12 @@ struct AddHostSheet: View {
     init(
         existingHost: HostItem? = nil,
         defaultPort: Int = 22,
+        initialHost: String? = nil,
         onSave: @escaping (HostItem) -> Void
     ) {
         self.existingHost = existingHost
         self.defaultPort = defaultPort
+        self.initialHost = initialHost
         self.onSave = onSave
     }
 
@@ -209,6 +212,11 @@ struct AddHostSheet: View {
     private func loadExisting() {
         guard let existing = existingHost else {
             port = String(defaultPort)
+            // Pre-fill with initial host if provided
+            if let initialHost = initialHost {
+                name = initialHost
+                host = initialHost
+            }
             return
         }
         name = existing.name

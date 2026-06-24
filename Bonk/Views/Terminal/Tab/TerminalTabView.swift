@@ -42,6 +42,7 @@ struct TerminalTabView: View {
     @State var showAIChat = false
     @State var selectedTextForAI = ""
     @State var selectionObserver: NSObjectProtocol?
+    @State var showQuickConnect = false
 
     var body: some View {
         mainView
@@ -139,7 +140,6 @@ struct TerminalTabView: View {
                 pendingUploadURL = url
                 pendingUploadTab = tab
                 showOverwriteAlert = true
-                print("[HANDLE_DROP] ⚠️ File exists, showing overwrite dialog")
             }
         }
     }

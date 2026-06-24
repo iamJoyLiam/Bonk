@@ -21,6 +21,7 @@ final class HostItem {
     var lastConnectedAt: Date?
     /// Sort order within group (used by drag-to-reorder).
     var sortOrder: Int = 0
+    var isFavorite: Bool = false
 
     @Relationship(deleteRule: .nullify)
     var groupRef: HostGroup?

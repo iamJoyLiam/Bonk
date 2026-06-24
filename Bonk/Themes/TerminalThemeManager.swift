@@ -49,9 +49,6 @@ final class TerminalThemeManager: ObservableObject {
         if id == "system" {
             return resolveSystem()
         }
-        if id == "transparent" {
-            return TransparentTheme().colorScheme(opacity: opacity)
-        }
         return ThemeRegistry.theme(byID: id)?.colorScheme ?? LightTheme().colorScheme
     }
 

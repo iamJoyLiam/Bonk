@@ -14,6 +14,7 @@ struct ContentView: View {
         @State private var showInspector = false
         @State private var showAddHostSheet = false
         @State private var showTerminalSearch = false
+        @State private var showQuickConnect = false
         @State private var sftpWindow: NSWindow?
     #endif
 
@@ -89,6 +90,7 @@ struct ContentView: View {
             .focusedSceneValue(\.menuSplitHorizontal) { sessionManager.splitHorizontal() }
             .focusedSceneValue(\.menuSplitVertical) { sessionManager.splitVertical() }
             .focusedSceneValue(\.menuClosePane) { sessionManager.closePane() }
+            .focusedSceneValue(\.menuQuickConnect) { showQuickConnect = true }
     }
 
     // MARK: - macOS Layout (2-column NavigationSplitView + .inspector)
@@ -117,6 +119,11 @@ struct ContentView: View {
             }
             .navigationSplitViewStyle(.balanced)
             .toolbar {
+                // [⚡] — Quick Connect
+                ToolbarItem(placement: .principal) {
+                    QuickConnectButton(isPresented: $showQuickConnect)
+                }
+
                 // [📶] [🔌] [🔀] [⏱] — .principal tracks content column boundary
                 ToolbarItem(placement: .principal) {
                     ControlGroup {
@@ -170,6 +177,14 @@ struct ContentView: View {
                 if isOpen { openSFTPWindow() }
             }
             // Sheets
+            .sheet(isPresented: $showQuickConnect) {
+                QuickConnectView(
+                    sessionManager: sessionManager,
+                    isPresented: $showQuickConnect,
+                    defaultPort: preferences.defaultPort
+                )
+                .environment(i18n)
+            }
             .sheet(isPresented: $showAddHostSheet) {
                 NavigationStack {
                     AddHostSheet(defaultPort: preferences.defaultPort) { host in

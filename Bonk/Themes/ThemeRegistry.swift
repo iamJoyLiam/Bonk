@@ -16,13 +16,6 @@ enum ThemeRegistry {
     private static let builtin: [TerminalTheme] = [
         LightTheme(),
         DarkTheme(),
-        TransparentTheme(),
-        DraculaTheme(),
-        TokyoNightTheme(),
-        GruvboxDarkTheme(),
-        CatppuccinMochaTheme(),
-        NordTheme(),
-        SolarizedDarkTheme(),
     ]
 
     // MARK: - Plugin Themes
@@ -56,8 +49,7 @@ enum ThemeRegistry {
     }
 
     /// Extra themes shown in "More Themes" section.
-    /// Filters out transparent (not shown in settings grid).
     static var extra: [TerminalTheme] {
-        all.filter { !primaryIDs.contains($0.id) && $0.id != "transparent" }
+        all.filter { !primaryIDs.contains($0.id) }
     }
 }

@@ -212,6 +212,17 @@ enum LKey: String, CaseIterable {
     case credentialsNotSet = "credentials_not_set"
     case sftpConnectFailed = "sftp_connect_failed"
     case noSSHConnection = "no_ssh_connection"
+    case recent
+    case favorites
+    case allHosts = "all_hosts"
+    case quickConnect = "quick_connect"
+    case searchHosts = "search_hosts"
+    case searchResults = "search_results"
+    case connectTo = "connect_to"
+    case newConnection = "new_connection"
+    case enterHost = "enter_host"
+    case enterUsername = "enter_username"
+    case enterPassword = "enter_password"
     case upload
     case uploadingTo = "uploading_to"
     case uploadSuccess = "upload_success"
