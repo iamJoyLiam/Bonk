@@ -12,8 +12,6 @@ import SwiftTerm
 
     extension ContainerTerminalCoordinator {
         func send(source _: SwiftTerm.TerminalView, data: ArraySlice<UInt8>) {
-            // Log to verify delegate is called
-            NSLog("[DELEGATE] send called with \(data.count) bytes")
             onSend(data)
         }
 

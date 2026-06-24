@@ -112,14 +112,6 @@ final class SFTPService {
         try await listDirectory()
     }
 
-    /// Rename/move a file or directory.
-    func rename(_ entry: SFTPFileEntry, to newName: String) async throws {
-        guard let sftp = sftpClient else { throw SFTPServiceError.notConnected }
-        let newPath = (entry.path as NSString).deletingLastPathComponent + "/" + newName
-        try await sftp.rename(at: entry.path, to: newPath)
-        try await listDirectory()
-    }
-
     /// Download a file to local disk.
     func download(_ entry: SFTPFileEntry, to localURL: URL) async throws {
         guard let sftp = sftpClient else { throw SFTPServiceError.notConnected }

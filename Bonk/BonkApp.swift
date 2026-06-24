@@ -168,27 +168,6 @@ struct BonkApp: App {
     }
 #endif
 
-// MARK: - Notification Names (legacy)
-
-extension Notification.Name {
-    static let menuNewTerminal = Notification.Name("bonk.menu.newTerminal")
-    static let menuCloseTab = Notification.Name("bonk.menu.closeTab")
-    static let menuFind = Notification.Name("bonk.menu.find")
-    static let menuSplitHorizontal = Notification.Name("bonk.menu.splitHorizontal")
-    static let menuSplitVertical = Notification.Name("bonk.menu.splitVertical")
-    static let menuClosePane = Notification.Name("bonk.menu.closePane")
-    static let menuToggleSFTP = Notification.Name("bonk.menu.toggleSFTP")
-    static let menuToggleAI = Notification.Name("bonk.menu.toggleAI")
-    static let menuChangeTheme = Notification.Name("bonk.menu.changeTheme")
-    static let menuShowCommandHistory = Notification.Name("bonk.menu.showCommandHistory")
-    static let menuConnect = Notification.Name("bonk.menu.connect")
-    static let menuDisconnect = Notification.Name("bonk.menu.disconnect")
-    static let menuReconnect = Notification.Name("bonk.menu.reconnect")
-    static let menuShowSnippets = Notification.Name("bonk.menu.showSnippets")
-    static let menuShowPortForwarding = Notification.Name("bonk.menu.showPortForwarding")
-    static let menuShowSerialPort = Notification.Name("bonk.menu.showSerialPort")
-}
-
 #if os(macOS)
     private struct SettingsContainerView: View {
         @Query private var allPreferences: [UserPreferences]

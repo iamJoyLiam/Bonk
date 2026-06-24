@@ -41,11 +41,20 @@ final class Snippet {
         if let user { result = result.replacingOccurrences(of: "{user}", with: user) }
         if let port { result = result.replacingOccurrences(of: "{port}", with: "\(port)") }
         let now = Date()
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        result = result.replacingOccurrences(of: "{date}", with: dateFormatter.string(from: now))
-        dateFormatter.dateFormat = "HH:mm:ss"
-        result = result.replacingOccurrences(of: "{time}", with: dateFormatter.string(from: now))
+        result = result.replacingOccurrences(of: "{date}", with: Snippet.dateFormatter.string(from: now))
+        result = result.replacingOccurrences(of: "{time}", with: Snippet.timeFormatter.string(from: now))
         return result
     }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter
+    }()
 }

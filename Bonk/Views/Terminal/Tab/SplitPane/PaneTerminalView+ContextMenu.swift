@@ -140,7 +140,7 @@ extension PaneTerminalView {
                 tab.currentDirectory = nil
 
                 // Small delay to ensure terminal has processed any cd commands
-                try? await Task.sleep(for: .milliseconds(200))
+                try? await Task.sleep(for: .milliseconds(100))
 
                 let overwriteAlways = preferences.sftpOverwriteAlways ?? false
                 let uploaded = await uploadManager.handleDrop(

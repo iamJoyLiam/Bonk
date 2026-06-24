@@ -5,6 +5,7 @@
 //  Port forwarding management — uses Form+Section (not List inside Form).
 //
 
+import os.log
 import SwiftData
 import SwiftUI
 
@@ -135,8 +136,7 @@ struct PortForwardView: View {
                 do {
                     try await portForwardService.start(config: rule)
                 } catch {
-                    // Handle error
-                    print("Port forward error: \(error)")
+                    Log.ssh.error("Port forward error: \(error.localizedDescription)")
                 }
             }
         }

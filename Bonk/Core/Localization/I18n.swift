@@ -89,7 +89,7 @@ final class I18n: @unchecked Sendable {
     // MARK: Translate
 
     func t(_ key: LKey) -> String {
-        let currentLang = lang // @Published is thread-safe for reads
+        let currentLang = lang // @Observable is thread-safe for reads
         return _allStrings[currentLang]?[key.rawValue] ?? _allStrings["en"]?[key.rawValue]
             ?? key.rawValue
     }

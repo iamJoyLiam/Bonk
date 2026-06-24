@@ -58,18 +58,7 @@ extension SessionManager {
             pane.sessionMode = .independent
             pane.ptySession = nil
             // Open new PTY for the unlinked pane
-            Task { await openPTYForPane(tab: tab, pane: pane) }
-        }
-    }
-
-    /// Open a new PTY session for a pane.
-    func openPTYForPane(tab: TerminalTab, pane: PaneState) async {
-        guard let service = tab.session?.sshService else { return }
-        do {
-            let ptySession = try await service.openPTY()
-            pane.ptySession = ptySession
-        } catch {
-            Log.session.error("[SPLIT] Failed to open PTY: \(error.localizedDescription)")
+            Task { await connectPane(tab: tab, pane: pane) }
         }
     }
 

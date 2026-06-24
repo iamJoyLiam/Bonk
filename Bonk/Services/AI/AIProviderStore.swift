@@ -137,9 +137,7 @@ final class AIProviderStore {
                 let models = try await AIProviderNetworking.fetchModels(
                     request: request, type: provider.type
                 )
-                await MainActor.run {
-                    cachedModels[provider.id] = models
-                }
+                cachedModels[provider.id] = models
             } catch {
                 Self.logger.error("Failed to fetch models for \(provider.name): \(error.localizedDescription)")
             }
