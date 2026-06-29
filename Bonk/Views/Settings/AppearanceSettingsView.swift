@@ -61,38 +61,13 @@ struct AppearanceSettingsView: View {
                 HStack {
                     Text(i18n.t(.fontSize))
                     Spacer()
-                    // Stepper control
-                    HStack(spacing: 8) {
-                        Button {
-                            if preferences.fontSize > 10 {
-                                preferences.fontSize -= 1
-                                sendFontChange()
-                            }
-                        } label: {
-                            Image(systemName: "minus.circle.fill")
-                                .font(.system(size: 16))
-                                .foregroundStyle(preferences.fontSize > 10 ? .secondary : .tertiary)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(preferences.fontSize <= 10)
-
-                        Text("\(Int(preferences.fontSize))pt")
-                            .font(.caption.monospaced())
-                            .frame(width: 36, alignment: .center)
-
-                        Button {
-                            if preferences.fontSize < 24 {
-                                preferences.fontSize += 1
-                                sendFontChange()
-                            }
-                        } label: {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 16))
-                                .foregroundStyle(preferences.fontSize < 24 ? .secondary : .tertiary)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(preferences.fontSize >= 24)
-                    }
+                    Text("\(Int(preferences.fontSize))pt")
+                        .foregroundStyle(.secondary)
+                    Stepper(value: $preferences.fontSize, in: 10...24, step: 1) {}
+                        .labelsHidden()
+                }
+                .onChange(of: preferences.fontSize) { _, _ in
+                    sendFontChange()
                 }
             }
         }

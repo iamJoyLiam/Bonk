@@ -226,13 +226,15 @@ struct AISettingsView: View {
             Toggle(i18n.t(.enableInlineSuggestions), isOn: $inlineSuggestionsEnabled)
                 .disabled(store.activeProviderID == nil)
                 .help(store.activeProviderID != nil ? "" : i18n.t(.configureProviderHint))
-            Stepper(
-                i18n.t(.debounce) + ": \(inlineSuggestionDebounceMs) ms",
-                value: debounceBinding,
-                in: debounceRange,
-                step: 50
-            )
-            .disabled(!inlineSuggestionsEnabled)
+            HStack {
+                Text(i18n.t(.debounce))
+                Spacer()
+                Text("\(inlineSuggestionDebounceMs) ms")
+                    .foregroundStyle(.secondary)
+                Stepper(value: debounceBinding, in: debounceRange, step: 50) {}
+                    .labelsHidden()
+                    .disabled(!inlineSuggestionsEnabled)
+            }
         } header: {
             Text(i18n.t(.inlineSuggestions))
         } footer: {
