@@ -20,7 +20,7 @@ struct DarkTheme: TerminalTheme {
     )
 }
 
-/// ANSI colors shared by dark-based themes (dark, transparent, etc.)
+/// ANSI colors shared by dark-based themes
 enum SharedColors {
     static let darkANSI: [RGBAColor] = [
         RGBAColor(0.118, 0.118, 0.118), // black       #1e1e1e

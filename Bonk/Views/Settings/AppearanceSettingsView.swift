@@ -25,27 +25,6 @@ struct AppearanceSettingsView: View {
                     }
                 }
                 .padding(.vertical, 4)
-
-                if themeManager.activeThemeID == "transparent" {
-                    HStack {
-                        Text(i18n.t(.opacity))
-                        Spacer()
-                        Text("10%").font(.caption.monospaced()).foregroundStyle(.tertiary)
-                        Slider(
-                            value: Binding(
-                                get: { themeManager.opacity },
-                                set: { themeManager.setOpacity($0) }
-                            ),
-                            in: 0.1 ... 1.0,
-                            step: 0.05
-                        )
-                        .frame(width: 160)
-                        Text("100%").font(.caption.monospaced()).foregroundStyle(.tertiary)
-                        Text("\(Int(themeManager.opacity * 100))%")
-                            .font(.caption.monospaced())
-                            .frame(width: 36, alignment: .trailing)
-                    }
-                }
             }
 
             // Extra themes
@@ -82,18 +61,38 @@ struct AppearanceSettingsView: View {
                 HStack {
                     Text(i18n.t(.fontSize))
                     Spacer()
-                    Text("10").font(.caption.monospaced()).foregroundStyle(.tertiary)
-                    Slider(value: $preferences.fontSize, in: 10 ... 24, step: 1).frame(width: 160)
-                        .onChange(of: preferences.fontSize) { _, newValue in
-                            NotificationCenter.default.post(
-                                name: .terminalFontDidChange,
-                                object: preferences.fontFamily as NSString,
-                                userInfo: ["fontSize": newValue]
-                            )
+                    // Stepper control
+                    HStack(spacing: 8) {
+                        Button {
+                            if preferences.fontSize > 10 {
+                                preferences.fontSize -= 1
+                                sendFontChange()
+                            }
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundStyle(preferences.fontSize > 10 ? .secondary : .tertiary)
                         }
-                    Text("24").font(.caption.monospaced()).foregroundStyle(.tertiary)
-                    Text("\(Int(preferences.fontSize))pt")
-                        .font(.caption.monospaced()).frame(width: 32, alignment: .trailing)
+                        .buttonStyle(.plain)
+                        .disabled(preferences.fontSize <= 10)
+
+                        Text("\(Int(preferences.fontSize))pt")
+                            .font(.caption.monospaced())
+                            .frame(width: 36, alignment: .center)
+
+                        Button {
+                            if preferences.fontSize < 24 {
+                                preferences.fontSize += 1
+                                sendFontChange()
+                            }
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundStyle(preferences.fontSize < 24 ? .secondary : .tertiary)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(preferences.fontSize >= 24)
+                    }
                 }
             }
         }
@@ -193,5 +192,13 @@ struct AppearanceSettingsView: View {
 
     private func strip(_ color: Color) -> some View {
         RoundedRectangle(cornerRadius: 1, style: .continuous).fill(color).frame(width: 16, height: 3)
+    }
+
+    private func sendFontChange() {
+        NotificationCenter.default.post(
+            name: .terminalFontDidChange,
+            object: preferences.fontFamily as NSString,
+            userInfo: ["fontSize": preferences.fontSize]
+        )
     }
 }

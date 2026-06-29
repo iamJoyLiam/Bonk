@@ -16,6 +16,9 @@ enum ThemeRegistry {
     private static let builtin: [TerminalTheme] = [
         LightTheme(),
         DarkTheme(),
+        SolarizedDarkTheme(),
+        NordTheme(),
+        DraculaTheme(),
     ]
 
     // MARK: - Plugin Themes

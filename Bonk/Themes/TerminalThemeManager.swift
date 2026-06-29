@@ -25,10 +25,6 @@ final class TerminalThemeManager: ObservableObject {
         willSet { objectWillChange.send() }
     }
 
-    /// Opacity for the transparent theme (0.1 - 1.0).
-    @AppStorage("terminalOpacity")
-    var opacity: Double = 0.85
-
     /// Cursor style: "block", "underline", "bar".
     @AppStorage("terminalCursorStyle")
     var cursorStyle: String = "block"
@@ -70,14 +66,6 @@ final class TerminalThemeManager: ObservableObject {
         activeThemeID = id
         syncAppChrome(id: id)
         notifyChange()
-    }
-
-    /// Update opacity for the transparent theme.
-    func setOpacity(_ value: Double) {
-        opacity = max(0.1, min(1.0, value))
-        if activeThemeID == "transparent" {
-            notifyChange()
-        }
     }
 
     /// Update cursor style and notify immediately.

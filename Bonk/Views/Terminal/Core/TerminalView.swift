@@ -123,7 +123,6 @@ struct TerminalTabContentView: View {
     }
 
     private var terminalBackground: SwiftUI.Color {
-        if colorScheme.id == "transparent" { return .clear }
-        return SwiftUI.Color(nsColor: .controlBackgroundColor)
+        SwiftUI.Color(nsColor: .controlBackgroundColor)
     }
 }

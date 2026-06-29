@@ -81,8 +81,7 @@ import SwiftUI
         }
 
         private var terminalBackground: SwiftUI.Color {
-            if colorScheme.id == "transparent" { return .clear }
-            return SwiftUI.Color(nsColor: .controlBackgroundColor)
+            SwiftUI.Color(nsColor: .controlBackgroundColor)
         }
 
         private var connectingView: some View {
@@ -269,6 +268,8 @@ import SwiftUI
             if terminal.terminal.options.scrollback != scrollbackLines {
                 terminal.terminal.changeScrollback(scrollbackLines)
             }
+            // Update color scheme when theme changes
+            applyColorScheme(to: terminal, scheme: colorScheme)
         }
     }
 
