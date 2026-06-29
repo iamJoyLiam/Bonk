@@ -191,7 +191,7 @@ import SwiftUI
             ]
             NSLayoutConstraint.activate(cached.constraints)
 
-            Task { @MainActor in try? await Task.sleep(for: .milliseconds(100)); 
+            Task { @MainActor in try? await Task.sleep(for: .milliseconds(100))
                 nsView.window?.makeFirstResponder(cached.view)
             }
         }
@@ -254,7 +254,7 @@ import SwiftUI
             NSLayoutConstraint.activate(cached.constraints)
             context.coordinator.lastTabID = tabID
 
-            Task { @MainActor in try? await Task.sleep(for: .milliseconds(200)); 
+            Task { @MainActor in try? await Task.sleep(for: .milliseconds(200))
                 containerView.window?.makeFirstResponder(cached.view)
             }
         }

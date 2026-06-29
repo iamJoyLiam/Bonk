@@ -50,6 +50,9 @@ struct ContentView: View {
                 sessionManager.setModelContext(modelContext)
                 AIProviderStore.shared.setModelContext(modelContext)
                 sessionManager.broadcastManager = workspace.broadcastManager
+                TerminalViewCache.shared.configureMemoryPressure {
+                    sessionManager.activeTabID
+                }
             }
             .alert(i18n.t(.connectionError), isPresented: $sessionManager.showError) {
                 Button(i18n.t(.ok)) {}

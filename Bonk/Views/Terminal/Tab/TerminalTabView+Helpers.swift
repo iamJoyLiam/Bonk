@@ -40,7 +40,7 @@ extension TerminalTabView {
     /// Copy selected text from terminal.
     func copySelectedText() {
         NotificationCenter.default.post(name: .requestTerminalSelection, object: nil)
-        Task { @MainActor in try? await Task.sleep(for: .milliseconds(100)); 
+        Task { @MainActor in try? await Task.sleep(for: .milliseconds(100))
             if let selectedText = NSPasteboard.general.string(forType: .string), !selectedText.isEmpty {
                 // Text already copied by SwiftTerm's clipboard handler
             }
@@ -76,7 +76,7 @@ extension TerminalTabView {
 
     /// Focus the terminal view.
     func focusTerminal() {
-        Task { @MainActor in try? await Task.sleep(for: .milliseconds(100)); 
+        Task { @MainActor in try? await Task.sleep(for: .milliseconds(100))
             NotificationCenter.default.post(name: .focusTerminal, object: nil)
         }
     }

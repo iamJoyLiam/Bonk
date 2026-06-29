@@ -213,7 +213,7 @@ struct AddHostSheet: View {
         guard let existing = existingHost else {
             port = String(defaultPort)
             // Pre-fill with initial host if provided
-            if let initialHost = initialHost {
+            if let initialHost {
                 name = initialHost
                 host = initialHost
             }

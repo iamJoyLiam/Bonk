@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os.log
 import SwiftTerm
 #if os(macOS)
     import AppKit
@@ -48,7 +49,33 @@ final class TerminalViewCache {
 
     private init() {
         // Memory pressure handling is done via evictIfNeeded during store operations
+        #if os(macOS)
+            setupMemoryPressureHandler()
+        #endif
     }
+
+    #if os(macOS)
+        private var activeTabIDProvider: (() -> UUID?)?
+        private var memoryPressureSource: DispatchSourceMemoryPressure?
+
+        /// Configure memory pressure handler with active tab provider.
+        func configureMemoryPressure(activeTabIDProvider: @escaping () -> UUID?) {
+            self.activeTabIDProvider = activeTabIDProvider
+            setupMemoryPressureHandler()
+        }
+
+        private func setupMemoryPressureHandler() {
+            let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
+            source.setEventHandler { [weak self] in
+                guard let self else { return }
+                let activeTabID = self.activeTabIDProvider?()
+                self.evictAllExceptActive(activeTabID: activeTabID)
+                os_log(.info, "[Cache] Memory pressure: evicted all except active tab")
+            }
+            source.resume()
+            self.memoryPressureSource = source
+        }
+    #endif
 
     /// Store a terminal view for a tab.
     func store(tabID: UUID, view: SwiftTerm.TerminalView, coordinator: NSObject) {

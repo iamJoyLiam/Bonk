@@ -5,8 +5,8 @@
 //  Quick connect sheet with search and recent connections.
 //
 
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct QuickConnectView: View {
     @Environment(I18n.self) var i18n
@@ -34,7 +34,7 @@ struct QuickConnectView: View {
         }
         return allHosts.filter {
             $0.name.localizedCaseInsensitiveContains(searchText) ||
-            $0.host.localizedCaseInsensitiveContains(searchText)
+                $0.host.localizedCaseInsensitiveContains(searchText)
         }
     }
 
@@ -113,8 +113,8 @@ struct QuickConnectView: View {
                     }
 
                     // Recent hosts (when no search)
-                    if searchText.isEmpty && !recentHosts.isEmpty {
-                        SectionHeaderView(title: i18n.t(.recent))
+                    if searchText.isEmpty, !recentHosts.isEmpty {
+                        sectionHeaderView(title: i18n.t(.recent))
                         ForEach(recentHosts) { host in
                             hostRow(host, isSelected: false)
                                 .id(host.id)
@@ -126,7 +126,7 @@ struct QuickConnectView: View {
 
                     // All hosts (when no search)
                     if searchText.isEmpty {
-                        SectionHeaderView(title: i18n.t(.allHosts))
+                        sectionHeaderView(title: i18n.t(.allHosts))
                         ForEach(allHosts) { host in
                             hostRow(host, isSelected: false)
                                 .id(host.id)
@@ -204,7 +204,7 @@ struct QuickConnectView: View {
 
     // MARK: - Section Header
 
-    private func SectionHeaderView(title: String) -> some View {
+    private func sectionHeaderView(title: String) -> some View {
         HStack {
             Text(title)
                 .font(.caption)

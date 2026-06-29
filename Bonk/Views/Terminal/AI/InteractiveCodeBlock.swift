@@ -58,7 +58,7 @@ struct InteractiveCodeBlock: View {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(code, forType: .string)
                     copied = true
-                    Task { @MainActor in try? await Task.sleep(for: .seconds(2));  copied = false }
+                    Task { @MainActor in try? await Task.sleep(for: .seconds(2)); copied = false }
                 } label: {
                     Image(systemName: copied ? "checkmark" : "doc.on.doc")
                         .font(.system(size: 10))
