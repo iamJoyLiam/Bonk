@@ -26,6 +26,7 @@ struct MenuSplitVerticalKey: FocusedValueKey { typealias Value = @MainActor () -
 struct MenuClosePaneKey: FocusedValueKey { typealias Value = @MainActor () -> Void }
 struct MenuFindKey: FocusedValueKey { typealias Value = @MainActor () -> Void }
 struct MenuQuickConnectKey: FocusedValueKey { typealias Value = @MainActor () -> Void }
+struct MenuToggleAITerminalKey: FocusedValueKey { typealias Value = @MainActor () -> Void }
 
 // MARK: - FocusedValues Extension
 
@@ -113,5 +114,10 @@ extension FocusedValues {
     var menuQuickConnect: MenuQuickConnectKey.Value? {
         get { self[MenuQuickConnectKey.self] }
         set { self[MenuQuickConnectKey.self] = newValue }
+    }
+
+    var menuToggleAITerminal: MenuToggleAITerminalKey.Value? {
+        get { self[MenuToggleAITerminalKey.self] }
+        set { self[MenuToggleAITerminalKey.self] = newValue }
     }
 }

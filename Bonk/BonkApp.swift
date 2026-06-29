@@ -7,6 +7,7 @@ import SwiftUI
 struct BonkApp: App {
     @State private var i18n = I18n()
     @State private var updater = UpdaterManager()
+    @State private var shortcutManager = ShortcutManager.shared
 
     init() {
         let saved = UserDefaults.standard.string(forKey: "app_language") ?? "system"
@@ -59,11 +60,11 @@ struct BonkApp: App {
                 }
                 .keyboardShortcut("u", modifiers: [.command, .option])
             }
-            FileMenuCommands(i18n: i18n)
-            EditMenuCommands(i18n: i18n)
-            ViewMenuCommands(i18n: i18n)
-            ConnectionMenuCommands(i18n: i18n)
-            AIMenuCommands(i18n: i18n)
+            FileMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
+            EditMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
+            ViewMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
+            ConnectionMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
+            AIMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
         }
         #if os(macOS)
             Settings {
@@ -89,41 +90,58 @@ struct BonkApp: App {
 #if os(macOS)
     private struct FileMenuCommands: Commands {
         let i18n: I18n
+        let shortcutManager: ShortcutManager
         @FocusedValue(\.menuNewTerminal) private var newTerminal
         @FocusedValue(\.menuCloseTab) private var closeTab
         var body: some Commands {
+            let newTerminalShortcut = shortcutManager.shortcut(for: .newTerminal)
+            let closeTabShortcut = shortcutManager.shortcut(for: .closeTab)
             CommandGroup(after: .newItem) {
-                Button(i18n.t(.newTerminal)) { newTerminal?() }.keyboardShortcut("t", modifiers: .command)
-                Button(i18n.t(.closeTab)) { closeTab?() }.keyboardShortcut("w", modifiers: .command)
+                Button(i18n.t(.newTerminal)) { newTerminal?() }
+                    .keyboardShortcut(newTerminalShortcut.key, modifiers: newTerminalShortcut.modifiers)
+                Button(i18n.t(.closeTab)) { closeTab?() }
+                    .keyboardShortcut(closeTabShortcut.key, modifiers: closeTabShortcut.modifiers)
             }
         }
     }
 
     private struct EditMenuCommands: Commands {
         let i18n: I18n
+        let shortcutManager: ShortcutManager
         @FocusedValue(\.menuFind) private var find
         var body: some Commands {
+            let findShortcut = shortcutManager.shortcut(for: .find)
             CommandGroup(after: .pasteboard) {
                 Divider()
-                Button(i18n.t(.find)) { find?() }.keyboardShortcut("f", modifiers: .command)
+                Button(i18n.t(.find)) { find?() }
+                    .keyboardShortcut(findShortcut.key, modifiers: findShortcut.modifiers)
             }
         }
     }
 
     private struct ViewMenuCommands: Commands {
         let i18n: I18n
+        let shortcutManager: ShortcutManager
         @FocusedValue(\.menuSplitHorizontal) private var splitHorizontal
         @FocusedValue(\.menuSplitVertical) private var splitVertical
         @FocusedValue(\.menuClosePane) private var closePane
         @FocusedValue(\.menuToggleSFTP) private var toggleSFTP
         @FocusedValue(\.menuChangeTheme) private var changeTheme
         var body: some Commands {
+            let splitHorizontalShortcut = shortcutManager.shortcut(for: .splitHorizontal)
+            let splitVerticalShortcut = shortcutManager.shortcut(for: .splitVertical)
+            let closePaneShortcut = shortcutManager.shortcut(for: .closePane)
+            let sftpBrowserShortcut = shortcutManager.shortcut(for: .sftpBrowser)
             CommandMenu(i18n.t(.menuView)) {
-                Button(i18n.t(.splitHorizontal)) { splitHorizontal?() }.keyboardShortcut("d", modifiers: .command)
-                Button(i18n.t(.splitVertical)) { splitVertical?() }.keyboardShortcut("d", modifiers: [.command, .shift])
-                Button(i18n.t(.closePane)) { closePane?() }.keyboardShortcut("w", modifiers: [.command, .shift])
+                Button(i18n.t(.splitHorizontal)) { splitHorizontal?() }
+                    .keyboardShortcut(splitHorizontalShortcut.key, modifiers: splitHorizontalShortcut.modifiers)
+                Button(i18n.t(.splitVertical)) { splitVertical?() }
+                    .keyboardShortcut(splitVerticalShortcut.key, modifiers: splitVerticalShortcut.modifiers)
+                Button(i18n.t(.closePane)) { closePane?() }
+                    .keyboardShortcut(closePaneShortcut.key, modifiers: closePaneShortcut.modifiers)
                 Divider()
-                Button(i18n.t(.sftpBrowser)) { toggleSFTP?() }.keyboardShortcut("s", modifiers: [.command, .shift])
+                Button(i18n.t(.sftpBrowser)) { toggleSFTP?() }
+                    .keyboardShortcut(sftpBrowserShortcut.key, modifiers: sftpBrowserShortcut.modifiers)
                 Divider()
                 Menu(i18n.t(.theme)) {
                     Button(i18n.t(.system)) { changeTheme?("system") }
@@ -135,6 +153,7 @@ struct BonkApp: App {
 
     private struct ConnectionMenuCommands: Commands {
         let i18n: I18n
+        let shortcutManager: ShortcutManager
         @FocusedValue(\.menuConnect) private var connect
         @FocusedValue(\.menuDisconnect) private var disconnect
         @FocusedValue(\.menuReconnect) private var reconnect
@@ -143,10 +162,12 @@ struct BonkApp: App {
         @FocusedValue(\.menuShowPortForwarding) private var showPortForwarding
         @FocusedValue(\.menuShowSerialPort) private var showSerialPort
         var body: some Commands {
+            let reconnectShortcut = shortcutManager.shortcut(for: .reconnect)
             CommandMenu(i18n.t(.menuConnection)) {
                 Button(i18n.t(.connect)) { connect?() }
                 Button(i18n.t(.disconnect)) { disconnect?() }
-                Button(i18n.t(.reconnect)) { reconnect?() }.keyboardShortcut("r", modifiers: .command)
+                Button(i18n.t(.reconnect)) { reconnect?() }
+                    .keyboardShortcut(reconnectShortcut.key, modifiers: reconnectShortcut.modifiers)
                 Divider()
                 Button(i18n.t(.snippets)) { showSnippets?() }
                 Button(i18n.t(.commandHistory)) { showCommandHistory?() }
@@ -159,10 +180,17 @@ struct BonkApp: App {
 
     private struct AIMenuCommands: Commands {
         let i18n: I18n
+        let shortcutManager: ShortcutManager
         @FocusedValue(\.menuToggleAI) private var toggleAI
+        @FocusedValue(\.menuToggleAITerminal) private var toggleAITerminal
         var body: some Commands {
+            let aiAssistantShortcut = shortcutManager.shortcut(for: .aiAssistant)
+            let aiChatSidebarShortcut = shortcutManager.shortcut(for: .aiChatSidebar)
             CommandMenu(i18n.t(.menuAI)) {
-                Button(i18n.t(.aiAssistant)) { toggleAI?() }.keyboardShortcut("k", modifiers: .command)
+                Button(i18n.t(.aiAssistant)) { toggleAITerminal?() }
+                    .keyboardShortcut(aiAssistantShortcut.key, modifiers: aiAssistantShortcut.modifiers)
+                Button(i18n.t(.aiChatSidebar)) { toggleAI?() }
+                    .keyboardShortcut(aiChatSidebarShortcut.key, modifiers: aiChatSidebarShortcut.modifiers)
             }
         }
     }

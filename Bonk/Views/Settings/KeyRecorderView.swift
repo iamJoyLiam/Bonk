@@ -197,13 +197,18 @@ struct KeyboardShortcut: Codable, Equatable, Hashable {
 enum ShortcutAction: String, CaseIterable, Identifiable {
     case newTerminal
     case closeTab
+    case closePane
     case nextTab
     case previousTab
     case find
     case settings
     case reconnect
     case clearTerminal
+    case splitHorizontal
+    case splitVertical
+    case sftpBrowser
     case aiAssistant
+    case aiChatSidebar
 
     var id: String {
         rawValue
@@ -214,13 +219,18 @@ enum ShortcutAction: String, CaseIterable, Identifiable {
         switch self {
         case .newTerminal: KeyboardShortcut(keyCode: 17, modifiers: .command) // Cmd+T
         case .closeTab: KeyboardShortcut(keyCode: 13, modifiers: .command) // Cmd+W
+        case .closePane: KeyboardShortcut(keyCode: 13, modifiers: [.command, .shift]) // Cmd+Shift+W
         case .nextTab: KeyboardShortcut(keyCode: 48, modifiers: .command) // Cmd+Tab
         case .previousTab: KeyboardShortcut(keyCode: 48, modifiers: [.command, .shift]) // Cmd+Shift+Tab
         case .find: KeyboardShortcut(keyCode: 3, modifiers: .command) // Cmd+F
         case .settings: KeyboardShortcut(keyCode: 43, modifiers: .command) // Cmd+,
         case .reconnect: KeyboardShortcut(keyCode: 15, modifiers: [.command, .shift]) // Cmd+Shift+R
         case .clearTerminal: KeyboardShortcut(keyCode: 40, modifiers: .command) // Cmd+K
+        case .splitHorizontal: KeyboardShortcut(keyCode: 2, modifiers: .command) // Cmd+D
+        case .splitVertical: KeyboardShortcut(keyCode: 2, modifiers: [.command, .shift]) // Cmd+Shift+D
+        case .sftpBrowser: KeyboardShortcut(keyCode: 1, modifiers: [.command, .shift]) // Cmd+Shift+S
         case .aiAssistant: KeyboardShortcut(keyCode: 40, modifiers: .command) // Cmd+K
+        case .aiChatSidebar: KeyboardShortcut(keyCode: 40, modifiers: [.command, .shift]) // Cmd+Shift+K
         }
     }
 
@@ -229,13 +239,18 @@ enum ShortcutAction: String, CaseIterable, Identifiable {
         switch self {
         case .newTerminal: "New Terminal"
         case .closeTab: "Close Tab"
+        case .closePane: "Close Pane"
         case .nextTab: "Next Tab"
         case .previousTab: "Previous Tab"
         case .find: "Find"
         case .settings: "Settings"
         case .reconnect: "Reconnect"
         case .clearTerminal: "Clear Terminal"
-        case .aiAssistant: "AI Assistant"
+        case .splitHorizontal: "Split Horizontal"
+        case .splitVertical: "Split Vertical"
+        case .sftpBrowser: "SFTP Browser"
+        case .aiAssistant: "AI Assistant (Terminal)"
+        case .aiChatSidebar: "AI Chat Sidebar"
         }
     }
 }

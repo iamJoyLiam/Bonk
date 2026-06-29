@@ -81,6 +81,7 @@ enum LKey: String, CaseIterable {
 
     // AI
     case aiAssistant = "ai_assistant"
+    case aiChatSidebar = "ai_chat_sidebar"
     case terminalAssistant = "terminal_assistant"
     case aiThinking = "ai_thinking"
     case aiPaste = "ai_paste"

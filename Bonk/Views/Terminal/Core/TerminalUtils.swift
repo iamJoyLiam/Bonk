@@ -15,6 +15,7 @@ extension Notification.Name {
     static let terminalCursorDidChange = Notification.Name("com.bonk.terminalCursorDidChange")
     static let terminalFontDidChange = Notification.Name("com.bonk.terminalFontDidChange")
     static let toggleAIChat = Notification.Name("com.bonk.toggleAIChat")
+    static let toggleSFTP = Notification.Name("com.bonk.toggleSFTP")
     static let requestTerminalSelection = Notification.Name("com.bonk.requestTerminalSelection")
     static let terminalSelectionResponse = Notification.Name("com.bonk.terminalSelectionResponse")
     static let selectAllInTerminal = Notification.Name("com.bonk.selectAllInTerminal")

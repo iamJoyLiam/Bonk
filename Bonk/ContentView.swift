@@ -59,41 +59,15 @@ struct ContentView: View {
             } message: {
                 Text(sessionManager.lastError ?? i18n.t(.unknownError))
             }
-            // Menu actions via FocusedValue — synchronous
-            .focusedSceneValue(\.menuCloseTab) {
-                if let id = sessionManager.activeTabID { Task { await sessionManager.closeTab(id) } }
-            }
-            .focusedSceneValue(\.menuNewTerminal) {
-                showAddHostSheet = true
-            }
-
-            .focusedSceneValue(\.menuDisconnect) {
-                if let id = sessionManager.activeTabID { Task { await sessionManager.disconnectTab(id) } }
-            }
-            .focusedSceneValue(\.menuReconnect) {
-                if let id = sessionManager.activeTabID { Task { await sessionManager.reconnectTab(id) } }
-            }
-            .focusedSceneValue(\.menuToggleSFTP) { toggleSFTPWindow() }
-            .focusedSceneValue(\.menuToggleAI) { workspace.toggleRightPanel(.ai) }
-            .focusedSceneValue(\.menuShowSerialPort) { workspace.isSerialPortPresented = true }
-            .focusedSceneValue(\.menuShowSnippets) {
-                workspace.snippetsHistoryTab = .snippets
-                workspace.activeRightPanel = .snippetsHistory
-            }
-            .focusedSceneValue(\.menuShowPortForwarding) { workspace.isPortForwardingPresented = true }
-            .focusedSceneValue(\.menuShowCommandHistory) {
-                workspace.snippetsHistoryTab = .history
-                workspace.activeRightPanel = .snippetsHistory
-            }
-            .focusedSceneValue(\.menuChangeTheme) { themeID in themeManager.setActive(themeID) }
-            .focusedSceneValue(\.menuFind) {
-                appStore.dispatch(.toggleSearch)
-                showTerminalSearch = appStore.uiState.showSearch
-            }
-            .focusedSceneValue(\.menuSplitHorizontal) { sessionManager.splitHorizontal() }
-            .focusedSceneValue(\.menuSplitVertical) { sessionManager.splitVertical() }
-            .focusedSceneValue(\.menuClosePane) { sessionManager.closePane() }
-            .focusedSceneValue(\.menuQuickConnect) { showQuickConnect = true }
+            .modifier(MenuActionsModifier(
+                sessionManager: sessionManager,
+                workspace: workspace,
+                appStore: appStore,
+                themeManager: themeManager,
+                showAddHostSheet: $showAddHostSheet,
+                showTerminalSearch: $showTerminalSearch,
+                showQuickConnect: $showQuickConnect
+            ))
     }
 
     // MARK: - macOS Layout (2-column NavigationSplitView + .inspector)
@@ -173,6 +147,9 @@ struct ContentView: View {
             // SFTP independent window
             .onChange(of: workspace.isSFTPWindowOpen) { _, isOpen in
                 if isOpen { openSFTPWindow() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .toggleSFTP)) { _ in
+                toggleSFTPWindow()
             }
             // Sheets
             .sheet(isPresented: $showQuickConnect) {
@@ -289,6 +266,91 @@ struct ContentView: View {
             }
     }
 }
+
+// MARK: - Menu Actions Modifier
+
+#if os(macOS)
+    private struct MenuActionsModifier: ViewModifier {
+        let sessionManager: SessionManager
+        let workspace: WorkspaceManager
+        let appStore: AppStore
+        let themeManager: TerminalThemeManager
+        @Binding var showAddHostSheet: Bool
+        @Binding var showTerminalSearch: Bool
+        @Binding var showQuickConnect: Bool
+
+        func body(content: Content) -> some View {
+            content
+                .modifier(SessionMenuActions(sessionManager: sessionManager, showAddHostSheet: $showAddHostSheet))
+                .modifier(WorkspaceMenuActions(workspace: workspace, showQuickConnect: $showQuickConnect))
+                .modifier(AppMenuActions(appStore: appStore, themeManager: themeManager, showTerminalSearch: $showTerminalSearch))
+        }
+    }
+
+    private struct SessionMenuActions: ViewModifier {
+        let sessionManager: SessionManager
+        @Binding var showAddHostSheet: Bool
+
+        func body(content: Content) -> some View {
+            content
+                .focusedSceneValue(\.menuCloseTab) {
+                    if let id = sessionManager.activeTabID { Task { await sessionManager.closeTab(id) } }
+                }
+                .focusedSceneValue(\.menuNewTerminal) { showAddHostSheet = true }
+                .focusedSceneValue(\.menuDisconnect) {
+                    if let id = sessionManager.activeTabID { Task { await sessionManager.disconnectTab(id) } }
+                }
+                .focusedSceneValue(\.menuReconnect) {
+                    if let id = sessionManager.activeTabID { Task { await sessionManager.reconnectTab(id) } }
+                }
+                .focusedSceneValue(\.menuSplitHorizontal) { sessionManager.splitHorizontal() }
+                .focusedSceneValue(\.menuSplitVertical) { sessionManager.splitVertical() }
+                .focusedSceneValue(\.menuClosePane) { sessionManager.closePane() }
+        }
+    }
+
+    private struct WorkspaceMenuActions: ViewModifier {
+        let workspace: WorkspaceManager
+        @Binding var showQuickConnect: Bool
+
+        func body(content: Content) -> some View {
+            content
+                .focusedSceneValue(\.menuToggleSFTP) {
+                    NotificationCenter.default.post(name: .toggleSFTP, object: nil)
+                }
+                .focusedSceneValue(\.menuToggleAI) { workspace.toggleRightPanel(.ai) }
+                .focusedSceneValue(\.menuToggleAITerminal) {
+                    NotificationCenter.default.post(name: .toggleAIChat, object: nil)
+                }
+                .focusedSceneValue(\.menuShowSerialPort) { workspace.isSerialPortPresented = true }
+                .focusedSceneValue(\.menuShowSnippets) {
+                    workspace.snippetsHistoryTab = .snippets
+                    workspace.activeRightPanel = .snippetsHistory
+                }
+                .focusedSceneValue(\.menuShowPortForwarding) { workspace.isPortForwardingPresented = true }
+                .focusedSceneValue(\.menuShowCommandHistory) {
+                    workspace.snippetsHistoryTab = .history
+                    workspace.activeRightPanel = .snippetsHistory
+                }
+                .focusedSceneValue(\.menuQuickConnect) { showQuickConnect = true }
+        }
+    }
+
+    private struct AppMenuActions: ViewModifier {
+        let appStore: AppStore
+        let themeManager: TerminalThemeManager
+        @Binding var showTerminalSearch: Bool
+
+        func body(content: Content) -> some View {
+            content
+                .focusedSceneValue(\.menuChangeTheme) { themeID in themeManager.setActive(themeID) }
+                .focusedSceneValue(\.menuFind) {
+                    appStore.dispatch(.toggleSearch)
+                    showTerminalSearch = appStore.uiState.showSearch
+                }
+        }
+    }
+#endif
 
 // MARK: - SFTP Window Delegate
 
