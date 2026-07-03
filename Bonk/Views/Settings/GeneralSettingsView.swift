@@ -31,6 +31,26 @@ struct GeneralSettingsView: View {
                     get: { preferences.sftpOverwriteAlways ?? false },
                     set: { preferences.sftpOverwriteAlways = $0 }
                 ))
+
+                HStack {
+                    Text(i18n.t(.sftpDefaultLocalPath))
+                    Spacer()
+                    Text(preferences.sftpDefaultLocalPath ?? "~/Downloads")
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 200)
+                    Button(i18n.t(.browse)) {
+                        let panel = NSOpenPanel()
+                        panel.canChooseDirectories = true
+                        panel.canChooseFiles = false
+                        panel.begin { response in
+                            if response == .OK, let url = panel.url {
+                                preferences.sftpDefaultLocalPath = url.path(percentEncoded: false)
+                            }
+                        }
+                    }
+                }
             }
         }
         .formStyle(.grouped)

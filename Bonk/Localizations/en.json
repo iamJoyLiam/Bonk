@@ -313,6 +313,8 @@
   "split_down": "Split Down",
   "drop_to_split": "Drop to split",
   "sftp_overwrite_always": "Always overwrite existing files",
+  "sftp_default_local_path": "Default Local Directory",
+  "browse": "Browse...",
   "overwriting_to": "Overwriting %@ to %@",
   "serial_port": "Serial Port",
   "scan_ports": "Scan Ports",

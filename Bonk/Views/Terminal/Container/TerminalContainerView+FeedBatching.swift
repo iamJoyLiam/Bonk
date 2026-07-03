@@ -33,21 +33,20 @@ import SwiftTerm
                         return (buf.utf8.count >= Self.batchThreshold, endsCR)
                     }
                     if shouldFlush {
-                        flushBatch()
+                        flushBatch(onBytesProcessed: onBytesProcessed)
                     } else if !endsCR {
                         // Normal path: schedule time-based flush.
                         // When buffer ends with bare CR, skip the flush so the
                         // CR and its replacement text stay in the same batch —
                         // prevents garbled output from programs like Docker
                         // Compose that use \r for in-place line updates.
-                        scheduleFlush()
+                        scheduleFlush(onBytesProcessed: onBytesProcessed)
                     }
-                    onBytesProcessed?(byteCount)
                 }
             }
         }
 
-        func scheduleFlush() {
+        func scheduleFlush(onBytesProcessed: (@Sendable (Int) -> Void)? = nil) {
             let alreadyScheduled = batchFlushScheduled.withLock { val -> Bool in
                 if !val { val = true; return false }
                 return true
@@ -55,21 +54,24 @@ import SwiftTerm
             guard !alreadyScheduled else { return }
             Task { [weak self] in
                 try? await Task.sleep(for: .milliseconds(16))
-                self?.flushBatch()
+                self?.flushBatch(onBytesProcessed: onBytesProcessed)
             }
         }
 
-        func flushBatch() {
+        func flushBatch(onBytesProcessed: (@Sendable (Int) -> Void)? = nil) {
             batchFlushScheduled.withLock { $0 = false }
-            let text = batchBuffer.withLock { buf -> String in
+            let (text, byteCount) = batchBuffer.withLock { buf -> (String, Int) in
                 let flushedText = buf
+                let count = flushedText.utf8.count
                 buf = ""
-                return flushedText
+                return (flushedText, count)
             }
             guard !text.isEmpty else { return }
 
             Task { @MainActor [weak self] in
                 self?.terminalView?.feed(text: text)
+                // Signal backpressure AFTER terminal actually processes the text
+                onBytesProcessed?(byteCount)
             }
         }
     }

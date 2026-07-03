@@ -215,6 +215,14 @@ import SwiftUI
             let terminal = SwiftTerm.TerminalView(frame: .zero, font: font)
             terminal.configureNativeColors()
 
+            // 滚动条：初始隐藏，滚动时显示，使用小尺寸
+            for subview in terminal.subviews {
+                if let scroller = subview as? NSScroller {
+                    scroller.controlSize = .small
+                    scroller.alphaValue = 0.0
+                }
+            }
+
             applyColorScheme(to: terminal, scheme: colorScheme)
             terminal.terminal.changeScrollback(scrollbackLines)
             terminal.terminal.setCursorStyle(mapCursorStyle(cursorStyle, blink: cursorBlink))

@@ -95,29 +95,21 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
     /// Yield output to all consumers (buffer + live streams).
     private func yieldOutput(_ text: String) {
-        // Truncate oversized chunks to prevent memory spikes
-        let chunk: String
-        let maxBytes = Self.maxChunkBytes
-        if text.utf8.count > maxBytes {
-            let end = text.index(text.startIndex, offsetBy: maxBytes, limitedBy: text.endIndex) ?? text.endIndex
-            chunk = String(text[..<end])
-        } else {
-            chunk = text
-        }
+        // text is already chunked to safe size by chunkByteBuffer()
 
         // Process through OSC 7 detector for CWD tracking
-        osc7Detector.process(chunk)
+        osc7Detector.process(text)
 
         // Notify one-shot observers (getCWD etc.)
         let observers = outputObservers.withLock { $0 }
         for (_, observer) in observers {
-            observer(chunk)
+            observer(text)
         }
 
         // Add to buffer with byte-size limit
-        let chunkBytes = chunk.utf8.count
+        let chunkBytes = text.utf8.count
         outputBuffer.withLockedValue { buf in
-            buf.append(chunk)
+            buf.append(text)
             bufferByteCount.withLockedValue { $0 += chunkBytes }
             // Trim by line count
             if buf.count > Self.maxBufferSize {
@@ -136,7 +128,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         // Skip consumers whose pending bytes exceed the high watermark;
         // they will resume once the Coordinator calls decrementPendingBytes().
         let consumers = liveContinuations.withLock { $0 }
-        let chunkSize = chunk.utf8.count
+        let chunkSize = text.utf8.count
         for (id, cont) in consumers {
             let pending = pendingBytes.withLock { dict in
                 dict[id] ?? 0
@@ -145,7 +137,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                 continue // Consumer is too far behind, skip this chunk
             }
             pendingBytes.withLock { $0[id, default: 0] += chunkSize }
-            cont.yield(chunk)
+            cont.yield(text)
         }
     }
 
@@ -178,11 +170,13 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                                 if Task.isCancelled { break }
                                 switch data {
                                 case let .stdout(buf):
-                                    let output = String(buffer: buf)
-                                    if !output.isEmpty { self.yieldOutput(output) }
+                                    for chunk in Self.chunkByteBuffer(buf) {
+                                        self.yieldOutput(chunk)
+                                    }
                                 case let .stderr(buf):
-                                    let errorOutput = String(buffer: buf)
-                                    if !errorOutput.isEmpty { self.yieldOutput(errorOutput) }
+                                    for chunk in Self.chunkByteBuffer(buf) {
+                                        self.yieldOutput(chunk)
+                                    }
                                 }
                             }
                         } catch {
@@ -317,6 +311,42 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         _ = outputObservers.withLock { $0.removeAll() }
         liveContinuations.withLock { $0 }.values.forEach { $0.finish() }
         sessionEndContinuation.finish()
+    }
+
+    // MARK: - ByteBuffer Chunking
+
+    /// Split a ByteBuffer into UTF-8-safe string chunks of at most maxChunkBytes.
+    /// Respects UTF-8 code unit boundaries to avoid splitting multi-byte characters.
+    private static func chunkByteBuffer(_ buffer: ByteBuffer) -> [String] {
+        guard buffer.readableBytes > maxChunkBytes else {
+            let str = String(buffer: buffer)
+            return str.isEmpty ? [] : [str]
+        }
+
+        var results: [String] = []
+        var offset = 0
+        let totalBytes = buffer.readableBytes
+
+        while offset < totalBytes {
+            var end = min(offset + maxChunkBytes, totalBytes)
+
+            // Find safe UTF-8 boundary: backtrack until we find a leading byte
+            // (not a continuation byte 10xxxxxx)
+            if end < totalBytes {
+                while end > offset {
+                    if let byte = buffer.getInteger(at: end, as: UInt8.self),
+                       byte & 0xC0 != 0x80 { break }
+                    end -= 1
+                }
+            }
+
+            if let slice = buffer.getSlice(at: offset, length: end - offset) {
+                let str = String(buffer: slice)
+                if !str.isEmpty { results.append(str) }
+            }
+            offset = end
+        }
+        return results
     }
 
     // MARK: - OSC/DCS Sequence Filter

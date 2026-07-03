@@ -33,6 +33,7 @@ final class UserPreferences {
     var checkForUpdates: Bool
     /// SFTP — optional for backward compatibility
     var sftpOverwriteAlways: Bool?
+    var sftpDefaultLocalPath: String?
 
     init(
         fontSize: Double = 14,
@@ -49,7 +50,8 @@ final class UserPreferences {
         hostAutoFillClear: Bool = true,
         aiDirectSubmit: Bool = true,
         checkForUpdates: Bool = true,
-        sftpOverwriteAlways: Bool? = nil
+        sftpOverwriteAlways: Bool? = nil,
+        sftpDefaultLocalPath: String? = nil
     ) {
         self.fontSize = fontSize
         self.fontFamily = fontFamily
@@ -66,5 +68,6 @@ final class UserPreferences {
         self.aiDirectSubmit = aiDirectSubmit
         self.checkForUpdates = checkForUpdates
         self.sftpOverwriteAlways = sftpOverwriteAlways
+        self.sftpDefaultLocalPath = sftpDefaultLocalPath
     }
 }

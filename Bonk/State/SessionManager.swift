@@ -157,9 +157,10 @@ final class SessionManager {
     func disconnectTab(_ id: UUID) async {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
         await sessionStore.disconnect(id)
-        // Close all pane PTY sessions
+        // Close all pane PTY sessions and clean up cached views
         for paneID in tab.paneIDs {
             tab.layout.findPane(id: paneID)?.ptySession?.close()
+            viewCache.remove(paneID)
         }
         tab.session?.disconnect()
         tab.session = nil

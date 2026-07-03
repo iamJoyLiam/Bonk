@@ -13,7 +13,7 @@ struct SFTPWindowView: View {
     @Environment(I18n.self) var i18n
     @Bindable var sessionManager: SessionManager
     @Query private var allPreferences: [UserPreferences]
-    @State private var localPath: String = (NSHomeDirectory() as NSString).appendingPathComponent("Downloads")
+    @State private var localPath: String = "/"
     @State private var localFiles: [LocalFileEntry] = []
     @State private var selectedRemote: SFTPFileEntry?
     // Overwrite dialog state
@@ -81,6 +81,9 @@ struct SFTPWindowView: View {
         }
         .frame(minWidth: 800, minHeight: 500)
         .onAppear {
+            let defaultPath = preferences.sftpDefaultLocalPath
+                ?? (NSHomeDirectory() as NSString).appendingPathComponent("Downloads")
+            localPath = defaultPath
             loadLocalFiles()
             if let tab = sessionManager.activeTab, tab.session?.sftpService == nil {
                 Task { _ = await ensureSFTP(for: tab) }

@@ -266,6 +266,8 @@ enum LKey: String, CaseIterable {
     case splitDown = "split_down"
     case dropToSplit = "drop_to_split"
     case sftpOverwriteAlways = "sftp_overwrite_always"
+    case sftpDefaultLocalPath = "sftp_default_local_path"
+    case browse
     case overwritingTo = "overwriting_to"
 
     // Serial Port

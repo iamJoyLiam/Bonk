@@ -59,14 +59,12 @@ import SwiftUI
             .background(terminalBackground)
             .onChange(of: paneState.ptySession != nil) { _, hasSession in
                 if hasSession {
-                    // Delay connection to ensure terminal view is ready
                     Task { @MainActor in try? await Task.sleep(for: .milliseconds(200))
                         connectOutputStreamIfNeeded()
                     }
                 }
             }
             .onAppear {
-                // Delay connection to ensure terminal view is ready
                 Task { @MainActor in try? await Task.sleep(for: .milliseconds(200))
                     connectOutputStreamIfNeeded()
                 }
@@ -215,6 +213,15 @@ import SwiftUI
             let font = createSafeFont(family: fontFamily, size: CGFloat(fontSize))
             let terminal = SwiftTerm.TerminalView(frame: .zero, font: font)
             terminal.configureNativeColors()
+
+            // 滚动条：初始隐藏，滚动时显示，使用小尺寸
+            for subview in terminal.subviews {
+                if let scroller = subview as? NSScroller {
+                    scroller.controlSize = .small
+                    scroller.alphaValue = 0.0
+                }
+            }
+
             applyColorScheme(to: terminal, scheme: colorScheme)
             terminal.terminal.changeScrollback(scrollbackLines)
             terminal.terminal.setCursorStyle(mapCursorStyle(cursorStyle, blink: cursorBlink))

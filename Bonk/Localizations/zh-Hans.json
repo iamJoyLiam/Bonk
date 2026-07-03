@@ -313,6 +313,8 @@
   "split_down": "向下分割",
   "drop_to_split": "拖放到此处分割",
   "sftp_overwrite_always": "始终覆盖已存在的文件",
+  "sftp_default_local_path": "默认本地目录",
+  "browse": "浏览...",
   "overwriting_to": "正在覆盖 %@ 到 %@",
   "serial_port": "串口",
   "scan_ports": "扫描端口",
