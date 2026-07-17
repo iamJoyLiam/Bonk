@@ -69,6 +69,8 @@ public.pem
 # Claude Code
 .claude/
 
+.agents/
+
 # MCP config (local)
 .mcp.json
 
