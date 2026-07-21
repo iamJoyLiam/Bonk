@@ -194,15 +194,9 @@ import SwiftUI
             cached.view.needsDisplay = true
             nsView.window?.makeFirstResponder(cached.view)
 
-            // Force layout update to ensure SwiftTerm calculates correct cols/rows from real Frame
-            cached.view.layoutSubtreeIfNeeded()
-
-            // Defer PTY sync to next RunLoop cycle — ensures SwiftUI/AppKit geometry is finalized
-            DispatchQueue.main.async {
-                let cols = cached.view.terminal.cols
-                let rows = cached.view.terminal.rows
-                guard cols > 0 && rows > 0 else { return }
-                self.onResize?(cols, rows)
+            // Reset size cache so SwiftTerm's sizeChanged will re-sync PTY on next layout
+            if let coord = cached.coordinator as? ContainerTerminalCoordinator {
+                coord.resetSizeCache()
             }
         }
 
@@ -275,15 +269,6 @@ import SwiftUI
             // Force re-render after adding view
             cached.view.needsDisplay = true
             containerView.window?.makeFirstResponder(cached.view)
-
-            // Force layout and sync PTY dimensions on first creation
-            cached.view.layoutSubtreeIfNeeded()
-            DispatchQueue.main.async {
-                let cols = cached.view.terminal.cols
-                let rows = cached.view.terminal.rows
-                guard cols > 0 && rows > 0 else { return }
-                self.onResize?(cols, rows)
-            }
         }
 
         private func updateSettings(for cached: CachedTerminalView) {
@@ -318,6 +303,18 @@ import SwiftUI
         var themeObserver: NSObjectProtocol?
         private nonisolated(unsafe) var mouseUpMonitor: Any?
         var fontObserver: NSObjectProtocol?
+
+        /// Cache last successfully synced PTY dimensions to filter duplicate SIGWINCH.
+        /// Initial value -1 ensures the first legitimate resize always goes through.
+        var lastSyncedCols: Int = -1
+        var lastSyncedRows: Int = -1
+
+        /// Reset cached dimensions so next sizeChanged will fire even if same size.
+        /// Called when tab is re-added to view hierarchy after being removed.
+        func resetSizeCache() {
+            lastSyncedCols = -1
+            lastSyncedRows = -1
+        }
 
         var feedTask: Task<Void, Never>? {
             get { lock.lock(); defer { lock.unlock() }; return _feedTask }

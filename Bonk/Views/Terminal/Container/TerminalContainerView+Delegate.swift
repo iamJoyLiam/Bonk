@@ -16,6 +16,14 @@ import SwiftTerm
         }
 
         func sizeChanged(source _: SwiftTerm.TerminalView, newCols: Int, newRows: Int) {
+            // Block invalid zero-value sizes (e.g., when tab is hidden and view is compressed)
+            guard newCols > 0 && newRows > 0 else { return }
+
+            // Filter duplicate dimensions to avoid redundant SIGWINCH signals
+            guard newCols != lastSyncedCols || newRows != lastSyncedRows else { return }
+
+            lastSyncedCols = newCols
+            lastSyncedRows = newRows
             onResize?(newCols, newRows)
         }
 
