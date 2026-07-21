@@ -95,7 +95,9 @@
                 }
 
                 // ALTBUF + no mouse reporting → arrow key simulation
-                let ticks = max(1, min(Int(abs(deltaY)), 10))
+                // Use fractional accumulation to handle high-precision scroll events
+                // Cap at 3 lines per event to match macOS native scroll feel
+                let ticks = max(1, min(Int(abs(deltaY) * 0.3), 3))
                 let arrowSequence: String = if terminal.applicationCursor {
                     deltaY > 0 ? "\u{1B}OA" : "\u{1B}OB"
                 } else {
