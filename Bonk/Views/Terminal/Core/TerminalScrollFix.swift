@@ -95,9 +95,9 @@
                 }
 
                 // ALTBUF + no mouse reporting → arrow keys (vim without mouse)
-                // Rate limit: max 1 arrow per 20ms for faster scrolling
+                // Rate limit: max 1 arrow per 30ms for balanced scrolling
                 let now = Date.timeIntervalSinceReferenceDate
-                guard now - Self.lastArrowTime > 0.02 else { return nil }
+                guard now - Self.lastArrowTime > 0.03 else { return nil }
                 Self.lastArrowTime = now
 
                 // Send exactly 1 arrow key
