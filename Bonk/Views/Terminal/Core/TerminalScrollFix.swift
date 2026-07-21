@@ -22,12 +22,6 @@
         private nonisolated(unsafe) static var monitor: Any?
         private nonisolated(unsafe) static var terminalMap: [ObjectIdentifier: Terminal] = [:]
         private nonisolated(unsafe) static var allowMouseMap: [ObjectIdentifier: () -> Bool] = [:]
-        /// User-configurable scroll settings (set from SessionManager on init)
-        nonisolated(unsafe) static var scrollSensitivity: Double = 1.0
-        nonisolated(unsafe) static var scrollMaxLines: Int = 5
-        /// Accumulated scroll delta for trackpad/magic mouse continuous input
-        nonisolated(unsafe) static var accumulatedDelta: Double = 0
-        nonisolated(unsafe) static var lastScrollTime: TimeInterval = 0
 
         static func register(_ view: TerminalView) {
             let id = ObjectIdentifier(view)
@@ -77,65 +71,27 @@
                 let mouseMode = terminal.mouseMode
 
                 // === Decision tree ===
+                // Only intercept when ALTBUF + mouse reporting (vim/less with mouse enabled)
+                // All other cases → return event for SwiftTerm native handling
 
-                if !isAlternate {
-                    // Normal screen → apply scroll sensitivity scaling
-                    // Scale the delta to match user preference
-                    let scaledDelta = deltaY * scrollSensitivity
-                    let ticks = max(1, min(Int(round(abs(scaledDelta))), scrollMaxLines))
-
-                    // Send scaled arrow keys for precise control
-                    let arrowSequence: String = if deltaY > 0 {
-                        terminal.applicationCursor ? "\u{1B}OB" : "\u{1B}[B"
-                    } else {
-                        terminal.applicationCursor ? "\u{1B}OA" : "\u{1B}[A"
-                    }
-
-                    let combined = String(repeating: arrowSequence, count: ticks)
-                    terminal.sendResponse(combined)
-                    return nil
+                guard isAlternate, mouseAllowed, mouseMode != .off else {
+                    // Normal screen or ALTBUF without mouse reporting → native scroll
+                    return event
                 }
 
-                if mouseAllowed, mouseMode != .off {
-                    // ALTBUF + mouse reporting → SGR escape sequences
-                    let cols = terminal.cols
-                    let rows = terminal.rows
-                    guard cols > 0, rows > 0 else { return event }
+                // ALTBUF + mouse reporting → must send SGR escape sequences
+                let cols = terminal.cols
+                let rows = terminal.rows
+                guard cols > 0, rows > 0 else { return event }
 
-                    let cellWidth = targetView.bounds.width / CGFloat(cols)
-                    let cellHeight = targetView.bounds.height / CGFloat(rows)
-                    let col = max(0, min(Int(locationInView.x / cellWidth), cols - 1))
-                    let row = max(0, min(Int((targetView.bounds.height - locationInView.y) / cellHeight), rows - 1))
+                let cellWidth = targetView.bounds.width / CGFloat(cols)
+                let cellHeight = targetView.bounds.height / CGFloat(rows)
+                let col = max(0, min(Int(locationInView.x / cellWidth), cols - 1))
+                let row = max(0, min(Int((targetView.bounds.height - locationInView.y) / cellHeight), rows - 1))
 
-                    let buttonFlags: Int = deltaY > 0 ? 64 : 65
-                    terminal.sendEvent(buttonFlags: buttonFlags, x: col, y: row)
-                    terminal.sendEvent(buttonFlags: buttonFlags + 3, x: col, y: row)
-                    return nil
-                }
-
-                // ALTBUF + no mouse reporting → arrow key simulation
-                // Rate-limit: only send once per scroll gesture (~150ms)
-                let now = Date.timeIntervalSinceReferenceDate
-                let timeSinceLast = now - Self.lastScrollTime
-
-                // If <150ms since last send, skip (still in same gesture)
-                guard timeSinceLast > 0.15 else { return nil }
-
-                Self.lastScrollTime = now
-
-                // Use the delta direction, but cap at maxLines
-                let ticks = min(scrollMaxLines, max(1, Int(round(abs(deltaY) * scrollSensitivity))))
-
-                Log.ui.debug("[Scroll] delta=\(deltaY), sens=\(scrollSensitivity), max=\(scrollMaxLines), ticks=\(ticks)")
-
-                let arrowSequence: String = if deltaY > 0 {
-                    terminal.applicationCursor ? "\u{1B}OA" : "\u{1B}[A"
-                } else {
-                    terminal.applicationCursor ? "\u{1B}OB" : "\u{1B}[B"
-                }
-
-                let combined = String(repeating: arrowSequence, count: ticks)
-                terminal.sendResponse(combined)
+                let buttonFlags: Int = deltaY > 0 ? 64 : 65
+                terminal.sendEvent(buttonFlags: buttonFlags, x: col, y: row)
+                terminal.sendEvent(buttonFlags: buttonFlags + 3, x: col, y: row)
                 return nil
             }
 
