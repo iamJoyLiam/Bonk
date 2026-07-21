@@ -79,8 +79,21 @@
                 // === Decision tree ===
 
                 if !isAlternate {
-                    // Normal screen → local scroll (SwiftTerm default)
-                    return event
+                    // Normal screen → apply scroll sensitivity scaling
+                    // Scale the delta to match user preference
+                    let scaledDelta = deltaY * scrollSensitivity
+                    let ticks = max(1, min(Int(round(abs(scaledDelta))), scrollMaxLines))
+
+                    // Send scaled arrow keys for precise control
+                    let arrowSequence: String = if deltaY > 0 {
+                        terminal.applicationCursor ? "\u{1B}OB" : "\u{1B}[B"
+                    } else {
+                        terminal.applicationCursor ? "\u{1B}OA" : "\u{1B}[A"
+                    }
+
+                    let combined = String(repeating: arrowSequence, count: ticks)
+                    terminal.sendResponse(combined)
+                    return nil
                 }
 
                 if mouseAllowed, mouseMode != .off {
