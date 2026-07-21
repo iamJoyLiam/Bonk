@@ -101,33 +101,24 @@
                 }
 
                 // ALTBUF + no mouse reporting → arrow key simulation
-                // Accumulate delta for trackpad/magic mouse continuous input
+                // Rate-limit: only send once per scroll gesture (~150ms)
                 let now = Date.timeIntervalSinceReferenceDate
                 let timeSinceLast = now - Self.lastScrollTime
 
-                // Reset accumulation if >100ms gap (new scroll gesture)
-                if timeSinceLast > 0.1 {
-                    Self.accumulatedDelta = 0
-                }
+                // If <150ms since last send, skip (still in same gesture)
+                guard timeSinceLast > 0.15 else { return nil }
+
                 Self.lastScrollTime = now
-                Self.accumulatedDelta += deltaY
 
-                // Calculate ticks from accumulated delta
-                let rawTicks = abs(Self.accumulatedDelta) * scrollSensitivity
-                let ticks = max(1, min(Int(round(rawTicks)), scrollMaxLines))
+                // Use the delta direction, but cap at maxLines
+                let ticks = min(scrollMaxLines, max(1, Int(round(abs(deltaY) * scrollSensitivity))))
 
-                // Only send when we have enough accumulated delta (at least 1 tick)
-                guard ticks >= 1 else { return nil }
+                Log.ui.debug("[Scroll] delta=\(deltaY), sens=\(scrollSensitivity), max=\(scrollMaxLines), ticks=\(ticks)")
 
-                Log.ui.debug("[Scroll] delta=\(deltaY), acc=\(Self.accumulatedDelta), sens=\(scrollSensitivity), ticks=\(ticks)")
-
-                // Reset accumulation after sending
-                Self.accumulatedDelta = 0
-
-                let arrowSequence: String = if terminal.applicationCursor {
-                    deltaY > 0 ? "\u{1B}OA" : "\u{1B}OB"
+                let arrowSequence: String = if deltaY > 0 {
+                    terminal.applicationCursor ? "\u{1B}OA" : "\u{1B}[A"
                 } else {
-                    deltaY > 0 ? "\u{1B}[A" : "\u{1B}[B"
+                    terminal.applicationCursor ? "\u{1B}OB" : "\u{1B}[B"
                 }
 
                 let combined = String(repeating: arrowSequence, count: ticks)
