@@ -2,9 +2,14 @@
 //  TerminalScrollFix.swift
 //  Bonk
 //
-//  Disabled — all scrolling handled natively by SwiftTerm.
-//  Previously intercepted ALTBUF scroll events, but caused conflicts
-//  with vim mouse reporting and system scroll settings (mos).
+//  ALTBUF-aware scroll wheel handler for vim/less/tmux.
+//  SwiftTerm hard-disables scrolling in ALTBUF mode (issue #583),
+//  so we must intercept and send arrow keys as fallback.
+//
+//  Decision tree:
+//  - Normal screen → return event (native scroll)
+//  - ALTBUF + mouse reporting → send SGR escape (vim with mouse)
+//  - ALTBUF + no mouse reporting → send arrow keys (vim without mouse)
 //
 
 #if os(macOS)
@@ -13,19 +18,109 @@
     import SwiftTerm
 
     enum TerminalScrollFix {
+        private static let lock = NSLock()
+        private nonisolated(unsafe) static var installed = false
+        private nonisolated(unsafe) static var monitor: Any?
+        private nonisolated(unsafe) static var terminalMap: [ObjectIdentifier: Terminal] = [:]
+        private nonisolated(unsafe) static var allowMouseMap: [ObjectIdentifier: () -> Bool] = [:]
+
         static func register(_ view: TerminalView) {
-            // No-op — SwiftTerm handles all scrolling natively
+            let id = ObjectIdentifier(view)
+            lock.lock()
+            terminalMap[id] = view.terminal
+            allowMouseMap[id] = { [weak view] in view?.allowMouseReporting ?? false }
+            lock.unlock()
         }
 
         static func unregister(_ view: TerminalView) {
-            // No-op
+            let id = ObjectIdentifier(view)
+            lock.lock()
+            terminalMap.removeValue(forKey: id)
+            allowMouseMap.removeValue(forKey: id)
+            lock.unlock()
         }
 
         static func install() {
-            // No-op — SwiftTerm handles all scrolling natively
-            Log.ui.info("TerminalScrollFix: using native scrolling")
+            lock.lock()
+            guard !installed else { lock.unlock(); return }
+            installed = true
+            lock.unlock()
+
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+                guard let window = event.window else { return event }
+                let locationInWindow = event.locationInWindow
+                guard let targetView = window.contentView?.hitTest(locationInWindow) as? NSView else {
+                    return event
+                }
+
+                let id = ObjectIdentifier(targetView)
+
+                lock.lock()
+                let terminal = terminalMap[id]
+                let mouseAllowed = allowMouseMap[id]?() ?? false
+                lock.unlock()
+
+                guard let terminal else { return event }
+
+                let locationInView = targetView.convert(locationInWindow, from: nil)
+                guard targetView.bounds.contains(locationInView) else { return event }
+
+                let deltaY = event.deltaY
+                guard deltaY != 0 else { return event }
+
+                let isAlternate = terminal.isCurrentBufferAlternate
+
+                // Normal screen → native scroll (SwiftTerm handles this fine)
+                guard isAlternate else { return event }
+
+                // ALTBUF mode → must handle scrolling ourselves (SwiftTerm bug #583)
+                let mouseMode = terminal.mouseMode
+
+                if mouseAllowed, mouseMode != .off {
+                    // ALTBUF + mouse reporting → SGR escape sequences (vim with mouse=a)
+                    let cols = terminal.cols
+                    let rows = terminal.rows
+                    guard cols > 0, rows > 0 else { return event }
+
+                    let cellWidth = targetView.bounds.width / CGFloat(cols)
+                    let cellHeight = targetView.bounds.height / CGFloat(rows)
+                    let col = max(0, min(Int(locationInView.x / cellWidth), cols - 1))
+                    let row = max(0, min(Int((targetView.bounds.height - locationInView.y) / cellHeight), rows - 1))
+
+                    let buttonFlags: Int = deltaY > 0 ? 64 : 65
+                    terminal.sendEvent(buttonFlags: buttonFlags, x: col, y: row)
+                    terminal.sendEvent(buttonFlags: buttonFlags + 3, x: col, y: row)
+                    return nil
+                }
+
+                // ALTBUF + no mouse reporting → arrow keys (vim without mouse)
+                // Use deltaY to determine direction, cap at 3 lines per event
+                let ticks = min(3, max(1, Int(round(abs(deltaY)))))
+                let arrowSequence: String = if deltaY > 0 {
+                    terminal.applicationCursor ? "\u{1B}OA" : "\u{1B}[A"
+                } else {
+                    terminal.applicationCursor ? "\u{1B}OB" : "\u{1B}[B"
+                }
+
+                let combined = String(repeating: arrowSequence, count: ticks)
+                terminal.sendResponse(combined)
+                return nil
+            }
+
+            Log.ui.info("TerminalScrollFix installed (ALTBUF-aware)")
         }
 
-        static func uninstall() {}
+        static func uninstall() {
+            lock.lock()
+            defer { lock.unlock() }
+            guard installed else { return }
+            if let eventMonitor = monitor {
+                NSEvent.removeMonitor(eventMonitor)
+                monitor = nil
+            }
+            installed = false
+            terminalMap.removeAll()
+            allowMouseMap.removeAll()
+        }
     }
 #endif
