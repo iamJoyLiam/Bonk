@@ -15,16 +15,14 @@ import SwiftTerm
             onSend(data)
         }
 
-        func sizeChanged(source _: SwiftTerm.TerminalView, newCols: Int, newRows: Int) {
-            // Block invalid zero-value sizes (e.g., when tab is hidden and view is compressed)
+        func sizeChanged(source terminal: SwiftTerm.TerminalView, newCols: Int, newRows: Int) {
+            // Block invalid zero-value sizes
             guard newCols > 0 && newRows > 0 else { return }
 
-            // Filter duplicate dimensions to avoid redundant SIGWINCH signals
+            // Filter duplicate dimensions
             guard newCols != lastSyncedCols || newRows != lastSyncedRows else { return }
 
-            lastSyncedCols = newCols
-            lastSyncedRows = newRows
-            onResize?(newCols, newRows)
+            forceSyncPTY(view: terminal, onResize: onResize)
         }
 
         func setTerminalTitle(source _: SwiftTerm.TerminalView, title: String) {

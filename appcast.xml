@@ -6,6 +6,37 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.0.19</title>
+            <pubDate>Mon, 21 Jul 2026 07:00:00 +0000</pubDate>
+            <sparkle:version>202619</sparkle:version>
+            <sparkle:shortVersionString>2026.0.19</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Bug 修复</h3>
+                <ul>
+                    <li>重构终端尺寸同步机制，添加状态弥合逻辑</li>
+                    <li>Tab 切换/首次创建时主动同步 PTY 尺寸</li>
+                    <li>消除 Vim 半屏与 2-3 秒延迟恢复问题</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.19/Bonk-2026.0.19-arm64.dmg"
+                length="9485064"
+                type="application/octet-stream"
+                sparkle:edSignature="BF2HWo9DC7UtK9UzEqLEEEi5GBjnlhDVVz34uF0LjSvqDjFmjVmRldjOcZ6gPqX5pi5i9e3p8Wb18unA+PsdAg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.19/Bonk-2026.0.19-x86_64.dmg"
+                length="10247949"
+                type="application/octet-stream"
+                sparkle:edSignature="VQ3IEArGuaz9wf7J6MS1Z1/qkkR8/Drj4a5e2NqJZ/nRsHSvBDYTALkTIPkDGHo+TTho3Ll6nI78wm6LY5syCQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.0.18</title>
             <pubDate>Mon, 21 Jul 2026 06:00:00 +0000</pubDate>
             <sparkle:version>202618</sparkle:version>

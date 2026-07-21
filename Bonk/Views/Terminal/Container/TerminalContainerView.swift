@@ -194,9 +194,16 @@ import SwiftUI
             cached.view.needsDisplay = true
             nsView.window?.makeFirstResponder(cached.view)
 
-            // Reset size cache so SwiftTerm's sizeChanged will re-sync PTY on next layout
+            // State reconciliation: force sync PTY when tab reappears
             if let coord = cached.coordinator as? ContainerTerminalCoordinator {
                 coord.resetSizeCache()
+                // Only sync when view is mounted and has valid frame
+                guard nsView.window != nil, nsView.frame.width > 0 else { return }
+                // Re-add subview first, then sync
+                DispatchQueue.main.async {
+                    guard nsView.window != nil, nsView.frame.width > 0 else { return }
+                    coord.forceSyncPTY(view: cached.view, onResize: self.onResize)
+                }
             }
         }
 
@@ -269,6 +276,14 @@ import SwiftUI
             // Force re-render after adding view
             cached.view.needsDisplay = true
             containerView.window?.makeFirstResponder(cached.view)
+
+            // State reconciliation: force sync PTY on first creation when view is mounted
+            if let coord = cached.coordinator as? ContainerTerminalCoordinator {
+                DispatchQueue.main.async {
+                    guard containerView.window != nil, containerView.frame.width > 0 else { return }
+                    coord.forceSyncPTY(view: cached.view, onResize: self.onResize)
+                }
+            }
         }
 
         private func updateSettings(for cached: CachedTerminalView) {
@@ -314,6 +329,19 @@ import SwiftUI
         func resetSizeCache() {
             lastSyncedCols = -1
             lastSyncedRows = -1
+        }
+
+        /// Force sync PTY dimensions — handles SSH ready or view reappear state reconciliation.
+        func forceSyncPTY(view: SwiftTerm.TerminalView, onResize: (@Sendable (Int, Int) -> Void)?) {
+            let cols = view.terminal.cols
+            let rows = view.terminal.rows
+
+            // Block invalid zero-value sizes (e.g., when tab is hidden and view is compressed)
+            guard cols > 0 && rows > 0 else { return }
+
+            onResize?(cols, rows)
+            self.lastSyncedCols = cols
+            self.lastSyncedRows = rows
         }
 
         var feedTask: Task<Void, Never>? {
