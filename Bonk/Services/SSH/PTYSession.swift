@@ -249,6 +249,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         }
 
         try await writer.changeSize(cols: safeCols, rows: safeRows, pixelWidth: 0, pixelHeight: 0)
+        Log.ssh.debug("[PTY] Resize sent: \(safeCols)x\(safeRows)")
     }
 
     /// Query the terminal's current working directory by sending `pwd` and parsing output.
