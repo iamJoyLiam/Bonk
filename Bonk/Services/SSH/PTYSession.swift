@@ -48,6 +48,10 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     private typealias ObserverClosure = @Sendable (String) -> Void
     private let outputObservers = OSAllocatedUnfairLock<[UUID: ObserverClosure]>(uncheckedState: [:])
 
+    /// Pending PTY size — caches resize requests when SSH channel is not yet ready.
+    /// Prevents window-change packets from being silently dropped during connection setup.
+    private let pendingSize = NIOLockedValueBox<(cols: Int, rows: Int)?>(nil)
+
     init() {
         var endCont: AsyncStream<Void>.Continuation!
         (sessionEndStream, endCont) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
@@ -145,6 +149,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     func start(client: SSHClient, cols: Int, rows: Int, termType: String) {
         let safeCols = max(cols, 1)
         let safeRows = max(rows, 1)
+        Log.ssh.info("[PTY] Starting session with initial size: \(safeCols)x\(safeRows)")
         let endCont = sessionEndContinuation
         let endStream = sessionEndStream
         let writerBox = OSAllocatedUnfairLock<TTYStdinWriter?>(uncheckedState: nil)
@@ -205,6 +210,17 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                 delay = min(delay * 2, 100)
             }
             self.writerBox.withLockedValue { $0 = writer }
+
+            // SSH channel ready — flush any pending resize that was queued before connection
+            if let size = self.pendingSize.withLockedValue({ $0 }) {
+                self.pendingSize.withLockedValue { $0 = nil }
+                do {
+                    try await writer?.changeSize(cols: size.cols, rows: size.rows, pixelWidth: 0, pixelHeight: 0)
+                    Log.ssh.info("[PTY] Flushed pending resize: \(size.cols)x\(size.rows)")
+                } catch {
+                    Log.ssh.error("[PTY] Failed to flush pending resize: \(error)")
+                }
+            }
         }
 
         readerTaskBox.withLockedValue { $0 = ptyTask }
@@ -224,7 +240,14 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         let safeCols = max(1, min(cols, Self.maxCols))
         let safeRows = max(1, min(rows, Self.maxRows))
         guard safeCols > 1, safeRows > 1 else { return }
-        guard let writer = writerBox.withLockedValue({ $0 }) else { return }
+
+        guard let writer = writerBox.withLockedValue({ $0 }) else {
+            // SSH channel not ready — queue resize for later, never discard
+            pendingSize.withLockedValue { $0 = (safeCols, safeRows) }
+            Log.ssh.debug("[PTY] SSH channel not ready, queued resize: \(safeCols)x\(safeRows)")
+            return
+        }
+
         try await writer.changeSize(cols: safeCols, rows: safeRows, pixelWidth: 0, pixelHeight: 0)
     }
 
