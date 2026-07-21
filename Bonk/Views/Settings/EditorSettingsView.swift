@@ -26,6 +26,22 @@ struct EditorSettingsView: View {
         )
     }
 
+    /// Binding for scroll sensitivity with fallback to default.
+    private var scrollSensitivityBinding: Binding<Double> {
+        Binding(
+            get: { preferences.scrollSensitivity ?? 0.3 },
+            set: { preferences.scrollSensitivity = $0 }
+        )
+    }
+
+    /// Binding for scroll max lines with fallback to default.
+    private var scrollMaxLinesBinding: Binding<Int> {
+        Binding(
+            get: { preferences.scrollMaxLines ?? 3 },
+            set: { preferences.scrollMaxLines = $0 }
+        )
+    }
+
     var body: some View {
         Form {
             Section(i18n.t(.display)) {
@@ -53,16 +69,16 @@ struct EditorSettingsView: View {
                 HStack {
                     Text(i18n.t(.scrollSensitivity))
                     Spacer()
-                    Slider(value: $preferences.scrollSensitivity, in: 0.1...1.0, step: 0.1)
+                    Slider(value: scrollSensitivityBinding, in: 0.1...1.0, step: 0.1)
                         .frame(width: 150)
-                    Text(String(format: "%.1f", preferences.scrollSensitivity))
+                    Text(String(format: "%.1f", preferences.scrollSensitivity ?? 0.3))
                         .frame(width: 30)
                         .monospacedDigit()
                 }
                 HStack {
                     Text(i18n.t(.scrollMaxLines))
                     Spacer()
-                    Stepper("\(preferences.scrollMaxLines)", value: $preferences.scrollMaxLines, in: 1...10)
+                    Stepper("\(preferences.scrollMaxLines ?? 3)", value: scrollMaxLinesBinding, in: 1...10)
                 }
             }
         }

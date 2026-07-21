@@ -42,8 +42,8 @@ final class SessionManager {
         modelContext = context
         // Update scroll settings from preferences
         if let prefs = try? context.fetch(FetchDescriptor<UserPreferences>()).first {
-            TerminalScrollFix.scrollSensitivity = prefs.scrollSensitivity
-            TerminalScrollFix.scrollMaxLines = prefs.scrollMaxLines
+            TerminalScrollFix.scrollSensitivity = prefs.scrollSensitivity ?? 0.3
+            TerminalScrollFix.scrollMaxLines = prefs.scrollMaxLines ?? 3
         }
     }
 
