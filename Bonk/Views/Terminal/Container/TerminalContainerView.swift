@@ -193,18 +193,7 @@ import SwiftUI
             // Force re-render after re-adding cached view
             cached.view.needsDisplay = true
             nsView.window?.makeFirstResponder(cached.view)
-
-            // State reconciliation: force sync PTY when tab reappears
-            if let coord = cached.coordinator as? ContainerTerminalCoordinator {
-                coord.resetSizeCache()
-                // Only sync when view is mounted and has valid frame
-                guard nsView.window != nil, nsView.frame.width > 0 else { return }
-                // Re-add subview first, then sync
-                DispatchQueue.main.async {
-                    guard nsView.window != nil, nsView.frame.width > 0 else { return }
-                    coord.forceSyncPTY(view: cached.view, onResize: self.onResize)
-                }
-            }
+            // PTY sync is now handled by NativeTerminalView.layout() — no manual intervention needed
         }
 
         static func dismantleNSView(_: NSView, coordinator _: ContainerCoordinator) {}
@@ -224,7 +213,7 @@ import SwiftUI
 
         private func createTerminalView(for tabID: UUID, context _: Context) -> CachedTerminalView {
             let font = createSafeFont(family: fontFamily, size: CGFloat(fontSize))
-            let terminal = SwiftTerm.TerminalView(frame: .zero, font: font)
+            let terminal = NativeTerminalView(frame: .zero, font: font)
             terminal.configureNativeColors()
 
             // 滚动条：初始隐藏，滚动时显示，使用小尺寸
@@ -248,6 +237,11 @@ import SwiftUI
             )
             terminal.terminalDelegate = coordinator
             coordinator.terminalView = terminal
+
+            // Core fix: intercept AppKit physical layout for accurate PTY sync
+            terminal.onPhysicalLayout = { [weak coordinator] cols, rows in
+                coordinator?.onResize?(cols, rows)
+            }
 
             coordinator.observeThemeChanges()
             coordinator.installCopyOnSelectMonitor()
@@ -276,14 +270,7 @@ import SwiftUI
             // Force re-render after adding view
             cached.view.needsDisplay = true
             containerView.window?.makeFirstResponder(cached.view)
-
-            // State reconciliation: force sync PTY on first creation when view is mounted
-            if let coord = cached.coordinator as? ContainerTerminalCoordinator {
-                DispatchQueue.main.async {
-                    guard containerView.window != nil, containerView.frame.width > 0 else { return }
-                    coord.forceSyncPTY(view: cached.view, onResize: self.onResize)
-                }
-            }
+            // PTY sync is now handled by NativeTerminalView.layout() — no manual intervention needed
         }
 
         private func updateSettings(for cached: CachedTerminalView) {
@@ -318,31 +305,6 @@ import SwiftUI
         var themeObserver: NSObjectProtocol?
         private nonisolated(unsafe) var mouseUpMonitor: Any?
         var fontObserver: NSObjectProtocol?
-
-        /// Cache last successfully synced PTY dimensions to filter duplicate SIGWINCH.
-        /// Initial value -1 ensures the first legitimate resize always goes through.
-        var lastSyncedCols: Int = -1
-        var lastSyncedRows: Int = -1
-
-        /// Reset cached dimensions so next sizeChanged will fire even if same size.
-        /// Called when tab is re-added to view hierarchy after being removed.
-        func resetSizeCache() {
-            lastSyncedCols = -1
-            lastSyncedRows = -1
-        }
-
-        /// Force sync PTY dimensions — handles SSH ready or view reappear state reconciliation.
-        func forceSyncPTY(view: SwiftTerm.TerminalView, onResize: (@Sendable (Int, Int) -> Void)?) {
-            let cols = view.terminal.cols
-            let rows = view.terminal.rows
-
-            // Block invalid zero-value sizes (e.g., when tab is hidden and view is compressed)
-            guard cols > 0 && rows > 0 else { return }
-
-            onResize?(cols, rows)
-            self.lastSyncedCols = cols
-            self.lastSyncedRows = rows
-        }
 
         var feedTask: Task<Void, Never>? {
             get { lock.lock(); defer { lock.unlock() }; return _feedTask }

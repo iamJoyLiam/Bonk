@@ -15,14 +15,11 @@ import SwiftTerm
             onSend(data)
         }
 
-        func sizeChanged(source terminal: SwiftTerm.TerminalView, newCols: Int, newRows: Int) {
-            // Block invalid zero-value sizes
-            guard newCols > 0 && newRows > 0 else { return }
-
-            // Filter duplicate dimensions
-            guard newCols != lastSyncedCols || newRows != lastSyncedRows else { return }
-
-            forceSyncPTY(view: terminal, onResize: onResize)
+        func sizeChanged(source _: SwiftTerm.TerminalView, newCols: Int, newRows: Int) {
+            // Size sync is now handled by NativeTerminalView.layout()
+            // This delegate method is kept for compatibility but no longer drives PTY sync
+            _ = newCols
+            _ = newRows
         }
 
         func setTerminalTitle(source _: SwiftTerm.TerminalView, title: String) {

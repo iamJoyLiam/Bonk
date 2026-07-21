@@ -6,6 +6,37 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.0.20</title>
+            <pubDate>Mon, 21 Jul 2026 08:00:00 +0000</pubDate>
+            <sparkle:version>202620</sparkle:version>
+            <sparkle:shortVersionString>2026.0.20</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Bug 修复</h3>
+                <ul>
+                    <li>彻底重构终端尺寸同步机制，接管 AppKit 原生 layout() 周期</li>
+                    <li>消除 Vim 半屏与 15 秒延迟恢复问题</li>
+                    <li>移除所有 SwiftUI 生命周期猜测逻辑</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.20/Bonk-2026.0.20-arm64.dmg"
+                length="9489163"
+                type="application/octet-stream"
+                sparkle:edSignature="PW7T1LnedTrr7AQWOFvqU1sOUxEASVDq7G2HmlMweZtj8DOXPS3hwljOkn+l1kNMyZXr+oSpeQ7L0AHNcH5yDA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.20/Bonk-2026.0.20-x86_64.dmg"
+                length="10254179"
+                type="application/octet-stream"
+                sparkle:edSignature="smHs4hLGWXeWirnjzzEKi02FK3y//5pI+oPtuMj3//lA3+K22A1Y81aTSSIiXhwjPSxusRk+9s7LGuCHG4NaBg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.0.19</title>
             <pubDate>Mon, 21 Jul 2026 07:00:00 +0000</pubDate>
             <sparkle:version>202619</sparkle:version>
