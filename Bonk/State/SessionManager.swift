@@ -33,10 +33,18 @@ final class SessionManager {
 
     init(viewCache: TerminalViewCache = .shared) {
         self.viewCache = viewCache
+        // Initialize scroll settings from defaults (will be updated when preferences load)
+        TerminalScrollFix.scrollSensitivity = 0.3
+        TerminalScrollFix.scrollMaxLines = 3
     }
 
     func setModelContext(_ context: ModelContext) {
         modelContext = context
+        // Update scroll settings from preferences
+        if let prefs = try? context.fetch(FetchDescriptor<UserPreferences>()).first {
+            TerminalScrollFix.scrollSensitivity = prefs.scrollSensitivity
+            TerminalScrollFix.scrollMaxLines = prefs.scrollMaxLines
+        }
     }
 
     var activeTab: TerminalTab? {

@@ -22,6 +22,9 @@
         private nonisolated(unsafe) static var monitor: Any?
         private nonisolated(unsafe) static var terminalMap: [ObjectIdentifier: Terminal] = [:]
         private nonisolated(unsafe) static var allowMouseMap: [ObjectIdentifier: () -> Bool] = [:]
+        /// User-configurable scroll settings (set from SessionManager on init)
+        nonisolated(unsafe) static var scrollSensitivity: Double = 0.3
+        nonisolated(unsafe) static var scrollMaxLines: Int = 3
 
         static func register(_ view: TerminalView) {
             let id = ObjectIdentifier(view)
@@ -96,8 +99,8 @@
 
                 // ALTBUF + no mouse reporting → arrow key simulation
                 // Use fractional accumulation to handle high-precision scroll events
-                // Cap at 3 lines per event to match macOS native scroll feel
-                let ticks = max(1, min(Int(abs(deltaY) * 0.3), 3))
+                // Apply user-configurable sensitivity and max lines
+                let ticks = max(1, min(Int(abs(deltaY) * scrollSensitivity), scrollMaxLines))
                 let arrowSequence: String = if terminal.applicationCursor {
                     deltaY > 0 ? "\u{1B}OA" : "\u{1B}OB"
                 } else {

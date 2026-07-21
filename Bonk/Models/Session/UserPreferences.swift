@@ -26,6 +26,11 @@ final class UserPreferences {
     var cursorStyle: String // "block", "underline", "bar"
     var cursorBlink: Bool
     var copyOnSelect: Bool
+    /// Scroll sensitivity multiplier for ALTBUF mode (vim/less/tmux).
+    /// 0.2 = slow, 0.3 = moderate (default), 0.5 = fast.
+    var scrollSensitivity: Double
+    /// Maximum lines per scroll event in ALTBUF mode.
+    var scrollMaxLines: Int
     var escDismissAI: Bool
     var hostAutoFillClear: Bool // true = clear on tap, false = allow edit
     var aiDirectSubmit: Bool // true = directly submit selected text, false = show in input
@@ -46,6 +51,8 @@ final class UserPreferences {
         cursorStyle: String = "block",
         cursorBlink: Bool = true,
         copyOnSelect: Bool = false,
+        scrollSensitivity: Double = 0.3,
+        scrollMaxLines: Int = 3,
         escDismissAI: Bool = true,
         hostAutoFillClear: Bool = true,
         aiDirectSubmit: Bool = true,
@@ -63,6 +70,8 @@ final class UserPreferences {
         self.cursorStyle = cursorStyle
         self.cursorBlink = cursorBlink
         self.copyOnSelect = copyOnSelect
+        self.scrollSensitivity = scrollSensitivity
+        self.scrollMaxLines = scrollMaxLines
         self.escDismissAI = escDismissAI
         self.hostAutoFillClear = hostAutoFillClear
         self.aiDirectSubmit = aiDirectSubmit

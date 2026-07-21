@@ -48,6 +48,23 @@ struct EditorSettingsView: View {
                         .textFieldStyle(.roundedBorder)
                 }
             }
+
+            Section(i18n.t(.scrolling)) {
+                HStack {
+                    Text(i18n.t(.scrollSensitivity))
+                    Spacer()
+                    Slider(value: $preferences.scrollSensitivity, in: 0.1...1.0, step: 0.1)
+                        .frame(width: 150)
+                    Text(String(format: "%.1f", preferences.scrollSensitivity))
+                        .frame(width: 30)
+                        .monospacedDigit()
+                }
+                HStack {
+                    Text(i18n.t(.scrollMaxLines))
+                    Spacer()
+                    Stepper("\(preferences.scrollMaxLines)", value: $preferences.scrollMaxLines, in: 1...10)
+                }
+            }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)

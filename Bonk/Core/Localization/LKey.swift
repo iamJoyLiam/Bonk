@@ -24,6 +24,7 @@ enum LKey: String, CaseIterable {
     case display
     case cursorStyle = "cursor_style", cursorBlink = "cursor_blink"
     case behavior, copyOnSelect = "copy_on_select", scrollbackLines = "scrollback_lines"
+    case scrolling, scrollSensitivity = "scroll_sensitivity", scrollMaxLines = "scroll_max_lines"
     case cursorBlock = "cursor_block", cursorUnderline = "cursor_underline", cursorBar = "cursor_bar"
 
     // Keyboard
