@@ -23,8 +23,11 @@
         private nonisolated(unsafe) static var terminalMap: [ObjectIdentifier: Terminal] = [:]
         private nonisolated(unsafe) static var allowMouseMap: [ObjectIdentifier: () -> Bool] = [:]
         /// User-configurable scroll settings (set from SessionManager on init)
-        nonisolated(unsafe) static var scrollSensitivity: Double = 0.3
-        nonisolated(unsafe) static var scrollMaxLines: Int = 3
+        nonisolated(unsafe) static var scrollSensitivity: Double = 1.0
+        nonisolated(unsafe) static var scrollMaxLines: Int = 5
+        /// Accumulated scroll delta for trackpad/magic mouse continuous input
+        nonisolated(unsafe) static var accumulatedDelta: Double = 0
+        nonisolated(unsafe) static var lastScrollTime: TimeInterval = 0
 
         static func register(_ view: TerminalView) {
             let id = ObjectIdentifier(view)
@@ -98,11 +101,28 @@
                 }
 
                 // ALTBUF + no mouse reporting → arrow key simulation
-                // macOS deltaY is typically 1-10; multiply by sensitivity for control
-                let rawTicks = abs(deltaY) * scrollSensitivity
+                // Accumulate delta for trackpad/magic mouse continuous input
+                let now = Date.timeIntervalSinceReferenceDate
+                let timeSinceLast = now - Self.lastScrollTime
+
+                // Reset accumulation if >100ms gap (new scroll gesture)
+                if timeSinceLast > 0.1 {
+                    Self.accumulatedDelta = 0
+                }
+                Self.lastScrollTime = now
+                Self.accumulatedDelta += deltaY
+
+                // Calculate ticks from accumulated delta
+                let rawTicks = abs(Self.accumulatedDelta) * scrollSensitivity
                 let ticks = max(1, min(Int(round(rawTicks)), scrollMaxLines))
 
-                Log.ui.debug("[Scroll] deltaY=\(deltaY), sensitivity=\(scrollSensitivity), maxLines=\(scrollMaxLines), raw=\(rawTicks), ticks=\(ticks)")
+                // Only send when we have enough accumulated delta (at least 1 tick)
+                guard ticks >= 1 else { return nil }
+
+                Log.ui.debug("[Scroll] delta=\(deltaY), acc=\(Self.accumulatedDelta), sens=\(scrollSensitivity), ticks=\(ticks)")
+
+                // Reset accumulation after sending
+                Self.accumulatedDelta = 0
 
                 let arrowSequence: String = if terminal.applicationCursor {
                     deltaY > 0 ? "\u{1B}OA" : "\u{1B}OB"
