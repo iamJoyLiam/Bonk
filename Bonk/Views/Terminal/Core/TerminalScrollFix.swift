@@ -94,16 +94,15 @@
                 }
 
                 // ALTBUF + no mouse reporting → arrow keys (vim without mouse)
-                // Use deltaY to determine direction, cap at 3 lines per event
-                let ticks = min(3, max(1, Int(round(abs(deltaY)))))
+                // Always send exactly 1 line per scroll event for precise control
+                // deltaY > 0 = scroll up (content moves down), deltaY < 0 = scroll down
                 let arrowSequence: String = if deltaY > 0 {
                     terminal.applicationCursor ? "\u{1B}OA" : "\u{1B}[A"
                 } else {
                     terminal.applicationCursor ? "\u{1B}OB" : "\u{1B}[B"
                 }
 
-                let combined = String(repeating: arrowSequence, count: ticks)
-                terminal.sendResponse(combined)
+                terminal.sendResponse(arrowSequence)
                 return nil
             }
 
