@@ -38,6 +38,8 @@ public actor SSHNetworkService {
     private var activePTYSession: PTYSession?
     private var reconnectTask: Task<Void, Never>?
     private let keepAlive = SSHKeepAlive()
+    /// Guard against duplicate handleDisconnect calls (keepalive timeout + onDisconnect).
+    private var isHandlingDisconnect = false
 
     /// Stores PTY parameters for reconnection.
     private struct PTYConfig {
@@ -106,6 +108,10 @@ public actor SSHNetworkService {
             }
 
             Log.ssh.info("[CONNECT] Starting keepAlive...")
+            await keepAlive.settimeoutHandler { [weak self] in
+                guard let self else { return }
+                Task { await self.handleDisconnect() }
+            }
             await keepAlive.start(client: client)
             Log.ssh.info("[CONNECT] keepAlive started, connection complete")
         } catch {
@@ -306,6 +312,11 @@ public actor SSHNetworkService {
     }
 
     private func handleDisconnect() async {
+        // Guard against duplicate calls (keepalive timeout + onDisconnect may fire close together).
+        guard !isHandlingDisconnect else { return }
+        isHandlingDisconnect = true
+        defer { isHandlingDisconnect = false }
+
         guard let config else { return }
 
         activePTYSession?.close()

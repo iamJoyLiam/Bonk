@@ -190,8 +190,16 @@ import SwiftUI
             ]
             NSLayoutConstraint.activate(cached.constraints)
 
+            // Force re-render after re-adding cached view
+            cached.view.needsDisplay = true
+
             Task { @MainActor in try? await Task.sleep(for: .milliseconds(100))
                 nsView.window?.makeFirstResponder(cached.view)
+                // Force PTY resize to sync terminal dimensions after tab switch
+                // This triggers SIGWINCH to Vim/programs, fixing half-screen rendering
+                let cols = cached.view.terminal.cols
+                let rows = cached.view.terminal.rows
+                self.onResize?(cols, rows)
             }
         }
 
@@ -260,6 +268,9 @@ import SwiftUI
             ]
             NSLayoutConstraint.activate(cached.constraints)
             context.coordinator.lastTabID = tabID
+
+            // Force re-render after adding view
+            cached.view.needsDisplay = true
 
             Task { @MainActor in try? await Task.sleep(for: .milliseconds(200))
                 containerView.window?.makeFirstResponder(cached.view)
@@ -348,11 +359,13 @@ import SwiftUI
             guard copyOnSelect else { return }
             mouseUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { [weak self] event in
                 guard let self, let terminal = terminalView else { return event }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     if terminal.selectionActive {
                         if let selectedText = terminal.getSelection(), !selectedText.isEmpty {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(selectedText, forType: .string)
+                            // Show copy message
+                            NotificationCenter.default.post(name: .showCopyMessage, object: nil)
                         }
                     }
                 }
