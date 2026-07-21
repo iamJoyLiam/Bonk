@@ -70,15 +70,27 @@ struct EditorSettingsView: View {
                     Text(i18n.t(.scrollSensitivity))
                     Spacer()
                     Slider(value: scrollSensitivityBinding, in: 0.1...1.0, step: 0.1)
-                        .frame(width: 150)
+                        .frame(width: 120)
                     Text(String(format: "%.1f", preferences.scrollSensitivity ?? 0.3))
-                        .frame(width: 30)
+                        .frame(width: 25, alignment: .trailing)
                         .monospacedDigit()
                 }
                 HStack {
                     Text(i18n.t(.scrollMaxLines))
                     Spacer()
-                    Stepper("\(preferences.scrollMaxLines ?? 3)", value: scrollMaxLinesBinding, in: 1...10)
+                    Button("-") {
+                        let current = preferences.scrollMaxLines ?? 3
+                        if current > 1 { preferences.scrollMaxLines = current - 1 }
+                    }
+                    .buttonStyle(.borderless)
+                    Text("\(preferences.scrollMaxLines ?? 3)")
+                        .frame(width: 20, alignment: .center)
+                        .monospacedDigit()
+                    Button("+") {
+                        let current = preferences.scrollMaxLines ?? 3
+                        if current < 10 { preferences.scrollMaxLines = current + 1 }
+                    }
+                    .buttonStyle(.borderless)
                 }
             }
         }
