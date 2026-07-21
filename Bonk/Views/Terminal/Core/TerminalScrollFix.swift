@@ -99,9 +99,11 @@
 
                 // ALTBUF + no mouse reporting → arrow key simulation
                 // macOS deltaY is typically 1-10; multiply by sensitivity for control
-                // Default: sensitivity 1.0, maxLines 5 (matches macOS native feel)
                 let rawTicks = abs(deltaY) * scrollSensitivity
                 let ticks = max(1, min(Int(round(rawTicks)), scrollMaxLines))
+
+                Log.ui.debug("[Scroll] deltaY=\(deltaY), sensitivity=\(scrollSensitivity), maxLines=\(scrollMaxLines), raw=\(rawTicks), ticks=\(ticks)")
+
                 let arrowSequence: String = if terminal.applicationCursor {
                     deltaY > 0 ? "\u{1B}OA" : "\u{1B}OB"
                 } else {
