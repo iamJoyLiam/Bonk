@@ -1,5 +1,6 @@
 import os.log
 import SwiftData
+import SwiftTerm
 import SwiftUI
 
 /// Manages multiple concurrent SSH terminal sessions.
@@ -283,6 +284,20 @@ final class SessionManager {
         pane.ptySession = ptySession
         session.ptySession = ptySession // Keep for backward compatibility
         Log.session.info("[PTY] PTY session assigned to pane")
+
+        // Post-PTY-setup: sync real terminal dimensions to override the 80x24 default
+        // This is done after SSH channel is established to ensure resize doesn't get dropped
+        Task { @MainActor [weak tab] in
+            // Wait for one RunLoop cycle to ensure SwiftTerm has calculated real dimensions
+            try? await Task.sleep(for: .milliseconds(100))
+            guard let tab, let paneID = tab.activePaneID,
+                  let cached = TerminalViewCache.shared.retrieve(paneID) else { return }
+            let cols = cached.view.terminal.cols
+            let rows = cached.view.terminal.rows
+            guard cols > 0, rows > 0 else { return }
+            Log.session.info("[PTY] Post-setup sync: \(cols)x\(rows)")
+            try? await ptySession.resize(cols: cols, rows: rows)
+        }
 
         ptySession.osc7Detector.onCWDChange = { [weak tab] cwd in
             Task { @MainActor in
