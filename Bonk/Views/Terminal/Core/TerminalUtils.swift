@@ -20,6 +20,7 @@ extension Notification.Name {
     static let terminalSelectionResponse = Notification.Name("com.bonk.terminalSelectionResponse")
     static let selectAllInTerminal = Notification.Name("com.bonk.selectAllInTerminal")
     static let focusTerminal = Notification.Name("com.bonk.focusTerminal")
+    static let showCopyMessage = Notification.Name("com.bonk.showCopyMessage")
 }
 
 /// Map cursor style string to SwiftTerm CursorStyle.

@@ -15,12 +15,7 @@ extension PaneTerminalView {
     var contextMenuContent: some View {
         // Copy/Paste
         Button {
-            if let cached = TerminalViewCache.shared.retrieve(paneState.id),
-               let selection = cached.view.getSelection(), !selection.isEmpty
-            {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(selection, forType: .string)
-            }
+            NotificationCenter.default.post(name: .requestTerminalSelection, object: nil)
         } label: {
             Label("Copy", systemImage: "doc.on.doc")
         }

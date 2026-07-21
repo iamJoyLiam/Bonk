@@ -9,6 +9,9 @@ actor SSHKeepAlive {
     private let maxMissed: Int = 3
     private var missedResponses: Int = 0
 
+    /// Called when keepalive detects connection loss (3 consecutive failures).
+    var onTimeout: (@Sendable () -> Void)?
+
     func start(client: SSHClient) {
         stop()
         keepaliveTask = Task { [weak client] in
@@ -25,6 +28,7 @@ actor SSHKeepAlive {
                     Log.ssh.warning("Keepalive missed (\(self.missedResponses)/\(self.maxMissed))")
                     if self.missedResponses >= self.maxMissed {
                         Log.ssh.error("Keepalive timeout — connection lost")
+                        self.onTimeout?()
                         break
                     }
                 }
@@ -36,5 +40,10 @@ actor SSHKeepAlive {
         keepaliveTask?.cancel()
         keepaliveTask = nil
         missedResponses = 0
+    }
+
+    /// Set the timeout handler callback.
+    func settimeoutHandler(_ handler: @escaping @Sendable () -> Void) {
+        self.onTimeout = handler
     }
 }
