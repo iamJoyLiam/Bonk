@@ -192,6 +192,9 @@ import SwiftUI
             ]
             NSLayoutConstraint.activate(cached.constraints)
 
+            // Force re-render after re-adding cached view
+            cached.view.needsDisplay = true
+
             Task { @MainActor in try? await Task.sleep(for: .milliseconds(100))
                 nsView.window?.makeFirstResponder(cached.view)
             }
@@ -264,6 +267,9 @@ import SwiftUI
             ]
             NSLayoutConstraint.activate(cached.constraints)
             context.coordinator.lastPaneID = paneID
+
+            // Force re-render after re-adding cached view to view hierarchy
+            cached.view.needsDisplay = true
 
             Task { @MainActor in try? await Task.sleep(for: .milliseconds(100))
                 containerView.window?.makeFirstResponder(cached.view)

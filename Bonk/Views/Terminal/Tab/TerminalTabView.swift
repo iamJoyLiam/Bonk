@@ -43,6 +43,7 @@ struct TerminalTabView: View {
     @State var selectedTextForAI = ""
     @State var selectionObserver: NSObjectProtocol?
     @State var showQuickConnect = false
+    @State private var copyMessage: String?
 
     var body: some View {
         mainView
@@ -55,6 +56,7 @@ struct TerminalTabView: View {
             .renameAlert(i18n: i18n, renamingTab: $renamingTab, renameText: $renameText)
             .aiEnableAlert(i18n: i18n, isPresented: $showAIEnableAlert)
             .dropOverlay(message: uploadManagerBinding, uploadProgress: uploadManager.uploadProgress)
+            .copyOverlay(message: $copyMessage)
             .overwriteDialog(
                 i18n: i18n,
                 isPresented: $showOverwriteAlert,
@@ -69,6 +71,20 @@ struct TerminalTabView: View {
                 if let tab = renamingTab { renameText = tab.title }
             }
             .paneNavigation(navigatePane)
+            .onReceive(NotificationCenter.default.publisher(for: .requestTerminalSelection)) { _ in
+                copySelection()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .showCopyMessage)) { _ in
+                withAnimation {
+                    copyMessage = "已复制"
+                }
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(2))
+                    withAnimation {
+                        copyMessage = nil
+                    }
+                }
+            }
     }
 
     private var mainView: some View {
@@ -309,5 +325,28 @@ extension TerminalTabView {
 
     private func handleTerminalDrop(url: URL, tab: TerminalTab) async {
         await uploadManager.performUpload(url, tab: tab, i18n: i18n)
+    }
+
+    func copySelection() {
+        // Get the active terminal view
+        guard let activeTab = sessionManager.activeTab,
+              let cached = TerminalViewCache.shared.retrieve(activeTab.id)
+        else { return }
+
+        if let selectedText = cached.view.getSelection(), !selectedText.isEmpty {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(selectedText, forType: .string)
+            // Show copy message
+            withAnimation {
+                copyMessage = "已复制"
+            }
+            // Clear message after delay
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(2))
+                withAnimation {
+                    copyMessage = nil
+                }
+            }
+        }
     }
 }

@@ -47,30 +47,32 @@ final class TerminalViewCache {
     /// Maximum number of cached tabs before eviction.
     private let maxCachedTabs = 10
 
-    private init() {
-        // Memory pressure handling is done via evictIfNeeded during store operations
-        #if os(macOS)
-            setupMemoryPressureHandler()
-        #endif
-    }
+    private init() {}
 
     #if os(macOS)
         private var activeTabIDProvider: (() -> UUID?)?
         private var memoryPressureSource: DispatchSourceMemoryPressure?
 
         /// Configure memory pressure handler with active tab provider.
+        /// Must be called once after SessionManager is available.
         func configureMemoryPressure(activeTabIDProvider: @escaping () -> UUID?) {
             self.activeTabIDProvider = activeTabIDProvider
-            setupMemoryPressureHandler()
+            installMemoryPressureHandler()
         }
 
-        private func setupMemoryPressureHandler() {
+        private func installMemoryPressureHandler() {
+            // Remove any existing handler first
+            if let existing = memoryPressureSource {
+                existing.cancel()
+                memoryPressureSource = nil
+            }
+
             let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
             source.setEventHandler { [weak self] in
                 guard let self else { return }
                 let activeTabID = self.activeTabIDProvider?()
                 self.evictAllExceptActive(activeTabID: activeTabID)
-                os_log(.info, "[Cache] Memory pressure: evicted all except active tab")
+                os_log(.info, "[Cache] Memory pressure: evicted all except active tab (active=%{public}@)", activeTabID?.uuidString ?? "nil")
             }
             source.resume()
             self.memoryPressureSource = source

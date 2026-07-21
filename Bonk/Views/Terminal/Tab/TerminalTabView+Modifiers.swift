@@ -80,6 +80,28 @@ struct DropOverlayModifier: ViewModifier {
     }
 }
 
+// MARK: - Copy Overlay
+
+struct CopyOverlayModifier: ViewModifier {
+    @Binding var message: String?
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .bottom) {
+                if let msg = message {
+                    Text(msg)
+                        .font(.caption)
+                        .lineLimit(1)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                        .padding(.bottom, 12)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+    }
+}
+
 // MARK: - Overwrite Dialog
 
 struct OverwriteDialogModifier: ViewModifier {
@@ -157,6 +179,10 @@ extension View {
 
     func dropOverlay(message: Binding<String?>, uploadProgress: Double? = nil) -> some View {
         modifier(DropOverlayModifier(message: message, uploadProgress: uploadProgress))
+    }
+
+    func copyOverlay(message: Binding<String?>) -> some View {
+        modifier(CopyOverlayModifier(message: message))
     }
 
     // swiftlint:disable:next function_parameter_count

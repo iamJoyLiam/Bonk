@@ -6,6 +6,37 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.0.16</title>
+            <pubDate>Mon, 21 Jul 2026 04:00:00 +0000</pubDate>
+            <sparkle:version>202616</sparkle:version>
+            <sparkle:shortVersionString>2026.0.16</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Bug 修复</h3>
+                <ul>
+                    <li>修复 Tab 切换后 Vim 等程序半屏渲染问题（终端尺寸同步）</li>
+                    <li>修复 SSH 连接闲置超时后终端假死问题（KeepAlive 超时回调）</li>
+                    <li>优化连接断开处理，防止重复触发重连</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.16/Bonk-2026.0.16-arm64.dmg"
+                length="10247210"
+                type="application/octet-stream"
+                sparkle:edSignature="vbK70P2etK3t+w2aemjYhpBK9OxzwLIPnsIdd7qUqPa5SAjcb++cN0XEVhfNDsGl5G+7yrfthxHpsidQ3foCDA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.16/Bonk-2026.0.16-x86_64.dmg"
+                length="10247301"
+                type="application/octet-stream"
+                sparkle:edSignature="yOlBHBtnla2gR7Y/r3gvceHT+HEvZCC1ONqmS88YyhFju5ZD/NgnqaxWD7BENrajsyvvnLIx3j8C6On9OOb1CQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.0.15</title>
             <pubDate>Fri, 17 Jul 2026 03:17:00 +0000</pubDate>
             <sparkle:version>202615</sparkle:version>
