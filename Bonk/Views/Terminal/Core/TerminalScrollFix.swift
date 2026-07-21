@@ -98,9 +98,10 @@
                 }
 
                 // ALTBUF + no mouse reporting → arrow key simulation
-                // Use fractional accumulation to handle high-precision scroll events
-                // Apply user-configurable sensitivity and max lines
-                let ticks = max(1, min(Int(abs(deltaY) * scrollSensitivity), scrollMaxLines))
+                // macOS deltaY is typically 1-10; multiply by sensitivity for control
+                // Default: sensitivity 1.0, maxLines 5 (matches macOS native feel)
+                let rawTicks = abs(deltaY) * scrollSensitivity
+                let ticks = max(1, min(Int(round(rawTicks)), scrollMaxLines))
                 let arrowSequence: String = if terminal.applicationCursor {
                     deltaY > 0 ? "\u{1B}OA" : "\u{1B}OB"
                 } else {

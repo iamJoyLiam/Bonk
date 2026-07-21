@@ -26,18 +26,18 @@ struct EditorSettingsView: View {
         )
     }
 
-    /// Binding for scroll sensitivity with fallback to default.
+    /// Binding for scroll sensitivity with fallback to default (macOS standard: 1.0).
     private var scrollSensitivityBinding: Binding<Double> {
         Binding(
-            get: { preferences.scrollSensitivity ?? 0.3 },
+            get: { preferences.scrollSensitivity ?? 1.0 },
             set: { preferences.scrollSensitivity = $0 }
         )
     }
 
-    /// Binding for scroll max lines with fallback to default.
+    /// Binding for scroll max lines with fallback to default (macOS standard: 5).
     private var scrollMaxLinesBinding: Binding<Int> {
         Binding(
-            get: { preferences.scrollMaxLines ?? 3 },
+            get: { preferences.scrollMaxLines ?? 5 },
             set: { preferences.scrollMaxLines = $0 }
         )
     }
@@ -69,9 +69,9 @@ struct EditorSettingsView: View {
                 HStack {
                     Text(i18n.t(.scrollSensitivity))
                     Spacer()
-                    Slider(value: scrollSensitivityBinding, in: 0.1...1.0, step: 0.1)
+                    Slider(value: scrollSensitivityBinding, in: 0.5...3.0, step: 0.5)
                         .frame(width: 120)
-                    Text(String(format: "%.1f", preferences.scrollSensitivity ?? 0.3))
+                    Text(String(format: "%.1f", preferences.scrollSensitivity ?? 1.0))
                         .frame(width: 25, alignment: .trailing)
                         .monospacedDigit()
                 }
@@ -79,16 +79,16 @@ struct EditorSettingsView: View {
                     Text(i18n.t(.scrollMaxLines))
                     Spacer()
                     Button("-") {
-                        let current = preferences.scrollMaxLines ?? 3
+                        let current = preferences.scrollMaxLines ?? 5
                         if current > 1 { preferences.scrollMaxLines = current - 1 }
                     }
                     .buttonStyle(.borderless)
-                    Text("\(preferences.scrollMaxLines ?? 3)")
+                    Text("\(preferences.scrollMaxLines ?? 5)")
                         .frame(width: 20, alignment: .center)
                         .monospacedDigit()
                     Button("+") {
-                        let current = preferences.scrollMaxLines ?? 3
-                        if current < 10 { preferences.scrollMaxLines = current + 1 }
+                        let current = preferences.scrollMaxLines ?? 5
+                        if current < 15 { preferences.scrollMaxLines = current + 1 }
                     }
                     .buttonStyle(.borderless)
                 }
