@@ -6,6 +6,37 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.0.21</title>
+            <pubDate>Mon, 21 Jul 2026 09:00:00 +0000</pubDate>
+            <sparkle:version>202621</sparkle:version>
+            <sparkle:shortVersionString>2026.0.21</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Bug 修复</h3>
+                <ul>
+                    <li>修复 Vim 半屏问题：PTY 启动后从 GUI 获取真实尺寸并同步</li>
+                    <li>解决 SSH 通道未就绪时 resize 请求被丢弃的问题</li>
+                    <li>添加 PTY resize pending queue 机制</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.21/Bonk-2026.0.21-arm64.dmg"
+                length="9491038"
+                type="application/octet-stream"
+                sparkle:edSignature="xdunNwNLIIZ/CqleNUXiMw5TYhbIAzHOhVnbmFtZ1gwcD08P53RIao5Tv831Zcjgy18x+oQa6oR2EgFXKhT7AA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.21/Bonk-2026.0.21-x86_64.dmg"
+                length="10258260"
+                type="application/octet-stream"
+                sparkle:edSignature="lhsD2XDEBfonqczG35a+rFdX24b8C+RsEAHhoK2omV9X5ureG7bJH19en/5BlPv4hJv0u1HUBg0mvE4fIyjDQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.0.20</title>
             <pubDate>Mon, 21 Jul 2026 08:00:00 +0000</pubDate>
             <sparkle:version>202620</sparkle:version>
