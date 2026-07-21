@@ -23,6 +23,7 @@
         private nonisolated(unsafe) static var monitor: Any?
         private nonisolated(unsafe) static var terminalMap: [ObjectIdentifier: Terminal] = [:]
         private nonisolated(unsafe) static var allowMouseMap: [ObjectIdentifier: () -> Bool] = [:]
+        nonisolated(unsafe) static var lastArrowTime: TimeInterval = 0
 
         static func register(_ view: TerminalView) {
             let id = ObjectIdentifier(view)
@@ -94,8 +95,12 @@
                 }
 
                 // ALTBUF + no mouse reporting → arrow keys (vim without mouse)
-                // Always send exactly 1 line per scroll event for precise control
-                // deltaY > 0 = scroll up (content moves down), deltaY < 0 = scroll down
+                // Rate limit: max 1 arrow per 100ms for smooth scrolling
+                let now = Date.timeIntervalSinceReferenceDate
+                guard now - Self.lastArrowTime > 0.1 else { return nil }
+                Self.lastArrowTime = now
+
+                // Send exactly 1 arrow key
                 let arrowSequence: String = if deltaY > 0 {
                     terminal.applicationCursor ? "\u{1B}OA" : "\u{1B}[A"
                 } else {
