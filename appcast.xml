@@ -6,6 +6,37 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.0.17</title>
+            <pubDate>Mon, 21 Jul 2026 05:30:00 +0000</pubDate>
+            <sparkle:version>202617</sparkle:version>
+            <sparkle:shortVersionString>2026.0.17</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Bug 修复</h3>
+                <ul>
+                    <li>优化终端尺寸同步机制，使用 RunLoop 确保布局完成后读取</li>
+                    <li>修复首次打开 Tab 时 PTY 尺寸不同步问题</li>
+                    <li>添加尺寸有效性检查，防止 0x0 崩溃</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.17/Bonk-2026.0.17-arm64.dmg"
+                length="9486068"
+                type="application/octet-stream"
+                sparkle:edSignature="wiU6PYgF8q3PhKzslA4t3atuqQj9GZWvl2j+wO9RFrc3YipMBKzA3emLOCZomapWqrsCWs/nqpkI0OVuP/VrBQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.17/Bonk-2026.0.17-x86_64.dmg"
+                length="10247270"
+                type="application/octet-stream"
+                sparkle:edSignature="V9mI6gfKI4kVJwwRYT/QPD93bl+dMaPziMPXphzQW6V7vFicnkq71NDWTGkfox3YvFZdoFNxEorAeZDqbWDnCw=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.0.16</title>
             <pubDate>Mon, 21 Jul 2026 04:00:00 +0000</pubDate>
             <sparkle:version>202616</sparkle:version>

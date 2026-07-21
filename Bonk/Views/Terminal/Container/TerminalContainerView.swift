@@ -192,13 +192,16 @@ import SwiftUI
 
             // Force re-render after re-adding cached view
             cached.view.needsDisplay = true
+            nsView.window?.makeFirstResponder(cached.view)
 
-            Task { @MainActor in try? await Task.sleep(for: .milliseconds(100))
-                nsView.window?.makeFirstResponder(cached.view)
-                // Force PTY resize to sync terminal dimensions after tab switch
-                // This triggers SIGWINCH to Vim/programs, fixing half-screen rendering
+            // Force layout update to ensure SwiftTerm calculates correct cols/rows from real Frame
+            cached.view.layoutSubtreeIfNeeded()
+
+            // Defer PTY sync to next RunLoop cycle — ensures SwiftUI/AppKit geometry is finalized
+            DispatchQueue.main.async {
                 let cols = cached.view.terminal.cols
                 let rows = cached.view.terminal.rows
+                guard cols > 0 && rows > 0 else { return }
                 self.onResize?(cols, rows)
             }
         }
@@ -271,9 +274,15 @@ import SwiftUI
 
             // Force re-render after adding view
             cached.view.needsDisplay = true
+            containerView.window?.makeFirstResponder(cached.view)
 
-            Task { @MainActor in try? await Task.sleep(for: .milliseconds(200))
-                containerView.window?.makeFirstResponder(cached.view)
+            // Force layout and sync PTY dimensions on first creation
+            cached.view.layoutSubtreeIfNeeded()
+            DispatchQueue.main.async {
+                let cols = cached.view.terminal.cols
+                let rows = cached.view.terminal.rows
+                guard cols > 0 && rows > 0 else { return }
+                self.onResize?(cols, rows)
             }
         }
 
