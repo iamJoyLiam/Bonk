@@ -24,6 +24,7 @@ import SwiftUI
         let cursorStyle: String
         let cursorBlink: Bool
         let copyOnSelect: Bool
+        let scrollSensitivity: Double
         let onSend: @Sendable (ArraySlice<UInt8>) -> Void
         let onResize: (@Sendable (Int, Int) -> Void)?
         let onTitleChange: (@Sendable (String) -> Void)?
@@ -47,6 +48,7 @@ import SwiftUI
                         cursorStyle: cursorStyle,
                         cursorBlink: cursorBlink,
                         copyOnSelect: copyOnSelect,
+                        scrollSensitivity: scrollSensitivity,
                         onSend: onSend,
                         onResize: onResize,
                         onTitleChange: onTitleChange
@@ -138,6 +140,7 @@ import SwiftUI
         let cursorStyle: String
         let cursorBlink: Bool
         let copyOnSelect: Bool
+        let scrollSensitivity: Double
         let onSend: @Sendable (ArraySlice<UInt8>) -> Void
         let onResize: (@Sendable (Int, Int) -> Void)?
         let onTitleChange: (@Sendable (String) -> Void)?
@@ -227,6 +230,8 @@ import SwiftUI
             applyColorScheme(to: terminal, scheme: colorScheme)
             terminal.terminal.changeScrollback(scrollbackLines)
             terminal.terminal.setCursorStyle(mapCursorStyle(cursorStyle, blink: cursorBlink))
+            // Set scroll sensitivity for native scrolling (SwiftTerm 1.15.0+)
+            terminal.scrollSensitivityMultiplier = CGFloat(self.scrollSensitivity)
 
             let coordinator = ContainerTerminalCoordinator(
                 onSend: onSend,

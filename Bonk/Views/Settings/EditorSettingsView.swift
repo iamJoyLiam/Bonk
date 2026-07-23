@@ -26,6 +26,14 @@ struct EditorSettingsView: View {
         )
     }
 
+    /// Binding for scroll sensitivity with fallback to default (1.0).
+    private var scrollSensitivityBinding: Binding<Double> {
+        Binding(
+            get: { preferences.scrollSensitivity ?? 1.0 },
+            set: { preferences.scrollSensitivity = $0 }
+        )
+    }
+
     var body: some View {
         Form {
             Section(i18n.t(.display)) {
@@ -46,6 +54,18 @@ struct EditorSettingsView: View {
                         .frame(width: 80)
                         .multilineTextAlignment(.trailing)
                         .textFieldStyle(.roundedBorder)
+                }
+            }
+
+            Section(i18n.t(.scrolling)) {
+                HStack {
+                    Text(i18n.t(.scrollSensitivity))
+                    Spacer()
+                    Slider(value: scrollSensitivityBinding, in: 0.1...2.0, step: 0.1)
+                        .frame(width: 150)
+                    Text(String(format: "%.1f", preferences.scrollSensitivity ?? 1.0))
+                        .frame(width: 30, alignment: .trailing)
+                        .monospacedDigit()
                 }
             }
 

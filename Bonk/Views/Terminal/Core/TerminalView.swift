@@ -19,6 +19,7 @@ struct TerminalTabContentView: View {
     let cursorStyle: String
     let cursorBlink: Bool
     let copyOnSelect: Bool
+    let scrollSensitivity: Double
     let onSend: @Sendable (ArraySlice<UInt8>) -> Void
     let onResize: (@Sendable (Int, Int) -> Void)?
     let onTitleChange: (@Sendable (String) -> Void)?
@@ -54,6 +55,7 @@ struct TerminalTabContentView: View {
             cursorStyle: cursorStyle,
             cursorBlink: cursorBlink,
             copyOnSelect: copyOnSelect,
+            scrollSensitivity: scrollSensitivity,
             onSend: onSend,
             onResize: onResize,
             onTitleChange: onTitleChange,

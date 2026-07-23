@@ -243,6 +243,7 @@ struct ContentView: View {
             cursorStyle: themeManager.cursorStyle,
             cursorBlink: themeManager.cursorBlink,
             copyOnSelect: preferences.copyOnSelect,
+            scrollSensitivity: preferences.scrollSensitivity ?? 1.0,
             onSend: { data in Task { try? await sessionManager.sendInput(data, to: tab.id) } },
             onResize: { cols, rows in Task { try? await sessionManager.resizePTY(cols: cols, rows: rows, tabID: tab.id) } },
             onTitleChange: { sessionManager.updateTabTitle($0, tabID: tab.id) },

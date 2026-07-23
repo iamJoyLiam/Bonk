@@ -21,6 +21,17 @@ import SwiftTerm
         private var lastSyncedCols = -1
         private var lastSyncedRows = -1
 
+        /// Scroll sensitivity multiplier (exposed for setting from preferences).
+        /// This wraps SwiftTerm's native scrollSensitivity property.
+        var scrollSensitivityMultiplier: CGFloat = 1.0 {
+            didSet {
+                // SwiftTerm's scrollSensitivity is defined in MacTerminalView
+                // which is the same class as TerminalView on macOS
+                // Use KVC to access the property since it might not be visible in Swift
+                self.setValue(scrollSensitivityMultiplier, forKey: "scrollSensitivity")
+            }
+        }
+
         override func layout() {
             super.layout()
 
