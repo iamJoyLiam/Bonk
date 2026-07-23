@@ -27,8 +27,10 @@ import SwiftTerm
             didSet {
                 // SwiftTerm's scrollSensitivity is defined in MacTerminalView
                 // which is the same class as TerminalView on macOS
-                // Use KVC to access the property since it might not be visible in Swift
-                self.setValue(scrollSensitivityMultiplier, forKey: "scrollSensitivity")
+                Log.ui.debug("[Scroll] Setting scrollSensitivity to \(self.scrollSensitivityMultiplier)")
+                // Use direct property access since NativeTerminalView inherits from TerminalView
+                self.scrollSensitivity = scrollSensitivityMultiplier
+                Log.ui.debug("[Scroll] After set: scrollSensitivity = \(self.scrollSensitivity)")
             }
         }
 
