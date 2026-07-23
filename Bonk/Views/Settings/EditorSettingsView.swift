@@ -30,7 +30,11 @@ struct EditorSettingsView: View {
     private var scrollSensitivityBinding: Binding<Double> {
         Binding(
             get: { preferences.scrollSensitivity ?? 1.0 },
-            set: { preferences.scrollSensitivity = $0 }
+            set: { newValue in
+                preferences.scrollSensitivity = newValue
+                // Apply immediately to all cached terminal views
+                TerminalViewCache.shared.updateScrollSensitivity(CGFloat(newValue))
+            }
         )
     }
 
