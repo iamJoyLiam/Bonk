@@ -125,10 +125,8 @@ final class TerminalViewCache {
     /// Update scroll sensitivity for all cached terminal views.
     func updateScrollSensitivity(_ sensitivity: CGFloat) {
         for (_, cached) in cache {
-            // Use NativeTerminalView's scrollSensitivityMultiplier
-            if let nativeView = cached.view as? NativeTerminalView {
-                nativeView.scrollSensitivityMultiplier = sensitivity
-            }
+            // Directly set SwiftTerm's scrollSensitivity property
+            cached.view.scrollSensitivity = sensitivity
         }
     }
 

@@ -25,12 +25,7 @@ import SwiftTerm
         /// This wraps SwiftTerm's native scrollSensitivity property.
         var scrollSensitivityMultiplier: CGFloat = 1.0 {
             didSet {
-                // SwiftTerm's scrollSensitivity is defined in MacTerminalView
-                // which is the same class as TerminalView on macOS
-                Log.ui.debug("[Scroll] Setting scrollSensitivity to \(self.scrollSensitivityMultiplier)")
-                // Use direct property access since NativeTerminalView inherits from TerminalView
                 self.scrollSensitivity = scrollSensitivityMultiplier
-                Log.ui.debug("[Scroll] After set: scrollSensitivity = \(self.scrollSensitivity)")
             }
         }
 
