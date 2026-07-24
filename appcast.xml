@@ -6,6 +6,38 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.0.23</title>
+            <pubDate>Thu, 24 Jul 2026 16:30:00 +0000</pubDate>
+            <sparkle:version>202623</sparkle:version>
+            <sparkle:shortVersionString>2026.0.23</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>新功能</h3>
+                <ul>
+                    <li>日志着色：终端输出自动高亮日志级别和关键字段</li>
+                    <li>支持 syslog PRI、log4j、Python logging、Docker/k8s 等格式</li>
+                    <li>字段级精准着色：ERROR/WARN/INFO 关键词、IP 地址、时间戳、UUID、线程名</li>
+                    <li>设置 → 外观 → 日志着色，一键开关</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.23/Bonk-2026.0.23-arm64.dmg"
+                length="9565519"
+                type="application/octet-stream"
+                sparkle:edSignature="TbraosqPBspTmf2H2X4MPzIpzGR14Ipbfm08zYv+KfChPyLhUOB3x24TsCwntck6HIdYa+Xml5Ct8wxhNulzAQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.23/Bonk-2026.0.23-x86_64.dmg"
+                length="10334663"
+                type="application/octet-stream"
+                sparkle:edSignature="DUkqPDe4sGMUOu2g85EY/gV7D9KGNmSrpzUsk15ii8vz98EbEps9lJQCtSzIO4dTs6gDZPxC4bjQGVWS1229CQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.0.22</title>
             <pubDate>Fri, 25 Jul 2026 09:00:00 +0000</pubDate>
             <sparkle:version>202622</sparkle:version>
