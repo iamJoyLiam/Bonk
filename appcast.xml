@@ -26,17 +26,17 @@
             ]]></description>
             <enclosure
                 url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.22/Bonk-2026.0.22-arm64.dmg"
-                length="10320109"
+                length="9551007"
                 type="application/octet-stream"
-                sparkle:edSignature="6Vz4UfYb7WnxgzGsJt4QI9Uu/vfSYNb9dYuq70Z4rhXZoQHoZyR7wrdPQ6r0x3TDfqMAcKOLzJ3J9C/KeEn5BQ=="
+                sparkle:edSignature="pxxdfxobsZlI4MzwJtOhCPgTpWHnPnDwuiaNoLjqwE3KBWJnttFwdsasZKeRAJld1fEOi9sfyxTg/KPiJ0nVCA=="
                 sparkle:os="macos"
                 sparkle:cpuAffinity="arm64"
             />
             <enclosure
                 url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.22/Bonk-2026.0.22-x86_64.dmg"
-                length="10320179"
+                length="10322775"
                 type="application/octet-stream"
-                sparkle:edSignature="XbeJd80w+QsC21JIKd9K/Ri/kvYRkHxGUzqkI6+zinKmnOYOgA+D5P8HKy106gt35vZgbf+JjJ+QoixbQAT2CA=="
+                sparkle:edSignature="gqsa7Ws1UnP2EI0+GrF3IH/2OxXwf7dYcbMqtV8k/mLvt7KZvMS0DVCEMQHkAWbMgUqVlsUrExbB7OZQU2lyCQ=="
                 sparkle:os="macos"
                 sparkle:cpuAffinity="x86_64"
             />
