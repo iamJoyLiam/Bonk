@@ -27,7 +27,6 @@ struct TerminalTabView: View {
     @State private var matchCount = 0
     @State private var currentMatch = 0
     @State private var searchDebounceTask: Task<Void, Never>?
-    @State private var searchOverlay: SearchHighlightOverlay?
 
     var preferences: UserPreferences {
         allPreferences.first ?? UserPreferences()
@@ -49,6 +48,19 @@ struct TerminalTabView: View {
         mainView
             .onChange(of: searchText) { _, newValue in
                 handleSearchTextChange(newValue)
+            }
+            .onChange(of: showSearch) { _, isShowing in
+                TerminalSearchState.isActive = isShowing
+                if !isShowing {
+                    if let tab = sessionManager.activeTab,
+                       let paneID = tab.activePaneID,
+                       let cached = TerminalViewCache.shared.retrieve(paneID) {
+                        cached.view.clearSearch()
+                    }
+                    searchText = ""
+                    matchCount = 0
+                    currentMatch = 0
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .toggleAIChat)) { _ in
                 toggleAIChat()
@@ -75,15 +87,14 @@ struct TerminalTabView: View {
                 copySelection()
             }
             .onReceive(NotificationCenter.default.publisher(for: .showCopyMessage)) { _ in
-                withAnimation {
-                    copyMessage = "已复制"
-                }
+                withAnimation { copyMessage = "已复制" }
                 Task { @MainActor in
                     try? await Task.sleep(for: .seconds(2))
-                    withAnimation {
-                        copyMessage = nil
-                    }
+                    withAnimation { copyMessage = nil }
                 }
+            }
+            .onDisappear {
+                TerminalSearchState.isActive = false
             }
     }
 
@@ -123,13 +134,17 @@ struct TerminalTabView: View {
         if newValue.isEmpty {
             matchCount = 0
             currentMatch = 0
-            searchOverlay?.clearHighlights()
+            if let tab = sessionManager.activeTab,
+               let paneID = tab.activePaneID,
+               let cached = TerminalViewCache.shared.retrieve(paneID) {
+                cached.view.clearSearch()
+            }
             return
         }
         searchDebounceTask = Task {
             try? await Task.sleep(for: .milliseconds(200))
             guard !Task.isCancelled else { return }
-            await performSearchInBackground(newValue)
+            updateMatchCount(newValue)
         }
     }
 
@@ -147,10 +162,7 @@ struct TerminalTabView: View {
         Task {
             let overwriteAlways = preferences.sftpOverwriteAlways ?? false
             let uploaded = await uploadManager.handleDrop(
-                url: url,
-                tab: tab,
-                overwriteAlways: overwriteAlways,
-                i18n: i18n
+                url: url, tab: tab, overwriteAlways: overwriteAlways, i18n: i18n
             )
             if !uploaded {
                 pendingUploadURL = url
@@ -161,17 +173,11 @@ struct TerminalTabView: View {
     }
 
     private var uploadManagerBinding: Binding<String?> {
-        Binding(
-            get: { uploadManager.dropMessage },
-            set: { uploadManager.dropMessage = $0 }
-        )
+        Binding(get: { uploadManager.dropMessage }, set: { uploadManager.dropMessage = $0 })
     }
 
     private var overwriteAlwaysBinding: Binding<Bool> {
-        Binding(
-            get: { preferences.sftpOverwriteAlways ?? false },
-            set: { preferences.sftpOverwriteAlways = $0 }
-        )
+        Binding(get: { preferences.sftpOverwriteAlways ?? false }, set: { preferences.sftpOverwriteAlways = $0 })
     }
 }
 
@@ -179,10 +185,7 @@ struct TerminalTabView: View {
 
 extension Binding where Value == Bool? {
     var orFalse: Binding<Bool> {
-        Binding<Bool>(
-            get: { self.wrappedValue ?? false },
-            set: { self.wrappedValue = $0 }
-        )
+        Binding<Bool>(get: { self.wrappedValue ?? false }, set: { self.wrappedValue = $0 })
     }
 }
 
@@ -192,15 +195,11 @@ extension TerminalTabView {
     private var mainContent: some View {
         VStack(spacing: 0) {
             if !sessionManager.tabs.isEmpty { tabBar }
-            // Render the active tab's layout
             if let activeTab = sessionManager.activeTab {
                 TabLayoutView(
-                    tab: activeTab,
-                    sessionManager: sessionManager,
-                    colorScheme: colorScheme,
-                    preferences: preferences,
-                    cursorStyle: cursorStyle,
-                    cursorBlink: cursorBlink
+                    tab: activeTab, sessionManager: sessionManager,
+                    colorScheme: colorScheme, preferences: preferences,
+                    cursorStyle: cursorStyle, cursorBlink: cursorBlink
                 )
             } else {
                 emptyState
@@ -217,12 +216,10 @@ extension TerminalTabView {
                 initialText: selectedTextForAI,
                 onPaste: { text in
                     sessionManager.sendTextToActiveTab(text)
-                    showAIChat = false
-                    selectedTextForAI = ""
+                    showAIChat = false; selectedTextForAI = ""
                 },
                 onDismiss: {
-                    showAIChat = false
-                    selectedTextForAI = ""
+                    showAIChat = false; selectedTextForAI = ""
                     focusTerminal()
                 }
             )
@@ -230,16 +227,15 @@ extension TerminalTabView {
         }
     }
 
+    // MARK: - Search
+
     private enum SearchDirection { case forward, backward }
 
     private func performSearch(_ direction: SearchDirection) {
         guard !searchText.isEmpty,
               let tab = sessionManager.activeTab,
               let paneID = tab.activePaneID,
-              let cached = TerminalViewCache.shared.retrieve(paneID),
-              let terminal = cached.view.terminal else { return }
-
-        ensureOverlayExists(for: cached.view)
+              let cached = TerminalViewCache.shared.retrieve(paneID) else { return }
 
         let found: Bool
         switch direction {
@@ -250,102 +246,35 @@ extension TerminalTabView {
             found = cached.view.findPrevious(searchText)
             if found { currentMatch = currentMatch <= 1 ? matchCount : currentMatch - 1 }
         }
-
-        if found {
-            updateOverlayCurrentMatch()
-        }
     }
 
-    private func performSearchInBackground(_ term: String) async {
+    private func updateMatchCount(_ term: String) {
         guard let tab = sessionManager.activeTab,
               let paneID = tab.activePaneID,
-              let cached = TerminalViewCache.shared.retrieve(paneID),
-              let terminal = cached.view.terminal else
-        {
-            matchCount = 0
-            searchOverlay?.clearHighlights()
-            return
+              let cached = TerminalViewCache.shared.retrieve(paneID) else {
+            matchCount = 0; return
         }
-
-        let cols = terminal.cols
-        let rows = terminal.rows
-        let yDisp = terminal.buffer.yDisp
-        let searchText = term
-
-        var localMatches: [SearchHighlightOverlay.MatchResult] = []
-        var totalCount = 0
-
-        for visibleRow in 0 ..< rows {
-            let absoluteRow = yDisp + visibleRow
-            let start = Position(col: 0, row: absoluteRow)
-            let end = Position(col: cols - 1, row: absoluteRow)
-            let lineText = terminal.getText(start: start, end: end).lowercased()
-
-            var searchStart = lineText.startIndex
-            while searchStart < lineText.endIndex,
-                  let range = lineText[searchStart...].range(of: searchText)
-            {
-                let preText = String(lineText[lineText.startIndex ..< range.lowerBound])
-                let colIndex = calculateTerminalColumns(for: preText)
-
-                let matchText = String(lineText[range.lowerBound ..< range.upperBound])
-                let matchLength = calculateTerminalColumns(for: matchText)
-
-                if colIndex < cols {
-                    localMatches.append(SearchHighlightOverlay.MatchResult(
-                        row: visibleRow,
-                        col: colIndex,
-                        length: min(matchLength, cols - colIndex)
-                    ))
-                }
-                totalCount += 1
-                searchStart = range.upperBound
-            }
-        }
-
-        matchCount = totalCount
-        currentMatch = 0
-
-        ensureOverlayExists(for: cached.view)
-
-        searchOverlay?.updateMatches(localMatches, currentMatchIndex: -1)
+        let summary = cached.view.searchMatchSummary(term)
+        matchCount = summary.total
+        currentMatch = summary.index
     }
 
-    private func ensureOverlayExists(for terminalView: TerminalView) {
-        if searchOverlay == nil {
-            let overlay = SearchHighlightOverlay(terminalView: terminalView)
-            terminalView.addSubview(overlay)
-            searchOverlay = overlay
-        }
-    }
-
-    private func updateOverlayCurrentMatch() {
-        searchOverlay?.updateCurrentMatchIndex(currentMatch - 1)
-    }
+    // MARK: - Other
 
     private func handleTerminalDrop(url: URL, tab: TerminalTab) async {
         await uploadManager.performUpload(url, tab: tab, i18n: i18n)
     }
 
     func copySelection() {
-        // Get the active terminal view
         guard let activeTab = sessionManager.activeTab,
-              let cached = TerminalViewCache.shared.retrieve(activeTab.id)
-        else { return }
-
+              let cached = TerminalViewCache.shared.retrieve(activeTab.id) else { return }
         if let selectedText = cached.view.getSelection(), !selectedText.isEmpty {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(selectedText, forType: .string)
-            // Show copy message
-            withAnimation {
-                copyMessage = "已复制"
-            }
-            // Clear message after delay
+            withAnimation { copyMessage = "已复制" }
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(2))
-                withAnimation {
-                    copyMessage = nil
-                }
+                withAnimation { copyMessage = nil }
             }
         }
     }

@@ -380,7 +380,6 @@ import SwiftUI
                         if let selectedText = terminal.getSelection(), !selectedText.isEmpty {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(selectedText, forType: .string)
-                            // Show copy message
                             NotificationCenter.default.post(name: .showCopyMessage, object: nil)
                         }
                     }
