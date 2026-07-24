@@ -400,5 +400,7 @@
   "no_active_provider": "No active AI provider configured",
   "api_key_not_set": "API key not set for %@",
   "ai_no_response": "AI returned an empty response. Please try again.",
+  "log_colorization": "Log Colorization",
+  "log_colorization_desc": "Automatically highlight log levels and keywords",
   "needs_restart": "Needs Restart"
 }

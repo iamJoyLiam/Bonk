@@ -394,6 +394,10 @@ enum LKey: String, CaseIterable {
     case apiKeyNotSet = "api_key_not_set"
     case aiNoResponse = "ai_no_response"
 
+    // Log colorization
+    case logColorization = "log_colorization"
+    case logColorizationDesc = "log_colorization_desc"
+
     /// I18n restart
     case needsRestart = "needs_restart"
 }

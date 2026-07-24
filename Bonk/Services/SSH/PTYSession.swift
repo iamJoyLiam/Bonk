@@ -110,16 +110,20 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         // Process through OSC 7 detector for CWD tracking
         osc7Detector.process(text)
 
-        // Notify one-shot observers (getCWD etc.)
+        // Notify one-shot observers (getCWD etc.) — raw text, no colorization
         let observers = outputObservers.withLock { $0 }
         for (_, observer) in observers {
             observer(text)
         }
 
+        // Client-side log colorization: inject ANSI SGR codes for plain-text log lines.
+        // Preserves existing ANSI sequences from the server — only colorizes plain text.
+        let displayText = LogColorizer.colorize(text)
+
         // Add to buffer with byte-size limit
-        let chunkBytes = text.utf8.count
+        let chunkBytes = displayText.utf8.count
         outputBuffer.withLockedValue { buf in
-            buf.append(text)
+            buf.append(displayText)
             bufferByteCount.withLockedValue { $0 += chunkBytes }
             // Trim by line count
             if buf.count > Self.maxBufferSize {
@@ -138,7 +142,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         // Skip consumers whose pending bytes exceed the high watermark;
         // they will resume once the Coordinator calls decrementPendingBytes().
         let consumers = liveContinuations.withLock { $0 }
-        let chunkSize = text.utf8.count
+        let chunkSize = displayText.utf8.count
         for (id, cont) in consumers {
             let pending = pendingBytes.withLock { dict in
                 dict[id] ?? 0
@@ -154,7 +158,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                 continue // Consumer is too far behind, skip this chunk
             }
             pendingBytes.withLock { $0[id, default: 0] += chunkSize }
-            cont.yield(text)
+            cont.yield(displayText)
         }
     }
 

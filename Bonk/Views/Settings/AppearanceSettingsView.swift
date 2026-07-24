@@ -11,6 +11,7 @@ struct AppearanceSettingsView: View {
     @Environment(I18n.self) var i18n
     @Bindable var preferences: UserPreferences
     @StateObject private var themeManager = TerminalThemeManager.shared
+    @AppStorage("logColorizerEnabled") private var logColorizerEnabled = true
 
     var body: some View {
         Form {
@@ -69,6 +70,10 @@ struct AppearanceSettingsView: View {
                 .onChange(of: preferences.fontSize) { _, _ in
                     sendFontChange()
                 }
+            }
+
+            Section(i18n.t(.logColorization)) {
+                Toggle(i18n.t(.logColorizationDesc), isOn: $logColorizerEnabled)
             }
         }
         .formStyle(.grouped)
