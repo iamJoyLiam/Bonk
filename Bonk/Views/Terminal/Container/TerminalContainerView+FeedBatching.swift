@@ -14,16 +14,27 @@ import SwiftTerm
     extension ContainerTerminalCoordinator {
         func startFeeding(from stream: AsyncStream<String>, onBytesProcessed: (@Sendable (Int) -> Void)? = nil) {
             // Cancel existing feed task before creating new one
-            feedTask?.cancel()
+            if let existingTask = feedTask {
+                Log.ui.info("[Feed] Cancelling existing feed task")
+                existingTask.cancel()
+            }
             // Reset batch state
             batchBuffer.withLock { $0 = "" }
             batchFlushScheduled.withLock { $0 = false }
 
+            Log.ui.info("[Feed] Starting new feed task")
             feedTask = Task { [weak self] in
-                guard let self else { return }
+                guard let self else { 
+                    Log.ui.warning("[Feed] Self deallocated, exiting")
+                    return 
+                }
                 try? await Task.sleep(for: .milliseconds(50)) // Reduced from 150ms to 50ms
+                Log.ui.info("[Feed] Feed task started, waiting for data")
                 for await text in stream {
-                    guard !Task.isCancelled else { break }
+                    guard !Task.isCancelled else { 
+                        Log.ui.info("[Feed] Feed task cancelled")
+                        break 
+                    }
                     let byteCount = text.utf8.count
                     let (shouldFlush, endsCR) = batchBuffer.withLock { buf -> (Bool, Bool) in
                         buf += text
@@ -43,6 +54,7 @@ import SwiftTerm
                         scheduleFlush(onBytesProcessed: onBytesProcessed)
                     }
                 }
+                Log.ui.info("[Feed] Feed task ended")
             }
         }
 
@@ -69,7 +81,8 @@ import SwiftTerm
             guard !text.isEmpty else { return }
 
             Task { @MainActor [weak self] in
-                self?.terminalView?.feed(text: text)
+                guard let self else { return }
+                self.terminalView?.feed(text: text)
                 // Signal backpressure AFTER terminal actually processes the text
                 onBytesProcessed?(byteCount)
             }

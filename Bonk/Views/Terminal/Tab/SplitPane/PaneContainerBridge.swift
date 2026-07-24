@@ -39,6 +39,7 @@ import SwiftUI
                 case .connected:
                     PaneMacBridge(
                         paneID: paneState.id,
+                        tabID: tab.id,
                         colorScheme: colorScheme,
                         fontSize: fontSize,
                         fontFamily: fontFamily,
@@ -136,6 +137,7 @@ import SwiftUI
     /// AppKit bridge for a single pane.
     private struct PaneMacBridge: NSViewRepresentable {
         let paneID: UUID
+        let tabID: UUID
         let colorScheme: TerminalColorScheme
         let fontSize: Double
         let fontFamily: String
@@ -243,7 +245,7 @@ import SwiftUI
             TerminalScrollFix.register(terminal)
 
             let cached = CachedTerminalView(tabID: paneID, view: terminal, coordinator: coordinator)
-            TerminalViewCache.shared.store(tabID: paneID, view: terminal, coordinator: coordinator)
+            TerminalViewCache.shared.store(tabID: paneID, parentTabID: tabID, view: terminal, coordinator: coordinator)
             return cached
         }
 

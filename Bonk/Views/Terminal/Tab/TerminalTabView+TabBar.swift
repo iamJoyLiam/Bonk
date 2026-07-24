@@ -30,6 +30,7 @@ extension TerminalTabView {
                     }
                     .buttonStyle(.plain)
                 }
+                .animation(.spring(response: 0.35, dampingFraction: 0.7), value: sessionManager.tabs.map(\.id))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
             }

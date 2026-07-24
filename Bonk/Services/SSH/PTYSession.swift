@@ -33,6 +33,9 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     private let pendingBytes = OSAllocatedUnfairLock<[UUID: Int]>(uncheckedState: [:])
     private static let backpressureHighWatermark = 256 * 1024 // 256 KB — pause yielding
     private static let backpressureLowWatermark = 64 * 1024 // 64 KB — resume yielding
+    
+    /// Track skipped chunks per consumer for diagnostics
+    private let skippedChunks = OSAllocatedUnfairLock<[UUID: Int]>(uncheckedState: [:])
 
     /// Internal signal — finishes when the session should end.
     private let sessionEndStream: AsyncStream<Void>
@@ -71,6 +74,8 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     public func makeOutputStream() -> (stream: AsyncStream<String>, onBytesProcessed: @Sendable (Int) -> Void) {
         let buffer = outputBuffer.withLockedValue { $0 }
         let consumerID = UUID()
+        
+        Log.ssh.info("[PTY] Creating output stream for consumer \(consumerID.uuidString.prefix(8)), replaying \(buffer.count) buffered lines")
 
         let stream = AsyncStream<String>(bufferingPolicy: .bufferingNewest(256)) { continuation in
             // Replay buffered output with OSC/DCS sequences stripped
@@ -85,6 +90,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             continuation.onTermination = { [self] _ in
                 liveContinuations.withLock { _ = $0.removeValue(forKey: consumerID) }
                 pendingBytes.withLock { _ = $0.removeValue(forKey: consumerID) }
+                Log.ssh.info("[PTY] Consumer \(consumerID.uuidString.prefix(8)) disconnected")
             }
         }
 
@@ -138,6 +144,13 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                 dict[id] ?? 0
             }
             if pending >= Self.backpressureHighWatermark {
+                // Track skipped chunks for diagnostics
+                skippedChunks.withLock { $0[id, default: 0] += 1 }
+                let skipCount = skippedChunks.withLock { $0[id] ?? 0 }
+                    // Log periodically (every 10 skips) to avoid spam
+                    if skipCount % 10 == 1 {
+                        Log.ssh.warning("[PTY] Consumer \(id.uuidString.prefix(8)) behind by \(pending) bytes, skipping chunk (skipped \(skipCount) chunks total)")
+                    }
                 continue // Consumer is too far behind, skip this chunk
             }
             pendingBytes.withLock { $0[id, default: 0] += chunkSize }

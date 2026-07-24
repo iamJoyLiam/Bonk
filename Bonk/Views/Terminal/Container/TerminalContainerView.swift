@@ -64,21 +64,34 @@ import SwiftUI
                     connectOutputStreamIfNeeded()
                 }
             }
+            .onChange(of: activeTab.id) { _, _ in
+                connectOutputStreamIfNeeded()
+            }
             .onAppear {
                 connectOutputStreamIfNeeded()
             }
         }
 
         private func connectOutputStreamIfNeeded() {
-            guard let ptySession = activeTab.session?.ptySession else { return }
+            guard let ptySession = activeTab.session?.ptySession else {
+                Log.ui.warning("[TerminalContainer] connectOutputStreamIfNeeded: no PTY session for tab \(activeTab.id.uuidString.prefix(8))")
+                return
+            }
             let cached = TerminalViewCache.shared.retrieve(activeTab.id)
             if cached?.outputStream == nil {
+                Log.ui.info("[TerminalContainer] connectOutputStreamIfNeeded: creating output stream for tab \(activeTab.id.uuidString.prefix(8))")
                 let result = ptySession.makeOutputStream()
                 TerminalViewCache.shared.connectOutputStream(
                     result.stream,
                     onBytesProcessed: result.onBytesProcessed,
                     to: activeTab.id
                 )
+            } else if let coordinator = cached?.coordinator as? ContainerTerminalCoordinator,
+                      coordinator.feedTask == nil,
+                      let stream = cached?.outputStream,
+                      let bytesProcessed = cached?.onBytesProcessed {
+                Log.ui.info("[TerminalContainer] connectOutputStreamIfNeeded: feed task nil for tab \(activeTab.id.uuidString.prefix(8)), restarting")
+                coordinator.startFeeding(from: stream, onBytesProcessed: bytesProcessed)
             }
         }
 
@@ -174,10 +187,12 @@ import SwiftUI
                 oldCached.view.removeFromSuperview()
             }
 
-            let cached: CachedTerminalView = if let existing = TerminalViewCache.shared.retrieve(activeTabID) {
-                existing
+            let cached: CachedTerminalView
+            if let existing = TerminalViewCache.shared.retrieve(activeTabID) {
+                cached = existing
             } else {
-                createTerminalView(for: activeTabID, context: context)
+                Log.ui.info("[TerminalContainer] Cache miss for tab \(activeTabID.uuidString.prefix(8)), creating new view")
+                cached = createTerminalView(for: activeTabID, context: context)
             }
 
             cached.view.translatesAutoresizingMaskIntoConstraints = false

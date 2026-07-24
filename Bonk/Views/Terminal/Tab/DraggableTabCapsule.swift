@@ -3,11 +3,12 @@
 //  Bonk
 //
 //  Tab capsule with drag source and drop target support.
-//  Drop indicator is shown in the terminal area, not on the tab.
+//  Simple and reliable: .draggable() + .dropDestination with smooth animation.
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
+
+// MARK: - Draggable Tab Capsule
 
 struct DraggableTabCapsule: View {
     let tab: TerminalTab
@@ -47,15 +48,35 @@ struct DraggableTabCapsule: View {
                     capsuleUnderline
                 }
             }
+            .overlay {
+                if isDragOver {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.accentColor, lineWidth: 2)
+                        .padding(1)
+                }
+            }
         }
         .buttonStyle(.plain)
-        // Drag source
         .draggable(tab.id.uuidString) {
             Text(tab.title)
                 .font(.system(size: 11))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 5)
                 .background(RoundedRectangle(cornerRadius: 16).fill(.bar))
+        }
+        .dropDestination(for: String.self) { items, _ in
+            guard let draggedIDString = items.first,
+                  let draggedID = UUID(uuidString: draggedIDString),
+                  draggedID != tab.id
+            else {
+                return false
+            }
+            sessionManager.moveTab(draggedID, relativeTo: tab.id)
+            return true
+        } isTargeted: { targeting in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isDragOver = targeting
+            }
         }
     }
 

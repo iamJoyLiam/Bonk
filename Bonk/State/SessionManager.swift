@@ -68,6 +68,28 @@ final class SessionManager {
         activeTabID = id
     }
 
+    /// Move a tab from one index to another (for tab reordering).
+    func moveTab(from sourceIndex: Int, to destinationIndex: Int) {
+        guard sourceIndex != destinationIndex,
+              sourceIndex >= 0, sourceIndex < tabs.count,
+              destinationIndex >= 0, destinationIndex < tabs.count
+        else { return }
+
+        let tab = tabs.remove(at: sourceIndex)
+        tabs.insert(tab, at: destinationIndex)
+    }
+
+    /// Move a tab relative to another tab (for drop-target reordering).
+    /// The dragged tab swaps with the target tab.
+    func moveTab(_ tabID: UUID, relativeTo targetID: UUID) {
+        guard let sourceIndex = tabs.firstIndex(where: { $0.id == tabID }),
+              let targetIndex = tabs.firstIndex(where: { $0.id == targetID }),
+              sourceIndex != targetIndex
+        else { return }
+
+        tabs.swapAt(sourceIndex, targetIndex)
+    }
+
     func closeTab(_ id: UUID) async {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
         await disconnectTab(id)
