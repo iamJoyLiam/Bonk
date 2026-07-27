@@ -32,7 +32,16 @@ struct BonkApp: App {
         do {
             return try ModelContainer(for: schema, configurations: [config])
         } catch {
-            fatalError("Migration failed: \(error)")
+            // If migration fails, try to create a fresh container
+            // This handles schema changes between versions
+            Log.app.error("ModelContainer migration failed: \(error.localizedDescription), attempting fresh container")
+            do {
+                let freshConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+                return try ModelContainer(for: schema, configurations: [freshConfig])
+            } catch {
+                Log.app.error("Fresh ModelContainer also failed: \(error.localizedDescription)")
+                fatalError("Database initialization failed: \(error)")
+            }
         }
     }()
 
