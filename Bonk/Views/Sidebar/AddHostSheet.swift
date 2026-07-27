@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct AddHostSheet: View {
     @Environment(I18n.self) var i18n
@@ -23,6 +24,10 @@ struct AddHostSheet: View {
     @State private var password = ""
     @State private var privateKeyPEM = ""
     @State private var certificatePEM = ""
+    @State private var useFilePickerForKey = false
+    @State private var useFilePickerForCert = false
+    @State private var privateKeyFileURL: URL?
+    @State private var certificateFileURL: URL?
     @State private var group = ""
     @State private var showPassword = false
     @State private var selectedCredential: Credential?
@@ -161,24 +166,59 @@ struct AddHostSheet: View {
                             ))
                             .frame(minHeight: 120)
                     case .certificate:
-                        Text(i18n.t(.pastePemKey))
+                        // Private Key
+                        HStack {
+                            Text(i18n.t(.privateKey))
+                                .font(.headline)
+                            Spacer()
+                            Button(useFilePickerForKey ? i18n.t(.pasteManually) : i18n.t(.selectFile)) {
+                                useFilePickerForKey.toggle()
+                            }
                             .font(.caption)
-                            .foregroundStyle(.secondary)
-                        TextEditor(text: $privateKeyPEM)
-                            .font(.system(
-                                .caption,
-                                design: .monospaced
-                            ))
-                            .frame(minHeight: 100)
-                        Text(i18n.t(.pasteCertificate))
+                        }
+
+                        if useFilePickerForKey {
+                            filePickerField(
+                                url: $privateKeyFileURL,
+                                content: $privateKeyPEM,
+                                placeholder: i18n.t(.selectPrivateKeyFile)
+                            )
+                        } else {
+                            Text(i18n.t(.pastePemKey))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            TextEditor(text: $privateKeyPEM)
+                                .font(.system(.caption, design: .monospaced))
+                                .frame(minHeight: 100)
+                        }
+
+                        Divider()
+
+                        // Certificate
+                        HStack {
+                            Text(i18n.t(.certificate))
+                                .font(.headline)
+                            Spacer()
+                            Button(useFilePickerForCert ? i18n.t(.pasteManually) : i18n.t(.selectFile)) {
+                                useFilePickerForCert.toggle()
+                            }
                             .font(.caption)
-                            .foregroundStyle(.secondary)
-                        TextEditor(text: $certificatePEM)
-                            .font(.system(
-                                .caption,
-                                design: .monospaced
-                            ))
-                            .frame(minHeight: 100)
+                        }
+
+                        if useFilePickerForCert {
+                            filePickerField(
+                                url: $certificateFileURL,
+                                content: $certificatePEM,
+                                placeholder: i18n.t(.selectCertificateFile)
+                            )
+                        } else {
+                            Text(i18n.t(.pasteCertificate))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            TextEditor(text: $certificatePEM)
+                                .font(.system(.caption, design: .monospaced))
+                                .frame(minHeight: 100)
+                        }
                     }
                 } else if let cred = vaultCredential {
                     LabeledContent(i18n.t(.credential)) {
@@ -308,5 +348,66 @@ struct AddHostSheet: View {
             onSave(item)
         }
         dismiss()
+    }
+
+    // MARK: - File Picker Field
+
+    @ViewBuilder
+    private func filePickerField(
+        url: Binding<URL?>,
+        content: Binding<String>,
+        placeholder: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let fileURL = url.wrappedValue {
+                HStack {
+                    Image(systemName: "doc.fill")
+                        .foregroundStyle(.blue)
+                    Text(fileURL.lastPathComponent)
+                        .font(.caption)
+                        .lineLimit(1)
+                    Spacer()
+                    Button {
+                        url.wrappedValue = nil
+                        content.wrappedValue = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(8)
+                .background(.quaternary.opacity(0.5))
+                .cornerRadius(6)
+            } else {
+                Button {
+                    let panel = NSOpenPanel()
+                    panel.allowsMultipleSelection = false
+                    panel.canChooseDirectories = false
+                    panel.canChooseFiles = true
+                    panel.allowedContentTypes = [.item]
+
+                    if panel.runModal() == .OK, let selectedURL = panel.url {
+                        url.wrappedValue = selectedURL
+                        // Read file content
+                        if let data = try? Data(contentsOf: selectedURL),
+                           let text = String(data: data, encoding: .utf8)
+                        {
+                            content.wrappedValue = text
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: "folder")
+                        Text(placeholder)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(8)
+                    .background(.quaternary.opacity(0.5))
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 }

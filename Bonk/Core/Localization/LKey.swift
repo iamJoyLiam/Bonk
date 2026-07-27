@@ -417,6 +417,10 @@ enum LKey: String, CaseIterable {
     // SSH Certificate
     case certificate = "certificate"
     case pasteCertificate = "paste_certificate"
+    case selectFile = "select_file"
+    case pasteManually = "paste_manually"
+    case selectPrivateKeyFile = "select_private_key_file"
+    case selectCertificateFile = "select_certificate_file"
 
     /// I18n restart
     case needsRestart = "needs_restart"

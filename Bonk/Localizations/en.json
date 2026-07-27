@@ -419,5 +419,9 @@
   "reconnect_delay_hint": "Delay doubles with each attempt (max 30s)",
   "certificate": "Certificate",
   "paste_certificate": "Paste SSH certificate (public key certified by CA)",
+  "select_file": "Select File",
+  "paste_manually": "Paste Manually",
+  "select_private_key_file": "Select private key file",
+  "select_certificate_file": "Select certificate file",
   "needs_restart": "Needs Restart"
 }

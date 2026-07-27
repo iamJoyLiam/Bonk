@@ -419,5 +419,9 @@
   "reconnect_delay_hint": "间隔每次翻倍（最大 30 秒）",
   "certificate": "证书",
   "paste_certificate": "粘贴 SSH 证书（CA 签发的公钥证书）",
+  "select_file": "选择文件",
+  "paste_manually": "手动粘贴",
+  "select_private_key_file": "选择私钥文件",
+  "select_certificate_file": "选择证书文件",
   "needs_restart": "需要重启"
 }
