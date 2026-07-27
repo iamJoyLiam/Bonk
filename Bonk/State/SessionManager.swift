@@ -228,6 +228,32 @@ final class SessionManager {
         )
     }
 
+    // MARK: - Zmodem
+
+    /// Start Zmodem file send.
+    func startZmodemSend(tabID: UUID, paneID: UUID, files: [URL]) {
+        guard let tab = tabs.first(where: { $0.id == tabID }),
+              let pane = tab.layout.findPane(id: paneID),
+              let pty = pane.ptySession else { return }
+
+        if pty.zmodemHandler == nil {
+            pty.setupZmodem()
+        }
+        pty.startZmodemSend(files: files)
+    }
+
+    /// Start Zmodem file receive.
+    func startZmodemReceive(tabID: UUID, paneID: UUID) {
+        guard let tab = tabs.first(where: { $0.id == tabID }),
+              let pane = tab.layout.findPane(id: paneID),
+              let pty = pane.ptySession else { return }
+
+        if pty.zmodemHandler == nil {
+            pty.setupZmodem()
+        }
+        pty.startZmodemReceive()
+    }
+
     /// Convenience: send text to the active pane (auto-appends Enter).
     func sendTextToActiveTab(_ text: String) {
         guard let tab = activeTab, let paneID = tab.activePaneID else { return }

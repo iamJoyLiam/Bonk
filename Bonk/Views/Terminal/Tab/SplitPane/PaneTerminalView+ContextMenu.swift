@@ -61,6 +61,24 @@ extension PaneTerminalView {
 
         Divider()
 
+        // Zmodem file transfer
+        Menu {
+            Button {
+                showFilePickerForZmodem()
+            } label: {
+                Label("Send File", systemImage: "arrow.up.circle")
+            }
+            Button {
+                sessionManager.startZmodemReceive(tabID: tab.id, paneID: paneState.id)
+            } label: {
+                Label("Receive File", systemImage: "arrow.down.circle")
+            }
+        } label: {
+            Label("File Transfer (Zmodem)", systemImage: "arrow.up.arrow.down.circle")
+        }
+
+        Divider()
+
         // AI Assistant
         Button {
             NotificationCenter.default.post(name: .toggleAIChat, object: nil)
@@ -179,6 +197,20 @@ extension PaneTerminalView {
             do {
                 try await sessionManager.resizePTY(cols: cols, rows: rows, tabID: tab.id, paneID: paneState.id)
             } catch {}
+        }
+    }
+
+    // MARK: - Zmodem File Transfer
+
+    func showFilePickerForZmodem() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+
+        if panel.runModal() == .OK {
+            let files = panel.urls
+            sessionManager.startZmodemSend(tabID: tab.id, paneID: paneState.id, files: files)
         }
     }
 }

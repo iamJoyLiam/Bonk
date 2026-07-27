@@ -440,5 +440,8 @@
   "copied": "已复制！",
   "error": "错误",
   "ssh_keys": "SSH 密钥",
+  "file_transfer": "文件传输 (Zmodem)",
+  "send_file": "发送文件",
+  "receive_file": "接收文件",
   "needs_restart": "需要重启"
 }

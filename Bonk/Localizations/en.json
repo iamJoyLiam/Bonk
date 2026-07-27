@@ -440,5 +440,8 @@
   "copied": "Copied!",
   "error": "Error",
   "ssh_keys": "SSH Keys",
+  "file_transfer": "File Transfer (Zmodem)",
+  "send_file": "Send File",
+  "receive_file": "Receive File",
   "needs_restart": "Needs Restart"
 }

@@ -47,6 +47,9 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// OSC 7 CWD detector — intercepts escape sequences to track directory changes.
     let osc7Detector = PTYOSC7Detector()
 
+    /// Zmodem handler for file transfer support.
+    private(set) var zmodemHandler: ZmodemHandler?
+
     /// One-shot output observers for command-response patterns (e.g., getCWD).
     private typealias ObserverClosure = @Sendable (String) -> Void
     private let outputObservers = OSAllocatedUnfairLock<[UUID: ObserverClosure]>(uncheckedState: [:])
@@ -351,6 +354,50 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         _ = outputObservers.withLock { $0.removeAll() }
         liveContinuations.withLock { $0 }.values.forEach { $0.finish() }
         sessionEndContinuation.finish()
+    }
+
+    // MARK: - Zmodem Support
+
+    /// Initialize Zmodem handler for file transfer.
+    func setupZmodem() {
+        let handler = ZmodemHandler()
+        handler.onSendData = { [weak self] data in
+            Task {
+                try? await self?.sendRawBytes(data)
+            }
+        }
+        zmodemHandler = handler
+    }
+
+    /// Start Zmodem file send.
+    public func startZmodemSend(files: [URL]) {
+        let handler = zmodemHandler ?? {
+            setupZmodem()
+            return zmodemHandler!
+        }()
+        handler.startSend(files: files)
+    }
+
+    /// Start Zmodem file receive.
+    public func startZmodemReceive() {
+        let handler = zmodemHandler ?? {
+            setupZmodem()
+            return zmodemHandler!
+        }()
+        handler.startReceive()
+    }
+
+    /// Cancel Zmodem transfer.
+    public func cancelZmodem() {
+        zmodemHandler?.cancel()
+    }
+
+    /// Send raw bytes to the PTY.
+    private func sendRawBytes(_ bytes: [UInt8]) async throws {
+        guard let writer = writerBox.withLockedValue({ $0 }) else { return }
+        var buffer = ByteBuffer()
+        buffer.writeBytes(bytes)
+        try await writer.write(buffer)
     }
 
     // MARK: - ByteBuffer Chunking

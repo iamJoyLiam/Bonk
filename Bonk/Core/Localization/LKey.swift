@@ -439,6 +439,11 @@ enum LKey: String, CaseIterable {
     case copied = "copied"
     case sshKeys = "ssh_keys"
 
+    // Zmodem
+    case fileTransfer = "file_transfer"
+    case sendFile = "send_file"
+    case receiveFile = "receive_file"
+
     /// I18n restart
     case needsRestart = "needs_restart"
 }
