@@ -15,6 +15,7 @@ struct ContentView: View {
         @State private var showAddHostSheet = false
         @State private var showTerminalSearch = false
         @State private var showQuickConnect = false
+        @State private var showSSHConfigImport = false
         @State private var sftpWindow: NSWindow?
     #endif
 
@@ -110,6 +111,10 @@ struct ContentView: View {
                         Button { workspace.isSerialPortPresented = true } label: {
                             Image(systemName: "cable.connector")
                         }
+                        Button { showSSHConfigImport = true } label: {
+                            Image(systemName: "square.and.arrow.down")
+                        }
+                        .help(i18n.t(.importSSHConfig))
                         Button { workspace.isPortForwardingPresented = true } label: {
                             Image(systemName: "arrow.triangle.branch")
                         }
@@ -178,6 +183,9 @@ struct ContentView: View {
                     sshService: sessionManager.activeTab?.session?.sshService
                 )
                 .environment(i18n)
+            }
+            .sheet(isPresented: $showSSHConfigImport) {
+                SSHConfigImportView(modelContext: modelContext)
             }
         }
     #endif

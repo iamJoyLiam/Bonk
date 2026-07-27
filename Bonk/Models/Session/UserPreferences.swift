@@ -39,6 +39,10 @@ final class UserPreferences {
     /// SFTP — optional for backward compatibility
     var sftpOverwriteAlways: Bool?
     var sftpDefaultLocalPath: String?
+    /// Auto-reconnection settings
+    var autoReconnect: Bool
+    var maxReconnectAttempts: Int
+    var reconnectBaseDelay: Double // seconds
 
     init(
         fontSize: Double = 14,
@@ -58,7 +62,10 @@ final class UserPreferences {
         aiDirectSubmit: Bool = true,
         checkForUpdates: Bool = true,
         sftpOverwriteAlways: Bool? = nil,
-        sftpDefaultLocalPath: String? = nil
+        sftpDefaultLocalPath: String? = nil,
+        autoReconnect: Bool = true,
+        maxReconnectAttempts: Int = 5,
+        reconnectBaseDelay: Double = 1.0
     ) {
         self.fontSize = fontSize
         self.fontFamily = fontFamily
@@ -78,5 +85,8 @@ final class UserPreferences {
         self.checkForUpdates = checkForUpdates
         self.sftpOverwriteAlways = sftpOverwriteAlways
         self.sftpDefaultLocalPath = sftpDefaultLocalPath
+        self.autoReconnect = autoReconnect
+        self.maxReconnectAttempts = maxReconnectAttempts
+        self.reconnectBaseDelay = reconnectBaseDelay
     }
 }

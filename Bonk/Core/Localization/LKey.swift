@@ -398,6 +398,22 @@ enum LKey: String, CaseIterable {
     case logColorization = "log_colorization"
     case logColorizationDesc = "log_colorization_desc"
 
+    // SSH Config Import
+    case importSSHConfig = "import_ssh_config"
+    case importSSHConfigDescription = "import_ssh_config_description"
+    case hostsFound = "hosts_found"
+    case noSSHConfigEntries = "no_ssh_config_entries"
+    case noSSHConfigEntriesDescription = "no_ssh_config_entries_description"
+    case importResult = "import_result"
+    case importSuccessMessage = "import_success_message"
+
+    // Auto-reconnect
+    case autoReconnect = "auto_reconnect"
+    case autoReconnectDesc = "auto_reconnect_desc"
+    case maxReconnectAttempts = "max_reconnect_attempts"
+    case reconnectBaseDelay = "reconnect_base_delay"
+    case reconnectDelayHint = "reconnect_delay_hint"
+
     /// I18n restart
     case needsRestart = "needs_restart"
 }

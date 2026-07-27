@@ -10,6 +10,7 @@ import Crypto
 import Foundation
 import NIOConcurrencyHelpers
 import NIOCore
+import Network
 @preconcurrency import NIOSSH
 import os.log
 
@@ -40,6 +41,12 @@ public actor SSHNetworkService {
     private let keepAlive = SSHKeepAlive()
     /// Guard against duplicate handleDisconnect calls (keepalive timeout + onDisconnect).
     private var isHandlingDisconnect = false
+
+    /// Network monitor for detecting connectivity changes.
+    private let networkMonitor = NWPathMonitor()
+    private var isMonitoringNetwork = false
+    /// Whether we're waiting for network to come back (for delayed reconnect).
+    private var isWaitingForNetwork = false
 
     /// Stores PTY parameters for reconnection.
     private struct PTYConfig {
@@ -245,6 +252,8 @@ public actor SSHNetworkService {
         reconnectTask?.cancel()
         reconnectTask = nil
 
+        stopNetworkMonitor()
+
         activePTYSession?.close()
         activePTYSession = nil
 
@@ -254,6 +263,44 @@ public actor SSHNetworkService {
         connectionState = .disconnected
         stateContinuation.yield(.disconnected)
         config = nil
+    }
+
+    // MARK: - Network Monitoring
+
+    /// Start monitoring network connectivity changes.
+    private func startNetworkMonitor() {
+        guard !isMonitoringNetwork else { return }
+        isMonitoringNetwork = true
+
+        let queue = DispatchQueue(label: "com.bonk.ssh.network-monitor")
+        networkMonitor.pathUpdateHandler = { [weak self] path in
+            Task {
+                await self?.handleNetworkChange(path)
+            }
+        }
+        networkMonitor.start(queue: queue)
+    }
+
+    /// Stop monitoring network connectivity.
+    private func stopNetworkMonitor() {
+        networkMonitor.cancel()
+        isMonitoringNetwork = false
+        isWaitingForNetwork = false
+    }
+
+    /// Handle network connectivity changes.
+    private func handleNetworkChange(_ path: NWPath) async {
+        // Only act if we're in a disconnected/reconnecting state and waiting for network
+        guard isWaitingForNetwork, path.status == .satisfied else { return }
+
+        Log.ssh.info("[NETWORK] Network restored, attempting reconnection...")
+        isWaitingForNetwork = false
+
+        // Network is back — attempt immediate reconnection
+        guard config != nil else { return }
+        Task {
+            try? await reconnect()
+        }
     }
 
     // MARK: - Reconnection State Machine
@@ -278,6 +325,9 @@ public actor SSHNetworkService {
 
             do {
                 try await establishConnection(config: config)
+
+                // Reconnection successful — stop network monitor if active
+                stopNetworkMonitor()
 
                 if let ptyConfig = lastPTYConfig, let client {
                     let session = PTYSession()
@@ -311,6 +361,11 @@ public actor SSHNetworkService {
                 attempt += 1
             }
         }
+
+        // All attempts exhausted — start network monitor for when connectivity returns
+        Log.ssh.info("[RECONNECT] All attempts exhausted, starting network monitor...")
+        isWaitingForNetwork = true
+        startNetworkMonitor()
 
         connectionState = .disconnected
         stateContinuation.yield(.disconnected)
