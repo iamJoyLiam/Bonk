@@ -192,8 +192,6 @@ struct AddHostSheet: View {
                                 .frame(minHeight: 100)
                         }
 
-                        Divider()
-
                         // Certificate
                         HStack {
                             Text(i18n.t(.certificate))
