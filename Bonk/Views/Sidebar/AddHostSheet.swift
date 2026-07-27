@@ -358,7 +358,7 @@ struct AddHostSheet: View {
         content: Binding<String>,
         placeholder: String
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 0) {
             if let fileURL = url.wrappedValue {
                 HStack {
                     Image(systemName: "doc.fill")
