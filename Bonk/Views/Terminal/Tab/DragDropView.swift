@@ -38,6 +38,9 @@ class DragDropNSView: NSView {
     /// Terminal view (not used for event forwarding, kept for reference)
     weak var terminalView: NSView?
 
+    /// Current tab ID to filter out self-drops
+    var currentTabID: UUID = UUID()
+
     /// Callback when tab is dropped (for split pane)
     var onTabDrop: ((UUID, DropPosition) -> Void)?
 
@@ -52,6 +55,9 @@ class DragDropNSView: NSView {
 
     /// Whether we are currently tracking a drag
     private var isTrackingDrag = false
+
+    /// Debounce timer for position updates
+    private var debounceTimer: Timer?
 
     // MARK: - Initialization
 
@@ -95,9 +101,10 @@ class DragDropNSView: NSView {
         lastPosition = position
         isTrackingDrag = true
 
-        // Only show indicator for tab drag, not file drag
-        let isTabDrag = containsTabUUID(sender.draggingPasteboard) != nil
-        if isTabDrag {
+        // Only show indicator for tab drag, not file drag, and not self-drop
+        if let sourceTabID = containsTabUUID(sender.draggingPasteboard),
+           sourceTabID != currentTabID
+        {
             onDragStateChange?(true, position)
         } else {
             onDragStateChange?(false, .right)
@@ -113,10 +120,18 @@ class DragDropNSView: NSView {
         if position != lastPosition {
             lastPosition = position
 
-            // Only show indicator for tab drag
+            // Capture values before closure to avoid Sendable warning
             let isTabDrag = containsTabUUID(sender.draggingPasteboard) != nil
-            if isTabDrag {
-                onDragStateChange?(true, position)
+            let sourceTabID = containsTabUUID(sender.draggingPasteboard)
+
+            // Debounce: cancel previous timer and schedule new one
+            debounceTimer?.invalidate()
+            debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: false) { [weak self] _ in
+                guard let self else { return }
+                // Only show indicator for tab drag that is not self-drop
+                if isTabDrag, let sourceTabID, sourceTabID != self.currentTabID {
+                    self.onDragStateChange?(true, position)
+                }
             }
         }
 
@@ -125,7 +140,12 @@ class DragDropNSView: NSView {
 
     override func draggingExited(_: NSDraggingInfo?) {
         isTrackingDrag = false
-        onDragStateChange?(false, .right)
+        debounceTimer?.invalidate()
+        debounceTimer = nil
+        // Delay state change to allow animation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            self?.onDragStateChange?(false, .right)
+        }
     }
 
     override func prepareForDragOperation(_: NSDraggingInfo) -> Bool {
@@ -134,6 +154,8 @@ class DragDropNSView: NSView {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         isTrackingDrag = false
+        debounceTimer?.invalidate()
+        debounceTimer = nil
         onDragStateChange?(false, .right)
 
         let pasteboard = sender.draggingPasteboard
@@ -158,6 +180,8 @@ class DragDropNSView: NSView {
 
     override func concludeDragOperation(_: NSDraggingInfo?) {
         isTrackingDrag = false
+        debounceTimer?.invalidate()
+        debounceTimer = nil
         onDragStateChange?(false, .right)
     }
 
@@ -205,9 +229,10 @@ class DragDropNSView: NSView {
 
 // MARK: - SwiftUI Wrapper
 
-/// SwiftUI wrapper for DragDropNSView
+/// SwiftUI wrapper for DragDropView
 struct DragDropView: NSViewRepresentable {
     let terminalView: NSView?
+    let currentTabID: UUID
     let onTabDrop: (UUID, DropPosition) -> Void
     let onFileDrop: ([URL]) -> Void
     let onDragStateChange: (Bool, DropPosition) -> Void
@@ -215,6 +240,7 @@ struct DragDropView: NSViewRepresentable {
     func makeNSView(context _: Context) -> DragDropNSView {
         let view = DragDropNSView()
         view.terminalView = terminalView
+        view.currentTabID = currentTabID
         view.onTabDrop = onTabDrop
         view.onFileDrop = onFileDrop
         view.onDragStateChange = onDragStateChange
@@ -223,6 +249,7 @@ struct DragDropView: NSViewRepresentable {
 
     func updateNSView(_ nsView: DragDropNSView, context _: Context) {
         nsView.terminalView = terminalView
+        nsView.currentTabID = currentTabID
         nsView.onTabDrop = onTabDrop
         nsView.onFileDrop = onFileDrop
         nsView.onDragStateChange = onDragStateChange

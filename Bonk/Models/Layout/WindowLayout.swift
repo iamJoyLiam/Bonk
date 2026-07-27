@@ -35,23 +35,39 @@ final class TabLayout {
         split(direction: .vertical)
     }
 
-    /// Swap the order of panes in the root container.
-    /// Used to adjust pane order after drag-to-split.
-    func swapPanes() {
-        root = swapPanes(in: root)
+    /// Insert a new pane at a specific position (used for drag-to-split).
+    /// - Parameters:
+    ///   - direction: .horizontal (left-right) or .vertical (top-bottom)
+    ///   - position: The position relative to the active pane (.left/.top = before, .right/.bottom = after)
+    @discardableResult
+    func insertPane(direction: SplitDirection, at position: PaneInsertPosition) -> PaneState {
+        let newPane = PaneState()
+        root = insertSplit(
+            into: root,
+            targetPaneID: activePaneID,
+            direction: direction,
+            newPane: newPane,
+            at: position
+        )
+        activePaneID = newPane.id
+        return newPane
     }
 
-    /// Recursively swap panes in a container.
-    private func swapPanes(in node: LayoutNode) -> LayoutNode {
-        switch node {
-        case .pane:
-            return node
-        case let .horizontal(children):
-            let swapped = children.reversed()
-            return .horizontal(children: Array(swapped))
-        case let .vertical(children):
-            let swapped = children.reversed()
-            return .vertical(children: Array(swapped))
+    /// Pane insertion position relative to the target pane.
+    enum PaneInsertPosition {
+        case before  // left or top
+        case after   // right or bottom
+    }
+
+    /// Split direction for pane operations.
+    enum SplitDirection {
+        case horizontal, vertical
+
+        func makeContainer(children: [LayoutNode]) -> LayoutNode {
+            switch self {
+            case .horizontal: .horizontal(children: children)
+            case .vertical: .vertical(children: children)
+            }
         }
     }
 
@@ -94,28 +110,9 @@ final class TabLayout {
 
     // MARK: - Private
 
-    private enum SplitDirection {
-        case horizontal, vertical
-
-        func makeContainer(children: [LayoutNode]) -> LayoutNode {
-            switch self {
-            case .horizontal: .horizontal(children: children)
-            case .vertical: .vertical(children: children)
-            }
-        }
-    }
-
     /// Generic split method to avoid code duplication.
     private func split(direction: SplitDirection) -> PaneState {
-        let newPane = PaneState()
-        root = insertSplit(
-            into: root,
-            targetPaneID: activePaneID,
-            direction: direction,
-            newPane: newPane
-        )
-        activePaneID = newPane.id
-        return newPane
+        insertPane(direction: direction, at: .after)
     }
 
     /// Insert a split containing a new pane next to the target pane.
@@ -123,12 +120,16 @@ final class TabLayout {
         into node: LayoutNode,
         targetPaneID: UUID,
         direction: SplitDirection,
-        newPane: PaneState
+        newPane: PaneState,
+        at position: PaneInsertPosition
     ) -> LayoutNode {
         switch node {
         case let .pane(state):
             guard state.id == targetPaneID else { return node }
-            return direction.makeContainer(children: [.pane(state), .pane(newPane)])
+            let children: [LayoutNode] = position == .before
+                ? [.pane(newPane), .pane(state)]
+                : [.pane(state), .pane(newPane)]
+            return direction.makeContainer(children: children)
 
         case let .horizontal(children), let .vertical(children):
             var newChildren = children
@@ -137,7 +138,8 @@ final class TabLayout {
                     into: newChildren[index],
                     targetPaneID: targetPaneID,
                     direction: direction,
-                    newPane: newPane
+                    newPane: newPane,
+                    at: position
                 )
                 if updated != newChildren[index] {
                     newChildren[index] = updated

@@ -31,6 +31,10 @@ struct LayoutNodeView: View {
                 cursorStyle: cursorStyle,
                 cursorBlink: cursorBlink
             )
+            .transition(.asymmetric(
+                insertion: .scale(scale: 0.95).combined(with: .opacity),
+                removal: .opacity
+            ))
             .onTapGesture {
                 sessionManager.selectPane(paneState.id)
             }

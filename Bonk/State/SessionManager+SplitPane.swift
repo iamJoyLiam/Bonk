@@ -214,13 +214,10 @@ extension SessionManager {
             return
         }
 
-        // Create new pane based on position
-        let newPane: PaneState = switch position {
-        case .left, .right:
-            targetTab.layout.splitHorizontal()
-        case .top, .bottom:
-            targetTab.layout.splitVertical()
-        }
+        // Create new pane at the correct position based on drop location
+        let direction: TabLayout.SplitDirection = position.isHorizontal ? .horizontal : .vertical
+        let insertPosition: TabLayout.PaneInsertPosition = (position == .left || position == .top) ? .before : .after
+        let newPane = targetTab.layout.insertPane(direction: direction, at: insertPosition)
 
         // Set new pane title to source tab name
         newPane.title = sourceTab.hostItem.name
@@ -234,11 +231,6 @@ extension SessionManager {
             if let targetPane = targetTab.layout.findPane(id: paneID) {
                 targetPane.title = targetTab.hostItem.name
             }
-        }
-
-        // Adjust pane order based on position
-        if position == .left || position == .top {
-            targetTab.layout.swapPanes()
         }
 
         // Move PTY session from source to new pane

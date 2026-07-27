@@ -40,12 +40,10 @@ struct PaneTerminalView: View {
         }
         .overlay {
             // Drag-and-drop overlay with indicator
-            if isDragOver {
-                dropIndicator
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.15), value: isDragOver)
-            }
+            dropIndicator
+                .allowsHitTesting(false)
+                .opacity(isDragOver ? 1 : 0)
+                .animation(.easeInOut(duration: 0.15), value: isDragOver)
         }
         .overlay(alignment: .bottom) {
             // Upload progress overlay
@@ -156,6 +154,7 @@ struct PaneTerminalView: View {
             // Drag-and-drop overlay (transparent, handles all drag events)
             DragDropView(
                 terminalView: terminalNSView,
+                currentTabID: tab.id,
                 onTabDrop: handleTabDrop,
                 onFileDrop: handleFileDrop,
                 onDragStateChange: handleDragStateChange

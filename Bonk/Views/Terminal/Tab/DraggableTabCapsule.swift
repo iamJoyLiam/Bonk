@@ -15,6 +15,7 @@ struct DraggableTabCapsule: View {
     let isActive: Bool
     let state: SSHConnectionState
     let sessionManager: SessionManager
+    let isDragEnabled: Bool
     let onSelect: () -> Void
     let onClose: () -> Void
 
@@ -57,7 +58,7 @@ struct DraggableTabCapsule: View {
             }
         }
         .buttonStyle(.plain)
-        .draggable(tab.id.uuidString) {
+        .draggable(isDragEnabled ? tab.id.uuidString : "") {
             Text(tab.title)
                 .font(.system(size: 11))
                 .padding(.horizontal, 12)
@@ -65,7 +66,8 @@ struct DraggableTabCapsule: View {
                 .background(RoundedRectangle(cornerRadius: 16).fill(.bar))
         }
         .dropDestination(for: String.self) { items, _ in
-            guard let draggedIDString = items.first,
+            guard isDragEnabled,
+                  let draggedIDString = items.first,
                   let draggedID = UUID(uuidString: draggedIDString),
                   draggedID != tab.id
             else {
@@ -75,7 +77,7 @@ struct DraggableTabCapsule: View {
             return true
         } isTargeted: { targeting in
             withAnimation(.easeInOut(duration: 0.15)) {
-                isDragOver = targeting
+                isDragOver = isDragEnabled && targeting
             }
         }
     }

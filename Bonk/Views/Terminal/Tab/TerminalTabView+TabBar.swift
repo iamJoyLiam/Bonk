@@ -63,6 +63,7 @@ extension TerminalTabView {
             isActive: isActive,
             state: state,
             sessionManager: sessionManager,
+            isDragEnabled: sessionManager.tabs.count > 1,
             onSelect: { sessionManager.selectTab(tab.id) },
             onClose: { Task { await sessionManager.closeTab(tab.id) } }
         )
