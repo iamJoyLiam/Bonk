@@ -16,6 +16,7 @@ struct ContentView: View {
         @State private var showTerminalSearch = false
         @State private var showQuickConnect = false
         @State private var showSSHConfigImport = false
+        @State private var showKeyGenerator = false
         @State private var sftpWindow: NSWindow?
     #endif
 
@@ -127,6 +128,10 @@ struct ContentView: View {
                         Button { toggleSFTPWindow() } label: {
                             Image(systemName: "folder.fill")
                         }
+                        Button { showKeyGenerator = true } label: {
+                            Image(systemName: "key.fill")
+                        }
+                        .help(i18n.t(.generateSSHKey))
                     }
                 }
 
@@ -186,6 +191,9 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showSSHConfigImport) {
                 SSHConfigImportView(modelContext: modelContext)
+            }
+            .sheet(isPresented: $showKeyGenerator) {
+                SSHKeyGeneratorView()
             }
         }
     #endif
