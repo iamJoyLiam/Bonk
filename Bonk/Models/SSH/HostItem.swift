@@ -5,6 +5,7 @@ import SwiftData
 enum AuthType: String, Codable {
     case password
     case privateKey
+    case certificate
 }
 
 /// Persisted SSH host configuration.
@@ -61,6 +62,17 @@ final class HostItem {
         KeychainHelper.set(pem, for: KeychainHelper.privateKeyKey(for: id))
     }
 
+    // MARK: - Certificate credentials
+
+    func loadCertificate() -> String? {
+        KeychainHelper.get(for: KeychainHelper.certificateKey(for: id))
+    }
+
+    func storeCertificate(_ pem: String) {
+        guard !pem.isEmpty else { return }
+        KeychainHelper.set(pem, for: KeychainHelper.certificateKey(for: id))
+    }
+
     init(
         name: String,
         host: String,
@@ -69,6 +81,7 @@ final class HostItem {
         authType: AuthType = .password,
         password: String? = nil,
         privateKeyPEM: String? = nil,
+        certificatePEM: String? = nil,
         groupRef: HostGroup? = nil,
         credentialRef: Credential? = nil
     ) {
@@ -84,11 +97,13 @@ final class HostItem {
 
         if let passwordValue = password { storePassword(passwordValue) }
         if let pem = privateKeyPEM { storePrivateKey(pem) }
+        if let cert = certificatePEM { storeCertificate(cert) }
     }
 
     func deleteCredentials() {
         KeychainHelper.delete(for: KeychainHelper.passwordKey(for: id))
         KeychainHelper.delete(for: KeychainHelper.privateKeyKey(for: id))
+        KeychainHelper.delete(for: KeychainHelper.certificateKey(for: id))
     }
 
     /// Resolve the effective username.
@@ -125,6 +140,10 @@ final class HostItem {
         case .privateKey:
             guard let pem = loadPrivateKey(), !pem.isEmpty else { return nil }
             return .privateKey(pemString: pem)
+        case .certificate:
+            guard let pem = loadPrivateKey(), !pem.isEmpty else { return nil }
+            let cert = loadCertificate() ?? ""
+            return .certificate(privateKeyPEM: pem, certificatePEM: cert)
         }
     }
 }

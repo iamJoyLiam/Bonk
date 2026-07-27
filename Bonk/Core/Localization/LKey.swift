@@ -414,6 +414,10 @@ enum LKey: String, CaseIterable {
     case reconnectBaseDelay = "reconnect_base_delay"
     case reconnectDelayHint = "reconnect_delay_hint"
 
+    // SSH Certificate
+    case certificate = "certificate"
+    case pasteCertificate = "paste_certificate"
+
     /// I18n restart
     case needsRestart = "needs_restart"
 }

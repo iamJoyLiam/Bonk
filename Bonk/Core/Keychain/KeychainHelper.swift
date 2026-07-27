@@ -157,4 +157,8 @@ enum KeychainHelper {
     static func privateKeyKey(for hostID: UUID) -> String {
         "host_\(hostID.uuidString)_privatekey"
     }
+
+    static func certificateKey(for hostID: UUID) -> String {
+        "host_\(hostID.uuidString)_certificate"
+    }
 }

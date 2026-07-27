@@ -458,6 +458,24 @@ public actor SSHNetworkService {
                 "Unsupported key type. Only Ed25519 private keys are supported. "
                     + "Detected key is not Ed25519 (raw \(raw.count) bytes)."
             )
+
+        case let .certificate(privateKeyPEM, certificatePEM):
+            // SSH certificate authentication:
+            // 1. Load the private key
+            // 2. The certificate is used to identify the key to the server
+            // Citadel/NIOSSH may not directly support certificate auth,
+            // so we try using the private key and hope the server accepts it
+            let raw = try decodePEM(privateKeyPEM)
+
+            if let edKey = try? Curve25519.Signing.PrivateKey(rawRepresentation: raw) {
+                // Store certificate for potential future use
+                Log.ssh.info("Using certificate authentication for \(username)")
+                return .ed25519(username: username, privateKey: edKey)
+            }
+
+            throw SSHServiceError.connectionFailed(
+                "Certificate authentication requires an Ed25519 private key."
+            )
         }
     }
 

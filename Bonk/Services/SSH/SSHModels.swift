@@ -39,6 +39,7 @@ public struct SSHConnectionConfig: Sendable, Hashable {
 public enum SSHAuthMethod: Sendable, Hashable {
     case password(String)
     case privateKey(pemString: String)
+    case certificate(privateKeyPEM: String, certificatePEM: String)
 }
 
 // MARK: - Connection State

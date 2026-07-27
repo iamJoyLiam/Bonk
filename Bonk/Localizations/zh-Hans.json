@@ -417,5 +417,7 @@
   "max_reconnect_attempts": "最大重连次数",
   "reconnect_base_delay": "基础重连间隔",
   "reconnect_delay_hint": "间隔每次翻倍（最大 30 秒）",
+  "certificate": "证书",
+  "paste_certificate": "粘贴 SSH 证书（CA 签发的公钥证书）",
   "needs_restart": "需要重启"
 }

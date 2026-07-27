@@ -22,6 +22,7 @@ struct AddHostSheet: View {
     @State private var authType: AuthType = .password
     @State private var password = ""
     @State private var privateKeyPEM = ""
+    @State private var certificatePEM = ""
     @State private var group = ""
     @State private var showPassword = false
     @State private var selectedCredential: Credential?
@@ -65,7 +66,9 @@ struct AddHostSheet: View {
         let hasCred = usingVault
             || (authType == .password
                 ? !password.isEmpty
-                : !privateKeyPEM.isEmpty)
+                : authType == .certificate
+                    ? !privateKeyPEM.isEmpty
+                    : !privateKeyPEM.isEmpty)
         return hasName && hasHost && hasUser && hasCred
     }
 
@@ -120,6 +123,8 @@ struct AddHostSheet: View {
                             .tag(AuthType.password)
                         Text(i18n.t(.privateKey))
                             .tag(AuthType.privateKey)
+                        Text(i18n.t(.certificate))
+                            .tag(AuthType.certificate)
                     }
                     .pickerStyle(.segmented)
 
@@ -155,6 +160,25 @@ struct AddHostSheet: View {
                                 design: .monospaced
                             ))
                             .frame(minHeight: 120)
+                    case .certificate:
+                        Text(i18n.t(.pastePemKey))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $privateKeyPEM)
+                            .font(.system(
+                                .caption,
+                                design: .monospaced
+                            ))
+                            .frame(minHeight: 100)
+                        Text(i18n.t(.pasteCertificate))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $certificatePEM)
+                            .font(.system(
+                                .caption,
+                                design: .monospaced
+                            ))
+                            .frame(minHeight: 100)
                     }
                 } else if let cred = vaultCredential {
                     LabeledContent(i18n.t(.credential)) {
@@ -226,6 +250,7 @@ struct AddHostSheet: View {
         authType = existing.authType
         password = existing.loadPassword() ?? ""
         privateKeyPEM = existing.loadPrivateKey() ?? ""
+        certificatePEM = existing.loadCertificate() ?? ""
         group = existing.groupRef?.name ?? ""
         selectedCredential = existing.credentialRef
     }
@@ -256,10 +281,14 @@ struct AddHostSheet: View {
             existing.groupRef = groupRef
             existing.deleteCredentials()
             if !usingVault {
-                if authType == .password {
+                switch authType {
+                case .password:
                     existing.storePassword(password)
-                } else {
+                case .privateKey:
                     existing.storePrivateKey(privateKeyPEM)
+                case .certificate:
+                    existing.storePrivateKey(privateKeyPEM)
+                    existing.storeCertificate(certificatePEM)
                 }
             }
             onSave(existing)
@@ -270,12 +299,9 @@ struct AddHostSheet: View {
                 port: portNum,
                 username: trimmedUser,
                 authType: authType,
-                password: usingVault
-                    ? nil
-                    : (authType == .password ? password : nil),
-                privateKeyPEM: usingVault
-                    ? nil
-                    : (authType == .privateKey ? privateKeyPEM : nil),
+                password: usingVault ? nil : (authType == .password ? password : nil),
+                privateKeyPEM: usingVault ? nil : (authType != .password ? privateKeyPEM : nil),
+                certificatePEM: usingVault ? nil : (authType == .certificate ? certificatePEM : nil),
                 groupRef: groupRef,
                 credentialRef: selectedCredential
             )

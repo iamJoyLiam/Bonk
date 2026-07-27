@@ -417,5 +417,7 @@
   "max_reconnect_attempts": "Max Reconnect Attempts",
   "reconnect_base_delay": "Base Reconnect Delay",
   "reconnect_delay_hint": "Delay doubles with each attempt (max 30s)",
+  "certificate": "Certificate",
+  "paste_certificate": "Paste SSH certificate (public key certified by CA)",
   "needs_restart": "Needs Restart"
 }
