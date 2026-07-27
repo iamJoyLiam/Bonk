@@ -5,6 +5,7 @@ struct GeneralSettingsView: View {
     @Bindable var preferences: UserPreferences
 
     @State private var selectedLanguage = "system"
+    @State private var showKeyGenerator = false
 
     var body: some View {
         Form {
@@ -52,9 +53,20 @@ struct GeneralSettingsView: View {
                     }
                 }
             }
+
+            Section(i18n.t(.sshKeys)) {
+                Button {
+                    showKeyGenerator = true
+                } label: {
+                    Label(i18n.t(.generateSSHKey), systemImage: "key.fill")
+                }
+            }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .sheet(isPresented: $showKeyGenerator) {
+            SSHKeyGeneratorView()
+        }
         .onAppear {
             selectedLanguage = i18n.savedChoice
         }

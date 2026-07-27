@@ -422,6 +422,23 @@ enum LKey: String, CaseIterable {
     case selectPrivateKeyFile = "select_private_key_file"
     case selectCertificateFile = "select_certificate_file"
 
+    // SSH Key Generator
+    case generateSSHKey = "generate_ssh_key"
+    case generateSSHKeyDescription = "generate_ssh_key_description"
+    case keyType = "key_type"
+    case passphraseOptional = "passphrase_optional"
+    case passphraseHint = "passphrase_hint"
+    case fingerprint = "fingerprint"
+    case publicKey = "public_key"
+    case privateKeyWarning = "private_key_warning"
+    case copyPublicKey = "copy_public_key"
+    case copyPrivateKey = "copy_private_key"
+    case saveToFile = "save_to_file"
+    case generate = "generate"
+    case generateNew = "generate_new"
+    case copied = "copied"
+    case sshKeys = "ssh_keys"
+
     /// I18n restart
     case needsRestart = "needs_restart"
 }
