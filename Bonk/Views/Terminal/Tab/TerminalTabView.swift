@@ -19,7 +19,6 @@ struct TerminalTabView: View {
     let cursorStyle: String
     let cursorBlink: Bool
     @Query private var allPreferences: [UserPreferences]
-    @Query(sort: \HostItem.createdAt) var allHosts: [HostItem]
     @AppStorage("ai_enabled") var aiEnabled = false
     @State var showAIEnableAlert = false
     @Binding var showSearch: Bool

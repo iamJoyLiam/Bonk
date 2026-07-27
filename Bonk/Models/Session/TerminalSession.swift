@@ -19,6 +19,9 @@ final class TerminalSession {
     var inputBuffer: String = ""
     var stateObservationTask: Task<Void, Never>?
     var serverInfoTask: Task<Void, Never>?
+    /// Whether this session owns the SSH service (and should disconnect it on teardown).
+    /// false when created via unsplitPane (shares SSH connection with another tab).
+    var ownsSSHService = true
 
     var isConnected: Bool {
         connectionState.isConnected
@@ -37,7 +40,10 @@ final class TerminalSession {
         sftpService = nil
         ptySession?.close()
         ptySession = nil
-        sshService = nil
+        // Only disconnect SSH service if this session owns it
+        if ownsSSHService {
+            sshService = nil
+        }
         outputStream = nil
         connectedAt = nil
         serverInfo = nil

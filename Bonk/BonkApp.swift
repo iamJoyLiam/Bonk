@@ -42,9 +42,6 @@ struct BonkApp: App {
                 .environment(i18n)
                 .onAppear {
                     CrashReporter.install()
-                    #if os(macOS)
-                        TerminalScrollFix.install()
-                    #endif
                     applyTheme()
                 }
         }

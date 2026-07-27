@@ -49,7 +49,7 @@ import SwiftTerm
             }
 
             // Selection request → respond with selected text
-            NotificationCenter.default.addObserver(
+            selectionObserver = NotificationCenter.default.addObserver(
                 forName: .requestTerminalSelection,
                 object: nil,
                 queue: .main
@@ -60,7 +60,7 @@ import SwiftTerm
             }
 
             // Select all text in terminal
-            NotificationCenter.default.addObserver(
+            selectAllObserver = NotificationCenter.default.addObserver(
                 forName: .selectAllInTerminal,
                 object: nil,
                 queue: .main
@@ -70,7 +70,7 @@ import SwiftTerm
             }
 
             // Focus terminal
-            NotificationCenter.default.addObserver(
+            focusObserver = NotificationCenter.default.addObserver(
                 forName: .focusTerminal,
                 object: nil,
                 queue: .main
@@ -88,6 +88,18 @@ import SwiftTerm
             if let observer = fontObserver {
                 NotificationCenter.default.removeObserver(observer)
                 fontObserver = nil
+            }
+            if let observer = selectionObserver {
+                NotificationCenter.default.removeObserver(observer)
+                selectionObserver = nil
+            }
+            if let observer = selectAllObserver {
+                NotificationCenter.default.removeObserver(observer)
+                selectAllObserver = nil
+            }
+            if let observer = focusObserver {
+                NotificationCenter.default.removeObserver(observer)
+                focusObserver = nil
             }
         }
     }

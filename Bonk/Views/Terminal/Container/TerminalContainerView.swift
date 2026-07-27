@@ -265,7 +265,6 @@ import SwiftUI
 
             coordinator.observeThemeChanges()
             coordinator.installCopyOnSelectMonitor()
-            TerminalScrollFix.register(terminal)
 
             let cached = CachedTerminalView(tabID: tabID, view: terminal, coordinator: coordinator)
             TerminalViewCache.shared.store(tabID: tabID, view: terminal, coordinator: coordinator)
@@ -325,6 +324,9 @@ import SwiftUI
         var themeObserver: NSObjectProtocol?
         private nonisolated(unsafe) var mouseUpMonitor: Any?
         var fontObserver: NSObjectProtocol?
+        var selectionObserver: NSObjectProtocol?
+        var selectAllObserver: NSObjectProtocol?
+        var focusObserver: NSObjectProtocol?
 
         var feedTask: Task<Void, Never>? {
             get { lock.lock(); defer { lock.unlock() }; return _feedTask }

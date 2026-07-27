@@ -68,11 +68,12 @@ extension SessionManager {
         // Don't close if it's the last pane
         guard tab.layout.root.paneCount > 1 else { return }
 
+        // Capture pane reference BEFORE removing from layout tree
+        guard let pane = tab.layout.findPane(id: paneID) else { return }
+
         if tab.layout.closeActivePane() {
             // Close the PTY session for the closed pane
-            if let pane = tab.layout.findPane(id: paneID) {
-                pane.ptySession?.close()
-            }
+            pane.ptySession?.close()
             // Clean up the closed pane
             viewCache.remove(paneID)
             // Update active pane
@@ -87,7 +88,12 @@ extension SessionManager {
         // Don't close if it's the last pane
         guard tab.layout.root.paneCount > 1 else { return }
 
+        // Capture pane reference BEFORE removing from layout tree
+        guard let pane = tab.layout.findPane(id: paneID) else { return }
+
         if tab.layout.closePane(id: paneID) {
+            // Close the PTY session for the closed pane
+            pane.ptySession?.close()
             // Clean up the closed pane
             viewCache.remove(paneID)
             // Update active pane if needed
@@ -146,6 +152,7 @@ extension SessionManager {
         // Create a new session for the new tab, reusing the SSH connection
         let newSession = TerminalSession(tabID: newTab.id)
         newSession.sshService = tab.session?.sshService
+        newSession.ownsSSHService = false // Shared SSH connection — don't disconnect on teardown
         newSession.connectionState = .connected
         newTab.session = newSession
 

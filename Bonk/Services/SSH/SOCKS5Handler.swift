@@ -49,6 +49,12 @@ final class SOCKS5Handler: ChannelInboundHandler, @unchecked Sendable {
             return
         }
 
+        // Bounds check: ensure buffer has enough bytes for the methods
+        guard buffer.readableBytes >= Int(nMethods) else {
+            context.close(promise: nil)
+            return
+        }
+
         buffer.moveReaderIndex(forwardBy: Int(nMethods))
 
         var response = context.channel.allocator.buffer(capacity: 2)
@@ -142,15 +148,19 @@ final class SOCKS5Handler: ChannelInboundHandler, @unchecked Sendable {
                         sshCh.eventLoop.makeSucceededVoidFuture()
                     }
 
-                    var reply = channel.allocator.buffer(capacity: 10)
-                    reply.writeInteger(UInt8(5))
-                    reply.writeInteger(UInt8(0))
-                    reply.writeInteger(UInt8(0))
-                    reply.writeInteger(UInt8(1))
-                    reply.writeInteger(UInt32(0))
-                    reply.writeInteger(UInt16(0))
-                    ctx.write(selfRef.wrapOutboundOut(reply), promise: nil)
-                    ctx.flush()
+                    // Dispatch NIO write operations back to EventLoop for thread safety
+                    let eventLoop = ctx.eventLoop
+                    eventLoop.execute {
+                        var reply = channel.allocator.buffer(capacity: 10)
+                        reply.writeInteger(UInt8(5))
+                        reply.writeInteger(UInt8(0))
+                        reply.writeInteger(UInt8(0))
+                        reply.writeInteger(UInt8(1))
+                        reply.writeInteger(UInt32(0))
+                        reply.writeInteger(UInt16(0))
+                        channel.write(selfRef.wrapOutboundOut(reply), promise: nil)
+                        channel.flush()
+                    }
 
                     let localToSSH = DataPipeHandler(target: sshChannel)
                     let sshToLocal = DataPipeHandler(target: channel)
@@ -158,9 +168,13 @@ final class SOCKS5Handler: ChannelInboundHandler, @unchecked Sendable {
                     channel.pipeline.addHandler(localToSSH, position: .last).whenComplete { _ in }
                     sshChannel.pipeline.addHandler(sshToLocal, position: .last).whenComplete { _ in }
 
-                    selfRef.state = .connected
+                    eventLoop.execute {
+                        selfRef.state = .connected
+                    }
                 } catch {
-                    selfRef.sendError(context: ctx, reply: 0x05)
+                    ctx.eventLoop.execute {
+                        selfRef.sendError(context: ctx, reply: 0x05)
+                    }
                 }
             }
         } catch {

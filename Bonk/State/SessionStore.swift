@@ -61,7 +61,10 @@ final class SessionStore {
     /// Disconnect a session.
     func disconnect(_ tabID: UUID) async {
         guard let session = activeSessions[tabID] else { return }
-        await session.sshService?.disconnect()
+        // Only disconnect SSH service if this session owns it (not shared via unsplit)
+        if session.ownsSSHService {
+            await session.sshService?.disconnect()
+        }
         session.disconnect()
     }
 

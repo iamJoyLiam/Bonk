@@ -27,8 +27,8 @@ final class PortForwardService {
 
     private let logger = Logger(subsystem: "com.bonk", category: "PortForward")
 
-    /// Active port forwardings — stores the running Task.
-    private var activeTasks: [UUID: Task<Void, Never>] = [:]
+    /// Active port forwardings — stores the running Task and its config.
+    private var activeTasks: [UUID: (task: Task<Void, Never>, config: PortForward)] = [:]
 
     /// Whether any forwarding is active.
     var isActive: Bool {
@@ -78,15 +78,15 @@ final class PortForwardService {
             }
         }
 
-        activeTasks[config.id] = task
+        activeTasks[config.id] = (task: task, config: config)
         config.isActive = true
         logger.info("Started port forwarding: \(config.displayDescription)")
     }
 
     /// Stop a port forwarding.
     func stop(config: PortForward) {
-        guard let task = activeTasks[config.id] else { return }
-        task.cancel()
+        guard let entry = activeTasks[config.id] else { return }
+        entry.task.cancel()
         activeTasks.removeValue(forKey: config.id)
         config.isActive = false
         logger.info("Stopped port forwarding: \(config.displayDescription)")
@@ -94,8 +94,9 @@ final class PortForwardService {
 
     /// Stop all port forwardings.
     func stopAll() {
-        for (_, task) in activeTasks {
-            task.cancel()
+        for (_, entry) in activeTasks {
+            entry.task.cancel()
+            entry.config.isActive = false
         }
         activeTasks.removeAll()
     }
@@ -161,7 +162,7 @@ final class PortForwardService {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(1))
                 }
-                try? serverChannel.close().wait()
+                try? await serverChannel.close().get()
                 continuation.resume()
             }
         }
@@ -209,7 +210,7 @@ final class PortForwardService {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(1))
                 }
-                try? serverChannel.close().wait()
+                try? await serverChannel.close().get()
                 continuation.resume()
             }
         }

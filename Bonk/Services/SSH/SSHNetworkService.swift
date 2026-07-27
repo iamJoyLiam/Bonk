@@ -85,6 +85,9 @@ public actor SSHNetworkService {
 
     // MARK: - Connect
 
+    /// Connection timeout — prevents hanging on unreachable hosts.
+    private static let connectionTimeoutSeconds: Int = 10
+
     public func connect(config: SSHConnectionConfig) async throws {
         Log.ssh.info("[CONNECT] Starting connect to \(config.host):\(config.port)")
         guard !connectionState.isConnected else {
@@ -98,8 +101,13 @@ public actor SSHNetworkService {
         Log.ssh.info("[CONNECT] State set to .connecting")
 
         do {
-            Log.ssh.info("[CONNECT] Calling establishConnection...")
-            try await establishConnection(config: config)
+            Log.ssh.info("[CONNECT] Calling establishConnection with \(Self.connectionTimeoutSeconds)s timeout...")
+
+            // Wrap with timeout to prevent hanging on unreachable hosts
+            try await withThrowingTimeout(of: .seconds(Self.connectionTimeoutSeconds)) {
+                try await self.establishConnection(config: config)
+            }
+
             Log.ssh.info("[CONNECT] establishConnection returned successfully")
 
             guard let client else {
@@ -129,6 +137,13 @@ public actor SSHNetworkService {
                 default:
                     break
                 }
+            }
+
+            // Map timeout to user-friendly error
+            if error is SSHTimeoutError {
+                throw SSHServiceError.connectionFailed(
+                    "Connection timed out after \(Self.connectionTimeoutSeconds)s. Check host and network."
+                )
             }
 
             if config.maxReconnectAttempts > 0 {
@@ -404,4 +419,31 @@ public actor SSHNetworkService {
         }
         return data
     }
+}
+
+// MARK: - Timeout Helper
+
+/// A simple timeout wrapper for async operations.
+private func withThrowingTimeout<T: Sendable>(
+    of duration: Duration,
+    operation: @Sendable @escaping () async throws -> T
+) async throws -> T {
+    try await withThrowingTaskGroup(of: T?.self) { group in
+        group.addTask {
+            try await operation()
+        }
+        group.addTask {
+            try await Task.sleep(for: duration)
+            return nil
+        }
+        defer { group.cancelAll() }
+        if let result = try await group.next()! {
+            return result
+        }
+        throw SSHTimeoutError()
+    }
+}
+
+private struct SSHTimeoutError: Error, LocalizedError {
+    var errorDescription: String? { "Operation timed out" }
 }

@@ -5,6 +5,7 @@
 //  Bridges PaneState to TerminalContainerView.
 //
 
+import os.log
 import SwiftTerm
 import SwiftUI
 
@@ -60,28 +61,46 @@ import SwiftUI
             .background(terminalBackground)
             .onChange(of: paneState.ptySession != nil) { _, hasSession in
                 if hasSession {
-                    Task { @MainActor in try? await Task.sleep(for: .milliseconds(200))
-                        connectOutputStreamIfNeeded()
-                    }
+                    connectOutputStreamWithRetry()
                 }
             }
             .onAppear {
-                Task { @MainActor in try? await Task.sleep(for: .milliseconds(200))
-                    connectOutputStreamIfNeeded()
-                }
+                connectOutputStreamWithRetry()
             }
         }
 
-        private func connectOutputStreamIfNeeded() {
-            guard let ptySession = paneState.ptySession else { return }
-            let cached = TerminalViewCache.shared.retrieve(paneState.id)
-            if cached?.outputStream == nil {
-                let result = ptySession.makeOutputStream()
-                TerminalViewCache.shared.connectOutputStream(
-                    result.stream,
-                    onBytesProcessed: result.onBytesProcessed,
-                    to: paneState.id
-                )
+        /// Connect output stream with retry mechanism.
+        /// Retries up to 5 times with increasing delay (100ms, 200ms, 400ms, 800ms, 1600ms).
+        private func connectOutputStreamWithRetry() {
+            Task { @MainActor in
+                let maxRetries = 5
+                var delay: UInt64 = 100
+
+                for attempt in 0 ..< maxRetries {
+                    try? await Task.sleep(for: .milliseconds(Double(delay)))
+
+                    guard let ptySession = paneState.ptySession else {
+                        Log.session.debug("[PTY-RETRY] No PTY session yet, retry \(attempt + 1)/\(maxRetries)")
+                        delay = min(delay * 2, 1600)
+                        continue
+                    }
+
+                    let cached = TerminalViewCache.shared.retrieve(paneState.id)
+                    if cached?.outputStream == nil {
+                        let result = ptySession.makeOutputStream()
+                        TerminalViewCache.shared.connectOutputStream(
+                            result.stream,
+                            onBytesProcessed: result.onBytesProcessed,
+                            to: paneState.id
+                        )
+                        Log.session.info("[PTY-RETRY] Connected output stream on attempt \(attempt + 1)")
+                        return
+                    } else {
+                        // Already connected
+                        return
+                    }
+                }
+                Log.session.warning("[PTY-RETRY] Failed to connect output stream after \(maxRetries) attempts")
             }
         }
 
@@ -242,7 +261,6 @@ import SwiftUI
             coordinator.terminalView = terminal
             coordinator.observeThemeChanges()
             coordinator.installCopyOnSelectMonitor()
-            TerminalScrollFix.register(terminal)
 
             let cached = CachedTerminalView(tabID: paneID, view: terminal, coordinator: coordinator)
             TerminalViewCache.shared.store(tabID: paneID, parentTabID: tabID, view: terminal, coordinator: coordinator)
