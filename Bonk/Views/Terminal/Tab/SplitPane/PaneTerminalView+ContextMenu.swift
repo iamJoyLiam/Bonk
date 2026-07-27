@@ -90,7 +90,7 @@ extension PaneTerminalView {
             ZStack {
                 // Region highlight
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.accentColor, lineWidth: 3)
+                    .strokeBorder(Color.accentColor, lineWidth: 2)
                     .frame(
                         width: dropPosition.isHorizontal ? size.width / 2 - inset * 2 : nil,
                         height: dropPosition.isVertical ? size.height / 2 - inset * 2 : nil
@@ -107,6 +107,7 @@ extension PaneTerminalView {
                 .foregroundStyle(Color.accentColor)
                 .position(center)
             }
+            .animation(.easeInOut(duration: 0.15), value: dropPosition)
         }
     }
 
