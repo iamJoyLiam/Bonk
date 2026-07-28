@@ -380,7 +380,7 @@ struct ContentView: View {
             // Create a real terminal view for Quake with all required environment objects
             let quakeView = QuakeTerminalView(sessionManager: sessionManager)
                 .environment(i18n)
-                .modelContainer(for: HostItem.self)
+                .modelContainer(for: [HostItem.self, UserPreferences.self, Credential.self, HostGroup.self])
             let hostingView = NSHostingView(rootView: quakeView)
             hostingView.frame = NSRect(x: 0, y: 0, width: 800, height: 400)
 
@@ -403,30 +403,17 @@ struct ContentView: View {
 
         var body: some View {
             VStack(spacing: 0) {
-                // Header with host selection
+                // Header with Quick Connect button
                 HStack {
                     Text(i18n.t(.quakeTerminal))
                         .font(.headline)
 
                     Spacer()
 
-                    if hosts.isEmpty {
-                        Button(i18n.t(.quickConnect)) {
-                            showQuickConnect = true
-                        }
-                    } else {
-                        Picker(i18n.t(.host), selection: $selectedHost) {
-                            Text(i18n.t(.selectHost)).tag(nil as HostItem?)
-                            ForEach(hosts) { host in
-                                Text(host.name).tag(host as HostItem?)
-                            }
-                        }
-                        .frame(maxWidth: 200)
-
-                        Button(i18n.t(.connect)) {
-                            connectToHost()
-                        }
-                        .disabled(selectedHost == nil)
+                    Button {
+                        showQuickConnect = true
+                    } label: {
+                        Label(i18n.t(.quickConnect), systemImage: "bolt.fill")
                     }
                 }
                 .padding(.horizontal, 12)
@@ -479,13 +466,6 @@ struct ContentView: View {
                     defaultPort: 22
                 )
                 .environment(I18n.shared)
-            }
-        }
-
-        private func connectToHost() {
-            guard let host = selectedHost else { return }
-            Task {
-                await sessionManager.openTab(for: host)
             }
         }
     }
