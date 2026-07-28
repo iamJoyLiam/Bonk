@@ -443,5 +443,16 @@
   "file_transfer": "File Transfer (Zmodem)",
   "send_file": "Send File",
   "receive_file": "Receive File",
+  "quake_enabled": "Enable Quake Terminal",
+  "accessibility_permission": "Accessibility Permission",
+  "granted": "Granted",
+  "grant_permission": "Grant Permission",
+  "toggle_hotkey": "Toggle Hotkey",
+  "window_settings": "Window Settings",
+  "height": "Height",
+  "width": "Width",
+  "auto_hide_on_focus_loss": "Auto Hide on Focus Loss",
+  "esc_key_behavior": "ESC Key Behavior",
+  "test_quake": "Test Quake Terminal",
   "needs_restart": "Needs Restart"
 }

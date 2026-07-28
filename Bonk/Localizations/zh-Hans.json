@@ -443,5 +443,16 @@
   "file_transfer": "文件传输 (Zmodem)",
   "send_file": "发送文件",
   "receive_file": "接收文件",
+  "quake_enabled": "启用 Quake 终端",
+  "accessibility_permission": "辅助功能权限",
+  "granted": "已授权",
+  "grant_permission": "授权",
+  "toggle_hotkey": "切换快捷键",
+  "window_settings": "窗口设置",
+  "height": "高度",
+  "width": "宽度",
+  "auto_hide_on_focus_loss": "失去焦点时自动隐藏",
+  "esc_key_behavior": "ESC 键行为",
+  "test_quake": "测试 Quake 终端",
   "needs_restart": "需要重启"
 }

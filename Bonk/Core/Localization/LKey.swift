@@ -444,6 +444,19 @@ enum LKey: String, CaseIterable {
     case sendFile = "send_file"
     case receiveFile = "receive_file"
 
+    // Quake Terminal
+    case quakeEnabled = "quake_enabled"
+    case accessibilityPermission = "accessibility_permission"
+    case granted = "granted"
+    case grantPermission = "grant_permission"
+    case toggleHotkey = "toggle_hotkey"
+    case windowSettings = "window_settings"
+    case height = "height"
+    case width = "width"
+    case autoHideOnFocusLoss = "auto_hide_on_focus_loss"
+    case escKeyBehavior = "esc_key_behavior"
+    case testQuake = "test_quake"
+
     /// I18n restart
     case needsRestart = "needs_restart"
 }

@@ -8,6 +8,7 @@ struct BonkApp: App {
     @State private var i18n = I18n()
     @State private var updater = UpdaterManager()
     @State private var shortcutManager = ShortcutManager.shared
+    @State private var quakeController = QuakeController()
 
     init() {
         let saved = UserDefaults.standard.string(forKey: "app_language") ?? "system"
