@@ -156,14 +156,30 @@ final class QuakeController {
     private func showQuakeWindow() {
         guard let windowController else { return }
 
+        // First activate the app
+        NSApp.activate(ignoringOtherApps: true)
+
         windowController.show(
             heightRatio: configuration.heightRatio,
             widthRatio: configuration.widthRatio
         )
 
         // Focus the content view after show animation completes
-        DispatchQueue.main.asyncAfter(deadline: .now() + configuration.animationDuration.show) {
-            windowController.focusContentView()
+        DispatchQueue.main.asyncAfter(deadline: .now() + configuration.animationDuration.show + 0.1) {
+            // Double activate to ensure focus
+            NSApp.activate(ignoringOtherApps: true)
+            windowController.panel.makeKey()
+
+            // Find and focus terminal view
+            if let panel = windowController.panel as? NSPanel {
+                // Post notification to trigger focus in terminal views
+                NotificationCenter.default.post(name: .focusTerminal, object: nil)
+
+                // Also try to directly make first responder
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    panel.makeKey()
+                }
+            }
         }
     }
 

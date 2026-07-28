@@ -42,9 +42,6 @@ final class WindowAnimator {
         guard !isAnimating else { return }
         isAnimating = true
 
-        // Activate app first to receive keyboard input
-        NSApp.activate(ignoringOtherApps: true)
-
         // Start from above screen
         let startFrame = CGRect(
             x: frame.origin.x,
@@ -60,17 +57,21 @@ final class WindowAnimator {
         // macOS 26 style: smooth spring animation
         NSAnimationContext.runAnimationGroup { context in
             context.duration = duration.show
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.0, 0.0, 1.0) // Smooth ease-out
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.0, 0.0, 1.0)
             context.allowsImplicitAnimation = true
 
-            // Animate position, size, and opacity together
             panel.animator().setFrame(frame, display: true)
             panel.animator().alphaValue = 1.0
         } completionHandler: { [weak self] in
             self?.isAnimating = false
-            // Make panel key after animation completes
-            panel.makeKeyAndOrderFront(nil)
-            panel.makeFirstResponder(nil)
+
+            // Force activate app and make panel key for keyboard input
+            NSApp.activate(ignoringOtherApps: true)
+            DispatchQueue.main.async {
+                panel.makeKey()
+                panel.makeFirstResponder(nil) // Let first responder chain work
+            }
+
             completion?()
         }
 

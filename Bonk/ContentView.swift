@@ -413,10 +413,9 @@ struct ContentView: View {
 
         var body: some View {
             VStack(spacing: 0) {
-                // Header with tab info - macOS 26 style
-                HStack(spacing: 8) {
+                // Header with tab info
+                HStack {
                     if let tab = sessionManager.activeTab {
-                        // Connection status indicator
                         Circle()
                             .fill(statusColor(for: tab))
                             .frame(width: 8, height: 8)
@@ -429,32 +428,17 @@ struct ContentView: View {
                                 .font(.system(size: 10))
                                 .foregroundStyle(.secondary)
                         }
-
-                        Spacer()
-
-                        // Quick actions
-                        HStack(spacing: 12) {
-                            Button {
-                                // TODO: Add disconnect action
-                            } label: {
-                                Image(systemName: "xmark.circle")
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .help(i18n.t(.disconnect))
-                        }
                     } else {
                         Image(systemName: "terminal")
-                            .font(.system(size: 20))
+                            .font(.system(size: 14))
                             .foregroundStyle(.secondary)
 
                         Text(i18n.t(.noActiveSession))
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.secondary)
-
-                        Spacer()
                     }
+
+                    Spacer()
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
@@ -497,7 +481,7 @@ struct ContentView: View {
                     .background(.ultraThinMaterial)
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .frame(minWidth: 600, minHeight: 400)
         }
 

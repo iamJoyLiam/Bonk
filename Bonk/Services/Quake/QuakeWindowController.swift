@@ -7,6 +7,15 @@
 
 import AppKit
 import os.log
+import SwiftUI
+
+// MARK: - Quake Panel
+
+/// Custom NSPanel that can become key window even when borderless.
+class QuakePanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
 
 // MARK: - Quake Window Controller
 
@@ -16,8 +25,8 @@ import os.log
 final class QuakeWindowController {
     private let logger = Logger(subsystem: "com.bonk", category: "QuakeWindow")
 
-    /// The managed NSPanel.
-    let panel: NSPanel
+    /// The managed panel (custom QuakePanel subclass).
+    let panel: QuakePanel
 
     /// Window animator for show/hide animations.
     let animator = WindowAnimator()
@@ -35,8 +44,8 @@ final class QuakeWindowController {
         contentViewController = NSViewController()
         contentViewController.view = contentView
 
-        // Create panel - clean borderless style, no title bar
-        panel = NSPanel(
+        // Create panel - use custom QuakePanel subclass for focus support
+        panel = QuakePanel(
             contentRect: .zero,
             styleMask: [.borderless, .resizable],
             backing: .buffered,
@@ -52,13 +61,16 @@ final class QuakeWindowController {
     private func setupPanel() {
         panel.contentViewController = contentViewController
 
-        // macOS 26 style: floating level for Quake
+        // Floating level for always-on-top
         panel.level = .floating
 
-        // Visual style
+        // Visual style - hide title bar but keep focus support
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
+        panel.titlebarAppearsTransparent = true
+        panel.titleVisibility = .hidden
+        panel.styleMask.insert(.fullSizeContentView)
 
         // Behavior
         panel.hidesOnDeactivate = false
@@ -66,12 +78,6 @@ final class QuakeWindowController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
         panel.acceptsMouseMovedEvents = true
-
-        // Title bar
-        panel.titlebarAppearsTransparent = true
-        panel.titleVisibility = .hidden
-        panel.styleMask.insert(.fullSizeContentView)
-
         panel.animationBehavior = .utilityWindow
 
         // Set initial frame to hidden position
@@ -122,10 +128,33 @@ final class QuakeWindowController {
     /// Make the window key (for keyboard input).
     func makeKey() {
         panel.makeKeyAndOrderFront(nil)
+        // Force focus to content view
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKey()
     }
 
     /// Focus the first responder in the content view.
     func focusContentView() {
-        panel.makeFirstResponder(contentViewController.view)
+        // Find and focus the terminal view
+        if let terminalView = findTerminalView(in: contentViewController.view) {
+            panel.makeFirstResponder(terminalView)
+        } else {
+            panel.makeFirstResponder(contentViewController.view)
+        }
+    }
+
+    /// Recursively find a SwiftTerm TerminalView in the view hierarchy.
+    private func findTerminalView(in view: NSView) -> NSView? {
+        // Check if this is a TerminalView
+        if NSStringFromClass(type(of: view)).contains("TerminalView") {
+            return view
+        }
+        // Check subviews
+        for subview in view.subviews {
+            if let found = findTerminalView(in: subview) {
+                return found
+            }
+        }
+        return nil
     }
 }
