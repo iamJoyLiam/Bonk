@@ -401,44 +401,66 @@ struct ContentView: View {
 
 #if os(macOS)
     /// Terminal view for Quake dropdown window.
-    /// Shares the current active tab from SessionManager (same SSH session).
+    /// macOS 26 style: modern, clean, with rounded corners and materials.
     struct QuakeTerminalView: View {
         @Environment(I18n.self) var i18n
         let sessionManager: SessionManager
 
         var body: some View {
             VStack(spacing: 0) {
-                // Header with tab info
-                HStack {
+                // Header with tab info - macOS 26 style
+                HStack(spacing: 8) {
                     if let tab = sessionManager.activeTab {
+                        // Connection status indicator
                         Circle()
                             .fill(statusColor(for: tab))
                             .frame(width: 8, height: 8)
-                        Text(tab.title)
-                            .font(.headline)
-                        Text(tab.hostItem.host)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .shadow(color: statusColor(for: tab).opacity(0.5), radius: 2)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(tab.title)
+                                .font(.system(size: 12, weight: .semibold))
+                            Text(tab.hostItem.host)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        // Quick actions
+                        HStack(spacing: 12) {
+                            Button {
+                                // TODO: Add disconnect action
+                            } label: {
+                                Image(systemName: "xmark.circle")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help(i18n.t(.disconnect))
+                        }
                     } else {
-                        Text(i18n.t(.noActiveSession))
-                            .font(.headline)
+                        Image(systemName: "terminal")
+                            .font(.system(size: 20))
                             .foregroundStyle(.secondary)
+
+                        Text(i18n.t(.noActiveSession))
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
                     }
-
-                    Spacer()
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(.bar)
-
-                Divider()
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.ultraThinMaterial)
 
                 // Terminal content - shares the same tab
                 if let tab = sessionManager.activeTab {
                     TerminalTabContentView(
                         tab: tab,
                         colorScheme: DarkTheme().colorScheme,
-                        fontSize: 14,
+                        fontSize: 13,
                         fontFamily: "SF Mono",
                         lineHeight: 1.2,
                         scrollbackLines: 10000,
@@ -459,16 +481,18 @@ struct ContentView: View {
                     VStack(spacing: 16) {
                         Image(systemName: "terminal")
                             .font(.system(size: 48))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.tertiary)
                         Text(i18n.t(.noActiveSession))
-                            .font(.headline)
+                            .font(.system(size: 14, weight: .medium))
                         Text(i18n.t(.connectFromMainWindow))
-                            .font(.caption)
+                            .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.ultraThinMaterial)
                 }
             }
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .frame(minWidth: 600, minHeight: 400)
         }
 

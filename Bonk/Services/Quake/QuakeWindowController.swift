@@ -51,16 +51,27 @@ final class QuakeWindowController {
 
     private func setupPanel() {
         panel.contentViewController = contentViewController
-        panel.level = .statusBar
+
+        // macOS 26 style: floating level for Quake
+        panel.level = .floating
+
+        // Visual style
         panel.isOpaque = false
         panel.backgroundColor = .clear
+        panel.hasShadow = true
+
+        // Behavior
         panel.hidesOnDeactivate = false
         panel.isMovableByWindowBackground = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
         panel.acceptsMouseMovedEvents = true
+
+        // Title bar
         panel.titlebarAppearsTransparent = true
         panel.titleVisibility = .hidden
+        panel.styleMask.insert(.fullSizeContentView)
+
         panel.animationBehavior = .utilityWindow
 
         // Set initial frame to hidden position
