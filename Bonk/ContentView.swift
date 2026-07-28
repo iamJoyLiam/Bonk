@@ -404,25 +404,25 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 // Header with host selection
                 HStack {
-                    Text("Quake Terminal")
+                    Text(i18n.t(.quakeTerminal))
                         .font(.headline)
 
                     Spacer()
 
                     if hosts.isEmpty {
-                        Button("Quick Connect") {
+                        Button(i18n.t(.quickConnect)) {
                             showQuickConnect = true
                         }
                     } else {
-                        Picker("Host", selection: $selectedHost) {
-                            Text("Select host...").tag(nil as HostItem?)
+                        Picker(i18n.t(.host), selection: $selectedHost) {
+                            Text(i18n.t(.selectHost)).tag(nil as HostItem?)
                             ForEach(hosts) { host in
                                 Text(host.name).tag(host as HostItem?)
                             }
                         }
                         .frame(maxWidth: 200)
 
-                        Button("Connect") {
+                        Button(i18n.t(.connect)) {
                             connectToHost()
                         }
                         .disabled(selectedHost == nil)
@@ -461,9 +461,9 @@ struct ContentView: View {
                         Image(systemName: "terminal")
                             .font(.system(size: 48))
                             .foregroundStyle(.secondary)
-                        Text("Select a host to connect")
+                        Text(i18n.t(.selectHostToConnect))
                             .font(.headline)
-                        Text("Use the dropdown above or Quick Connect")
+                        Text(i18n.t(.useDropdownOrQuickConnect))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

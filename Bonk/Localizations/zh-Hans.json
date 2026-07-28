@@ -455,5 +455,11 @@
   "esc_key_behavior": "ESC 键行为",
   "test_quake": "测试 Quake 终端",
   "quake_terminal": "Quake 终端",
+  "quick_connect": "快速连接",
+  "host": "主机",
+  "select_host": "选择主机...",
+  "connect": "连接",
+  "select_host_to_connect": "选择要连接的主机",
+  "use_dropdown_or_quick_connect": "使用上方下拉菜单或快速连接",
   "needs_restart": "需要重启"
 }

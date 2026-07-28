@@ -455,5 +455,11 @@
   "esc_key_behavior": "ESC Key Behavior",
   "test_quake": "Test Quake Terminal",
   "quake_terminal": "Quake Terminal",
+  "quick_connect": "Quick Connect",
+  "host": "Host",
+  "select_host": "Select host...",
+  "connect": "Connect",
+  "select_host_to_connect": "Select a host to connect",
+  "use_dropdown_or_quick_connect": "Use the dropdown above or Quick Connect",
   "needs_restart": "Needs Restart"
 }
