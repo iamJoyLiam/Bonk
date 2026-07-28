@@ -35,10 +35,10 @@ final class QuakeWindowController {
         contentViewController = NSViewController()
         contentViewController.view = contentView
 
-        // Create panel
+        // Create panel - use .borderless for clean look, allow activation
         panel = NSPanel(
             contentRect: .zero,
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.borderless, .titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: true
         )

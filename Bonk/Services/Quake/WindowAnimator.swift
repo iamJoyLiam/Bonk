@@ -42,6 +42,9 @@ final class WindowAnimator {
         guard !isAnimating else { return }
         isAnimating = true
 
+        // Activate app first to receive keyboard input
+        NSApp.activate(ignoringOtherApps: true)
+
         // Start from above screen
         let startFrame = CGRect(
             x: frame.origin.x,
@@ -65,6 +68,9 @@ final class WindowAnimator {
             panel.animator().alphaValue = 1.0
         } completionHandler: { [weak self] in
             self?.isAnimating = false
+            // Make panel key after animation completes
+            panel.makeKeyAndOrderFront(nil)
+            panel.makeFirstResponder(nil)
             completion?()
         }
 
