@@ -477,6 +477,7 @@ struct ContentView: View {
                     isPresented: $showQuickConnect,
                     defaultPort: 22
                 )
+                .environment(I18n.shared)
             }
         }
 
