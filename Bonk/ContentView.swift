@@ -404,7 +404,12 @@ struct ContentView: View {
     /// macOS 26 style: modern, clean, with rounded corners and materials.
     struct QuakeTerminalView: View {
         @Environment(I18n.self) var i18n
+        @StateObject private var themeManager = TerminalThemeManager.shared
         let sessionManager: SessionManager
+
+        private var colorScheme: TerminalColorScheme {
+            themeManager.resolve()
+        }
 
         var body: some View {
             VStack(spacing: 0) {
@@ -459,7 +464,7 @@ struct ContentView: View {
                 if let tab = sessionManager.activeTab {
                     TerminalTabContentView(
                         tab: tab,
-                        colorScheme: DarkTheme().colorScheme,
+                        colorScheme: colorScheme,
                         fontSize: 13,
                         fontFamily: "SF Mono",
                         lineHeight: 1.2,
