@@ -2,7 +2,9 @@
 //  QuakeController.swift
 //  Bonk
 //
-//  Core controller coordinating Quake terminal components.
+//  Core controller coordinating terminal presentation modes.
+//  Manages transitions between embedded ↔ quake modes.
+//  The terminal doesn't know its mode - only this controller manages transitions.
 //
 
 import AppKit
@@ -11,7 +13,7 @@ import SwiftData
 
 // MARK: - Quake Controller
 
-/// Core controller for Quake dropdown terminal.
+/// Core controller for terminal presentation modes.
 /// Coordinates hotkey, window, animation, and focus.
 @Observable
 @MainActor
@@ -40,8 +42,11 @@ final class QuakeController {
     /// Model container for SwiftData access.
     var modelContainer: ModelContainer?
 
+    /// Current presentation mode.
+    private(set) var currentMode: PresentationMode = .embedded
+
     /// Whether Quake is currently visible.
-    var isVisible: Bool { windowController?.isVisible ?? false }
+    var isVisible: Bool { currentMode == .quake }
 
     // MARK: - Initialization
 
@@ -61,7 +66,9 @@ final class QuakeController {
         if let panel = windowController?.panel {
             focusManager.autoHideOnFocusLoss = configuration.autoHideOnFocusLoss
             focusManager.onFocusLost = { [weak self] in
-                self?.hide()
+                Task { @MainActor in
+                    self?.transitionTo(.embedded)
+                }
             }
             focusManager.startMonitoring(window: panel)
         }
@@ -102,7 +109,7 @@ final class QuakeController {
 
     // MARK: - Public API
 
-    /// Toggle Quake window visibility.
+    /// Toggle between embedded and quake modes.
     func toggle() {
         guard configuration.enabled else {
             logger.warning("Quake is disabled")
@@ -115,20 +122,38 @@ final class QuakeController {
             return
         }
 
-        guard let windowController else {
-            logger.error("Window controller not initialized")
-            return
-        }
-
-        if windowController.isVisible {
-            hide()
+        if currentMode == .quake {
+            transitionTo(.embedded)
         } else {
-            show()
+            transitionTo(.quake)
         }
     }
 
-    /// Show Quake window.
-    func show() {
+    /// Transition to a specific presentation mode.
+    func transitionTo(_ mode: PresentationMode) {
+        guard currentMode != mode else {
+            logger.debug("Already in mode \(String(describing: mode))")
+            return
+        }
+
+        let previousMode = currentMode
+        currentMode = mode
+
+        switch mode {
+        case .quake:
+            showQuakeWindow()
+        case .embedded:
+            hideQuakeWindow()
+        default:
+            break
+        }
+
+        logger.info("Transitioned from \(String(describing: previousMode)) to \(String(describing: mode))")
+    }
+
+    // MARK: - Window Management
+
+    private func showQuakeWindow() {
         guard let windowController else { return }
 
         windowController.show(
@@ -142,8 +167,7 @@ final class QuakeController {
         }
     }
 
-    /// Hide Quake window.
-    func hide() {
+    private func hideQuakeWindow() {
         windowController?.hide()
     }
 
@@ -162,7 +186,7 @@ final class QuakeController {
         focusManager.autoHideOnFocusLoss = newConfig.autoHideOnFocusLoss
 
         // Update window if visible
-        if isVisible {
+        if currentMode == .quake {
             windowController?.updateFrame(
                 heightRatio: newConfig.heightRatio,
                 widthRatio: newConfig.widthRatio
