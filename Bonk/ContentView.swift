@@ -57,7 +57,7 @@ struct ContentView: View {
                     sessionManager.activeTabID
                 }
                 // Setup Quake terminal
-                setupQuakeTerminal(with: quakeController, sessionManager: sessionManager, i18n: i18n)
+                setupQuakeTerminal(with: quakeController, sessionManager: sessionManager, i18n: i18n, modelContext: modelContext)
             }
             .alert(i18n.t(.connectionError), isPresented: $sessionManager.showError) {
                 Button(i18n.t(.ok)) {}
@@ -375,11 +375,12 @@ struct ContentView: View {
 // MARK: - Quake Terminal
 
 #if os(macOS)
-    private func setupQuakeTerminal(with controller: QuakeController, sessionManager: SessionManager, i18n: I18n) {
+    private func setupQuakeTerminal(with controller: QuakeController, sessionManager: SessionManager, i18n: I18n, modelContext: ModelContext) {
         DispatchQueue.main.async {
             // Create a real terminal view for Quake with all required environment objects
             let quakeView = QuakeTerminalView(sessionManager: sessionManager)
                 .environment(i18n)
+                .modelContainer(for: HostItem.self)
             let hostingView = NSHostingView(rootView: quakeView)
             hostingView.frame = NSRect(x: 0, y: 0, width: 800, height: 400)
 
