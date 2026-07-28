@@ -456,6 +456,7 @@ enum LKey: String, CaseIterable {
     case autoHideOnFocusLoss = "auto_hide_on_focus_loss"
     case escKeyBehavior = "esc_key_behavior"
     case testQuake = "test_quake"
+    case quakeTerminal = "quake_terminal"
 
     /// I18n restart
     case needsRestart = "needs_restart"

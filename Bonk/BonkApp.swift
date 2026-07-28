@@ -75,7 +75,7 @@ struct BonkApp: App {
         }
         #if os(macOS)
             Settings {
-                SettingsContainerView().environment(i18n)
+                SettingsContainerView(quakeController: quakeController).environment(i18n)
             }
             .modelContainer(sharedModelContainer)
         #endif
@@ -207,6 +207,8 @@ struct BonkApp: App {
     private struct SettingsContainerView: View {
         @Query private var allPreferences: [UserPreferences]
         @Environment(\.modelContext) private var modelContext
+        @Bindable var quakeController: QuakeController
+
         private var preferences: UserPreferences {
             allPreferences.first ?? UserPreferences()
         }
@@ -216,7 +218,8 @@ struct BonkApp: App {
         }
 
         var body: some View {
-            SettingsView(preferences: preferences).onAppear { ensurePreferences() }
+            SettingsView(preferences: preferences, quakeController: quakeController)
+                .onAppear { ensurePreferences() }
         }
     }
 #endif

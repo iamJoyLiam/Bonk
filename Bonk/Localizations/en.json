@@ -454,5 +454,6 @@
   "auto_hide_on_focus_loss": "Auto Hide on Focus Loss",
   "esc_key_behavior": "ESC Key Behavior",
   "test_quake": "Test Quake Terminal",
+  "quake_terminal": "Quake Terminal",
   "needs_restart": "Needs Restart"
 }

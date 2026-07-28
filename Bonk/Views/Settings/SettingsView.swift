@@ -5,6 +5,7 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(I18n.self) var i18n
     @Bindable var preferences: UserPreferences
+    @Bindable var quakeController: QuakeController
     @AppStorage("settings_selected_tab") private var selectedTab = "general"
 
     var body: some View {
@@ -28,6 +29,10 @@ struct SettingsView: View {
             GroupSettingsView()
                 .tabItem { Label(i18n.t(.groups), systemImage: "folder") }
                 .tag("groups")
+
+            QuakeSettingsView(quakeController: quakeController)
+                .tabItem { Label(i18n.t(.quakeTerminal), systemImage: "arrow.down.to.line") }
+                .tag("quake")
 
             AISettingsView()
                 .tabItem { Label(i18n.t(.ai), systemImage: "sparkles") }

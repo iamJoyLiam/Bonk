@@ -454,5 +454,6 @@
   "auto_hide_on_focus_loss": "失去焦点时自动隐藏",
   "esc_key_behavior": "ESC 键行为",
   "test_quake": "测试 Quake 终端",
+  "quake_terminal": "Quake 终端",
   "needs_restart": "需要重启"
 }
