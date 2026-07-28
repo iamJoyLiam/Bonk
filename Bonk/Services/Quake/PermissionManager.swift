@@ -40,10 +40,25 @@ final class PermissionManager {
     }
 
     /// Request Accessibility permission (opens System Settings).
+    /// This will show a dialog explaining why permission is needed.
     func requestAccessibility() {
-        let granted = AXIsProcessTrustedWithOptions(nil)
+        // Use AXIsProcessTrusted() which shows the system permission dialog
+        // The dialog explains that the app needs Accessibility access
+        let granted = AXIsProcessTrusted()
         isAccessibilityGranted = granted
         logger.info("Accessibility permission requested: \(granted ? "granted" : "denied")")
+
+        if !granted {
+            // Open System Settings to Accessibility section
+            openAccessibilitySettings()
+        }
+    }
+
+    /// Open System Settings to Accessibility section.
+    private func openAccessibilitySettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     // MARK: - Permission Change Observation

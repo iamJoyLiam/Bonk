@@ -57,7 +57,7 @@ struct ContentView: View {
                     sessionManager.activeTabID
                 }
                 // Setup Quake terminal
-                setupQuakeTerminal(with: quakeController)
+                setupQuakeTerminal(with: quakeController, sessionManager: sessionManager)
             }
             .alert(i18n.t(.connectionError), isPresented: $sessionManager.showError) {
                 Button(i18n.t(.ok)) {}
@@ -375,24 +375,115 @@ struct ContentView: View {
 // MARK: - Quake Terminal
 
 #if os(macOS)
-    private func setupQuakeTerminal(with controller: QuakeController) {
+    private func setupQuakeTerminal(with controller: QuakeController, sessionManager: SessionManager) {
         DispatchQueue.main.async {
-            // Create a simple test view for Quake terminal
-            let testView = NSHostingView(
-                rootView: VStack {
+            // Create a real terminal view for Quake
+            let quakeView = QuakeTerminalView(sessionManager: sessionManager)
+            let hostingView = NSHostingView(rootView: quakeView)
+            hostingView.frame = NSRect(x: 0, y: 0, width: 800, height: 400)
+
+            controller.setup(contentView: hostingView)
+        }
+    }
+#endif
+
+// MARK: - Quake Terminal View
+
+#if os(macOS)
+    /// Terminal view for Quake dropdown window.
+    struct QuakeTerminalView: View {
+        @Environment(I18n.self) var i18n
+        @Query(sort: \HostItem.createdAt) private var hosts: [HostItem]
+        let sessionManager: SessionManager
+
+        @State private var selectedHost: HostItem?
+        @State private var showQuickConnect = false
+
+        var body: some View {
+            VStack(spacing: 0) {
+                // Header with host selection
+                HStack {
                     Text("Quake Terminal")
                         .font(.headline)
-                        .padding()
-                    Text("Press Cmd+` to toggle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                }
-                .frame(minWidth: 400, minHeight: 300)
-                .background(Color(nsColor: .windowBackgroundColor))
-            )
 
-            controller.setup(contentView: testView)
+                    Spacer()
+
+                    if hosts.isEmpty {
+                        Button("Quick Connect") {
+                            showQuickConnect = true
+                        }
+                    } else {
+                        Picker("Host", selection: $selectedHost) {
+                            Text("Select host...").tag(nil as HostItem?)
+                            ForEach(hosts) { host in
+                                Text(host.name).tag(host as HostItem?)
+                            }
+                        }
+                        .frame(maxWidth: 200)
+
+                        Button("Connect") {
+                            connectToHost()
+                        }
+                        .disabled(selectedHost == nil)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.bar)
+
+                Divider()
+
+                // Terminal content
+                if let tab = sessionManager.activeTab {
+                    TerminalTabContentView(
+                        tab: tab,
+                        colorScheme: DarkTheme().colorScheme,
+                        fontSize: 14,
+                        fontFamily: "SF Mono",
+                        lineHeight: 1.2,
+                        scrollbackLines: 10000,
+                        cursorStyle: "block",
+                        cursorBlink: true,
+                        copyOnSelect: true,
+                        scrollSensitivity: 1.0,
+                        onSend: { data in
+                            Task {
+                                try? await sessionManager.sendInput(data, to: tab.id)
+                            }
+                        },
+                        onResize: nil,
+                        onTitleChange: nil,
+                        onReconnect: nil
+                    )
+                } else {
+                    VStack(spacing: 16) {
+                        Image(systemName: "terminal")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.secondary)
+                        Text("Select a host to connect")
+                            .font(.headline)
+                        Text("Use the dropdown above or Quick Connect")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .frame(minWidth: 600, minHeight: 400)
+            .sheet(isPresented: $showQuickConnect) {
+                QuickConnectView(
+                    sessionManager: sessionManager,
+                    isPresented: $showQuickConnect,
+                    defaultPort: 22
+                )
+            }
+        }
+
+        private func connectToHost() {
+            guard let host = selectedHost else { return }
+            Task {
+                await sessionManager.openTab(for: host)
+            }
         }
     }
 #endif
