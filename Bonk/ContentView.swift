@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var sessionManager = SessionManager()
     @State private var appStore = AppStore.shared
     #if os(macOS)
+        @State private var quakeController = QuakeController()
         @State private var workspace = WorkspaceManager()
         @State private var showInspector = false
         @State private var showAddHostSheet = false
@@ -55,6 +56,8 @@ struct ContentView: View {
                 TerminalViewCache.shared.configureMemoryPressure {
                     sessionManager.activeTabID
                 }
+                // Setup Quake terminal
+                setupQuakeTerminal(with: quakeController)
             }
             .alert(i18n.t(.connectionError), isPresented: $sessionManager.showError) {
                 Button(i18n.t(.ok)) {}
@@ -365,6 +368,31 @@ struct ContentView: View {
                     appStore.dispatch(.toggleSearch)
                     showTerminalSearch = appStore.uiState.showSearch
                 }
+        }
+    }
+#endif
+
+// MARK: - Quake Terminal
+
+#if os(macOS)
+    private func setupQuakeTerminal(with controller: QuakeController) {
+        DispatchQueue.main.async {
+            // Create a simple test view for Quake terminal
+            let testView = NSHostingView(
+                rootView: VStack {
+                    Text("Quake Terminal")
+                        .font(.headline)
+                        .padding()
+                    Text("Press Cmd+` to toggle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .frame(minWidth: 400, minHeight: 300)
+                .background(Color(nsColor: .windowBackgroundColor))
+            )
+
+            controller.setup(contentView: testView)
         }
     }
 #endif
