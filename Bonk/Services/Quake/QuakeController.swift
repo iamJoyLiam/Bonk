@@ -7,6 +7,7 @@
 
 import AppKit
 import os.log
+import SwiftData
 
 // MARK: - Quake Controller
 
@@ -35,6 +36,9 @@ final class QuakeController {
 
     /// Current configuration.
     var configuration: QuakeConfiguration
+
+    /// Model container for SwiftData access.
+    var modelContainer: ModelContainer?
 
     /// Whether Quake is currently visible.
     var isVisible: Bool { windowController?.isVisible ?? false }

@@ -56,8 +56,16 @@ struct ContentView: View {
                 TerminalViewCache.shared.configureMemoryPressure {
                     sessionManager.activeTabID
                 }
-                // Setup Quake terminal
-                setupQuakeTerminal(with: quakeController, sessionManager: sessionManager, i18n: i18n)
+                // Setup Quake terminal - create ModelContainer with same schema/config
+                let schema = Schema([HostItem.self, UserPreferences.self, Credential.self, HostGroup.self, AIConversationRecord.self, AIMessageRecord.self, AIProviderRecord.self, Snippet.self, PortForward.self, JumpHost.self])
+                #if DEBUG
+                    let config = ModelConfiguration("Bonk-Dev", schema: schema, isStoredInMemoryOnly: false)
+                #else
+                    let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+                #endif
+                if let quakeModelContainer = try? ModelContainer(for: schema, configurations: [config]) {
+                    setupQuakeTerminal(with: quakeController, sessionManager: sessionManager, i18n: i18n, modelContainer: quakeModelContainer)
+                }
             }
             .alert(i18n.t(.connectionError), isPresented: $sessionManager.showError) {
                 Button(i18n.t(.ok)) {}
@@ -375,11 +383,12 @@ struct ContentView: View {
 // MARK: - Quake Terminal
 
 #if os(macOS)
-    private func setupQuakeTerminal(with controller: QuakeController, sessionManager: SessionManager, i18n: I18n) {
+    private func setupQuakeTerminal(with controller: QuakeController, sessionManager: SessionManager, i18n: I18n, modelContainer: ModelContainer) {
         DispatchQueue.main.async {
-            // Create a real terminal view for Quake with all required environment objects
+            // Create a real terminal view for Quake with shared model container
             let quakeView = QuakeTerminalView(sessionManager: sessionManager)
                 .environment(i18n)
+                .modelContainer(modelContainer)
             let hostingView = NSHostingView(rootView: quakeView)
             hostingView.frame = NSRect(x: 0, y: 0, width: 800, height: 400)
 
