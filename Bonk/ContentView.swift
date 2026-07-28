@@ -401,28 +401,31 @@ struct ContentView: View {
 
 #if os(macOS)
     /// Terminal view for Quake dropdown window.
+    /// Shares the current active tab from SessionManager (same SSH session).
     struct QuakeTerminalView: View {
         @Environment(I18n.self) var i18n
-        @Query(sort: \HostItem.createdAt) private var hosts: [HostItem]
         let sessionManager: SessionManager
-
-        @State private var selectedHost: HostItem?
-        @State private var showQuickConnect = false
 
         var body: some View {
             VStack(spacing: 0) {
-                // Header with Quick Connect button
+                // Header with tab info
                 HStack {
-                    Text(i18n.t(.quakeTerminal))
-                        .font(.headline)
+                    if let tab = sessionManager.activeTab {
+                        Circle()
+                            .fill(statusColor(for: tab))
+                            .frame(width: 8, height: 8)
+                        Text(tab.title)
+                            .font(.headline)
+                        Text(tab.hostItem.host)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text(i18n.t(.noActiveSession))
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                    }
 
                     Spacer()
-
-                    Button {
-                        showQuickConnect = true
-                    } label: {
-                        Label(i18n.t(.quickConnect), systemImage: "bolt.fill")
-                    }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -430,7 +433,7 @@ struct ContentView: View {
 
                 Divider()
 
-                // Terminal content
+                // Terminal content - shares the same tab
                 if let tab = sessionManager.activeTab {
                     TerminalTabContentView(
                         tab: tab,
@@ -457,9 +460,9 @@ struct ContentView: View {
                         Image(systemName: "terminal")
                             .font(.system(size: 48))
                             .foregroundStyle(.secondary)
-                        Text(i18n.t(.selectHostToConnect))
+                        Text(i18n.t(.noActiveSession))
                             .font(.headline)
-                        Text(i18n.t(.useDropdownOrQuickConnect))
+                        Text(i18n.t(.connectFromMainWindow))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -467,13 +470,13 @@ struct ContentView: View {
                 }
             }
             .frame(minWidth: 600, minHeight: 400)
-            .sheet(isPresented: $showQuickConnect) {
-                QuickConnectView(
-                    sessionManager: sessionManager,
-                    isPresented: $showQuickConnect,
-                    defaultPort: 22
-                )
-                .environment(I18n.shared)
+        }
+
+        private func statusColor(for tab: TerminalTab) -> Color {
+            switch tab.session?.connectionState {
+            case .connected: .green
+            case .connecting, .reconnecting: .yellow
+            default: .red
             }
         }
     }

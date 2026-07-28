@@ -461,5 +461,7 @@
   "connect": "连接",
   "select_host_to_connect": "选择要连接的主机",
   "use_dropdown_or_quick_connect": "使用上方下拉菜单或快速连接",
+  "no_active_session": "无活动会话",
+  "connect_from_main_window": "请先从主窗口连接到主机",
   "needs_restart": "需要重启"
 }

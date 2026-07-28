@@ -457,8 +457,7 @@ enum LKey: String, CaseIterable {
     case escKeyBehavior = "esc_key_behavior"
     case testQuake = "test_quake"
     case quakeTerminal = "quake_terminal"
-    case selectHostToConnect = "select_host_to_connect"
-    case useDropdownOrQuickConnect = "use_dropdown_or_quick_connect"
+    case connectFromMainWindow = "connect_from_main_window"
 
     /// I18n restart
     case needsRestart = "needs_restart"

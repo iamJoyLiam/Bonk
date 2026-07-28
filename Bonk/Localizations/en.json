@@ -461,5 +461,7 @@
   "connect": "Connect",
   "select_host_to_connect": "Select a host to connect",
   "use_dropdown_or_quick_connect": "Use the dropdown above or Quick Connect",
+  "no_active_session": "No Active Session",
+  "connect_from_main_window": "Connect to a host from the main window first",
   "needs_restart": "Needs Restart"
 }
