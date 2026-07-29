@@ -33,6 +33,51 @@ final class TerminalThemeManager: ObservableObject {
     @AppStorage("terminalCursorBlink")
     var cursorBlink: Bool = true
 
+    // MARK: - Appearance Observer (macOS only)
+
+    #if os(macOS)
+        private var appearanceObservation: NSKeyValueObservation?
+        private var lastAppearance: NSAppearance?
+
+        /// Start observing system appearance changes for "system" theme.
+        func startAppearanceObservation() {
+            guard appearanceObservation == nil else { return }
+            lastAppearance = NSApp.effectiveAppearance
+            appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) {
+                [weak self] _, change in
+                guard let self, let newAppearance = change.newValue else { return }
+                Task { @MainActor in
+                    self.handleAppearanceChange(newAppearance)
+                }
+            }
+        }
+
+        /// Stop observing system appearance changes.
+        func stopAppearanceObservation() {
+            appearanceObservation?.invalidate()
+            appearanceObservation = nil
+            lastAppearance = nil
+        }
+
+        private func handleAppearanceChange(_ newAppearance: NSAppearance) {
+            guard activeThemeID == "system" else { return }
+            guard lastAppearance != newAppearance else { return }
+            lastAppearance = newAppearance
+            notifyChange()
+        }
+    #endif
+
+    // MARK: - Initialization
+
+    /// Initialize and start observing if needed.
+    func initializeIfNeeded() {
+        #if os(macOS)
+            if activeThemeID == "system" {
+                startAppearanceObservation()
+            }
+        #endif
+    }
+
     // MARK: - Resolution
 
     /// Resolve the current active theme to a concrete color scheme.
@@ -66,6 +111,13 @@ final class TerminalThemeManager: ObservableObject {
         activeThemeID = id
         syncAppChrome(id: id)
         notifyChange()
+        #if os(macOS)
+            if id == "system" {
+                startAppearanceObservation()
+            } else {
+                stopAppearanceObservation()
+            }
+        #endif
     }
 
     /// Update cursor style and notify immediately.

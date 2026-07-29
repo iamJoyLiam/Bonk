@@ -91,6 +91,7 @@ struct BonkApp: App {
             let isDark = UserDefaults.standard.bool(forKey: "terminalThemeIsDark")
             ThemeManager.apply(isDark ? "dark" : "light")
         }
+        TerminalThemeManager.shared.initializeIfNeeded()
     }
 }
 
