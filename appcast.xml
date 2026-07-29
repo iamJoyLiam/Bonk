@@ -6,6 +6,36 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.0.25</title>
+            <pubDate>Tue, 29 Jul 2026 20:00:00 +0000</pubDate>
+            <sparkle:version>202625</sparkle:version>
+            <sparkle:shortVersionString>2026.0.25</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Bug 修复</h3>
+                <ul>
+                    <li>修复 system 主题自动切换时终端区域未跟随更新的问题</li>
+                    <li>添加 NSApp.effectiveAppearance KVO 监听，系统外观变化时自动通知终端更新</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.25/Bonk-2026.0.25-arm64.dmg"
+                length="9870329"
+                type="application/octet-stream"
+                sparkle:edSignature="48uhuYFEhiGE8WY+Ojqm9kWCe7NPRtTZ54wQQP8qBr/UrfZ5Ob2UelbPyGxAzMfuewfyPeefew/blMi69LsJDA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.25/Bonk-2026.0.25-x86_64.dmg"
+                length="10658107"
+                type="application/octet-stream"
+                sparkle:edSignature="X2NFqikhfHIOE4yZDapHKqFi9rBY4shlrBfrwzbnml08hWFDHpzihsMTttS3rI+TvHCeIo2NXclAYV8URgheBA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.0.24</title>
             <pubDate>Sat, 26 Jul 2026 12:00:00 +0000</pubDate>
             <sparkle:version>202624</sparkle:version>
