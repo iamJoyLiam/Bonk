@@ -44,10 +44,11 @@ final class TerminalThemeManager: ObservableObject {
             guard appearanceObservation == nil else { return }
             lastAppearance = NSApp.effectiveAppearance
             appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) {
-                [weak self] _, change in
-                guard let self, let newAppearance = change.newValue else { return }
+                [weak self] _, _ in
+                guard let self else { return }
                 Task { @MainActor in
-                    self.handleAppearanceChange(newAppearance)
+                    let currentAppearance = NSApp.effectiveAppearance
+                    self.handleAppearanceChange(currentAppearance)
                 }
             }
         }
