@@ -21,6 +21,8 @@ extension Notification.Name {
     static let selectAllInTerminal = Notification.Name("com.bonk.selectAllInTerminal")
     static let focusTerminal = Notification.Name("com.bonk.focusTerminal")
     static let showCopyMessage = Notification.Name("com.bonk.showCopyMessage")
+    /// Posted when PTY session is ready and output stream should be connected.
+    static let terminalPTYSessionReady = Notification.Name("com.bonk.terminalPTYSessionReady")
 }
 
 /// Map cursor style string to SwiftTerm CursorStyle.

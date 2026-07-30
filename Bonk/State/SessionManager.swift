@@ -333,6 +333,9 @@ final class SessionManager {
         session.ptySession = ptySession // Keep for backward compatibility
         Log.session.info("[PTY] PTY session assigned to pane")
 
+        // Notify terminal views to connect output stream
+        NotificationCenter.default.post(name: .terminalPTYSessionReady, object: nil, userInfo: ["tabID": tab.id])
+
         // Post-PTY-setup: sync real terminal dimensions to override the 80x24 default
         // This is done after SSH channel is established to ensure resize doesn't get dropped
         Task { @MainActor [weak tab] in

@@ -70,6 +70,11 @@ import SwiftUI
             .onAppear {
                 connectOutputStreamIfNeeded()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalPTYSessionReady)) { notification in
+                if let tabID = notification.userInfo?["tabID"] as? UUID, tabID == activeTab.id {
+                    connectOutputStreamIfNeeded()
+                }
+            }
         }
 
         private func connectOutputStreamIfNeeded() {
