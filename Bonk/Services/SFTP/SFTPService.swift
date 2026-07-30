@@ -153,21 +153,29 @@ final class SFTPService {
         defer { try? handle.close() }
 
         var updateCounter = 0
-        while offset < entry.size {
-            let toRead = min(UInt64(chunkSize), entry.size - offset)
-            let data = try await file.read(from: offset, length: UInt32(toRead))
+        // Don't rely on entry.size for loop control - it may be inaccurate
+        // for some file types or SFTP servers. Read until EOF.
+        while true {
+            let toRead = chunkSize
+            let data = try await file.read(from: offset, length: toRead)
             guard data.readableBytes > 0 else { break }
             let bytes = Data(buffer: data)
             try handle.write(contentsOf: bytes)
             offset += UInt64(bytes.count)
             updateCounter += 1
-            if updateCounter % 10 == 0 || offset >= entry.size {
+            if updateCounter % 10 == 0 {
                 let off = offset
                 await MainActor.run { [self] in
                     if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
                         transfers[idx].transferredBytes = off
                     }
                 }
+            }
+        }
+        // Final progress update
+        await MainActor.run { [self] in
+            if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                transfers[idx].transferredBytes = offset
             }
         }
     }
