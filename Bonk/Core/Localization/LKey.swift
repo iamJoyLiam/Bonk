@@ -6,16 +6,14 @@ enum LKey: String, CaseIterable {
     /// Tabs
     case settings, general, appearance, terminal = "editor", keyboard
     case ai
-    case integrations, account
+    case account
 
     // General
     case language, launchBehavior = "launch_behavior"
-    case whenLaunch = "when_launch"
     case checkUpdates = "check_updates"
 
     // Appearance
     case theme, light, dark, auto
-    case builtInThemes = "built_in_themes"
     case terminalTheme = "terminal_theme"
     case opacity, moreThemes = "more_themes"
     case font, fontFamily = "font_family", fontSize = "font_size", lineHeight = "line_height"
@@ -39,7 +37,6 @@ enum LKey: String, CaseIterable {
     case providers, noProvidersConfigured = "no_providers_configured"
     case edit, setAsActive = "set_as_active", remove
     case addProvider = "add_provider", addCustomProvider = "add_custom_provider"
-    case addProviderType = "add_provider_type"
 
     // AI — Provider Detail
     case apiKey = "api_key", apiKeySet = "api_key_set"
@@ -68,8 +65,8 @@ enum LKey: String, CaseIterable {
     case alwaysAllow = "always_allow", askEachTime = "ask_each_time", never
 
     // Integrations
-    case services, docker, notDetected = "not_detected"
-    case kubernetes, plugins, installed
+    case docker, notDetected = "not_detected"
+    case plugins, installed
 
     // Account
     case license, licenseKey = "license_key"
@@ -88,14 +85,10 @@ enum LKey: String, CaseIterable {
     case aiPaste = "ai_paste"
     case aiCopy = "ai_copy"
     case aiDismiss = "ai_dismiss"
-    case aiDiagnosis = "ai_diagnosis"
     case aiAnalyzing = "ai_analyzing"
     case aiHistory = "ai_history"
     case aiNoHistory = "ai_no_history"
     case aiDeleteConversation = "ai_delete_conversation"
-    case aiFetchingModels = "ai_fetching_models"
-    case aiFetchModels = "ai_fetch_models"
-    case aiNoModel = "ai_no_model"
     case aiApply = "ai_apply"
     case aiDismissWithEsc = "ai_dismiss_with_esc"
     case hostAutoFillClear = "host_auto_fill_clear"
@@ -174,9 +167,9 @@ enum LKey: String, CaseIterable {
     case close, reconnect
 
     // ServerInfoPanel extra
-    case hostDetails = "host_details", actions, disconnect, connected
+    case actions, disconnect, connected
     case host, auth
-    case passwordAuth = "password_auth", privateKeyAuth = "private_key_auth"
+    case privateKeyAuth = "private_key_auth"
     case error
     // Server system info
     case systemInfo = "system_info"
@@ -208,48 +201,30 @@ enum LKey: String, CaseIterable {
     case notes
     case manageCredentials = "manage_credentials"
     case deleteConfirm = "delete_confirm"
-    case noOutput = "no_output"
     case unGrouped = "ungrouped"
     case noModelContext = "no_model_context"
     case credentialsNotSet = "credentials_not_set"
     case sftpConnectFailed = "sftp_connect_failed"
     case noSSHConnection = "no_ssh_connection"
     case recent
-    case favorites
     case allHosts = "all_hosts"
-    case quickConnect = "quick_connect"
     case searchHosts = "search_hosts"
-    case searchResults = "search_results"
     case connectTo = "connect_to"
-    case newConnection = "new_connection"
-    case enterHost = "enter_host"
-    case enterUsername = "enter_username"
-    case enterPassword = "enter_password"
     case upload
-    case uploadingTo = "uploading_to"
     case uploadSuccess = "upload_success"
     case uploadFailed = "upload_failed"
     case showInFinder = "show_in_finder"
 
     // Command Palette
-    case searchCommands = "search_commands"
-    case commandPalette = "command_palette"
-
-    // Snippets
     case snippets, addSnippet = "add_snippet", editSnippet = "edit_snippet"
     case noSnippets = "no_snippets", insertSnippet = "insert_snippet"
     case snippetCategory = "snippet_category"
 
-    // Command categories
-    case categoryConnection = "cat_connection"
-    case categoryTabs = "cat_tabs"
-    case categoryTerminal = "cat_terminal"
-    case clearTerminalCmd = "clear_terminal"
+    // Command
     case command
 
     // Sessions
     case sessions, noSessions = "no_sessions"
-    case noSessionsHint = "no_sessions_hint"
 
     // Port Forwarding
     case portForwarding = "port_forwarding"
@@ -265,11 +240,9 @@ enum LKey: String, CaseIterable {
     case closePane = "close_pane"
     case splitRight = "split_right"
     case splitDown = "split_down"
-    case dropToSplit = "drop_to_split"
     case sftpOverwriteAlways = "sftp_overwrite_always"
     case sftpDefaultLocalPath = "sftp_default_local_path"
     case browse
-    case overwritingTo = "overwriting_to"
 
     // Serial Port
     case serialPort = "serial_port"
@@ -297,15 +270,11 @@ enum LKey: String, CaseIterable {
     case jumpHostHostname = "jump_host_hostname"
 
     // Broadcast
-    case broadcastMode = "broadcast_mode"
     case disableBroadcast = "disable_broadcast"
     case enableBroadcast = "enable_broadcast"
 
     /// Inspector
     case snippetsHistory = "snippets_history"
-
-    /// Toolbar
-    case sftpBrowserToolbar = "sftp_browser_toolbar"
 
     /// Common
     case type, remote
@@ -336,7 +305,7 @@ enum LKey: String, CaseIterable {
     case notSet = "not_set"
 
     /// Sessions
-    case unfavorite, favorite
+    case favorite
 
     // MARK: - New keys for hardcoded string fixes
 
@@ -377,7 +346,6 @@ enum LKey: String, CaseIterable {
     case cancelledAtStep = "cancelled_at_step"
     case blockedStep = "blocked_step"
     case skippedStep = "skipped_step"
-    case executionReport = "execution_report"
 
     // Key recorder shortcuts
     case shortcutNewTerminal = "shortcut_new_terminal"
@@ -409,10 +377,8 @@ enum LKey: String, CaseIterable {
 
     // Auto-reconnect
     case autoReconnect = "auto_reconnect"
-    case autoReconnectDesc = "auto_reconnect_desc"
     case maxReconnectAttempts = "max_reconnect_attempts"
     case reconnectBaseDelay = "reconnect_base_delay"
-    case reconnectDelayHint = "reconnect_delay_hint"
 
     // SSH Certificate
     case certificate = "certificate"
@@ -439,11 +405,6 @@ enum LKey: String, CaseIterable {
     case copied = "copied"
     case sshKeys = "ssh_keys"
 
-    // Zmodem
-    case fileTransfer = "file_transfer"
-    case sendFile = "send_file"
-    case receiveFile = "receive_file"
-
     // Quake Terminal
     case quakeEnabled = "quake_enabled"
     case accessibilityPermission = "accessibility_permission"
@@ -458,7 +419,4 @@ enum LKey: String, CaseIterable {
     case testQuake = "test_quake"
     case quakeTerminal = "quake_terminal"
     case connectFromMainWindow = "connect_from_main_window"
-
-    /// I18n restart
-    case needsRestart = "needs_restart"
 }
