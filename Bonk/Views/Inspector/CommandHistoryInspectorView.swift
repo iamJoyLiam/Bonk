@@ -15,10 +15,6 @@ struct CommandHistoryInspectorView: View {
     @Bindable var sessionManager: SessionManager
     @State private var snippetSource: CommandRecord?
 
-    private var history: CommandHistory? {
-        sessionManager.activeTab?.session?.commandHistory
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -29,13 +25,13 @@ struct CommandHistoryInspectorView: View {
                 Text(i18n.t(.commandHistory))
                     .font(.system(size: 13, weight: .medium))
                 Spacer()
-                Button { history?.clear() } label: {
+                Button { GlobalCommandHistory.shared.clear() } label: {
                     Image(systemName: "trash")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
                 .help(i18n.t(.clearHistory))
-                .disabled(history?.commands.isEmpty != false)
+                .disabled(GlobalCommandHistory.shared.commands.isEmpty)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -43,7 +39,7 @@ struct CommandHistoryInspectorView: View {
             Divider()
 
             // History list
-            let commands = history?.commands ?? []
+            let commands = GlobalCommandHistory.shared.commands
             if commands.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "clock")
@@ -131,7 +127,7 @@ struct CommandHistoryInspectorView: View {
         .help(i18n.t(.rerunCommand))
 
         Button {
-            history?.commands.removeAll { $0.id == entry.id }
+            GlobalCommandHistory.shared.delete(entry)
         } label: {
             Image(systemName: "trash")
                 .font(.system(size: 11))

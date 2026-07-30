@@ -6,13 +6,19 @@
 import Foundation
 
 /// A recorded command execution with timing and exit code.
-struct CommandRecord: Identifiable {
-    let id = UUID()
+struct CommandRecord: Identifiable, Codable {
+    let id: UUID
     let command: String
     let startTime: Date
     var endTime: Date?
     var exitCode: Int?
     var output: String?
+
+    init(command: String, startTime: Date = Date()) {
+        self.id = UUID()
+        self.command = command
+        self.startTime = startTime
+    }
 
     var duration: TimeInterval? {
         guard let endTime else { return nil }
@@ -38,32 +44,33 @@ struct CommandRecord: Identifiable {
     }
 }
 
-/// Tracks command history for a terminal session.
+/// Global command history shared across all terminal sessions.
+/// Persists to UserDefaults with automatic deduplication.
 @Observable @MainActor
-final class CommandHistory {
+final class GlobalCommandHistory {
+    static let shared = GlobalCommandHistory()
+
+    private let storageKey = "globalCommandHistory"
+    private let maxHistory = 200
+
     var commands: [CommandRecord] = []
     var currentCommand: CommandRecord?
 
-    /// Maximum number of commands to keep.
-    let maxHistory = 100
+    private init() {
+        load()
+    }
+
+    // MARK: - Public API
 
     /// Record a command start.
     func commandStarted(_ command: String) {
         // Finish any previous command
         if var current = currentCommand {
             current.endTime = Date()
-            commands.append(current)
+            appendWithDedup(current)
         }
 
-        currentCommand = CommandRecord(
-            command: command,
-            startTime: Date()
-        )
-
-        // Trim history
-        if commands.count > maxHistory {
-            commands = Array(commands.suffix(maxHistory))
-        }
+        currentCommand = CommandRecord(command: command)
     }
 
     /// Record a command completion.
@@ -72,12 +79,82 @@ final class CommandHistory {
         currentCommand?.exitCode = exitCode
 
         if let cmd = currentCommand {
-            commands.append(cmd)
+            appendWithDedup(cmd)
         }
         currentCommand = nil
     }
 
     /// Clear all history.
+    func clear() {
+        commands = []
+        currentCommand = nil
+        save()
+    }
+
+    /// Delete a single record.
+    func delete(_ record: CommandRecord) {
+        commands.removeAll { $0.id == record.id }
+        save()
+    }
+
+    // MARK: - Deduplication
+
+    /// Append command, removing any older duplicate (same command text).
+    private func appendWithDedup(_ record: CommandRecord) {
+        // Remove older entries with same command text
+        commands.removeAll { $0.command == record.command }
+        // Add new entry at the end (most recent)
+        commands.append(record)
+        // Trim to max
+        if commands.count > maxHistory {
+            commands = Array(commands.suffix(maxHistory))
+        }
+        save()
+    }
+
+    // MARK: - Persistence
+
+    private func save() {
+        guard let data = try? JSONEncoder().encode(commands) else { return }
+        UserDefaults.standard.set(data, forKey: storageKey)
+    }
+
+    private func load() {
+        guard let data = UserDefaults.standard.data(forKey: storageKey),
+              let decoded = try? JSONDecoder().decode([CommandRecord].self, from: data) else { return }
+        commands = decoded
+    }
+}
+
+/// Tracks command history for a terminal session (legacy, per-session).
+/// Kept for backward compatibility but should migrate to GlobalCommandHistory.
+@Observable @MainActor
+final class CommandHistory {
+    var commands: [CommandRecord] = []
+    var currentCommand: CommandRecord?
+
+    let maxHistory = 100
+
+    func commandStarted(_ command: String) {
+        if var current = currentCommand {
+            current.endTime = Date()
+            commands.append(current)
+        }
+        currentCommand = CommandRecord(command: command)
+        if commands.count > maxHistory {
+            commands = Array(commands.suffix(maxHistory))
+        }
+    }
+
+    func commandFinished(exitCode: Int) {
+        currentCommand?.endTime = Date()
+        currentCommand?.exitCode = exitCode
+        if let cmd = currentCommand {
+            commands.append(cmd)
+        }
+        currentCommand = nil
+    }
+
     func clear() {
         commands = []
         currentCommand = nil

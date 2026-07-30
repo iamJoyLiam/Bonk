@@ -67,20 +67,44 @@ final class InputHandler {
             if let inputBuffer = tab.session?.inputBuffer, !inputBuffer.isEmpty {
                 let trimmed = inputBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty {
+                    // Record to global history (shared across all tabs)
+                    GlobalCommandHistory.shared.commandStarted(trimmed)
+                    GlobalCommandHistory.shared.commandFinished(exitCode: 0)
+                    // Also record to per-session history for backward compatibility
                     tab.session?.commandHistory.commandStarted(trimmed)
                     tab.session?.commandHistory.commandFinished(exitCode: 0)
                 }
                 tab.session?.inputBuffer = ""
             }
         } else {
-            // Accumulate typed characters (exclude control chars except backspace)
-            for byte in bytes {
-                if byte == 127 || byte == 8 {
+            // Accumulate typed characters (filter escape sequences)
+            var i = bytes.startIndex
+            while i < bytes.endIndex {
+                let byte = bytes[i]
+                if byte == 27 {
+                    // ESC — skip entire escape sequence (e.g., \x1b[A for arrow keys)
+                    // Skip ESC byte
+                    i = bytes.index(after: i)
+                    // Skip following bytes until we find a letter (final byte of CSI sequence)
+                    while i < bytes.endIndex {
+                        let next = bytes[i]
+                        i = bytes.index(after: i)
+                        // If it's a letter (A-Z, a-z), it's the final byte of the sequence
+                        if (next >= 65 && next <= 90) || (next >= 97 && next <= 122) {
+                            break
+                        }
+                    }
+                } else if byte == 127 || byte == 8 {
                     // Backspace/Delete — remove last char
                     tab.session?.inputBuffer = String(tab.session?.inputBuffer.dropLast() ?? "")
+                    i = bytes.index(after: i)
                 } else if byte >= 32 {
                     // Printable character
                     tab.session?.inputBuffer = (tab.session?.inputBuffer ?? "") + String(UnicodeScalar(byte))
+                    i = bytes.index(after: i)
+                } else {
+                    // Other control characters — skip
+                    i = bytes.index(after: i)
                 }
             }
         }
