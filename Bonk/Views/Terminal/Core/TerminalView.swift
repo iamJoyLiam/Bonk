@@ -66,62 +66,24 @@ struct TerminalTabContentView: View {
     // MARK: - States
 
     private var connectingView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "antenna.radiowaves.left.and.right")
-                .font(.system(size: 44))
-                .foregroundStyle(.blue.opacity(0.7))
-                .symbolEffect(.variableColor.iterative, options: .repeating)
-
-            ProgressView()
-                .controlSize(.large)
-
-            VStack(spacing: 6) {
-                Text(i18n.tr(.connectingTo, args: tab.hostItem.host))
-                    .font(.headline)
-
-                Text("\(tab.hostItem.username)@\(tab.hostItem.host):\(tab.hostItem.port)")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-        }
+        TerminalStateViews.connectingView(
+            host: tab.hostItem.host,
+            username: tab.hostItem.username,
+            port: tab.hostItem.port,
+            i18n: i18n
+        )
     }
 
     private var disconnectedView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "bolt.slash.fill")
-                .font(.system(size: 40))
-                .foregroundStyle(.red.opacity(0.6))
-
-            Text(i18n.t(.disconnected))
-                .font(.headline)
-
-            if let error = tab.session?.errorMessage {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 300)
-            }
-
-            if let onReconnect {
-                Button(i18n.t(.reconnect), systemImage: "arrow.clockwise") {
-                    onReconnect()
-                }
-                .buttonStyle(.borderedProminent)
-                .padding(.top, 8)
-            }
-        }
+        TerminalStateViews.disconnectedView(
+            errorMessage: tab.session?.errorMessage,
+            i18n: i18n,
+            onReconnect: onReconnect
+        )
     }
 
     private func reconnectingView(attempt: Int, max: Int) -> some View {
-        VStack(spacing: 16) {
-            ProgressView()
-                .controlSize(.large)
-
-            Text(i18n.tr(.reconnecting, args: attempt, max))
-                .font(.headline)
-                .foregroundStyle(.secondary)
-        }
+        TerminalStateViews.reconnectingView(attempt: attempt, max: max, i18n: i18n)
     }
 
     private var terminalBackground: SwiftUI.Color {
