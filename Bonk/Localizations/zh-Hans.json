@@ -463,5 +463,21 @@
   "use_dropdown_or_quick_connect": "使用上方下拉菜单或快速连接",
   "no_active_session": "无活动会话",
   "connect_from_main_window": "请先从主窗口连接到主机",
-  "needs_restart": "需要重启"
+  "needs_restart": "需要重启",
+  "secure_enclave": "安全隔区",
+  "generate_secure_enclave_key": "生成安全隔区密钥",
+  "generate_secure_enclave_key_description": "使用 Apple 安全隔区创建硬件保护的 SSH 密钥。认证时需要 Touch ID 或密码。",
+  "key_identifier": "密钥标识符",
+  "key_identifier_hint": "用于标识此密钥的唯一名称，用于 SSH 认证。",
+  "hardware_protection": "硬件保护",
+  "hardware_protection_desc": "私钥在安全隔区中生成和存储，永远不会离开硬件，无法导出。",
+  "biometric_auth": "生物识别认证",
+  "biometric_auth_desc": "每次 SSH 登录都需要 Touch ID 或密码确认。",
+  "verify_key": "验证密钥",
+  "key_verified": "密钥验证成功",
+  "key_not_found": "未找到密钥",
+  "secure_enclave_key_generated": "安全隔区密钥生成成功！",
+  "add_public_key_to_server": "公钥（添加到服务器 ~/.ssh/authorized_keys）",
+  "public_key_copied": "公钥已复制到剪贴板",
+  "change": "更改"
 }

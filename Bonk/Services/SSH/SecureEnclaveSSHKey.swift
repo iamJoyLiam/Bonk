@@ -115,12 +115,12 @@ enum SecureEnclaveKeyManager {
         // Delete existing key if present
         deleteKey(tag: tag)
 
-        // Access control: require biometric or password
+        // Access control: require user presence (biometric or password)
         var accessError: Unmanaged<CFError>?
         guard let accessControl = SecAccessControlCreateWithFlags(
             kCFAllocatorDefault,
             kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-            [.privateKeyUsage, .biometryCurrentSet],
+            [.privateKeyUsage, .userPresence],
             &accessError
         ) else {
             let error = accessError?.takeRetainedValue()
@@ -239,16 +239,22 @@ enum SecureEnclaveKeyManager {
     /// Check if a Secure Enclave key exists for the given tag.
     static func keyExists(tag: String) -> Bool {
         let keyTag = keyTagPrefix + tag
+        
+        // Query for Secure Enclave keys specifically
         let query: [String: Any] = [
             kSecClass as String: kSecClassKey,
-            kSecAttrApplicationTag as String: keyTag.data(using: .utf8)!,
-            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
-            kSecReturnRef as String: true,
-            kSecUseDataProtectionKeychain as String: true,
+            kSecAttrApplicationTag as String: keyTag,
+            kSecAttrTokenID as String: kSecAttrTokenIDSecureEnclave,
+            kSecReturnData as String: false,
+            kSecMatchLimit as String: kSecMatchLimitOne,
         ]
 
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        let status = SecItemCopyMatching(query as CFDictionary, nil)
+        
+        // Log for debugging
+        print("[SecureEnclave] Checking keyExists for tag: \(keyTag), status: \(status)")
+        
+        // errSecItemNotFound = -25300
         return status == errSecSuccess
     }
 

@@ -463,5 +463,21 @@
   "use_dropdown_or_quick_connect": "Use the dropdown above or Quick Connect",
   "no_active_session": "No Active Session",
   "connect_from_main_window": "Connect to a host from the main window first",
-  "needs_restart": "Needs Restart"
+  "needs_restart": "Needs Restart",
+  "secure_enclave": "Secure Enclave",
+  "generate_secure_enclave_key": "Generate Secure Enclave Key",
+  "generate_secure_enclave_key_description": "Create a hardware-protected SSH key using Apple Secure Enclave. Touch ID or password will be required for authentication.",
+  "key_identifier": "Key Identifier",
+  "key_identifier_hint": "A unique name to identify this key. Used for SSH authentication.",
+  "hardware_protection": "Hardware Protection",
+  "hardware_protection_desc": "Private key is generated and stored in Secure Enclave. It never leaves the hardware and cannot be exported.",
+  "biometric_auth": "Biometric Authentication",
+  "biometric_auth_desc": "Each SSH login will require Touch ID or password confirmation.",
+  "verify_key": "Verify Key",
+  "key_verified": "Key verified successfully",
+  "key_not_found": "Key not found",
+  "secure_enclave_key_generated": "Secure Enclave key generated successfully!",
+  "add_public_key_to_server": "Public Key (add to server ~/.ssh/authorized_keys)",
+  "public_key_copied": "Public key copied to clipboard",
+  "change": "Change"
 }

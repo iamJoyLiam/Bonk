@@ -405,6 +405,24 @@ enum LKey: String, CaseIterable {
     case copied = "copied"
     case sshKeys = "ssh_keys"
 
+    // Secure Enclave
+    case secureEnclave = "secure_enclave"
+    case generateSecureEnclaveKey = "generate_secure_enclave_key"
+    case generateSecureEnclaveKeyDescription = "generate_secure_enclave_key_description"
+    case keyIdentifier = "key_identifier"
+    case keyIdentifierHint = "key_identifier_hint"
+    case hardwareProtection = "hardware_protection"
+    case hardwareProtectionDesc = "hardware_protection_desc"
+    case biometricAuth = "biometric_auth"
+    case biometricAuthDesc = "biometric_auth_desc"
+    case verifyKey = "verify_key"
+    case keyVerified = "key_verified"
+    case keyNotFound = "key_not_found"
+    case secureEnclaveKeyGenerated = "secure_enclave_key_generated"
+    case addPublicKeyToServer = "add_public_key_to_server"
+    case publicKeyCopied = "public_key_copied"
+    case change = "change"
+
     // Quake Terminal
     case quakeEnabled = "quake_enabled"
     case accessibilityPermission = "accessibility_permission"

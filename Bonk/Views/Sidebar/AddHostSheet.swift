@@ -38,6 +38,7 @@ struct AddHostSheet: View {
 
     // Secure Enclave state
     @State private var secureEnclaveKeyTag: String?
+    @State private var secureEnclaveKeyTagInput: String = ""
     @State private var showSecureEnclaveGenerator = false
     @State private var secureEnclaveKeyExists: Bool?
     @State private var secureEnclaveVerificationMessage: String?
@@ -136,7 +137,7 @@ struct AddHostSheet: View {
                             .tag(AuthType.privateKey)
                         Text(i18n.t(.certificate))
                             .tag(AuthType.certificate)
-                        Text("Secure Enclave")
+                        Text(i18n.t(.secureEnclave))
                             .tag(AuthType.secureEnclave)
                     }
                     .pickerStyle(.segmented)
@@ -227,7 +228,7 @@ struct AddHostSheet: View {
                         }
                     case .secureEnclave:
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Use a hardware-protected key from Secure Enclave for authentication.")
+                            Text(i18n.t(.hardwareProtectionDesc))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
 
@@ -240,36 +241,35 @@ struct AddHostSheet: View {
                                         VStack(alignment: .leading) {
                                             Text(selectedTag)
                                                 .font(.headline)
-                                            Text("Secure Enclave P256 Key")
+                                            Text(i18n.t(.secureEnclave))
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
                                         }
                                         Spacer()
-                                        Button("Change") {
+                                        Button(i18n.t(.change)) {
                                             secureEnclaveKeyTag = nil
+                                            secureEnclaveKeyTagInput = ""
                                         }
-                                        .buttonStyle(.plain)
-                                        .foregroundStyle(.blue)
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
                                     }
+                                    .padding(8)
                                 }
                             } else {
                                 // Key selection
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Text("Enter the key identifier (tag) of an existing Secure Enclave key:")
+                                    Text(i18n.t(.keyIdentifierHint))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
 
-                                    TextField("e.g., my-server, production", text: Binding(
-                                        get: { secureEnclaveKeyTag ?? "" },
-                                        set: { secureEnclaveKeyTag = $0.isEmpty ? nil : $0 }
-                                    ))
-                                    .textFieldStyle(.roundedBorder)
+                                    TextField("e.g., my-server, production", text: $secureEnclaveKeyTagInput)
+                                        .textFieldStyle(.roundedBorder)
 
                                     HStack {
-                                        Button("Verify Key") {
+                                        Button(i18n.t(.verifyKey)) {
                                             verifySecureEnclaveKey()
                                         }
-                                        .disabled(secureEnclaveKeyTag?.isEmpty ?? true)
+                                        .disabled(secureEnclaveKeyTagInput.isEmpty)
 
                                         if let verificationMessage = secureEnclaveVerificationMessage {
                                             Text(verificationMessage)
@@ -280,7 +280,7 @@ struct AddHostSheet: View {
 
                                     Divider()
 
-                                    Button("Generate New Secure Enclave Key") {
+                                    Button(i18n.t(.generateSecureEnclaveKey)) {
                                         showSecureEnclaveGenerator = true
                                     }
                                     .buttonStyle(.bordered)
@@ -370,6 +370,7 @@ struct AddHostSheet: View {
         privateKeyPEM = existing.loadPrivateKey() ?? ""
         certificatePEM = existing.loadCertificate() ?? ""
         secureEnclaveKeyTag = existing.loadSecureEnclaveKeyTag()
+        secureEnclaveKeyTagInput = existing.loadSecureEnclaveKeyTag() ?? ""
         group = existing.groupRef?.name ?? ""
         selectedCredential = existing.credentialRef
     }
@@ -498,14 +499,25 @@ struct AddHostSheet: View {
     // MARK: - Secure Enclave Helpers
 
     private func verifySecureEnclaveKey() {
-        guard let tag = secureEnclaveKeyTag, !tag.isEmpty else {
+        let tagToVerify = secureEnclaveKeyTagInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        print("[DEBUG] verifySecureEnclaveKey called with input: '\(secureEnclaveKeyTagInput)', trimmed: '\(tagToVerify)'")
+        
+        guard !tagToVerify.isEmpty else {
+            print("[DEBUG] Tag is empty, showing error")
             secureEnclaveKeyExists = false
-            secureEnclaveVerificationMessage = "Please enter a key identifier"
+            secureEnclaveVerificationMessage = "请输入密钥标识符"
             return
         }
 
-        let exists = SecureEnclaveKeyManager.keyExists(tag: tag)
+        print("[DEBUG] Checking keyExists for tag: \(tagToVerify)")
+        let exists = SecureEnclaveKeyManager.keyExists(tag: tagToVerify)
+        print("[DEBUG] keyExists returned: \(exists)")
+        
+        if exists {
+            secureEnclaveKeyTag = tagToVerify
+        }
         secureEnclaveKeyExists = exists
-        secureEnclaveVerificationMessage = exists ? "Key verified successfully" : "Key not found"
+        secureEnclaveVerificationMessage = exists ? "密钥验证成功" : "未找到密钥，请先生成"
+        print("[DEBUG] Verification result: \(secureEnclaveVerificationMessage ?? "nil")")
     }
 }

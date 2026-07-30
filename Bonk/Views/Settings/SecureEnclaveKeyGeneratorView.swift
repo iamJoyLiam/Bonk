@@ -55,12 +55,12 @@ struct SecureEnclaveKeyGeneratorView: View {
                 Image(systemName: "lock.shield.fill")
                     .font(.title2)
                     .foregroundStyle(.green)
-                Text("Generate Secure Enclave Key")
+                Text(i18n.t(.generateSecureEnclaveKey))
                     .font(.headline)
                 Spacer()
             }
 
-            Text("Create a hardware-protected SSH key using Apple Secure Enclave. Touch ID or password will be required for authentication.")
+            Text(i18n.t(.generateSecureEnclaveKeyDescription))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -72,11 +72,11 @@ struct SecureEnclaveKeyGeneratorView: View {
 
     private var keyConfigSection: some View {
         Form {
-            Section("Key Identifier") {
+            Section(i18n.t(.keyIdentifier)) {
                 TextField("e.g., my-server, production", text: $keyTag)
                     .textFieldStyle(.roundedBorder)
 
-                Text("A unique name to identify this key. Used for SSH authentication.")
+                Text(i18n.t(.keyIdentifierHint))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -86,9 +86,9 @@ struct SecureEnclaveKeyGeneratorView: View {
                     Image(systemName: "lock.fill")
                         .foregroundStyle(.green)
                     VStack(alignment: .leading) {
-                        Text("Hardware Protection")
+                        Text(i18n.t(.hardwareProtection))
                             .font(.headline)
-                        Text("Private key is generated and stored in Secure Enclave. It never leaves the hardware and cannot be exported.")
+                        Text(i18n.t(.hardwareProtectionDesc))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -98,9 +98,9 @@ struct SecureEnclaveKeyGeneratorView: View {
                     Image(systemName: "touchid")
                         .foregroundStyle(.blue)
                     VStack(alignment: .leading) {
-                        Text("Biometric Authentication")
+                        Text(i18n.t(.biometricAuth))
                             .font(.headline)
-                        Text("Each SSH login will require Touch ID or password confirmation.")
+                        Text(i18n.t(.biometricAuthDesc))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -121,7 +121,7 @@ struct SecureEnclaveKeyGeneratorView: View {
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
-                    Text("Secure Enclave key generated successfully!")
+                    Text(i18n.t(.secureEnclaveKeyGenerated))
                         .font(.headline)
                 }
                 .padding()
@@ -131,10 +131,10 @@ struct SecureEnclaveKeyGeneratorView: View {
                 // Key info
                 GroupBox {
                     VStack(alignment: .leading, spacing: 8) {
-                        LabeledContent("Key Type") {
+                        LabeledContent(i18n.t(.keyType)) {
                             Text("ECDSA P256 (Secure Enclave)")
                         }
-                        LabeledContent("Key Identifier") {
+                        LabeledContent(i18n.t(.keyIdentifier)) {
                             Text(keyTag)
                         }
                         LabeledContent("Security") {
@@ -145,7 +145,7 @@ struct SecureEnclaveKeyGeneratorView: View {
                 }
 
                 // Public key
-                GroupBox("Public Key (add to server ~/.ssh/authorized_keys)") {
+                GroupBox(i18n.t(.addPublicKeyToServer)) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(publicKey)
                             .font(.system(.caption, design: .monospaced))
@@ -210,7 +210,7 @@ struct SecureEnclaveKeyGeneratorView: View {
                         ProgressView()
                             .controlSize(.small)
                     } else {
-                        Text("Generate Key")
+                        Text(i18n.t(.generate))
                     }
                 }
                 .disabled(keyTag.isEmpty || isGenerating)
@@ -233,7 +233,9 @@ struct SecureEnclaveKeyGeneratorView: View {
 
         Task {
             do {
-                // This will trigger Touch ID / password prompt
+                // Generate the key first (this will trigger Touch ID / password prompt)
+                try SecureEnclaveKeyManager.generateKey(tag: keyTag)
+                // Then export the public key
                 let publicKey = try SecureEnclaveKeyManager.exportPublicKey(tag: keyTag)
                 withAnimation {
                     generatedPublicKey = publicKey
