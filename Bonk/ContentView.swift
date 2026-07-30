@@ -18,6 +18,7 @@ struct ContentView: View {
         @State private var showQuickConnect = false
         @State private var showSSHConfigImport = false
         @State private var showKeyGenerator = false
+        @State private var showWorkspaces = false
         @State private var sftpWindow: NSWindow?
     #endif
 
@@ -79,7 +80,8 @@ struct ContentView: View {
                 themeManager: themeManager,
                 showAddHostSheet: $showAddHostSheet,
                 showTerminalSearch: $showTerminalSearch,
-                showQuickConnect: $showQuickConnect
+                showQuickConnect: $showQuickConnect,
+                showWorkspaces: $showWorkspaces
             ))
     }
 
@@ -206,6 +208,9 @@ struct ContentView: View {
             .sheet(isPresented: $showKeyGenerator) {
                 SSHKeyGeneratorView()
             }
+            .sheet(isPresented: $showWorkspaces) {
+                WorkspaceListView(sessionManager: sessionManager)
+            }
         }
     #endif
 
@@ -306,11 +311,12 @@ struct ContentView: View {
         @Binding var showAddHostSheet: Bool
         @Binding var showTerminalSearch: Bool
         @Binding var showQuickConnect: Bool
+        @Binding var showWorkspaces: Bool
 
         func body(content: Content) -> some View {
             content
                 .modifier(SessionMenuActions(sessionManager: sessionManager, showAddHostSheet: $showAddHostSheet))
-                .modifier(WorkspaceMenuActions(workspace: workspace, showQuickConnect: $showQuickConnect))
+                .modifier(WorkspaceMenuActions(workspace: workspace, showQuickConnect: $showQuickConnect, showWorkspaces: $showWorkspaces))
                 .modifier(AppMenuActions(appStore: appStore, themeManager: themeManager, showTerminalSearch: $showTerminalSearch))
         }
     }
@@ -340,6 +346,7 @@ struct ContentView: View {
     private struct WorkspaceMenuActions: ViewModifier {
         let workspace: WorkspaceManager
         @Binding var showQuickConnect: Bool
+        @Binding var showWorkspaces: Bool
 
         func body(content: Content) -> some View {
             content
@@ -361,6 +368,7 @@ struct ContentView: View {
                     workspace.activeRightPanel = .snippetsHistory
                 }
                 .focusedSceneValue(\.menuQuickConnect) { showQuickConnect = true }
+                .focusedSceneValue(\.menuShowWorkspaces) { showWorkspaces = true }
         }
     }
 

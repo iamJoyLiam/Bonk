@@ -423,6 +423,18 @@ enum LKey: String, CaseIterable {
     case publicKeyCopied = "public_key_copied"
     case change = "change"
 
+    // Workspaces
+    case workspaces = "workspaces"
+    case saveWorkspace = "save_workspace"
+    case loadWorkspace = "load_workspace"
+    case deleteWorkspace = "delete_workspace"
+    case renameWorkspace = "rename_workspace"
+    case workspaceName = "workspace_name"
+    case noWorkspaces = "no_workspaces"
+    case noWorkspacesHint = "no_workspaces_hint"
+    case tabsCount = "tabs_count"
+    case saveCurrentAsWorkspace = "save_current_as_workspace"
+
     // Quake Terminal
     case quakeEnabled = "quake_enabled"
     case accessibilityPermission = "accessibility_permission"

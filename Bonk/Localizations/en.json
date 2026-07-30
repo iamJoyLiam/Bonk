@@ -479,5 +479,15 @@
   "secure_enclave_key_generated": "Secure Enclave key generated successfully!",
   "add_public_key_to_server": "Public Key (add to server ~/.ssh/authorized_keys)",
   "public_key_copied": "Public key copied to clipboard",
-  "change": "Change"
+  "change": "Change",
+  "workspaces": "Workspaces",
+  "save_workspace": "Save Workspace",
+  "load_workspace": "Open Workspace",
+  "delete_workspace": "Delete Workspace",
+  "rename_workspace": "Rename Workspace",
+  "workspace_name": "Workspace Name",
+  "no_workspaces": "No Workspaces",
+  "no_workspaces_hint": "Save your current tab layout as a workspace to quickly restore it later.",
+  "tabs_count": "%d tabs",
+  "save_current_as_workspace": "Save Current as Workspace"
 }

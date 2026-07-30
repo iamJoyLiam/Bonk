@@ -26,6 +26,7 @@ struct BonkApp: App {
             HostItem.self, UserPreferences.self, Credential.self, HostGroup.self,
             AIConversationRecord.self, AIMessageRecord.self, AIProviderRecord.self,
             Snippet.self, PortForward.self, JumpHost.self,
+            Workspace.self, WorkspaceTab.self,
         ])
         #if DEBUG
             let config = ModelConfiguration("Bonk-Dev", schema: schema, isStoredInMemoryOnly: false)
@@ -103,6 +104,7 @@ struct BonkApp: App {
         let shortcutManager: ShortcutManager
         @FocusedValue(\.menuNewTerminal) private var newTerminal
         @FocusedValue(\.menuCloseTab) private var closeTab
+        @FocusedValue(\.menuShowWorkspaces) private var showWorkspaces
         var body: some Commands {
             let newTerminalShortcut = shortcutManager.shortcut(for: .newTerminal)
             let closeTabShortcut = shortcutManager.shortcut(for: .closeTab)
@@ -111,6 +113,9 @@ struct BonkApp: App {
                     .keyboardShortcut(newTerminalShortcut.key, modifiers: newTerminalShortcut.modifiers)
                 Button(i18n.t(.closeTab)) { closeTab?() }
                     .keyboardShortcut(closeTabShortcut.key, modifiers: closeTabShortcut.modifiers)
+                Divider()
+                Button("Workspaces...") { showWorkspaces?() }
+                    .keyboardShortcut("s", modifiers: [.command, .option])
             }
         }
     }

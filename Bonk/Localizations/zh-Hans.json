@@ -479,5 +479,15 @@
   "secure_enclave_key_generated": "安全隔区密钥生成成功！",
   "add_public_key_to_server": "公钥（添加到服务器 ~/.ssh/authorized_keys）",
   "public_key_copied": "公钥已复制到剪贴板",
-  "change": "更改"
+  "change": "更改",
+  "workspaces": "工作区",
+  "save_workspace": "保存工作区",
+  "load_workspace": "打开工作区",
+  "delete_workspace": "删除工作区",
+  "rename_workspace": "重命名工作区",
+  "workspace_name": "工作区名称",
+  "no_workspaces": "没有工作区",
+  "no_workspaces_hint": "将当前标签页布局保存为工作区，以便快速恢复。",
+  "tabs_count": "%d 个标签页",
+  "save_current_as_workspace": "将当前布局保存为工作区"
 }
