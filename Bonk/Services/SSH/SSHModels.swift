@@ -40,6 +40,8 @@ public enum SSHAuthMethod: Sendable, Hashable {
     case password(String)
     case privateKey(pemString: String)
     case certificate(privateKeyPEM: String, certificatePEM: String)
+    /// Secure Enclave P256 key (Touch ID / password required)
+    case secureEnclaveKey(keyTag: String)
 }
 
 // MARK: - Connection State

@@ -6,6 +6,7 @@ enum AuthType: String, Codable {
     case password
     case privateKey
     case certificate
+    case secureEnclave
 }
 
 /// Persisted SSH host configuration.
@@ -73,6 +74,17 @@ final class HostItem {
         KeychainHelper.set(pem, for: KeychainHelper.certificateKey(for: id))
     }
 
+    // MARK: - Secure Enclave credentials
+
+    func loadSecureEnclaveKeyTag() -> String? {
+        KeychainHelper.get(for: KeychainHelper.secureEnclaveKey(for: id))
+    }
+
+    func storeSecureEnclaveKeyTag(_ tag: String) {
+        guard !tag.isEmpty else { return }
+        KeychainHelper.set(tag, for: KeychainHelper.secureEnclaveKey(for: id))
+    }
+
     init(
         name: String,
         host: String,
@@ -82,6 +94,7 @@ final class HostItem {
         password: String? = nil,
         privateKeyPEM: String? = nil,
         certificatePEM: String? = nil,
+        secureEnclaveKeyTag: String? = nil,
         groupRef: HostGroup? = nil,
         credentialRef: Credential? = nil
     ) {
@@ -98,6 +111,7 @@ final class HostItem {
         if let passwordValue = password { storePassword(passwordValue) }
         if let pem = privateKeyPEM { storePrivateKey(pem) }
         if let cert = certificatePEM { storeCertificate(cert) }
+        if let keyTag = secureEnclaveKeyTag { storeSecureEnclaveKeyTag(keyTag) }
     }
 
     func deleteCredentials() {
@@ -144,6 +158,9 @@ final class HostItem {
             guard let pem = loadPrivateKey(), !pem.isEmpty else { return nil }
             let cert = loadCertificate() ?? ""
             return .certificate(privateKeyPEM: pem, certificatePEM: cert)
+        case .secureEnclave:
+            guard let keyTag = loadSecureEnclaveKeyTag(), !keyTag.isEmpty else { return nil }
+            return .secureEnclaveKey(keyTag: keyTag)
         }
     }
 }

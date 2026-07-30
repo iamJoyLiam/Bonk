@@ -36,6 +36,12 @@ struct AddHostSheet: View {
     @State private var jumpHostUsername = ""
     @State private var showJumpHost = false
 
+    // Secure Enclave state
+    @State private var secureEnclaveKeyTag: String?
+    @State private var showSecureEnclaveGenerator = false
+    @State private var secureEnclaveKeyExists: Bool?
+    @State private var secureEnclaveVerificationMessage: String?
+
     init(
         existingHost: HostItem? = nil,
         defaultPort: Int = 22,
@@ -130,6 +136,8 @@ struct AddHostSheet: View {
                             .tag(AuthType.privateKey)
                         Text(i18n.t(.certificate))
                             .tag(AuthType.certificate)
+                        Text("Secure Enclave")
+                            .tag(AuthType.secureEnclave)
                     }
                     .pickerStyle(.segmented)
 
@@ -217,6 +225,68 @@ struct AddHostSheet: View {
                                 .font(.system(.caption, design: .monospaced))
                                 .frame(minHeight: 100)
                         }
+                    case .secureEnclave:
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Use a hardware-protected key from Secure Enclave for authentication.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            if let selectedTag = secureEnclaveKeyTag, !selectedTag.isEmpty {
+                                // Show selected key info
+                                GroupBox {
+                                    HStack {
+                                        Image(systemName: "lock.shield.fill")
+                                            .foregroundStyle(.green)
+                                        VStack(alignment: .leading) {
+                                            Text(selectedTag)
+                                                .font(.headline)
+                                            Text("Secure Enclave P256 Key")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                        Button("Change") {
+                                            secureEnclaveKeyTag = nil
+                                        }
+                                        .buttonStyle(.plain)
+                                        .foregroundStyle(.blue)
+                                    }
+                                }
+                            } else {
+                                // Key selection
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Enter the key identifier (tag) of an existing Secure Enclave key:")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+
+                                    TextField("e.g., my-server, production", text: Binding(
+                                        get: { secureEnclaveKeyTag ?? "" },
+                                        set: { secureEnclaveKeyTag = $0.isEmpty ? nil : $0 }
+                                    ))
+                                    .textFieldStyle(.roundedBorder)
+
+                                    HStack {
+                                        Button("Verify Key") {
+                                            verifySecureEnclaveKey()
+                                        }
+                                        .disabled(secureEnclaveKeyTag?.isEmpty ?? true)
+
+                                        if let verificationMessage = secureEnclaveVerificationMessage {
+                                            Text(verificationMessage)
+                                                .font(.caption)
+                                                .foregroundStyle((secureEnclaveKeyExists ?? false) ? .green : .red)
+                                        }
+                                    }
+
+                                    Divider()
+
+                                    Button("Generate New Secure Enclave Key") {
+                                        showSecureEnclaveGenerator = true
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
+                        }
                     }
                 } else if let cred = vaultCredential {
                     LabeledContent(i18n.t(.credential)) {
@@ -267,6 +337,16 @@ struct AddHostSheet: View {
             }
         }
         .onAppear { loadExisting() }
+        .sheet(isPresented: $showSecureEnclaveGenerator) {
+            SecureEnclaveKeyGeneratorView()
+                .environment(i18n)
+                .onDisappear {
+                    // Refresh verification after key generation
+                    if let tag = secureEnclaveKeyTag, !tag.isEmpty {
+                        verifySecureEnclaveKey()
+                    }
+                }
+        }
     }
 
     // MARK: - Actions
@@ -289,6 +369,7 @@ struct AddHostSheet: View {
         password = existing.loadPassword() ?? ""
         privateKeyPEM = existing.loadPrivateKey() ?? ""
         certificatePEM = existing.loadCertificate() ?? ""
+        secureEnclaveKeyTag = existing.loadSecureEnclaveKeyTag()
         group = existing.groupRef?.name ?? ""
         selectedCredential = existing.credentialRef
     }
@@ -327,6 +408,10 @@ struct AddHostSheet: View {
                 case .certificate:
                     existing.storePrivateKey(privateKeyPEM)
                     existing.storeCertificate(certificatePEM)
+                case .secureEnclave:
+                    if let keyTag = secureEnclaveKeyTag {
+                        existing.storeSecureEnclaveKeyTag(keyTag)
+                    }
                 }
             }
             onSave(existing)
@@ -340,6 +425,7 @@ struct AddHostSheet: View {
                 password: usingVault ? nil : (authType == .password ? password : nil),
                 privateKeyPEM: usingVault ? nil : (authType != .password ? privateKeyPEM : nil),
                 certificatePEM: usingVault ? nil : (authType == .certificate ? certificatePEM : nil),
+                secureEnclaveKeyTag: usingVault ? nil : (authType == .secureEnclave ? secureEnclaveKeyTag : nil),
                 groupRef: groupRef,
                 credentialRef: selectedCredential
             )
@@ -407,5 +493,19 @@ struct AddHostSheet: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+
+    // MARK: - Secure Enclave Helpers
+
+    private func verifySecureEnclaveKey() {
+        guard let tag = secureEnclaveKeyTag, !tag.isEmpty else {
+            secureEnclaveKeyExists = false
+            secureEnclaveVerificationMessage = "Please enter a key identifier"
+            return
+        }
+
+        let exists = SecureEnclaveKeyManager.keyExists(tag: tag)
+        secureEnclaveKeyExists = exists
+        secureEnclaveVerificationMessage = exists ? "Key verified successfully" : "Key not found"
     }
 }
