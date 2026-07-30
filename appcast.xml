@@ -6,6 +6,42 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.0.26</title>
+            <pubDate>Wed, 30 Jul 2026 10:00:00 +0000</pubDate>
+            <sparkle:version>202626</sparkle:version>
+            <sparkle:shortVersionString>2026.0.26</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>新功能</h3>
+                <ul>
+                    <li>全局共享命令历史：所有终端共享同一个历史列表</li>
+                    <li>命令历史自动去重：相同命令只保留最新一条</li>
+                    <li>命令历史持久化：重启应用后历史仍然存在</li>
+                </ul>
+                <h3>Bug 修复</h3>
+                <ul>
+                    <li>修复重新连接后终端只剩光标的问题</li>
+                    <li>修复 ESC 转义序列被错误记录为命令的问题（如上箭头键 [A）</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.26/Bonk-2026.0.26-arm64.dmg"
+                length="9878385"
+                type="application/octet-stream"
+                sparkle:edSignature="I7OT9xAJLodVlYZJoEmF9OJ6n9gc/U/vNES1QEuY7Oi66iqMqfnrVIQJ9K14NrjISiUuYWBJsbg8K9y3YehbCA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.0.26/Bonk-2026.0.26-x86_64.dmg"
+                length="10670858"
+                type="application/octet-stream"
+                sparkle:edSignature="/6FKZBHfkjUDj9H+FC8JeGao9Tpnnet/MYHV2uBIR5tyEblT66i0HN+jp/CT5NNEuyYdxJszTzH4C3zRc/JGBg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.0.25</title>
             <pubDate>Tue, 29 Jul 2026 20:00:00 +0000</pubDate>
             <sparkle:version>202625</sparkle:version>
