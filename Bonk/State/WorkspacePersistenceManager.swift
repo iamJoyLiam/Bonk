@@ -2,74 +2,201 @@
 //  WorkspacePersistenceManager.swift
 //  Bonk
 //
-//  Manages workspace save/load operations.
+//  Manages workspace save/load operations using JSON files.
+//  Workspace is UI state, not business data - belongs in FileManager, not SwiftData.
 //
 
 import Foundation
 import os
 import SwiftData
 
-/// Manages workspace persistence and restoration.
+/// Manages workspace persistence using JSON files.
+/// Workspace is application state (tabs, layout, UI), not business data.
 @MainActor
 final class WorkspacePersistenceManager {
     static let shared = WorkspacePersistenceManager()
 
-    private init() {}
+    private let logger = Logger(subsystem: "com.bonk", category: "Workspace")
+    private let workspacesDirectory: URL
+
+    private init() {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        workspacesDirectory = appSupport.appendingPathComponent("Workspaces", isDirectory: true)
+        try? FileManager.default.createDirectory(at: workspacesDirectory, withIntermediateDirectories: true)
+    }
+
+    // MARK: - Data Models
+
+    struct WorkspaceData: Codable, Identifiable {
+        let id: UUID
+        var name: String
+        let createdAt: Date
+        var updatedAt: Date
+        var activeTabIndex: Int
+        var tabs: [WorkspaceTabData]
+    }
+
+    struct WorkspaceTabData: Codable, Identifiable {
+        let id: UUID // Use tab.id for stable identity
+        let hostItemID: UUID
+        var title: String
+        var colorLabel: String?
+        var sortOrder: Int
+        var isBroadcastEnabled: Bool
+        var activePaneID: UUID?
+    }
 
     // MARK: - Save
 
-    /// Save current session state as a new workspace.
+    /// Save or update a workspace.
+    /// If workspaceID is nil, creates a new workspace.
+    /// If workspaceID is provided, updates the existing workspace.
     func saveWorkspace(
         name: String,
         sessionManager: SessionManager,
-        modelContext: ModelContext
-    ) -> Workspace {
-        let workspace = Workspace.from(sessionManager: sessionManager, name: name)
-        modelContext.insert(workspace)
+        existingWorkspaceID: UUID? = nil
+    ) -> WorkspaceData? {
+        var workspaceTabs: [WorkspaceTabData] = []
 
-        do {
-            try modelContext.save()
-            Log.session.info("Workspace '\(name)' saved with \(workspace.tabs.count) tabs")
-        } catch {
-            Log.session.error("Failed to save workspace: \(error.localizedDescription)")
+        for (index, tab) in sessionManager.tabs.enumerated() {
+            let workspaceTab = WorkspaceTabData(
+                id: tab.id, // Use tab.id for stable identity
+                hostItemID: tab.hostItem.id,
+                title: tab.title,
+                colorLabel: tab.colorLabel,
+                sortOrder: index,
+                isBroadcastEnabled: tab.isBroadcastEnabled,
+                activePaneID: tab.activePaneID
+            )
+            workspaceTabs.append(workspaceTab)
         }
 
-        return workspace
+        let activeIndex = sessionManager.tabs.firstIndex { $0.id == sessionManager.activeTabID } ?? 0
+
+        let workspace: WorkspaceData
+        if let existingID = existingWorkspaceID, var existing = loadWorkspace(id: existingID) {
+            // Update existing workspace
+            existing.name = name
+            existing.updatedAt = Date()
+            existing.activeTabIndex = activeIndex
+            existing.tabs = workspaceTabs
+            workspace = existing
+        } else {
+            // Create new workspace
+            workspace = WorkspaceData(
+                id: UUID(),
+                name: name,
+                createdAt: Date(),
+                updatedAt: Date(),
+                activeTabIndex: activeIndex,
+                tabs: workspaceTabs
+            )
+        }
+
+        let fileURL = workspacesDirectory.appendingPathComponent("\(workspace.id.uuidString).json")
+        do {
+            let data = try JSONEncoder().encode(workspace)
+            try data.write(to: fileURL)
+            logger.info("Workspace '\(name)' saved successfully")
+            return workspace
+        } catch {
+            logger.error("Failed to save workspace: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     // MARK: - Load
 
-    /// Restore a workspace by opening all its tabs.
-    func loadWorkspace(
-        _ workspace: Workspace,
+    /// Load all workspaces from JSON files.
+    func loadAllWorkspaces() -> [WorkspaceData] {
+        var workspaces: [WorkspaceData] = []
+
+        guard let files = try? FileManager.default.contentsOfDirectory(at: workspacesDirectory, includingPropertiesForKeys: nil) else {
+            return workspaces
+        }
+
+        for file in files where file.pathExtension == "json" {
+            if let data = try? Data(contentsOf: file),
+               let workspace = try? JSONDecoder().decode(WorkspaceData.self, from: data)
+            {
+                workspaces.append(workspace)
+            }
+        }
+
+        return workspaces.sorted { $0.createdAt > $1.createdAt }
+    }
+
+    /// Load a single workspace.
+    func loadWorkspace(id: UUID) -> WorkspaceData? {
+        let fileURL = workspacesDirectory.appendingPathComponent("\(id.uuidString).json")
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        return try? JSONDecoder().decode(WorkspaceData.self, from: data)
+    }
+
+    // MARK: - Delete
+
+    /// Delete a workspace.
+    func deleteWorkspace(id: UUID) {
+        let fileURL = workspacesDirectory.appendingPathComponent("\(id.uuidString).json")
+        try? FileManager.default.removeItem(at: fileURL)
+        logger.info("Workspace deleted")
+    }
+
+    // MARK: - Rename
+
+    /// Rename a workspace.
+    func renameWorkspace(id: UUID, to newName: String) {
+        guard var workspace = loadWorkspace(id: id) else { return }
+        workspace.name = newName
+        workspace.updatedAt = Date()
+
+        let fileURL = workspacesDirectory.appendingPathComponent("\(id.uuidString).json")
+        do {
+            let data = try JSONEncoder().encode(workspace)
+            try data.write(to: fileURL)
+        } catch {
+            logger.error("Failed to rename workspace: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Restore
+
+    /// Restore a workspace by opening its tabs.
+    func restoreWorkspace(
+        _ workspace: WorkspaceData,
         sessionManager: SessionManager,
-        hostStore: [UUID: HostItem] = [:]
+        modelContext: ModelContext
     ) {
-        // Close all existing tabs first
+        // Close all existing tabs
         for tab in sessionManager.tabs {
             Task {
                 await sessionManager.closeTab(tab.id)
             }
         }
 
+        // Fetch host items for workspace tabs
+        var hostStore: [UUID: HostItem] = [:]
+        let descriptor = FetchDescriptor<HostItem>()
+        if let hosts = try? modelContext.fetch(descriptor) {
+            for host in hosts {
+                hostStore[host.id] = host
+            }
+        }
+
         // Open tabs from workspace
         for workspaceTab in workspace.tabs.sorted(by: { $0.sortOrder < $1.sortOrder }) {
-            // Find the host item
             guard let hostItem = hostStore[workspaceTab.hostItemID] else {
-                Log.session.warning("Host item not found for workspace tab: \(workspaceTab.hostItemID)")
+                logger.warning("Host item not found for workspace tab: \(workspaceTab.hostItemID)")
                 continue
             }
 
-            // Create and open the tab
             let tab = TerminalTab(hostItem: hostItem)
             tab.title = workspaceTab.title
             tab.colorLabel = workspaceTab.colorLabel
             tab.isBroadcastEnabled = workspaceTab.isBroadcastEnabled
 
-            // Add to session manager
             sessionManager.tabs.append(tab)
 
-            // Connect asynchronously
             Task {
                 await sessionManager.connectTab(tab)
             }
@@ -80,32 +207,6 @@ final class WorkspacePersistenceManager {
             sessionManager.activeTabID = sessionManager.tabs[workspace.activeTabIndex].id
         }
 
-        Log.session.info("Workspace '\(workspace.name)' loaded with \(workspace.tabs.count) tabs")
-    }
-
-    // MARK: - Delete
-
-    /// Delete a workspace.
-    func deleteWorkspace(_ workspace: Workspace, modelContext: ModelContext) {
-        modelContext.delete(workspace)
-        do {
-            try modelContext.save()
-            Log.session.info("Workspace '\(workspace.name)' deleted")
-        } catch {
-            Log.session.error("Failed to delete workspace: \(error.localizedDescription)")
-        }
-    }
-
-    // MARK: - Rename
-
-    /// Rename a workspace.
-    func renameWorkspace(_ workspace: Workspace, to newName: String, modelContext: ModelContext) {
-        workspace.name = newName
-        workspace.updatedAt = Date()
-        do {
-            try modelContext.save()
-        } catch {
-            Log.session.error("Failed to rename workspace: \(error.localizedDescription)")
-        }
+        logger.info("Workspace '\(workspace.name)' restored with \(workspace.tabs.count) tabs")
     }
 }

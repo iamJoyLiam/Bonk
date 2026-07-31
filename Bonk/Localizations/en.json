@@ -482,12 +482,14 @@
   "change": "Change",
   "workspaces": "Workspaces",
   "save_workspace": "Save Workspace",
-  "load_workspace": "Open Workspace",
+  "load_workspace": "Open",
   "delete_workspace": "Delete Workspace",
   "rename_workspace": "Rename Workspace",
   "workspace_name": "Workspace Name",
   "no_workspaces": "No Workspaces",
   "no_workspaces_hint": "Save your current tab layout as a workspace to quickly restore it later.",
   "tabs_count": "%d tabs",
-  "save_current_as_workspace": "Save Current as Workspace"
+  "save_current_as_workspace": "Save Current as Workspace",
+  "delete_workspace_confirm": "Delete workspace '%@'?",
+  "workspace_count": "%d saved"
 }

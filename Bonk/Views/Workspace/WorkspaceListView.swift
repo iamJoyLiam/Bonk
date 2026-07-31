@@ -2,7 +2,7 @@
 //  WorkspaceListView.swift
 //  Bonk
 //
-//  Workspace management UI.
+//  Workspace management UI using JSON persistence.
 //
 
 import SwiftData
@@ -14,16 +14,16 @@ struct WorkspaceListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
-    @Query(sort: \Workspace.createdAt, order: .reverse)
-    private var workspaces: [Workspace]
-
     @Bindable var sessionManager: SessionManager
 
+    @State private var workspaces: [WorkspacePersistenceManager.WorkspaceData] = []
     @State private var showSaveSheet = false
     @State private var newWorkspaceName = ""
-    @State private var workspaceToDelete: Workspace?
-    @State private var workspaceToRename: Workspace?
+    @State private var workspaceToDelete: WorkspacePersistenceManager.WorkspaceData?
+    @State private var workspaceToRename: WorkspacePersistenceManager.WorkspaceData?
     @State private var renameName = ""
+
+    private let persistence = WorkspacePersistenceManager.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -45,6 +45,9 @@ struct WorkspaceListView: View {
             footerSection
         }
         .frame(minWidth: 450, minHeight: 350)
+        .onAppear {
+            loadWorkspaces()
+        }
         .alert(i18n.t(.delete), isPresented: .init(
             get: { workspaceToDelete != nil },
             set: { if !$0 { workspaceToDelete = nil } }
@@ -57,14 +60,14 @@ struct WorkspaceListView: View {
             }
         } message: {
             if let ws = workspaceToDelete {
-                Text("Delete workspace '\(ws.name)'?")
+                Text(i18n.tr(.deleteWorkspaceConfirm, args: ws.name))
             }
         }
-        .alert("Rename Workspace", isPresented: .init(
+        .alert(i18n.t(.renameWorkspace), isPresented: .init(
             get: { workspaceToRename != nil },
             set: { if !$0 { workspaceToRename = nil } }
         )) {
-            TextField("Workspace name", text: $renameName)
+            TextField(i18n.t(.workspaceName), text: $renameName)
             Button(i18n.t(.cancel), role: .cancel) {
                 workspaceToRename = nil
                 renameName = ""
@@ -77,7 +80,7 @@ struct WorkspaceListView: View {
                 renameName = ""
             }
         } message: {
-            Text("Enter a new name for this workspace:")
+            Text(i18n.t(.enterNewName))
         }
         .sheet(isPresented: $showSaveSheet) {
             saveWorkspaceSheet
@@ -91,10 +94,10 @@ struct WorkspaceListView: View {
             Image(systemName: "square.stack.3d.up")
                 .font(.title2)
                 .foregroundStyle(.blue)
-            Text("Workspaces")
+            Text(i18n.t(.workspaces))
                 .font(.headline)
             Spacer()
-            Text("\(workspaces.count) saved")
+            Text(i18n.tr(.workspaceCount, args: workspaces.count))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -108,10 +111,10 @@ struct WorkspaceListView: View {
             Image(systemName: "square.stack.3d.up")
                 .font(.system(size: 48))
                 .foregroundStyle(.tertiary)
-            Text("No Workspaces")
+            Text(i18n.t(.noWorkspaces))
                 .font(.title3)
                 .foregroundStyle(.secondary)
-            Text("Save your current tab layout as a workspace to quickly restore it later.")
+            Text(i18n.t(.noWorkspacesHint))
                 .font(.body)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
@@ -137,7 +140,7 @@ struct WorkspaceListView: View {
         }
     }
 
-    private func workspaceRow(_ workspace: Workspace) -> some View {
+    private func workspaceRow(_ workspace: WorkspacePersistenceManager.WorkspaceData) -> some View {
         HStack(spacing: 12) {
             // Icon
             Image(systemName: "square.stack.3d.up.fill")
@@ -149,7 +152,7 @@ struct WorkspaceListView: View {
                 Text(workspace.name)
                     .font(.headline)
                 HStack(spacing: 8) {
-                    Label("\(workspace.tabs.count) tabs", systemImage: "sidebar.left")
+                    Label(i18n.tr(.tabsCount, args: workspace.tabs.count), systemImage: "sidebar.left")
                     Text("•")
                     Text(workspace.updatedAt, style: .relative)
                     Text("ago")
@@ -165,7 +168,7 @@ struct WorkspaceListView: View {
                 Button {
                     loadWorkspace(workspace)
                 } label: {
-                    Label("Open", systemImage: "arrow.right.circle.fill")
+                    Label(i18n.t(.loadWorkspace), systemImage: "arrow.right.circle.fill")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -212,7 +215,7 @@ struct WorkspaceListView: View {
 
             Spacer()
 
-            Button("Save Current as Workspace") {
+            Button(i18n.t(.saveCurrentAsWorkspace)) {
                 showSaveSheet = true
             }
             .buttonStyle(.borderedProminent)
@@ -225,10 +228,10 @@ struct WorkspaceListView: View {
 
     private var saveWorkspaceSheet: some View {
         VStack(spacing: 16) {
-            Text("Save Workspace")
+            Text(i18n.t(.saveWorkspace))
                 .font(.headline)
 
-            TextField("Workspace name", text: $newWorkspaceName)
+            TextField(i18n.t(.workspaceName), text: $newWorkspaceName)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 300)
 
@@ -254,41 +257,37 @@ struct WorkspaceListView: View {
 
     // MARK: - Actions
 
+    private func loadWorkspaces() {
+        workspaces = persistence.loadAllWorkspaces()
+    }
+
     private func saveWorkspace() {
         let name = newWorkspaceName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
 
-        _ = WorkspacePersistenceManager.shared.saveWorkspace(
-            name: name,
-            sessionManager: sessionManager,
-            modelContext: modelContext
-        )
-    }
-
-    private func loadWorkspace(_ workspace: Workspace) {
-        // Load host items for workspace tabs
-        var hostStore: [UUID: HostItem] = [:]
-        let descriptor = FetchDescriptor<HostItem>()
-        if let hosts = try? modelContext.fetch(descriptor) {
-            for host in hosts {
-                hostStore[host.id] = host
+        if let workspace = persistence.saveWorkspace(name: name, sessionManager: sessionManager) {
+            // Check if we updated an existing workspace or created a new one
+            if let index = workspaces.firstIndex(where: { $0.id == workspace.id }) {
+                workspaces[index] = workspace
+            } else {
+                workspaces.insert(workspace, at: 0)
             }
         }
+    }
 
-        WorkspacePersistenceManager.shared.loadWorkspace(
-            workspace,
-            sessionManager: sessionManager,
-            hostStore: hostStore
-        )
+    private func loadWorkspace(_ workspace: WorkspacePersistenceManager.WorkspaceData) {
+        persistence.restoreWorkspace(workspace, sessionManager: sessionManager, modelContext: modelContext)
         dismiss()
     }
 
-    private func renameWorkspace(_ workspace: Workspace, to newName: String) {
-        WorkspacePersistenceManager.shared.renameWorkspace(workspace, to: newName, modelContext: modelContext)
+    private func renameWorkspace(_ workspace: WorkspacePersistenceManager.WorkspaceData, to newName: String) {
+        persistence.renameWorkspace(id: workspace.id, to: newName)
+        loadWorkspaces()
     }
 
-    private func deleteWorkspace(_ workspace: Workspace) {
-        WorkspacePersistenceManager.shared.deleteWorkspace(workspace, modelContext: modelContext)
+    private func deleteWorkspace(_ workspace: WorkspacePersistenceManager.WorkspaceData) {
+        persistence.deleteWorkspace(id: workspace.id)
+        loadWorkspaces()
     }
 }
 

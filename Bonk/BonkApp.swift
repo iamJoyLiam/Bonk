@@ -26,7 +26,6 @@ struct BonkApp: App {
             HostItem.self, UserPreferences.self, Credential.self, HostGroup.self,
             AIConversationRecord.self, AIMessageRecord.self, AIProviderRecord.self,
             Snippet.self, PortForward.self, JumpHost.self,
-            Workspace.self, WorkspaceTab.self,
         ])
         #if DEBUG
             let config = ModelConfiguration("Bonk-Dev", schema: schema, isStoredInMemoryOnly: false)
@@ -36,16 +35,8 @@ struct BonkApp: App {
         do {
             return try ModelContainer(for: schema, configurations: [config])
         } catch {
-            // If migration fails, try to create a fresh container
-            // This handles schema changes between versions
-            Log.app.error("ModelContainer migration failed: \(error.localizedDescription), attempting fresh container")
-            do {
-                let freshConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-                return try ModelContainer(for: schema, configurations: [freshConfig])
-            } catch {
-                Log.app.error("Fresh ModelContainer also failed: \(error.localizedDescription)")
-                fatalError("Database initialization failed: \(error)")
-            }
+            Log.app.error("ModelContainer failed: \(error.localizedDescription)")
+            fatalError("Database initialization failed: \(error)")
         }
     }()
 
@@ -114,7 +105,7 @@ struct BonkApp: App {
                 Button(i18n.t(.closeTab)) { closeTab?() }
                     .keyboardShortcut(closeTabShortcut.key, modifiers: closeTabShortcut.modifiers)
                 Divider()
-                Button("Workspaces...") { showWorkspaces?() }
+                Button(i18n.t(.workspaces) + "...") { showWorkspaces?() }
                     .keyboardShortcut("s", modifiers: [.command, .option])
             }
         }
