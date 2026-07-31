@@ -109,10 +109,13 @@ struct ContentView: View {
                     InspectorContainerView(sessionManager: sessionManager)
                 }
             }
+            #if os(macOS)
+                .background(ToolbarCustomizerView().frame(width: 0, height: 0).allowsHitTesting(false))
+            #endif
             .navigationSplitViewStyle(.balanced)
-            .toolbar {
-                // .principal — 工具按钮分组（3个胶囊）
-                ToolbarItem(placement: .principal) {
+            .toolbar(id: "main-toolbar") {
+                // 胶囊 1：Broadcast, Serial, Port Forward
+                ToolbarItem(id: "capsule-broadcast", placement: .principal) {
                     ControlGroup {
                         Button { workspace.toggleBroadcast() } label: {
                             Image(systemName: "antenna.radiowaves.left.and.right")
@@ -128,7 +131,8 @@ struct ContentView: View {
                     }
                 }
 
-                ToolbarItem(placement: .principal) {
+                // 胶囊 2：Key Gen, Workspaces
+                ToolbarItem(id: "capsule-keys", placement: .principal) {
                     ControlGroup {
                         Button { showKeyGenerator = true } label: {
                             Image(systemName: "key.fill")
@@ -141,7 +145,8 @@ struct ContentView: View {
                     }
                 }
 
-                ToolbarItem(placement: .principal) {
+                // 胶囊 3：SSH Import, SFTP
+                ToolbarItem(id: "capsule-sftp", placement: .principal) {
                     ControlGroup {
                         Button { showSSHConfigImport = true } label: {
                             Image(systemName: "square.and.arrow.down")
@@ -153,8 +158,8 @@ struct ContentView: View {
                     }
                 }
 
-                // [✨] [📝]
-                ToolbarItem(placement: .primaryAction) {
+                // 胶囊 4：AI, Snippets (右侧)
+                ToolbarItem(id: "capsule-ai", placement: .primaryAction) {
                     ControlGroup {
                         Button { workspace.toggleRightPanel(.ai) } label: {
                             Image(systemName: "sparkles")
