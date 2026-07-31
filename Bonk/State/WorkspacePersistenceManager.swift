@@ -2,16 +2,17 @@
 //  WorkspacePersistenceManager.swift
 //  Bonk
 //
-//  Manages workspace save/load operations using JSON files.
-//  Workspace is UI state, not business data - belongs in FileManager, not SwiftData.
+//  Manages workspace save/load operations using plist files.
+//  Workspace is UI state, not business data - belongs in plist, not SwiftData.
 //
 
 import Foundation
 import os
 import SwiftData
 
-/// Manages workspace persistence using JSON files.
+/// Manages workspace persistence using plist files.
 /// Workspace is application state (tabs, layout, UI), not business data.
+/// This follows macOS convention (like iTerm2 arrangements, Xcode schemes).
 @MainActor
 final class WorkspacePersistenceManager {
     static let shared = WorkspacePersistenceManager()
@@ -93,9 +94,9 @@ final class WorkspacePersistenceManager {
             )
         }
 
-        let fileURL = workspacesDirectory.appendingPathComponent("\(workspace.id.uuidString).json")
+        let fileURL = workspacesDirectory.appendingPathComponent("\(workspace.id.uuidString).plist")
         do {
-            let data = try JSONEncoder().encode(workspace)
+            let data = try PropertyListEncoder().encode(workspace)
             try data.write(to: fileURL)
             logger.info("Workspace '\(name)' saved successfully")
             return workspace
@@ -107,7 +108,7 @@ final class WorkspacePersistenceManager {
 
     // MARK: - Load
 
-    /// Load all workspaces from JSON files.
+    /// Load all workspaces from plist files.
     func loadAllWorkspaces() -> [WorkspaceData] {
         var workspaces: [WorkspaceData] = []
 
@@ -115,9 +116,9 @@ final class WorkspacePersistenceManager {
             return workspaces
         }
 
-        for file in files where file.pathExtension == "json" {
+        for file in files where file.pathExtension == "plist" {
             if let data = try? Data(contentsOf: file),
-               let workspace = try? JSONDecoder().decode(WorkspaceData.self, from: data)
+               let workspace = try? PropertyListDecoder().decode(WorkspaceData.self, from: data)
             {
                 workspaces.append(workspace)
             }
@@ -128,16 +129,16 @@ final class WorkspacePersistenceManager {
 
     /// Load a single workspace.
     func loadWorkspace(id: UUID) -> WorkspaceData? {
-        let fileURL = workspacesDirectory.appendingPathComponent("\(id.uuidString).json")
+        let fileURL = workspacesDirectory.appendingPathComponent("\(id.uuidString).plist")
         guard let data = try? Data(contentsOf: fileURL) else { return nil }
-        return try? JSONDecoder().decode(WorkspaceData.self, from: data)
+        return try? PropertyListDecoder().decode(WorkspaceData.self, from: data)
     }
 
     // MARK: - Delete
 
     /// Delete a workspace.
     func deleteWorkspace(id: UUID) {
-        let fileURL = workspacesDirectory.appendingPathComponent("\(id.uuidString).json")
+        let fileURL = workspacesDirectory.appendingPathComponent("\(id.uuidString).plist")
         try? FileManager.default.removeItem(at: fileURL)
         logger.info("Workspace deleted")
     }
@@ -150,9 +151,9 @@ final class WorkspacePersistenceManager {
         workspace.name = newName
         workspace.updatedAt = Date()
 
-        let fileURL = workspacesDirectory.appendingPathComponent("\(id.uuidString).json")
+        let fileURL = workspacesDirectory.appendingPathComponent("\(id.uuidString).plist")
         do {
-            let data = try JSONEncoder().encode(workspace)
+            let data = try PropertyListEncoder().encode(workspace)
             try data.write(to: fileURL)
         } catch {
             logger.error("Failed to rename workspace: \(error.localizedDescription)")
