@@ -21,7 +21,8 @@ final class WorkspacePersistenceManager {
     private let workspacesDirectory: URL
 
     private init() {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
         workspacesDirectory = appSupport.appendingPathComponent("Workspaces", isDirectory: true)
         try? FileManager.default.createDirectory(at: workspacesDirectory, withIntermediateDirectories: true)
     }
@@ -45,6 +46,7 @@ final class WorkspacePersistenceManager {
         var sortOrder: Int
         var isBroadcastEnabled: Bool
         var activePaneID: UUID?
+        var paneIDs: [UUID]? // For split pane restoration
     }
 
     // MARK: - Save
@@ -61,13 +63,14 @@ final class WorkspacePersistenceManager {
 
         for (index, tab) in sessionManager.tabs.enumerated() {
             let workspaceTab = WorkspaceTabData(
-                id: tab.id, // Use tab.id for stable identity
+                id: tab.id,
                 hostItemID: tab.hostItem.id,
                 title: tab.title,
                 colorLabel: tab.colorLabel,
                 sortOrder: index,
                 isBroadcastEnabled: tab.isBroadcastEnabled,
-                activePaneID: tab.activePaneID
+                activePaneID: tab.activePaneID,
+                paneIDs: tab.paneIDs
             )
             workspaceTabs.append(workspaceTab)
         }
@@ -76,14 +79,12 @@ final class WorkspacePersistenceManager {
 
         let workspace: WorkspaceData
         if let existingID = existingWorkspaceID, var existing = loadWorkspace(id: existingID) {
-            // Update existing workspace
             existing.name = name
             existing.updatedAt = Date()
             existing.activeTabIndex = activeIndex
             existing.tabs = workspaceTabs
             workspace = existing
         } else {
-            // Create new workspace
             workspace = WorkspaceData(
                 id: UUID(),
                 name: name,
@@ -139,8 +140,12 @@ final class WorkspacePersistenceManager {
     /// Delete a workspace.
     func deleteWorkspace(id: UUID) {
         let fileURL = workspacesDirectory.appendingPathComponent("\(id.uuidString).plist")
-        try? FileManager.default.removeItem(at: fileURL)
-        logger.info("Workspace deleted")
+        do {
+            try FileManager.default.removeItem(at: fileURL)
+            logger.info("Workspace deleted")
+        } catch {
+            logger.warning("Failed to delete workspace: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - Rename
@@ -168,23 +173,24 @@ final class WorkspacePersistenceManager {
         sessionManager: SessionManager,
         modelContext: ModelContext
     ) {
-        // Close all existing tabs
+        // Close all existing tabs first (sequentially to avoid race conditions)
         for tab in sessionManager.tabs {
             Task {
                 await sessionManager.closeTab(tab.id)
             }
         }
 
-        // Fetch host items for workspace tabs
+        // Fetch only the host items we need (optimization)
+        let neededIDs = Set(workspace.tabs.map(\.hostItemID))
         var hostStore: [UUID: HostItem] = [:]
         let descriptor = FetchDescriptor<HostItem>()
         if let hosts = try? modelContext.fetch(descriptor) {
-            for host in hosts {
+            for host in hosts where neededIDs.contains(host.id) {
                 hostStore[host.id] = host
             }
         }
 
-        // Open tabs from workspace
+        // Open tabs from workspace (sequentially)
         for workspaceTab in workspace.tabs.sorted(by: { $0.sortOrder < $1.sortOrder }) {
             guard let hostItem = hostStore[workspaceTab.hostItemID] else {
                 logger.warning("Host item not found for workspace tab: \(workspaceTab.hostItemID)")

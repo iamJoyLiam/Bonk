@@ -491,5 +491,6 @@
   "tabs_count": "%d tabs",
   "save_current_as_workspace": "Save Current as Workspace",
   "delete_workspace_confirm": "Delete workspace '%@'?",
-  "workspace_count": "%d saved"
+  "workspace_count": "%d saved",
+  "ago": "ago"
 }

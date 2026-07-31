@@ -2,7 +2,7 @@
 //  WorkspaceListView.swift
 //  Bonk
 //
-//  Workspace management UI using JSON persistence.
+//  Workspace management UI using plist persistence.
 //
 
 import SwiftData
@@ -155,7 +155,7 @@ struct WorkspaceListView: View {
                     Label(i18n.tr(.tabsCount, args: workspace.tabs.count), systemImage: "sidebar.left")
                     Text("•")
                     Text(workspace.updatedAt, style: .relative)
-                    Text("ago")
+                    Text(i18n.t(.ago))
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -164,37 +164,36 @@ struct WorkspaceListView: View {
             Spacer()
 
             // Actions
-            HStack(spacing: 8) {
+            Menu {
                 Button {
                     loadWorkspace(workspace)
                 } label: {
                     Label(i18n.t(.loadWorkspace), systemImage: "arrow.right.circle.fill")
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
 
-                Menu {
-                    Button {
-                        workspaceToRename = workspace
-                        renameName = workspace.name
-                    } label: {
-                        Label(i18n.t(.rename), systemImage: "pencil")
-                    }
+                Divider()
 
-                    Divider()
-
-                    Button(role: .destructive) {
-                        workspaceToDelete = workspace
-                    } label: {
-                        Label(i18n.t(.delete), systemImage: "trash")
-                    }
+                Button {
+                    workspaceToRename = workspace
+                    renameName = workspace.name
                 } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .foregroundStyle(.secondary)
+                    Label(i18n.t(.rename), systemImage: "pencil")
                 }
-                .menuStyle(.borderlessButton)
-                .frame(width: 24)
+
+                Divider()
+
+                Button(role: .destructive) {
+                    workspaceToDelete = workspace
+                } label: {
+                    Label(i18n.t(.delete), systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.secondary)
             }
+            .menuStyle(.borderlessButton)
+            .frame(width: 28)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

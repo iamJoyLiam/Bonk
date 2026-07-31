@@ -436,6 +436,7 @@ enum LKey: String, CaseIterable {
     case saveCurrentAsWorkspace = "save_current_as_workspace"
     case deleteWorkspaceConfirm = "delete_workspace_confirm"
     case workspaceCount = "workspace_count"
+    case ago = "ago"
 
     // Quake Terminal
     case quakeEnabled = "quake_enabled"

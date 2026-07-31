@@ -491,5 +491,6 @@
   "tabs_count": "%d 个标签页",
   "save_current_as_workspace": "将当前布局保存为工作区",
   "delete_workspace_confirm": "删除工作区「%@」？",
-  "workspace_count": "已保存 %d 个"
+  "workspace_count": "已保存 %d 个",
+  "ago": "前"
 }
