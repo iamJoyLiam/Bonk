@@ -164,36 +164,40 @@ struct WorkspaceListView: View {
             Spacer()
 
             // Actions
-            Menu {
+            HStack(spacing: 4) {
+                // 打开按钮 - 直接点击打开
                 Button {
                     loadWorkspace(workspace)
                 } label: {
-                    Label(i18n.t(.loadWorkspace), systemImage: "arrow.right.circle.fill")
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.blue)
                 }
+                .buttonStyle(.plain)
+                .help(i18n.t(.loadWorkspace))
 
-                Divider()
+                // "..." 菜单 - 重命名、删除
+                Menu {
+                    Button {
+                        workspaceToRename = workspace
+                        renameName = workspace.name
+                    } label: {
+                        Label(i18n.t(.rename), systemImage: "pencil")
+                    }
 
-                Button {
-                    workspaceToRename = workspace
-                    renameName = workspace.name
+                    Divider()
+
+                    Button(role: .destructive) {
+                        workspaceToDelete = workspace
+                    } label: {
+                        Label(i18n.t(.delete), systemImage: "trash")
+                    }
                 } label: {
-                    Label(i18n.t(.rename), systemImage: "pencil")
+                    EmptyView()
                 }
-
-                Divider()
-
-                Button(role: .destructive) {
-                    workspaceToDelete = workspace
-                } label: {
-                    Label(i18n.t(.delete), systemImage: "trash")
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 16))
-                    .foregroundStyle(.secondary)
+                .menuStyle(.borderlessButton)
+                .frame(width: 20)
             }
-            .menuStyle(.borderlessButton)
-            .frame(width: 28)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

@@ -111,40 +111,45 @@ struct ContentView: View {
             }
             .navigationSplitViewStyle(.balanced)
             .toolbar {
-                // [📶] [🔌] [🔀] [⏱] — .principal tracks content column boundary
+                // .principal — 工具按钮分组（3个胶囊）
                 ToolbarItem(placement: .principal) {
                     ControlGroup {
                         Button { workspace.toggleBroadcast() } label: {
                             Image(systemName: "antenna.radiowaves.left.and.right")
-                                .foregroundStyle(
-                                    workspace.isBroadcastEnabled ? .orange : .primary
-                                )
+                                .foregroundStyle(workspace.isBroadcastEnabled ? .orange : .primary)
                         }
                         .opacity(workspace.isBroadcastEnabled ? 1.0 : 0.8)
-
                         Button { workspace.isSerialPortPresented = true } label: {
                             Image(systemName: "cable.connector")
                         }
-                        Button { showSSHConfigImport = true } label: {
-                            Image(systemName: "square.and.arrow.down")
-                        }
-                        .help(i18n.t(.importSSHConfig))
                         Button { workspace.isPortForwardingPresented = true } label: {
                             Image(systemName: "arrow.triangle.branch")
                         }
                     }
                 }
 
-                // [📁] — .principal tracks content column boundary
                 ToolbarItem(placement: .principal) {
                     ControlGroup {
-                        Button { toggleSFTPWindow() } label: {
-                            Image(systemName: "folder.fill")
-                        }
                         Button { showKeyGenerator = true } label: {
                             Image(systemName: "key.fill")
                         }
                         .help(i18n.t(.generateSSHKey))
+                        Button { showWorkspaces = true } label: {
+                            Image(systemName: "square.stack.3d.up")
+                        }
+                        .help(i18n.t(.workspaces))
+                    }
+                }
+
+                ToolbarItem(placement: .principal) {
+                    ControlGroup {
+                        Button { showSSHConfigImport = true } label: {
+                            Image(systemName: "square.and.arrow.down")
+                        }
+                        .help(i18n.t(.importSSHConfig))
+                        Button { toggleSFTPWindow() } label: {
+                            Image(systemName: "folder.fill")
+                        }
                     }
                 }
 
