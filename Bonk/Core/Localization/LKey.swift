@@ -272,6 +272,7 @@ enum LKey: String, CaseIterable {
     // Broadcast
     case disableBroadcast = "disable_broadcast"
     case enableBroadcast = "enable_broadcast"
+    case toggleSidebar = "toggle_sidebar"
 
     /// Inspector
     case snippetsHistory = "snippets_history"
@@ -327,6 +328,7 @@ enum LKey: String, CaseIterable {
     case waitingForOutput = "waiting_for_output"
 
     /// Broadcast
+    case broadcastMode = "broadcast_mode"
     case broadcastPanes = "broadcast_panes"
 
     // Copilot errors

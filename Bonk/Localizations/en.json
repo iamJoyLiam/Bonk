@@ -341,6 +341,7 @@
   "broadcast_mode": "Broadcast Mode",
   "disable_broadcast": "Disable Broadcast",
   "enable_broadcast": "Enable Broadcast",
+  "toggle_sidebar": "Toggle Sidebar",
   "snippets_history": "Snippets & History",
   "sftp_browser_toolbar": "SFTP Browser",
   "type": "Type",

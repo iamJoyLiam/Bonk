@@ -341,6 +341,7 @@
   "broadcast_mode": "广播模式",
   "disable_broadcast": "关闭广播",
   "enable_broadcast": "开启广播",
+  "toggle_sidebar": "切换侧边栏",
   "snippets_history": "代码片段与历史",
   "sftp_browser_toolbar": "SFTP 浏览器",
   "type": "类型",
