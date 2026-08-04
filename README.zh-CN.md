@@ -96,3 +96,7 @@ open Bonk.xcodeproj
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request。有功能想法或 Bug，请先开 Issue 讨论。
+
+## 📄 许可证
+
+[MIT](LICENSE)

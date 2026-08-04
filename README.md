@@ -96,3 +96,7 @@ The main window is an AppKit-owned `NSSplitViewController` shell hosting SwiftUI
 ## 🤝 Contributing
 
 Issues and pull requests are welcome. For feature ideas or bugs, open an issue first.
+
+## 📄 License
+
+[MIT](LICENSE)
