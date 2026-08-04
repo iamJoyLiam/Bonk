@@ -39,8 +39,10 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
     // MARK: - Default Items
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.addHost, .toggleSidebar, .flexibleSpace,
-         .broadcast, .serialPort, .portForward,
+        [.toggleSidebar,                    // 分隔符左侧：折叠边栏
+         .addHost,                          // 分隔符左侧：添加主机
+         .sidebarTrackingSeparator,         // 关键：对齐侧边栏分割线
+         .broadcast, .serialPort, .portForward,   // 分隔符右侧：可自由拖拽
          .flexibleSpace,
          .keyGenerator, .workspaces,
          .flexibleSpace,
