@@ -103,8 +103,15 @@ final class MainSplitViewController: NSSplitViewController {
 
         splitView.autosaveName = "BonkMainSplit"
         startInspectorObservation()
-        updateInspectorVisibility()
+        updateInspectorVisibility(animated: false)
         installSidebarAppearanceRefresh()
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        // Re-assert after the split view's autosaved collapse state is
+        // restored, so the inspector never starts open but empty.
+        updateInspectorVisibility(animated: false)
     }
 
     /// macOS 26's sidebar glass draws its shadow once with square corners when
@@ -172,15 +179,22 @@ final class MainSplitViewController: NSSplitViewController {
             _ = workspace.activeRightPanel
         } onChange: { [weak self] in
             MainActor.assumeIsolated {
-                self?.updateInspectorVisibility()
+                // withObservationTracking fires before the property write is
+                // visible, so defer the read to the next runloop turn.
+                Task { @MainActor [weak self] in
+                    self?.updateInspectorVisibility(animated: true)
+                }
                 self?.observeActiveRightPanel()
             }
         }
     }
 
-    private func updateInspectorVisibility() {
+    private func updateInspectorVisibility(animated: Bool) {
         let shouldShow = workspace.activeRightPanel != .none
-        if inspectorSplitItem.isCollapsed == shouldShow {
+        guard inspectorSplitItem.isCollapsed == shouldShow else { return }
+        if animated {
+            inspectorSplitItem.animator().isCollapsed = !shouldShow
+        } else {
             inspectorSplitItem.isCollapsed = !shouldShow
         }
     }
