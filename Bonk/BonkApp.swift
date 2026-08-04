@@ -5,6 +5,7 @@ import SwiftUI
 
 @main
 struct BonkApp: App {
+    @NSApplicationDelegateAdaptor(BonkAppDelegate.self) private var appDelegate
     @State private var i18n = I18n()
     @State private var updater = UpdaterManager()
     @State private var shortcutManager = ShortcutManager.shared
@@ -21,7 +22,7 @@ struct BonkApp: App {
         }
     }
 
-    var sharedModelContainer: ModelContainer = {
+    static let sharedModelContainer: ModelContainer = {
         let schema = Schema([
             HostItem.self, UserPreferences.self, Credential.self, HostGroup.self,
             AIConversationRecord.self, AIMessageRecord.self, AIProviderRecord.self,
@@ -41,49 +42,29 @@ struct BonkApp: App {
     }()
 
     var body: some Scene {
-        WindowGroup {
-            ContentView()
-                .environment(i18n)
-                .onAppear {
-                    CrashReporter.install()
-                    applyTheme()
-                }
-        }
-        .modelContainer(sharedModelContainer)
-        .commands {
-            CommandGroup(replacing: .appInfo) {
-                Button { NSApp.orderFrontStandardAboutPanel(nil) } label: {
-                    Label(i18n.t(.about) + " Bonk", systemImage: "info.circle")
-                }
-                Divider()
-                Button { updater.checkForUpdates() } label: {
-                    Label(i18n.t(.checkUpdates), systemImage: "arrow.triangle.2.circlepath")
-                }
-                .keyboardShortcut("u", modifiers: [.command, .option])
-            }
-            FileMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
-            EditMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
-            ViewMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
-            ConnectionMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
-            AIMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
-        }
         #if os(macOS)
             Settings {
                 SettingsContainerView(quakeController: quakeController).environment(i18n)
             }
-            .modelContainer(sharedModelContainer)
+            .modelContainer(Self.sharedModelContainer)
+            .commands {
+                CommandGroup(replacing: .appInfo) {
+                    Button { NSApp.orderFrontStandardAboutPanel(nil) } label: {
+                        Label(i18n.t(.about) + " Bonk", systemImage: "info.circle")
+                    }
+                    Divider()
+                    Button { updater.checkForUpdates() } label: {
+                        Label(i18n.t(.checkUpdates), systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .keyboardShortcut("u", modifiers: [.command, .option])
+                }
+                FileMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
+                EditMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
+                ViewMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
+                ConnectionMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
+                AIMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
+            }
         #endif
-    }
-
-    private func applyTheme() {
-        let themeID = UserDefaults.standard.string(forKey: "terminalThemeID") ?? "system"
-        if themeID == "system" {
-            ThemeManager.apply("system")
-        } else {
-            let isDark = UserDefaults.standard.bool(forKey: "terminalThemeIsDark")
-            ThemeManager.apply(isDark ? "dark" : "light")
-        }
-        TerminalThemeManager.shared.initializeIfNeeded()
     }
 }
 

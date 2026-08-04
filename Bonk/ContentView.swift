@@ -7,19 +7,14 @@ struct ContentView: View {
     @Query private var allPreferences: [UserPreferences]
     @StateObject private var themeManager = TerminalThemeManager.shared
 
-    @State private var sessionManager = SessionManager()
     @State private var appStore = AppStore.shared
     #if os(macOS)
         @State private var quakeController = QuakeController()
-        @State private var workspace = WorkspaceManager()
-        @State private var showInspector = false
         @State private var showTerminalSearch = false
         @State private var sftpWindow: NSWindow?
-        @Bindable private var toolbarCoordinator = ToolbarCoordinator(
-            workspace: WorkspaceManager(),
-            sessionManager: SessionManager(),
-            i18n: I18n()
-        )
+        @Environment(WorkspaceManager.self) private var workspace
+        @Bindable var sessionManager: SessionManager
+        @Bindable var toolbarCoordinator: ToolbarCoordinator
     #endif
 
     private var preferences: UserPreferences {
@@ -88,41 +83,20 @@ struct ContentView: View {
             ))
     }
 
-    // MARK: - macOS Layout (2-column NavigationSplitView + .inspector)
+    // MARK: - macOS Layout (detail pane; sidebar/inspector live in
+    // MainSplitViewController)
 
     #if os(macOS)
         private var macOSLayout: some View {
-            NavigationSplitView {
-                HostListView(
-                    sessionManager: sessionManager,
-                    defaultPort: preferences.defaultPort
-                )
-                .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
-            } detail: {
-                TerminalTabView(
-                    sessionManager: sessionManager,
-                    colorScheme: colorScheme,
-                    cursorStyle: themeManager.cursorStyle,
-                    cursorBlink: themeManager.cursorBlink,
-                    showSearch: $showTerminalSearch
-                )
-                .background(colorScheme.isTransparent ? Color.clear : Color(nsColor: .controlBackgroundColor))
-                .clipped()
-                .inspector(isPresented: $showInspector) {
-                    InspectorContainerView(sessionManager: sessionManager)
-                }
-            }
-            #if os(macOS)
-                .background(BonkWindowToolbar(coordinator: toolbarCoordinator).frame(width: 0, height: 0).allowsHitTesting(false))
-            #endif
-            .navigationSplitViewStyle(.balanced)
-            // Sync inspector state
-            .onChange(of: workspace.activeRightPanel) { _, newValue in
-                showInspector = newValue != .none
-            }
-            .onChange(of: showInspector) { _, isOpen in
-                if !isOpen { workspace.activeRightPanel = .none }
-            }
+            TerminalTabView(
+                sessionManager: sessionManager,
+                colorScheme: colorScheme,
+                cursorStyle: themeManager.cursorStyle,
+                cursorBlink: themeManager.cursorBlink,
+                showSearch: $showTerminalSearch
+            )
+            .background(colorScheme.isTransparent ? Color.clear : Color(nsColor: .controlBackgroundColor))
+            .clipped()
             // SFTP independent window
             .onChange(of: workspace.isSFTPWindowOpen) { _, isOpen in
                 if isOpen { openSFTPWindow() }
@@ -147,13 +121,13 @@ struct ContentView: View {
                     .environment(i18n)
                 }
             }
-            .sheet(isPresented: $workspace.isSerialPortPresented) {
-                SerialPortView(isPresented: $workspace.isSerialPortPresented, onConnect: { _ in })
+            .sheet(isPresented: Bindable(workspace).isSerialPortPresented) {
+                SerialPortView(isPresented: Bindable(workspace).isSerialPortPresented, onConnect: { _ in })
                     .environment(i18n)
             }
-            .sheet(isPresented: $workspace.isPortForwardingPresented) {
+            .sheet(isPresented: Bindable(workspace).isPortForwardingPresented) {
                 PortForwardView(
-                    isPresented: $workspace.isPortForwardingPresented,
+                    isPresented: Bindable(workspace).isPortForwardingPresented,
                     sshService: sessionManager.activeTab?.session?.sshService
                 )
                 .environment(i18n)
