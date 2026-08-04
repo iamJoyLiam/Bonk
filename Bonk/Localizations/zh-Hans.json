@@ -376,7 +376,7 @@
   "execute_plan": "执行计划",
   "exit_code": "退出码 %d",
   "waiting_for_output": "等待输出...",
-  "broadcast_panes": "广播：%d 个面板",
+  "broadcast_panes": "广播面板",
   "sign_in_expired": "登录已过期，请重试。",
   "access_denied": "访问被拒绝。",
   "sign_in_timed_out": "登录超时。",

@@ -376,7 +376,7 @@
   "execute_plan": "Execute Plan",
   "exit_code": "EXIT %d",
   "waiting_for_output": "Waiting for output...",
-  "broadcast_panes": "Broadcast: %d panes",
+  "broadcast_panes": "Broadcast Panes",
   "sign_in_expired": "Sign-in expired. Please try again.",
   "access_denied": "Access denied.",
   "sign_in_timed_out": "Sign-in timed out.",
