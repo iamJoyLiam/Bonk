@@ -292,8 +292,7 @@ struct ContentView: View {
                 }
                 .focusedSceneValue(\.menuShowSerialPort) { workspace.isSerialPortPresented = true }
                 .focusedSceneValue(\.menuShowSnippets) {
-                    workspace.snippetsHistoryTab = .snippets
-                    workspace.activeRightPanel = .snippetsHistory
+                    toolbarCoordinator.showSnippets()
                 }
                 .focusedSceneValue(\.menuShowPortForwarding) { workspace.isPortForwardingPresented = true }
                 .focusedSceneValue(\.menuShowCommandHistory) {

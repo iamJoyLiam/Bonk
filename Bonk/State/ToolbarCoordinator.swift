@@ -30,7 +30,11 @@ final class ToolbarCoordinator {
     }
 
     func showSnippets() {
-        workspace.snippetsHistoryTab = .snippets
-        workspace.activeRightPanel = .snippetsHistory
+        if workspace.activeRightPanel == .snippetsHistory {
+            workspace.activeRightPanel = .none
+        } else {
+            workspace.snippetsHistoryTab = .snippets
+            workspace.activeRightPanel = .snippetsHistory
+        }
     }
 }
