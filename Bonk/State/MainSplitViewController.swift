@@ -11,6 +11,7 @@
 //
 
 import AppKit
+import os.log
 import SwiftData
 import SwiftUI
 
@@ -100,6 +101,51 @@ final class MainSplitViewController: NSSplitViewController {
         splitView.autosaveName = "BonkMainSplit"
         startInspectorObservation()
         updateInspectorVisibility()
+        installSidebarAppearanceRefresh()
+    }
+
+    /// macOS 26's sidebar glass draws its shadow once with square corners when
+    /// the window state changes (resign key / sidebar collapse). Force an
+    /// immediate redraw so the shadow follows the window's rounded corners.
+    private func installSidebarAppearanceRefresh() {
+        let refresh: (Notification) -> Void = { [weak self] note in
+            MainActor.assumeIsolated {
+                guard let self,
+                      let window = note.object as? NSWindow,
+                      window === self.view.window
+                else { return }
+                self.refreshSidebarAppearance()
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification, object: nil, queue: .main,
+            using: refresh
+        )
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main,
+            using: refresh
+        )
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("NSSplitViewDidCollapseSubviewNotification"), object: splitView, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshSidebarAppearance() }
+        }
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("NSSplitViewDidExpandSubviewNotification"), object: splitView, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshSidebarAppearance() }
+        }
+    }
+
+    private func refreshSidebarAppearance() {
+        splitView.needsDisplay = true
+        splitView.needsLayout = true
+        splitView.subviews.forEach { sub in
+            sub.needsDisplay = true
+            sub.layer?.setNeedsDisplay()
+        }
+        view.window?.contentView?.needsDisplay = true
+        CATransaction.flush()
     }
 
     // MARK: - Inspector Visibility
