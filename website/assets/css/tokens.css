@@ -1,0 +1,121 @@
+/* ============================================================
+   Bonk — Design Tokens
+   黑白编辑排版：纯白底 + 近黑文字 + 单一终端绿
+   ============================================================ */
+
+:root {
+  /* ---- Color: Background Layers ---- */
+  --bg-base: #FFFFFF;          /* 纯白 */
+  --bg-elevated: #FAFAFA;      /* 分区底色（极浅灰） */
+  --bg-surface: #FFFFFF;
+  --bg-hover: #F5F5F5;         /* 悬停态 */
+
+  /* ---- Background（纯白，底部极浅灰） ---- */
+  --gradient-bg: linear-gradient(180deg, #FFFFFF 0%, #FAFAFA 100%);
+
+  /* ---- Color: Text ---- */
+  --text-primary: #0A0A0A;     /* 近黑 */
+  --text-secondary: #525252;   /* 次文本 */
+  --text-muted: #8A8A8A;       /* 弱文本 */
+
+  /* ---- Color: Brand / Accent（仅此一个彩色） ---- */
+  --accent-green: #16A34A;     /* 终端绿：连接成功/状态 */
+  --accent-amber: #D97706;     /* 终端警告色 */
+  --accent-red: #DC2626;       /* 终端错误色 */
+
+  /* 终端窗口内的语法色（深底用） */
+  --term-green: #34D399;
+  --term-cyan: #22D3EE;
+  --term-violet: #A78BFA;
+  --term-amber: #FBBF24;
+
+  /* ---- Color: Borders ---- */
+  --border-subtle: #E8E8E8;
+  --border-strong: #D4D4D4;
+
+  /* ---- Typography ---- */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Menlo", monospace;
+
+  /* 字号阶梯（1.25 modular scale） */
+  --text-xs: 0.75rem;    /* 12 */
+  --text-sm: 0.875rem;   /* 14 */
+  --text-base: 1rem;     /* 16 */
+  --text-lg: 1.125rem;   /* 18 */
+  --text-xl: 1.25rem;    /* 20 */
+  --text-2xl: 1.5rem;    /* 24 */
+  --text-3xl: 1.875rem;  /* 30 */
+  --text-4xl: 2.25rem;   /* 36 */
+  --text-5xl: 3rem;      /* 48 */
+  --text-6xl: 3.75rem;   /* 60 */
+  --text-7xl: 4.5rem;    /* 72 */
+  --text-8xl: 5.25rem;   /* 84 */
+
+  --leading-tight: 1.08;
+  --leading-snug: 1.3;
+  --leading-normal: 1.6;
+
+  --tracking-tight: -0.03em;
+  --tracking-tighter: -0.045em;
+  --tracking-normal: 0;
+
+  /* ---- Spacing (8dp rhythm) ---- */
+  --space-1: 0.25rem;   /* 4 */
+  --space-2: 0.5rem;    /* 8 */
+  --space-3: 0.75rem;   /* 12 */
+  --space-4: 1rem;      /* 16 */
+  --space-5: 1.25rem;   /* 20 */
+  --space-6: 1.5rem;    /* 24 */
+  --space-8: 2rem;      /* 32 */
+  --space-10: 2.5rem;   /* 40 */
+  --space-12: 3rem;     /* 48 */
+  --space-16: 4rem;     /* 64 */
+  --space-20: 5rem;     /* 80 */
+  --space-24: 6rem;     /* 96 */
+  --space-32: 8rem;     /* 128 */
+
+  /* ---- Layout ---- */
+  --container-max: 1200px;
+  --container-narrow: 960px;
+  --container-padding: var(--space-6);
+  --nav-height: 72px;
+
+  /* ---- Radius ---- */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* ---- Shadow（浅色：克制） ---- */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.05);
+  --shadow-elevated: 0 4px 12px rgba(0, 0, 0, 0.06), 0 32px 64px rgba(0, 0, 0, 0.1);
+  --shadow-btn: 0 1px 2px rgba(0, 0, 0, 0.15), 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-btn-hover: 0 2px 4px rgba(0, 0, 0, 0.18), 0 12px 32px rgba(0, 0, 0, 0.18);
+  --glow-green: 0 0 12px rgba(22, 163, 74, 0.5);
+
+  /* ---- Motion ---- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --duration-fast: 150ms;
+  --duration-base: 220ms;
+  --duration-slow: 400ms;
+
+  /* ---- Z-index scale ---- */
+  --z-base: 0;
+  --z-raised: 10;
+  --z-nav: 40;
+  --z-overlay: 100;
+  --z-modal: 1000;
+}
+
+/* ---- 减少动效偏好 ---- */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+  }
+}
