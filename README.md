@@ -4,7 +4,7 @@
 
 [中文文档](README.zh-CN.md) · [Releases](https://github.com/iamJoyLiam/Bonk/releases) · [Homepage](https://iamjoyliam.github.io/Bonk/)
 
-![macOS](https://img.shields.io/badge/macOS-26%2B-black) ![Swift](https://img.shields.io/badge/Swift-6-orange) ![Platform](https://img.shields.io/badge/Platform-macOS-lightgrey) ![Release](https://img.shields.io/github/v/release/iamJoyLiam/Bonk)
+![macOS](https://img.shields.io/badge/macOS-15%2B-black) ![Swift](https://img.shields.io/badge/Swift-6-orange) ![Platform](https://img.shields.io/badge/Platform-macOS-lightgrey) ![Release](https://img.shields.io/github/v/release/iamJoyLiam/Bonk)
 
 Bonk is a fast, feature-rich SSH terminal for macOS. It pairs a native SwiftUI interface with a fully customizable AppKit toolbar, and bundles everything you reach for every day: SFTP browsing, port forwarding, an AI assistant, snippets, workspaces, and a Quake-style drop-down terminal.
 
@@ -55,7 +55,7 @@ _Coming soon._
 2. Launch Bonk, add a host (name, address, port), and connect.
 3. Optional: configure an AI provider in **Settings → AI** to unlock the assistant.
 
-- Requires **macOS 26+** · Apple Silicon & Intel
+- Requires **macOS 15+** · Apple Silicon & Intel
 - The app is signed; updates arrive automatically via Sparkle
 
 ## ⌨️ Shortcuts
@@ -81,7 +81,7 @@ Most other shortcuts (new terminal, split panes, SFTP, AI, find…) are configur
 
 ## 🧑‍💻 Development
 
-Requires Xcode 26 and macOS 26.
+Requires Xcode 26. Supports macOS 15+.
 
 ```bash
 git clone https://github.com/iamJoyLiam/Bonk.git

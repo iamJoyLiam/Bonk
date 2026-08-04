@@ -80,7 +80,7 @@ final class TerminalViewCache {
                 let activeTabID = self.activeTabIDProvider?()
                 let cacheCount = self.cache.count
                 let eventMask = source.data
-                Log.ui.info("[Cache] Memory pressure event: cache=\(cacheCount), active=\(activeTabID?.uuidString.prefix(8) ?? "nil"), event=\(eventMask)")
+                Log.ui.info("[Cache] Memory pressure event: cache=\(cacheCount), active=\(activeTabID?.uuidString.prefix(8) ?? "nil"), event=\(eventMask.rawValue)")
                 
                 if eventMask.contains(.critical) {
                     // Critical memory pressure: evict non-active tabs to free memory

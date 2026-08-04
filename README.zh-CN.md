@@ -4,7 +4,7 @@
 
 [English README](README.md) · [Releases 发布页](https://github.com/iamJoyLiam/Bonk/releases) · [主页](https://iamjoyliam.github.io/Bonk/)
 
-![macOS](https://img.shields.io/badge/macOS-26%2B-black) ![Swift](https://img.shields.io/badge/Swift-6-orange) ![Platform](https://img.shields.io/badge/Platform-macOS-lightgrey) ![Release](https://img.shields.io/github/v/release/iamJoyLiam/Bonk)
+![macOS](https://img.shields.io/badge/macOS-15%2B-black) ![Swift](https://img.shields.io/badge/Swift-6-orange) ![Platform](https://img.shields.io/badge/Platform-macOS-lightgrey) ![Release](https://img.shields.io/github/v/release/iamJoyLiam/Bonk)
 
 Bonk 是一款快速、功能丰富的 macOS SSH 终端。它把原生 SwiftUI 界面与完全可自定义的 AppKit 工具栏结合在一起，并内置了日常服务器工作所需的一切：SFTP 浏览、端口转发、AI 助手、代码片段、工作区，以及 Quake 风格的下拉终端。
 
@@ -55,7 +55,7 @@ _敬请期待。_
 2. 启动 Bonk，添加主机（名称、地址、端口）并连接。
 3. 可选：在 **设置 → AI** 中配置 AI 提供商，解锁助手。
 
-- 需要 **macOS 26+** · 支持 Apple Silicon 与 Intel
+- 需要 **macOS 15+** · 支持 Apple Silicon 与 Intel
 - 应用已签名，通过 Sparkle 自动更新
 
 ## ⌨️ 快捷键
@@ -81,7 +81,7 @@ _敬请期待。_
 
 ## 🧑‍💻 开发
 
-需要 Xcode 26 与 macOS 26。
+需要 Xcode 26。支持 macOS 15+。
 
 ```bash
 git clone https://github.com/iamJoyLiam/Bonk.git
