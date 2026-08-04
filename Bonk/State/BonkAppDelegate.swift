@@ -80,9 +80,9 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate {
         toolbar.allowsUserCustomization = true
         toolbar.autosavesConfiguration = true
         toolbar.displayMode = .iconOnly
+        self.toolbar = toolbar
         window.toolbar = toolbar
         window.toolbar?.validateVisibleItems()
-        self.toolbar = toolbar
         Log.ui.info("Main window toolbar installed: \(toolbar.identifier, privacy: .public), items=\(toolbar.items.count, privacy: .public)")
     }
 

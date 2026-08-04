@@ -11,7 +11,6 @@
 //
 
 import AppKit
-import os.log
 import SwiftData
 import SwiftUI
 
@@ -24,8 +23,12 @@ final class MainSplitViewController: NSSplitViewController {
     private let modelContainer: ModelContainer
 
     private var inspectorSplitItem: NSSplitViewItem!
-    private var inspectorObservationTask: Task<Void, Never>?
     private var collapsedObservation: NSKeyValueObservation?
+    nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
+
+    deinit {
+        observers.forEach(NotificationCenter.default.removeObserver)
+    }
 
     init(
         workspace: WorkspaceManager,
@@ -117,24 +120,24 @@ final class MainSplitViewController: NSSplitViewController {
                 self.refreshSidebarAppearance()
             }
         }
-        NotificationCenter.default.addObserver(
+        observers.append(NotificationCenter.default.addObserver(
             forName: NSWindow.didResignKeyNotification, object: nil, queue: .main,
             using: refresh
-        )
-        NotificationCenter.default.addObserver(
+        ))
+        observers.append(NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main,
             using: refresh
-        )
-        NotificationCenter.default.addObserver(
+        ))
+        observers.append(NotificationCenter.default.addObserver(
             forName: NSNotification.Name("NSSplitViewDidCollapseSubviewNotification"), object: splitView, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshSidebarAppearance() }
-        }
-        NotificationCenter.default.addObserver(
+        })
+        observers.append(NotificationCenter.default.addObserver(
             forName: NSNotification.Name("NSSplitViewDidExpandSubviewNotification"), object: splitView, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshSidebarAppearance() }
-        }
+        })
     }
 
     private func refreshSidebarAppearance() {
@@ -153,26 +156,24 @@ final class MainSplitViewController: NSSplitViewController {
     /// The inspector's visibility follows `workspace.activeRightPanel`
     /// (same behavior as the old `.inspector(isPresented:)`).
     private func startInspectorObservation() {
-        inspectorObservationTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            while !Task.isCancelled {
-                await withCheckedContinuation { continuation in
-                    withObservationTracking {
-                        _ = self.workspace.activeRightPanel
-                    } onChange: {
-                        continuation.resume()
-                    }
-                }
-                guard !Task.isCancelled else { return }
-                self.updateInspectorVisibility()
-            }
-        }
+        observeActiveRightPanel()
 
         // Collapsing the inspector by hand resets the active panel.
         collapsedObservation = inspectorSplitItem.observe(\.isCollapsed, options: [.new]) { [weak self] _, _ in
             MainActor.assumeIsolated {
                 guard let self, let item = self.inspectorSplitItem, item.isCollapsed, self.workspace.activeRightPanel != .none else { return }
                 self.workspace.activeRightPanel = .none
+            }
+        }
+    }
+
+    private func observeActiveRightPanel() {
+        withObservationTracking {
+            _ = workspace.activeRightPanel
+        } onChange: { [weak self] in
+            MainActor.assumeIsolated {
+                self?.updateInspectorVisibility()
+                self?.observeActiveRightPanel()
             }
         }
     }

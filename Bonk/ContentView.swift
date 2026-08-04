@@ -31,6 +31,12 @@ struct ContentView: View {
         themeManager.resolve()
     }
 
+    #if os(macOS)
+        private var workspaceBindable: Bindable<WorkspaceManager> {
+            Bindable(workspace)
+        }
+    #endif
+
     var body: some View {
         Group {
             #if os(macOS)
@@ -121,13 +127,13 @@ struct ContentView: View {
                     .environment(i18n)
                 }
             }
-            .sheet(isPresented: Bindable(workspace).isSerialPortPresented) {
-                SerialPortView(isPresented: Bindable(workspace).isSerialPortPresented, onConnect: { _ in })
+            .sheet(isPresented: workspaceBindable.isSerialPortPresented) {
+                SerialPortView(isPresented: workspaceBindable.isSerialPortPresented, onConnect: { _ in })
                     .environment(i18n)
             }
-            .sheet(isPresented: Bindable(workspace).isPortForwardingPresented) {
+            .sheet(isPresented: workspaceBindable.isPortForwardingPresented) {
                 PortForwardView(
-                    isPresented: Bindable(workspace).isPortForwardingPresented,
+                    isPresented: workspaceBindable.isPortForwardingPresented,
                     sshService: sessionManager.activeTab?.session?.sshService
                 )
                 .environment(i18n)
