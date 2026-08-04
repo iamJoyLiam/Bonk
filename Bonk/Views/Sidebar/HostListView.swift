@@ -131,15 +131,6 @@ struct HostListView: View {
                     .modelContext(modelContext)
             }
         }
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Button {
-                    showAddSheet = true
-                } label: {
-                    Label(i18n.t(.addHost), systemImage: "plus")
-                }
-            }
-        }
         .sheet(isPresented: $showAddSheet) {
             NavigationStack {
                 AddHostSheet(defaultPort: defaultPort) { host in

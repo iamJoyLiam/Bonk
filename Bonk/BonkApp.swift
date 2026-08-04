@@ -61,7 +61,6 @@ struct BonkApp: App {
                 }
                 .keyboardShortcut("u", modifiers: [.command, .option])
             }
-            ToolbarCommands()
             FileMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
             EditMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
             ViewMenuCommands(i18n: i18n, shortcutManager: shortcutManager)

@@ -13,13 +13,13 @@ struct ContentView: View {
         @State private var quakeController = QuakeController()
         @State private var workspace = WorkspaceManager()
         @State private var showInspector = false
-        @State private var showAddHostSheet = false
         @State private var showTerminalSearch = false
-        @State private var showQuickConnect = false
-        @State private var showSSHConfigImport = false
-        @State private var showKeyGenerator = false
-        @State private var showWorkspaces = false
         @State private var sftpWindow: NSWindow?
+        @Bindable private var toolbarCoordinator = ToolbarCoordinator(
+            workspace: WorkspaceManager(),
+            sessionManager: SessionManager(),
+            i18n: I18n()
+        )
     #endif
 
     private var preferences: UserPreferences {
@@ -57,6 +57,11 @@ struct ContentView: View {
                 TerminalViewCache.shared.configureMemoryPressure {
                     sessionManager.activeTabID
                 }
+                // Sync coordinator with actual state
+                toolbarCoordinator.workspace = workspace
+                toolbarCoordinator.sessionManager = sessionManager
+                toolbarCoordinator.i18n = i18n
+                toolbarCoordinator.modelContext = modelContext
                 // Setup Quake terminal - create ModelContainer with same schema/config
                 let schema = Schema([HostItem.self, UserPreferences.self, Credential.self, HostGroup.self, AIConversationRecord.self, AIMessageRecord.self, AIProviderRecord.self, Snippet.self, PortForward.self, JumpHost.self])
                 #if DEBUG
@@ -78,10 +83,8 @@ struct ContentView: View {
                 workspace: workspace,
                 appStore: appStore,
                 themeManager: themeManager,
-                showAddHostSheet: $showAddHostSheet,
-                showTerminalSearch: $showTerminalSearch,
-                showQuickConnect: $showQuickConnect,
-                showWorkspaces: $showWorkspaces
+                toolbarCoordinator: toolbarCoordinator,
+                showTerminalSearch: $showTerminalSearch
             ))
     }
 
@@ -110,66 +113,9 @@ struct ContentView: View {
                 }
             }
             #if os(macOS)
-                .background(ToolbarCustomizerView().frame(width: 0, height: 0).allowsHitTesting(false))
+                .background(BonkWindowToolbar(coordinator: toolbarCoordinator).frame(width: 0, height: 0).allowsHitTesting(false))
             #endif
             .navigationSplitViewStyle(.balanced)
-            .toolbar(id: "main-toolbar") {
-                // 胶囊 1：Broadcast, Serial, Port Forward
-                ToolbarItem(id: "capsule-broadcast", placement: .principal) {
-                    ControlGroup {
-                        Button { workspace.toggleBroadcast() } label: {
-                            Image(systemName: "antenna.radiowaves.left.and.right")
-                                .foregroundStyle(workspace.isBroadcastEnabled ? .orange : .primary)
-                        }
-                        .opacity(workspace.isBroadcastEnabled ? 1.0 : 0.8)
-                        Button { workspace.isSerialPortPresented = true } label: {
-                            Image(systemName: "cable.connector")
-                        }
-                        Button { workspace.isPortForwardingPresented = true } label: {
-                            Image(systemName: "arrow.triangle.branch")
-                        }
-                    }
-                }
-
-                // 胶囊 2：Key Gen, Workspaces
-                ToolbarItem(id: "capsule-keys", placement: .principal) {
-                    ControlGroup {
-                        Button { showKeyGenerator = true } label: {
-                            Image(systemName: "key.fill")
-                        }
-                        .help(i18n.t(.generateSSHKey))
-                        Button { showWorkspaces = true } label: {
-                            Image(systemName: "square.stack.3d.up")
-                        }
-                        .help(i18n.t(.workspaces))
-                    }
-                }
-
-                // 胶囊 3：SSH Import, SFTP
-                ToolbarItem(id: "capsule-sftp", placement: .principal) {
-                    ControlGroup {
-                        Button { showSSHConfigImport = true } label: {
-                            Image(systemName: "square.and.arrow.down")
-                        }
-                        .help(i18n.t(.importSSHConfig))
-                        Button { toggleSFTPWindow() } label: {
-                            Image(systemName: "folder.fill")
-                        }
-                    }
-                }
-
-                // 胶囊 4：AI, Snippets (右侧)
-                ToolbarItem(id: "capsule-ai", placement: .primaryAction) {
-                    ControlGroup {
-                        Button { workspace.toggleRightPanel(.ai) } label: {
-                            Image(systemName: "sparkles")
-                        }
-                        Button { workspace.toggleRightPanel(.snippetsHistory) } label: {
-                            Image(systemName: "text.badge.plus")
-                        }
-                    }
-                }
-            }
             // Sync inspector state
             .onChange(of: workspace.activeRightPanel) { _, newValue in
                 showInspector = newValue != .none
@@ -185,15 +131,15 @@ struct ContentView: View {
                 toggleSFTPWindow()
             }
             // Sheets
-            .sheet(isPresented: $showQuickConnect) {
+            .sheet(isPresented: $toolbarCoordinator.showQuickConnect) {
                 QuickConnectView(
                     sessionManager: sessionManager,
-                    isPresented: $showQuickConnect,
+                    isPresented: $toolbarCoordinator.showQuickConnect,
                     defaultPort: preferences.defaultPort
                 )
                 .environment(i18n)
             }
-            .sheet(isPresented: $showAddHostSheet) {
+            .sheet(isPresented: $toolbarCoordinator.showAddHostSheet) {
                 NavigationStack {
                     AddHostSheet(defaultPort: preferences.defaultPort) { host in
                         modelContext.insert(host)
@@ -212,13 +158,13 @@ struct ContentView: View {
                 )
                 .environment(i18n)
             }
-            .sheet(isPresented: $showSSHConfigImport) {
+            .sheet(isPresented: $toolbarCoordinator.showSSHConfigImport) {
                 SSHConfigImportView(modelContext: modelContext)
             }
-            .sheet(isPresented: $showKeyGenerator) {
+            .sheet(isPresented: $toolbarCoordinator.showKeyGenerator) {
                 SSHKeyGeneratorView()
             }
-            .sheet(isPresented: $showWorkspaces) {
+            .sheet(isPresented: $toolbarCoordinator.showWorkspaces) {
                 WorkspaceListView(sessionManager: sessionManager)
             }
         }
@@ -318,29 +264,27 @@ struct ContentView: View {
         let workspace: WorkspaceManager
         let appStore: AppStore
         let themeManager: TerminalThemeManager
-        @Binding var showAddHostSheet: Bool
+        let toolbarCoordinator: ToolbarCoordinator
         @Binding var showTerminalSearch: Bool
-        @Binding var showQuickConnect: Bool
-        @Binding var showWorkspaces: Bool
 
         func body(content: Content) -> some View {
             content
-                .modifier(SessionMenuActions(sessionManager: sessionManager, showAddHostSheet: $showAddHostSheet))
-                .modifier(WorkspaceMenuActions(workspace: workspace, showQuickConnect: $showQuickConnect, showWorkspaces: $showWorkspaces))
+                .modifier(SessionMenuActions(sessionManager: sessionManager, toolbarCoordinator: toolbarCoordinator))
+                .modifier(WorkspaceMenuActions(workspace: workspace, toolbarCoordinator: toolbarCoordinator))
                 .modifier(AppMenuActions(appStore: appStore, themeManager: themeManager, showTerminalSearch: $showTerminalSearch))
         }
     }
 
     private struct SessionMenuActions: ViewModifier {
         let sessionManager: SessionManager
-        @Binding var showAddHostSheet: Bool
+        let toolbarCoordinator: ToolbarCoordinator
 
         func body(content: Content) -> some View {
             content
                 .focusedSceneValue(\.menuCloseTab) {
                     if let id = sessionManager.activeTabID { Task { await sessionManager.closeTab(id) } }
                 }
-                .focusedSceneValue(\.menuNewTerminal) { showAddHostSheet = true }
+                .focusedSceneValue(\.menuNewTerminal) { toolbarCoordinator.showAddHostSheet = true }
                 .focusedSceneValue(\.menuDisconnect) {
                     if let id = sessionManager.activeTabID { Task { await sessionManager.disconnectTab(id) } }
                 }
@@ -355,8 +299,7 @@ struct ContentView: View {
 
     private struct WorkspaceMenuActions: ViewModifier {
         let workspace: WorkspaceManager
-        @Binding var showQuickConnect: Bool
-        @Binding var showWorkspaces: Bool
+        let toolbarCoordinator: ToolbarCoordinator
 
         func body(content: Content) -> some View {
             content
@@ -377,8 +320,8 @@ struct ContentView: View {
                     workspace.snippetsHistoryTab = .history
                     workspace.activeRightPanel = .snippetsHistory
                 }
-                .focusedSceneValue(\.menuQuickConnect) { showQuickConnect = true }
-                .focusedSceneValue(\.menuShowWorkspaces) { showWorkspaces = true }
+                .focusedSceneValue(\.menuQuickConnect) { toolbarCoordinator.showQuickConnect = true }
+                .focusedSceneValue(\.menuShowWorkspaces) { toolbarCoordinator.showWorkspaces = true }
         }
     }
 
