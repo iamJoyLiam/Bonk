@@ -6,6 +6,35 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.1</title>
+            <pubDate>Wed, 05 Aug 2026 10:00:00 +0000</pubDate>
+            <sparkle:version>2026101</sparkle:version>
+            <sparkle:shortVersionString>2026.1.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Bug 修复</h3>
+                <ul>
+                    <li>修复广播按钮无状态反馈的问题（开启时图标变橙色）</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.1/Bonk-2026.1.1-arm64.dmg"
+                length="8998390"
+                type="application/octet-stream"
+                sparkle:edSignature="tIX/JJ3RHnASgtofOpzqhtMiMGec//S3XS116DLm8TKwuU5AMn2wYTsLNM1o76cbBI1g85vWtYFO+ykv657PDA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.1/Bonk-2026.1.1-x86_64.dmg"
+                length="9671896"
+                type="application/octet-stream"
+                sparkle:edSignature="wiGqsijjRHxWJOWq3ZEINhVbHJPLB25GzchQMisOz1w02MpyXe2BYKJBCYpG6xBxYRIOtwC4S0DfcqRYU4K7AQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.0</title>
             <pubDate>Tue, 04 Aug 2026 10:00:00 +0000</pubDate>
             <sparkle:version>2026100</sparkle:version>

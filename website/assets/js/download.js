@@ -9,7 +9,7 @@
   "use strict";
 
   // 版本号（与 appcast.xml 同步，发布新版时改这里一处）
-  const VERSION = "2026.1.0";
+  const VERSION = "2026.1.1";
 
   const DOWNLOADS = {
     arm: `https://github.com/iamJoyLiam/Bonk/releases/download/v${VERSION}/Bonk-${VERSION}-arm64.dmg`,
