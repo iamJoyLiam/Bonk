@@ -1,164 +1,92 @@
 /* ============================================================
    Bonk — Responsive
-   Mobile-first overrides. Breakpoints: 375 / 768 / 1024 / 1440
+   1024 / 768 / 375 断点
    ============================================================ */
 
-/* ============ Tablet (≥768px) ============ */
-@media (max-width: 1023px) {
-  .hero__grid {
-    grid-template-columns: 1fr;
-    gap: var(--space-12);
-  }
-  .hero__desc {
-    max-width: 100%;
-  }
-
+@media (max-width: 1024px) {
+  .hero__grid,
   .spotlight {
     grid-template-columns: 1fr;
     gap: var(--space-12);
   }
 
-  .ai-grid {
+  .feature-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cap-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .section {
+    padding: var(--space-16) 0;
+  }
+
+  .hero {
+    padding: var(--space-16) 0 var(--space-12);
+  }
+
+  .hero__title {
+    font-size: clamp(2rem, 8vw, 2.8rem);
+  }
+
+  .nav__links {
+    display: none;
+    position: absolute;
+    top: var(--nav-height);
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: var(--space-4);
+    gap: var(--space-1);
+    margin: 0;
+  }
+
+  .nav.is-open .nav__links {
+    display: flex;
+  }
+
+  .nav__toggle {
+    display: block;
+  }
+
+  .gh-badge__label {
+    display: none;
+  }
+
+  .feature-grid {
     grid-template-columns: 1fr;
-    gap: var(--space-12);
   }
 
   .cap-grid {
     grid-template-columns: 1fr;
   }
 
-  /* Nav collapses to mobile menu */
-  .nav__links {
-    display: none;
-  }
-  .nav__toggle {
-    display: flex;
-  }
-}
-
-/* ============ Mobile (≤767px) ============ */
-@media (max-width: 767px) {
-  :root {
-    --container-padding: var(--space-5);
-    --space-32: 4rem;
-    --space-24: 3rem;
-  }
-
-  .section {
-    padding-block: var(--space-24);
-  }
-
-  .hero {
-    padding-top: calc(var(--nav-height) + var(--space-16));
-    padding-bottom: var(--space-24);
-  }
-
-  .hero__cta {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .hero__cta .btn {
-    width: 100%;
-  }
-
   .download-grid {
     grid-template-columns: 1fr;
   }
 
-  .dl-meta {
-    flex-direction: column;
-    gap: var(--space-3);
+  .footer__links {
+    margin-left: 0;
+    flex-basis: 100%;
   }
+}
 
-  /* 条纹行收窄 */
-  .feature-row {
-    grid-template-columns: 40px 1fr;
-    padding: var(--space-8) 0;
-  }
-  .feature-row__desc {
-    font-size: var(--text-base);
-  }
-
-  .provider-list {
+@media (max-width: 480px) {
+  .terminal__split {
     grid-template-columns: 1fr;
   }
-  .provider-row:nth-child(even) {
-    padding-left: 0;
+
+  .terminal__split-pane + .terminal__split-pane {
     border-left: none;
+    border-top: 1px solid var(--border-subtle);
   }
 
-  .terminal__body {
-    min-height: 240px;
-    font-size: 12px;
-    padding: var(--space-4);
-  }
-
-  /* Mobile nav dropdown */
-  .nav.is-open .nav__links {
-    display: flex;
-    position: absolute;
-    top: var(--nav-height);
-    left: 0;
-    right: 0;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0;
-    padding: var(--space-4);
-    background: rgba(255, 255, 255, 0.92);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .nav.is-open .nav__link {
-    padding: var(--space-4) var(--space-2);
-    border-radius: var(--radius-sm);
-  }
-  .nav.is-open .nav__link:hover {
-    background: var(--bg-hover);
-  }
-
-  .footer__inner {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  .footer__links {
-    flex-wrap: wrap;
-  }
-
-  .section__head {
-    margin-bottom: var(--space-12);
-  }
-}
-
-/* ============ Small phone (≤414px) ============ */
-@media (max-width: 414px) {
-  .nav__brand {
-    font-size: var(--text-lg);
-  }
-  .gh-badge__label {
-    display: none;
-  }
-  .lang-switch button {
-    padding: 0 var(--space-2);
-  }
-}
-
-/* ============ Large desktop (≥1440px) ============ */
-@media (min-width: 1440px) {
-  :root {
-    --container-max: 1280px;
-  }
-}
-
-/* ============ Print ============ */
-@media print {
-  .nav,
-  .hero__cta,
-  .footer__links {
-    display: none;
-  }
-  body {
-    background: #fff;
-    color: #000;
+  .hero__cta .btn {
+    width: 100%;
   }
 }
