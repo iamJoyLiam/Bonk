@@ -29,8 +29,10 @@ extension NSToolbarItem.Identifier {
 
 // MARK: - BonkToolbarDelegate
 
+@MainActor
 final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
     private let coordinator: ToolbarCoordinator
+    private var broadcastItem: NSToolbarItem?
 
     init(coordinator: ToolbarCoordinator) {
         self.coordinator = coordinator
@@ -97,13 +99,17 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
             }
 
         case .broadcast:
-            return makeItem(
+            let item = makeItem(
                 id: itemIdentifier,
                 label: coordinator.i18n.t(.broadcastPanes),
                 icon: "antenna.radiowaves.left.and.right"
             ) { [weak self] in
                 self?.coordinator.workspace.toggleBroadcast()
+                self?.refreshBroadcastItemState()
             }
+            broadcastItem = item
+            observeBroadcastState()
+            return item
 
         case .serialPort:
             return makeItem(
@@ -183,6 +189,40 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
     }
 
     // MARK: - Helper
+
+    /// Broadcast on/off state is reflected on the toolbar icon (orange when
+    /// enabled), matching the previous SwiftUI toolbar behavior.
+    private func refreshBroadcastItemState() {
+        guard let broadcastItem else { return }
+        let enabled = coordinator.workspace.broadcastManager.isEnabled
+        let symbol = NSImage(
+            systemSymbolName: "antenna.radiowaves.left.and.right",
+            accessibilityDescription: coordinator.i18n.t(.broadcastPanes)
+        )
+        if enabled {
+            broadcastItem.image = symbol?.withSymbolConfiguration(
+                NSImage.SymbolConfiguration(paletteColors: [.systemOrange])
+            )
+        } else {
+            broadcastItem.image = symbol
+        }
+    }
+
+    /// Keep the icon in sync even if broadcast is toggled outside this item.
+    private func observeBroadcastState() {
+        withObservationTracking {
+            _ = coordinator.workspace.broadcastManager.isEnabled
+        } onChange: { [weak self] in
+            MainActor.assumeIsolated {
+                // withObservationTracking fires before the write is visible,
+                // so defer the read to the next runloop turn.
+                self?.observeBroadcastState()
+                Task { @MainActor [weak self] in
+                    self?.refreshBroadcastItemState()
+                }
+            }
+        }
+    }
 
     private func makeItem(
         id: NSToolbarItem.Identifier,
