@@ -214,7 +214,7 @@ import SwiftUI
 
         private func createTerminalView(for paneID: UUID, context _: Context) -> CachedTerminalView {
             let font = createSafeFont(family: fontFamily, size: CGFloat(fontSize))
-            let terminal = SwiftTerm.TerminalView(frame: .zero, font: font)
+            let terminal = NativeTerminalView(frame: .zero, font: font)
             terminal.configureNativeColors()
 
             // 滚动条：初始隐藏，滚动时显示，使用小尺寸
@@ -238,6 +238,15 @@ import SwiftUI
             )
             terminal.terminalDelegate = coordinator
             coordinator.terminalView = terminal
+
+            // Core fix: intercept AppKit physical layout for accurate PTY sync.
+            // The pane path previously had no resize propagation after the
+            // one-shot post-connect sync, so Vim stayed truncated whenever the
+            // final layout differed from that initial size.
+            terminal.onPhysicalLayout = { [weak coordinator] cols, rows in
+                coordinator?.onResize?(cols, rows)
+            }
+
             coordinator.observeThemeChanges()
             coordinator.installCopyOnSelectMonitor()
 

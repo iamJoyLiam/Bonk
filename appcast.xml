@@ -6,6 +6,35 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.2</title>
+            <pubDate>Wed, 05 Aug 2026 08:00:00 +0000</pubDate>
+            <sparkle:version>2026102</sparkle:version>
+            <sparkle:shortVersionString>2026.1.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Bug 修复</h3>
+                <ul>
+                    <li>修复 vim 打开文件无法占满终端（内容被截断）的问题：终端在窗口缩放、侧边栏/面板开合、分屏调整后不再同步远端 PTY 尺寸，导致 vim 始终停留在旧尺寸渲染</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.2/Bonk-2026.1.2-arm64.dmg"
+                length="9000874"
+                type="application/octet-stream"
+                sparkle:edSignature="3zs/4y3vorzDJkTkuyIK+AZzlnBCEn6UbQZa8Eqhmf8pZ/iN24B+I0AZs3dkYHWRW6X3J/qygolIe6MPTkVHCA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.2/Bonk-2026.1.2-x86_64.dmg"
+                length="9674752"
+                type="application/octet-stream"
+                sparkle:edSignature="rFRaMIWSXlME7YEkWcUQGf7oHfTL7eVt2JUXtopMiGQWhpESS5Njhzpr58TxE/NzehZi2gNaqtsIqyBmQm6VCw=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.1</title>
             <pubDate>Wed, 05 Aug 2026 10:00:00 +0000</pubDate>
             <sparkle:version>2026101</sparkle:version>
