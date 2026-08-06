@@ -193,7 +193,7 @@ struct WorkspaceListView: View {
                         Label(i18n.t(.delete), systemImage: "trash")
                     }
                 } label: {
-                    EmptyView()
+                    Image(systemName: "ellipsis")
                 }
                 .menuStyle(.borderlessButton)
                 .frame(width: 20)
@@ -279,8 +279,10 @@ struct WorkspaceListView: View {
     }
 
     private func loadWorkspace(_ workspace: WorkspacePersistenceManager.WorkspaceData) {
-        persistence.restoreWorkspace(workspace, sessionManager: sessionManager, modelContext: modelContext)
-        dismiss()
+        Task {
+            await persistence.restoreWorkspace(workspace, sessionManager: sessionManager, modelContext: modelContext)
+            dismiss()
+        }
     }
 
     private func renameWorkspace(_ workspace: WorkspacePersistenceManager.WorkspaceData, to newName: String) {

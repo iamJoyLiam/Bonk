@@ -80,7 +80,13 @@ final class SerialPortService {
         }
 
         // Configure the port
-        try configurePort(config: config)
+        do {
+            try configurePort(config: config)
+        } catch {
+            close(fileDescriptor)
+            fileDescriptor = -1
+            throw error
+        }
 
         // Start reading
         startReading()
@@ -110,6 +116,7 @@ final class SerialPortService {
         guard isConnected else {
             throw SerialPortError.notConnected
         }
+        guard !data.isEmpty else { return }
 
         let bytesWritten = data.withUnsafeBytes { buffer in
             write(fileDescriptor, buffer.baseAddress!, buffer.count)

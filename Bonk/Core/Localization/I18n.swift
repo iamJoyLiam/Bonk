@@ -96,6 +96,9 @@ final class I18n: @unchecked Sendable {
 
     func tr(_ key: LKey, args: CVarArg...) -> String {
         let template = t(key)
+        // Bypass printf parsing when no arguments are supplied, so a stray
+        // '%' in a translation can never crash or garble output.
+        guard !args.isEmpty else { return template }
         return withVaList(args) { NSString(format: template, arguments: $0) as String }
     }
 

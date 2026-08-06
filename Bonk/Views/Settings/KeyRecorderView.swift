@@ -229,7 +229,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable {
         case .splitHorizontal: KeyboardShortcut(keyCode: 2, modifiers: .command) // Cmd+D
         case .splitVertical: KeyboardShortcut(keyCode: 2, modifiers: [.command, .shift]) // Cmd+Shift+D
         case .sftpBrowser: KeyboardShortcut(keyCode: 1, modifiers: [.command, .shift]) // Cmd+Shift+S
-        case .aiAssistant: KeyboardShortcut(keyCode: 40, modifiers: .command) // Cmd+K
+        case .aiAssistant: KeyboardShortcut(keyCode: 40, modifiers: [.command, .option]) // Cmd+Option+K
         case .aiChatSidebar: KeyboardShortcut(keyCode: 40, modifiers: [.command, .shift]) // Cmd+Shift+K
         }
     }
@@ -237,20 +237,20 @@ enum ShortcutAction: String, CaseIterable, Identifiable {
     /// Display name for the action.
     var displayName: String {
         switch self {
-        case .newTerminal: "New Terminal"
-        case .closeTab: "Close Tab"
-        case .closePane: "Close Pane"
-        case .nextTab: "Next Tab"
-        case .previousTab: "Previous Tab"
-        case .find: "Find"
-        case .settings: "Settings"
-        case .reconnect: "Reconnect"
-        case .clearTerminal: "Clear Terminal"
-        case .splitHorizontal: "Split Horizontal"
-        case .splitVertical: "Split Vertical"
-        case .sftpBrowser: "SFTP Browser"
-        case .aiAssistant: "AI Assistant (Terminal)"
-        case .aiChatSidebar: "AI Chat Sidebar"
+        case .newTerminal: "action_new_terminal"
+        case .closeTab: "action_close_tab"
+        case .closePane: "action_close_pane"
+        case .nextTab: "action_next_tab"
+        case .previousTab: "action_previous_tab"
+        case .find: "action_find"
+        case .settings: "action_settings"
+        case .reconnect: "action_reconnect"
+        case .clearTerminal: "action_clear_terminal"
+        case .splitHorizontal: "action_split_horizontal"
+        case .splitVertical: "action_split_vertical"
+        case .sftpBrowser: "action_sftp_browser"
+        case .aiAssistant: "action_ai_assistant"
+        case .aiChatSidebar: "action_ai_chat_sidebar"
         }
     }
 }

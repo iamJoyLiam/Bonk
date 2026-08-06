@@ -10,6 +10,10 @@ import Foundation
 /// Processes terminal input with command history recording and broadcast support.
 @Observable @MainActor
 final class InputHandler {
+    /// Incremental UTF-8 decoders per tab, so multi-byte characters
+    /// spanning multiple input chunks are assembled correctly.
+    private var utf8Parsers: [UUID: UTF8Accumulator] = [:]
+
     /// Send input bytes to a terminal pane, recording command history and broadcasting if enabled.
     func sendInput(
         _ bytes: ArraySlice<UInt8>,
@@ -47,18 +51,6 @@ final class InputHandler {
         }
     }
 
-    /// Convenience: send text string to a pane (auto-appends Enter).
-    func sendText(
-        _ text: String,
-        to tab: TerminalTab,
-        paneID: UUID? = nil,
-        broadcastManager: BroadcastManager? = nil,
-        allTabs: [TerminalTab] = []
-    ) async throws {
-        let bytes = Array(text.utf8 + [13])
-        try await sendInput(bytes[...], to: tab, paneID: paneID, broadcastManager: broadcastManager, allTabs: allTabs)
-    }
-
     // MARK: - Private
 
     private func recordCommandIfNeeded(_ bytes: ArraySlice<UInt8>, to tab: TerminalTab) {
@@ -94,19 +86,79 @@ final class InputHandler {
                             break
                         }
                     }
-                } else if byte == 127 || byte == 8 {
-                    // Backspace/Delete — remove last char
-                    tab.session?.inputBuffer = String(tab.session?.inputBuffer.dropLast() ?? "")
-                    i = bytes.index(after: i)
-                } else if byte >= 32 {
-                    // Printable character
-                    tab.session?.inputBuffer = (tab.session?.inputBuffer ?? "") + String(UnicodeScalar(byte))
-                    i = bytes.index(after: i)
+        } else if byte == 127 || byte == 8 {
+            // Backspace/Delete — remove last char
+            tab.session?.inputBuffer = String(tab.session?.inputBuffer.dropLast() ?? "")
+            // Any partial multi-byte sequence is now invalidated
+            utf8Parsers[tab.id] = nil
+            i = bytes.index(after: i)
+        } else if byte >= 32 {
+            // Printable character — decode incrementally to keep UTF-8 sequences intact
+            var parser = utf8Parsers[tab.id] ?? UTF8Accumulator()
+            let (scalar, isComplete) = parser.feed(byte)
+            utf8Parsers[tab.id] = parser
+            if isComplete, let scalar {
+                tab.session?.inputBuffer = (tab.session?.inputBuffer ?? "") + String(scalar)
+            }
+            i = bytes.index(after: i)
                 } else {
                     // Other control characters — skip
                     i = bytes.index(after: i)
                 }
             }
         }
+    }
+}
+
+/// Buffers a UTF-8 byte stream and emits complete scalar values once the
+/// full multi-byte sequence has arrived. Invalid sequences are dropped.
+private struct UTF8Accumulator {
+    private var pending: [UInt8] = []
+
+    /// Feed one byte. Returns the decoded scalar and whether the feed
+    /// produced a terminal result (valid scalar or invalid sequence).
+    mutating func feed(_ byte: UInt8) -> (scalar: UnicodeScalar?, isComplete: Bool) {
+        pending.append(byte)
+
+        // Try decoding the whole buffer; success means a complete sequence.
+        if let scalar = decodeComplete() {
+            pending = []
+            return (scalar, true)
+        }
+
+        // Still a valid prefix of a longer sequence — wait for more bytes.
+        if pending.count < 4 && isPartialPrefix {
+            return (nil, false)
+        }
+
+        // Invalid sequence — drop it.
+        pending = []
+        return (nil, true)
+    }
+
+    private var isPartialPrefix: Bool {
+        guard let first = pending.first else { return false }
+        let expected: Int
+        switch first {
+        case 0xC2 ... 0xDF: expected = 2
+        case 0xE0 ... 0xEF: expected = 3
+        case 0xF0 ... 0xF4: expected = 4
+        default: return false
+        }
+        return pending.dropFirst().allSatisfy { $0 & 0xC0 == 0x80 }
+    }
+
+    private func decodeComplete() -> UnicodeScalar? {
+        guard let first = pending.first else { return nil }
+        let count: Int
+        switch first {
+        case 0x00 ... 0x7F: count = 1
+        case 0xC2 ... 0xDF: count = 2
+        case 0xE0 ... 0xEF: count = 3
+        case 0xF0 ... 0xF4: count = 4
+        default: return nil
+        }
+        guard pending.count == count else { return nil }
+        return String(bytes: pending, encoding: .utf8)?.unicodeScalars.first
     }
 }

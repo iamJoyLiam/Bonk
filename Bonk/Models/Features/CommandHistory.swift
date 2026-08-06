@@ -39,7 +39,7 @@ struct CommandRecord: Identifiable, Codable {
     }
 
     var isSuccess: Bool {
-        guard let exitCode else { return nil != nil }
+        guard let exitCode else { return false }
         return exitCode == 0
     }
 }

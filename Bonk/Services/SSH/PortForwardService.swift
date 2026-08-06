@@ -156,15 +156,12 @@ final class PortForwardService {
 
         let serverChannel = try await bootstrap.bind(host: localHost, port: localPort).get()
 
-        // Keep alive until cancelled
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            Task {
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(1))
-                }
-                try? await serverChannel.close().get()
-                continuation.resume()
-            }
+        // Keep alive until cancelled: closing the channel on cancel resolves the future.
+        let closeFuture = serverChannel.closeFuture
+        try await withTaskCancellationHandler {
+            try await closeFuture.get()
+        } onCancel: {
+            serverChannel.close(promise: nil)
         }
     }
 
@@ -204,15 +201,12 @@ final class PortForwardService {
 
         let serverChannel = try await bootstrap.bind(host: localHost, port: localPort).get()
 
-        // Keep alive until cancelled
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            Task {
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(1))
-                }
-                try? await serverChannel.close().get()
-                continuation.resume()
-            }
+        // Keep alive until cancelled: closing the channel on cancel resolves the future.
+        let closeFuture = serverChannel.closeFuture
+        try await withTaskCancellationHandler {
+            try await closeFuture.get()
+        } onCancel: {
+            serverChannel.close(promise: nil)
         }
     }
 }

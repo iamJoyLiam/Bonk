@@ -118,12 +118,10 @@ final class SFTPService {
         guard !entry.isDirectory else { return }
 
         let transferID = UUID()
-        await MainActor.run {
-            transfers.append(SFTPTransfer(
-                id: transferID, filename: entry.name, totalBytes: entry.size,
-                transferredBytes: 0, isComplete: false, error: nil
-            ))
-        }
+        transfers.append(SFTPTransfer(
+            id: transferID, filename: entry.name, totalBytes: entry.size,
+            transferredBytes: 0, isComplete: false, error: nil
+        ))
 
         do {
             try await sftp.withFile(filePath: entry.path, flags: .read) { file in
@@ -132,10 +130,10 @@ final class SFTPService {
                     transferID: transferID
                 )
             }
-            await self.markTransferComplete(transferID)
+            self.markTransferComplete(transferID)
             self.scheduleTransferRemoval(transferID, after: 3)
         } catch {
-            await self.markTransferError(transferID, error: error)
+            self.markTransferError(transferID, error: error)
             self.scheduleTransferRemoval(transferID, after: 5)
             throw error
         }
@@ -156,45 +154,35 @@ final class SFTPService {
         // Don't rely on entry.size for loop control - it may be inaccurate
         // for some file types or SFTP servers. Read until EOF.
         while true {
-            let toRead = chunkSize
-            let data = try await file.read(from: offset, length: toRead)
+            let data = try await file.read(from: offset, length: chunkSize)
             guard data.readableBytes > 0 else { break }
             let bytes = Data(buffer: data)
             try handle.write(contentsOf: bytes)
             offset += UInt64(bytes.count)
             updateCounter += 1
             if updateCounter % 10 == 0 {
-                let off = offset
-                await MainActor.run { [self] in
-                    if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                        transfers[idx].transferredBytes = off
-                    }
+                if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                    transfers[idx].transferredBytes = offset
                 }
             }
         }
         // Final progress update
-        await MainActor.run { [self] in
-            if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                transfers[idx].transferredBytes = offset
-            }
+        if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+            transfers[idx].transferredBytes = offset
         }
     }
 
     /// Mark a transfer as complete.
-    private func markTransferComplete(_ transferID: UUID) async {
-        await MainActor.run { [self] in
-            if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                transfers[idx].isComplete = true
-            }
+    private func markTransferComplete(_ transferID: UUID) {
+        if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+            transfers[idx].isComplete = true
         }
     }
 
     /// Mark a transfer as failed.
-    private func markTransferError(_ transferID: UUID, error: Error) async {
-        await MainActor.run { [self] in
-            if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                transfers[idx].error = error.localizedDescription
-            }
+    private func markTransferError(_ transferID: UUID, error: Error) {
+        if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+            transfers[idx].error = error.localizedDescription
         }
     }
 
@@ -248,12 +236,10 @@ final class SFTPService {
         let totalBytes = (fileAttributes[.size] as? UInt64) ?? 0
 
         let transferID = UUID()
-        await MainActor.run { [self] in
-            transfers.append(SFTPTransfer(
-                id: transferID, filename: filename, totalBytes: totalBytes,
-                transferredBytes: 0, isComplete: false, error: nil
-            ))
-        }
+        transfers.append(SFTPTransfer(
+            id: transferID, filename: filename, totalBytes: totalBytes,
+            transferredBytes: 0, isComplete: false, error: nil
+        ))
 
         let handle = try FileHandle(forReadingFrom: localURL)
         defer { try? handle.close() }
@@ -273,19 +259,19 @@ final class SFTPService {
                 continuation.yield(1.0)
             }
         } catch {
-            await MainActor.run { [self] in
-                if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                    if let sftpError = error as? SFTPServiceError, sftpError == .transferCancelled {
-                        transfers[idx].isCancelled = true
-                    } else {
-                        transfers[idx].error = error.localizedDescription
-                    }
+            if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                if let sftpError = error as? SFTPServiceError, sftpError == .transferCancelled {
+                    transfers[idx].isCancelled = true
+                } else {
+                    transfers[idx].error = error.localizedDescription
                 }
             }
             throw error
         }
 
-        try await listDirectory()
+        // Refresh the listing, but don't turn a successful upload into a failure
+        // just because the directory refresh errored.
+        try? await listDirectory()
     }
 
     /// Write file chunks with throttled progress updates.
@@ -302,9 +288,7 @@ final class SFTPService {
         var lastReportedProgress: Double = -1
 
         while true {
-            let isCancelled = await MainActor.run { [self] in
-                transfers.first(where: { $0.id == transferID })?.isCancelled ?? false
-            }
+            let isCancelled = transfers.first(where: { $0.id == transferID })?.isCancelled ?? false
             if isCancelled { throw SFTPServiceError.transferCancelled }
 
             guard let chunkData = try handle.read(upToCount: chunkSize), !chunkData.isEmpty else { break }
@@ -315,12 +299,9 @@ final class SFTPService {
 
             if updateCounter % 10 == 0 || offset == totalBytes {
                 let progress = totalBytes > 0 ? Double(offset) / Double(totalBytes) : 1.0
-                let off = offset
 
-                await MainActor.run { [self] in
-                    if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                        transfers[idx].transferredBytes = off
-                    }
+                if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                    transfers[idx].transferredBytes = offset
                 }
 
                 if progress - lastReportedProgress >= 0.01 || offset == totalBytes {

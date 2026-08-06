@@ -14,8 +14,6 @@ final class SessionManager {
 
     var lastError: String?
     var showError = false
-    /// Global broadcast mode (all tabs receive input).
-    var isGlobalBroadcastEnabled: Bool = false
     /// Currently dragging tab ID (memory state for drag-and-drop).
     var draggingTabID: UUID?
     /// Target tab ID when dragging over a tab (for showing indicator).
@@ -44,12 +42,6 @@ final class SessionManager {
         return tabs.first(where: { $0.id == id })
     }
 
-    /// The active pane state in the active tab.
-    var activePane: PaneState? {
-        guard let tab = activeTab, let paneID = tab.activePaneID else { return nil }
-        return tab.layout.findPane(id: paneID)
-    }
-
     // MARK: - Tab Management
 
     func openTab(for host: HostItem) {
@@ -66,17 +58,6 @@ final class SessionManager {
 
     func selectTab(_ id: UUID) {
         activeTabID = id
-    }
-
-    /// Move a tab from one index to another (for tab reordering).
-    func moveTab(from sourceIndex: Int, to destinationIndex: Int) {
-        guard sourceIndex != destinationIndex,
-              sourceIndex >= 0, sourceIndex < tabs.count,
-              destinationIndex >= 0, destinationIndex < tabs.count
-        else { return }
-
-        let tab = tabs.remove(at: sourceIndex)
-        tabs.insert(tab, at: destinationIndex)
     }
 
     /// Move a tab relative to another tab (for drop-target reordering).
@@ -104,20 +85,6 @@ final class SessionManager {
             activeTabID = tabs.last?.id
         }
         syncBroadcastTargets()
-    }
-
-    /// Copy a tab (create a new tab with the same host).
-    func copyTab(_ id: UUID) {
-        guard let tab = tabs.first(where: { $0.id == id }) else { return }
-        let newTab = TerminalTab(hostItem: tab.hostItem)
-        newTab.title = "\(tab.title) (copy)"
-        tabs.append(newTab)
-        activeTabID = newTab.id
-        syncBroadcastTargets()
-
-        let session = sessionStore.session(for: newTab)
-        newTab.session = session
-        Task { await connectTab(newTab) }
     }
 
     // MARK: - Connection
@@ -158,7 +125,6 @@ final class SessionManager {
             session.connectionState = .connected
             session.connectedAt = Date()
 
-            EventPublisher.shared.publish(SessionEvent.connected(tabID: tab.id))
 
             // Connect the first pane
             if let firstPane = tab.layout.root.paneState {
@@ -173,7 +139,6 @@ final class SessionManager {
             lastError = error.localizedDescription
             showError = true
 
-            EventPublisher.shared.publish(SessionEvent.error(tabID: tab.id, error: error))
         }
     }
 
@@ -188,7 +153,6 @@ final class SessionManager {
         tab.session?.disconnect()
         tab.session = nil
 
-        EventPublisher.shared.publish(SessionEvent.disconnected(tabID: id))
     }
 
     func reconnectTab(_ id: UUID) async {
@@ -209,7 +173,7 @@ final class SessionManager {
 
     func updateTabTitle(_ title: String, tabID: UUID) {
         guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
-        if let cwd = parseCWD(from: title) {
+        if let cwd = parseCWD(from: title, username: tab.hostItem.username) {
             tab.currentDirectory = cwd
         }
     }
@@ -270,11 +234,6 @@ final class SessionManager {
         tab.isBroadcastEnabled.toggle()
     }
 
-    /// Toggle global broadcast.
-    func toggleGlobalBroadcast() {
-        isGlobalBroadcastEnabled.toggle()
-    }
-
     // MARK: - Broadcast Sync
 
     func syncBroadcastTargets() {
@@ -282,12 +241,6 @@ final class SessionManager {
         broadcastManager?.allPaneIDs = allPaneIDs
         let validIDs = Set(allPaneIDs)
         broadcastManager?.targetPaneIDs = broadcastManager?.targetPaneIDs.filter { validIDs.contains($0) } ?? []
-    }
-
-    /// Toggle broadcast mode.
-    func toggleBroadcast() {
-        broadcastManager?.toggle()
-        syncBroadcastTargets()
     }
 
     // MARK: - Private
@@ -299,7 +252,12 @@ final class SessionManager {
             session.errorMessage = I18n.shared.t(.noModelContext)
             return nil
         }
-        guard let authMethod = hostItem.resolveAuthMethod(modelContext: modelContext) else {
+        guard (1 ... 65535).contains(hostItem.port) else {
+            session.connectionState = .disconnected
+            session.errorMessage = I18n.shared.t(.invalidPort)
+            return nil
+        }
+        guard let authMethod = hostItem.resolveAuthMethod() else {
             session.connectionState = .disconnected
             session.errorMessage = I18n.shared.t(.credentialsNotSet)
             return nil
@@ -307,7 +265,7 @@ final class SessionManager {
         return SSHConnectionConfig(
             host: hostItem.host,
             port: UInt16(hostItem.port),
-            username: hostItem.resolveUsername(modelContext: modelContext),
+            username: hostItem.resolveUsername(),
             authMethod: authMethod,
             maxReconnectAttempts: 0,
             baseReconnectDelay: .seconds(1)
@@ -373,15 +331,15 @@ final class SessionManager {
         }
     }
 
-    private func parseCWD(from title: String) -> String? {
+    private func parseCWD(from title: String, username: String) -> String? {
         // Pattern: "user@host:/absolute/path" or "user@host:~/path"
         if let colonRange = title.range(of: ": ") {
             let afterColon = String(title[colonRange.upperBound...])
             let path = afterColon.components(separatedBy: " ").first ?? afterColon
             if path.hasPrefix("/") { return path }
-            // Handle ~ paths (assume home directory)
+            // Handle ~ paths — expand to the actual user's home directory
             if path.hasPrefix("~") {
-                let home = "/root" // Default for most SSH connections
+                let home = "/home/\(username)"
                 let relativePath = path.dropFirst()
                 if relativePath.isEmpty { return home }
                 if relativePath.hasPrefix("/") {

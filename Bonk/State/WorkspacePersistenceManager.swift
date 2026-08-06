@@ -172,15 +172,13 @@ final class WorkspacePersistenceManager {
         _ workspace: WorkspaceData,
         sessionManager: SessionManager,
         modelContext: ModelContext
-    ) {
+    ) async {
         // Close all existing tabs first (sequentially to avoid race conditions)
         for tab in sessionManager.tabs {
-            Task {
-                await sessionManager.closeTab(tab.id)
-            }
+            await sessionManager.closeTab(tab.id)
         }
 
-        // Fetch only the host items we need (optimization)
+        // Fetch only the host items we need
         let neededIDs = Set(workspace.tabs.map(\.hostItemID))
         var hostStore: [UUID: HostItem] = [:]
         let descriptor = FetchDescriptor<HostItem>()

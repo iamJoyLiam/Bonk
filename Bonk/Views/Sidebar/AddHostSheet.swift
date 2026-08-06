@@ -79,7 +79,7 @@ struct AddHostSheet: View {
             || (authType == .password
                 ? !password.isEmpty
                 : authType == .certificate
-                    ? !privateKeyPEM.isEmpty
+                    ? !privateKeyPEM.isEmpty && !certificatePEM.isEmpty
                     : !privateKeyPEM.isEmpty)
         return hasName && hasHost && hasUser && hasCred
     }
@@ -262,7 +262,7 @@ struct AddHostSheet: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
 
-                                    TextField("e.g., my-server, production", text: $secureEnclaveKeyTagInput)
+                                    TextField(i18n.t(.exampleKeyTag), text: $secureEnclaveKeyTagInput)
                                         .textFieldStyle(.roundedBorder)
 
                                     HStack {
@@ -500,24 +500,19 @@ struct AddHostSheet: View {
 
     private func verifySecureEnclaveKey() {
         let tagToVerify = secureEnclaveKeyTagInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        print("[DEBUG] verifySecureEnclaveKey called with input: '\(secureEnclaveKeyTagInput)', trimmed: '\(tagToVerify)'")
-        
+
         guard !tagToVerify.isEmpty else {
-            print("[DEBUG] Tag is empty, showing error")
             secureEnclaveKeyExists = false
-            secureEnclaveVerificationMessage = "请输入密钥标识符"
+            secureEnclaveVerificationMessage = i18n.t(.enterKeyIdentifier)
             return
         }
 
-        print("[DEBUG] Checking keyExists for tag: \(tagToVerify)")
         let exists = SecureEnclaveKeyManager.keyExists(tag: tagToVerify)
-        print("[DEBUG] keyExists returned: \(exists)")
-        
+
         if exists {
             secureEnclaveKeyTag = tagToVerify
         }
         secureEnclaveKeyExists = exists
-        secureEnclaveVerificationMessage = exists ? "密钥验证成功" : "未找到密钥，请先生成"
-        print("[DEBUG] Verification result: \(secureEnclaveVerificationMessage ?? "nil")")
+        secureEnclaveVerificationMessage = exists ? i18n.t(.keyVerified) : i18n.t(.keyNotFound)
     }
 }

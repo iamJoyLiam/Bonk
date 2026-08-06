@@ -37,7 +37,6 @@ public actor SSHNetworkService {
     private var client: SSHClient?
     private var config: SSHConnectionConfig?
     private var activePTYSession: PTYSession?
-    private var reconnectTask: Task<Void, Never>?
     private let keepAlive = SSHKeepAlive()
     /// Guard against duplicate handleDisconnect calls (keepalive timeout + onDisconnect).
     private var isHandlingDisconnect = false
@@ -190,12 +189,18 @@ public actor SSHNetworkService {
         Log.ssh.info("[ESTABLISH] SSHClient.connect returned successfully")
 
         Log.ssh.info("[ESTABLISH] Verifying host key...")
-        try await verifyHostKey(
-            host: config.host,
-            port: config.port,
-            fingerprint: fingerprintBox.withLockedValue { $0 },
-            store: hostKeyStore
-        )
+        do {
+            try await verifyHostKey(
+                host: config.host,
+                port: config.port,
+                fingerprint: fingerprintBox.withLockedValue { $0 },
+                store: hostKeyStore
+            )
+        } catch {
+            // Do not leak the established connection when verification fails.
+            try? await sshClient.close()
+            throw error
+        }
         Log.ssh.info("[ESTABLISH] Host key verified")
 
         client = sshClient
@@ -249,8 +254,6 @@ public actor SSHNetworkService {
 
     public func disconnect() async {
         await keepAlive.stop()
-        reconnectTask?.cancel()
-        reconnectTask = nil
 
         stopNetworkMonitor()
 
@@ -417,8 +420,8 @@ public actor SSHNetworkService {
         store: any SSHHostKeyStore
     ) async throws {
         guard let fingerprint else {
-            Log.ssh.warning("No fingerprint computed for \(host):\(port)")
-            return
+            Log.ssh.error("No fingerprint computed for \(host):\(port), refusing connection")
+            throw SSHServiceError.hostKeyMismatch(expected: "unknown", received: "none")
         }
 
         Log.ssh.info("Fingerprint for \(host):\(port): \(fingerprint.hash)")

@@ -29,7 +29,6 @@ final class AgentEngine {
     private let providerStore: AIProviderStore
     private let conversationStore: AIConversationStore
     let sanitizer = AIOutputSanitizer.self
-    private var lastUIUpdate = Date.distantPast
 
     // Plan approval state
     var currentPlan: AgentPlan?
@@ -68,9 +67,9 @@ final class AgentEngine {
     ) async -> String? {
         isProcessing = true
         streamingResponse = ""
+        defer { isProcessing = false }
 
         guard let (provider, apiKey) = resolveProvider() else {
-            isProcessing = false
             return nil
         }
 
@@ -110,7 +109,6 @@ final class AgentEngine {
                 return sanitized
             } catch {
                 if Task.isCancelled {
-                    isProcessing = false
                     return nil
                 }
 
@@ -121,7 +119,6 @@ final class AgentEngine {
                     Self.logger.error(
                         "\(label, privacy: .public): non-retryable error: \(errorMsg, privacy: .public)"
                     )
-                    isProcessing = false
                     return nil
                 }
 
@@ -137,7 +134,6 @@ final class AgentEngine {
                 }
             }
         }
-        isProcessing = false
         return nil
     }
 
@@ -260,7 +256,13 @@ final class AgentEngine {
         currentTask?.cancel()
         currentTask = nil
         isProcessing = false
-        pendingConfirmation = nil
+        if let pending = pendingConfirmation {
+            pending.continuation(false)
+            pendingConfirmation = nil
+        }
+        planApprovalContinuation?.resume(returning: false)
+        planApprovalContinuation = nil
+        currentPlan = nil
         streamingResponse = ""
         currentExplanation = nil
     }

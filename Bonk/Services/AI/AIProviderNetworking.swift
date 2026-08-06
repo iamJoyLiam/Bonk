@@ -9,15 +9,14 @@ enum AIProviderNetworking {
     static func makeRequest(url: URL, apiKey: String, type: AIProviderType) -> URLRequest {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        if type.needsAPIKey {
-            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        }
         if type == .claude {
+            // Claude uses the x-api-key header exclusively.
             request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
             request.setValue(anthropicVersion, forHTTPHeaderField: "anthropic-version")
-        }
-        if type == .gemini {
+        } else if type == .gemini {
             request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+        } else if type.needsAPIKey {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
         return request
     }
@@ -38,7 +37,7 @@ enum AIProviderNetworking {
 
     // MARK: - Models URL
 
-    static func modelsURL(endpoint: String, type: AIProviderType, apiKey _: String) -> URL? {
+    static func modelsURL(endpoint: String, type: AIProviderType) -> URL? {
         let base = baseEndpoint(endpoint)
         guard let components = URLComponents(string: base) else { return nil }
         let basePath = components.path
@@ -306,26 +305,23 @@ enum AIProviderNetworking {
         onDelta: ((String) -> Void)? = nil
     ) async throws -> String {
         var result = ""
-        var buffer = ""
+        var buffer = Data()
 
         for try await byte in bytes {
-            guard let char = String(bytes: [byte], encoding: .utf8) else { continue }
-            buffer += char
+            buffer.append(byte)
+            // Decode whole lines at once so multi-byte UTF-8 (Chinese, emoji) survives.
+            guard byte == 0x0A, let line = String(data: buffer, encoding: .utf8) else { continue }
+            buffer = Data()
 
-            while let range = buffer.range(of: "\n") {
-                let line = String(buffer[buffer.startIndex ..< range.lowerBound])
-                buffer = String(buffer[range.upperBound...])
+            guard line.hasPrefix("data: ") else { continue }
+            let json = line.dropFirst(6).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard json != "[DONE]",
+                  let data = json.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
 
-                guard line.hasPrefix("data: ") else { continue }
-                let json = String(line.dropFirst(6))
-                guard json != "[DONE]",
-                      let data = json.data(using: .utf8),
-                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
-
-                if let text = extractDelta(from: obj) {
-                    result += text
-                    onDelta?(text)
-                }
+            if let text = extractDelta(from: obj) {
+                result += text
+                onDelta?(text)
             }
         }
         return result
@@ -354,13 +350,5 @@ enum AIProviderNetworking {
         }
 
         return []
-    }
-}
-
-// MARK: - String Helper
-
-private extension String {
-    func trimmingSuffix(_ suffix: String) -> String {
-        hasSuffix(suffix) ? String(dropLast(suffix.count)) : self
     }
 }

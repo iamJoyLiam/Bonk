@@ -204,6 +204,7 @@ enum LKey: String, CaseIterable {
     case unGrouped = "ungrouped"
     case noModelContext = "no_model_context"
     case credentialsNotSet = "credentials_not_set"
+    case invalidPort = "invalid_port"
     case sftpConnectFailed = "sftp_connect_failed"
     case noSSHConnection = "no_ssh_connection"
     case recent
@@ -279,6 +280,37 @@ enum LKey: String, CaseIterable {
 
     /// Common
     case type, remote
+
+    /// Terminal context menu / UI
+    case paste, linked = "linked", unsplit = "unsplit"
+    case color, enter, folder
+    case cancelled, run
+    case copyCommand = "copy_command"
+    case sendFile = "send_file"
+    case receiveFile = "receive_file"
+    case fileTransfer = "file_transfer"
+    case dropToSplit = "drop_to_split"
+    case exampleKeyTag = "example_key_tag"
+    case securityFeatures = "security_features"
+    case ecdsaP256 = "ecdsa_p256"
+    case hardwareNonExportable = "hardware_non_exportable"
+    case icloudSyncRequires = "icloud_sync_requires"
+
+    /// Keyboard shortcut action names
+    case actionNewTerminal = "action_new_terminal"
+    case actionCloseTab = "action_close_tab"
+    case actionClosePane = "action_close_pane"
+    case actionNextTab = "action_next_tab"
+    case actionPreviousTab = "action_previous_tab"
+    case actionFind = "action_find"
+    case actionSettings = "action_settings"
+    case actionReconnect = "action_reconnect"
+    case actionClearTerminal = "action_clear_terminal"
+    case actionSplitHorizontal = "action_split_horizontal"
+    case actionSplitVertical = "action_split_vertical"
+    case actionSFTPBrowser = "action_sftp_browser"
+    case actionAIAssistant = "action_ai_assistant"
+    case actionAIChatSidebar = "action_ai_chat_sidebar"
 
     // Command History
     case commandHistory = "command_history"
@@ -419,6 +451,7 @@ enum LKey: String, CaseIterable {
     case biometricAuthDesc = "biometric_auth_desc"
     case verifyKey = "verify_key"
     case keyVerified = "key_verified"
+    case enterKeyIdentifier = "enter_key_identifier"
     case keyNotFound = "key_not_found"
     case secureEnclaveKeyGenerated = "secure_enclave_key_generated"
     case addPublicKeyToServer = "add_public_key_to_server"

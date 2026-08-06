@@ -82,6 +82,15 @@ final class ICloudSyncService {
     func syncToCloud() {
         guard isEnabled, let context = modelContext else { return }
 
+        // Conflict arbitration: if the cloud holds a change newer than the
+        // last one this device pushed, pull instead of overwriting it.
+        let cloudTimestamp = store.double(forKey: Keys.lastSynced)
+        let localTimestamp = lastSynced?.timeIntervalSince1970 ?? 0
+        if cloudTimestamp > localTimestamp {
+            syncFromCloud()
+            return
+        }
+
         do {
             let desc = FetchDescriptor<UserPreferences>()
             guard let prefs = try context.fetch(desc).first else { return }
