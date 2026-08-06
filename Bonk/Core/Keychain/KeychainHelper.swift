@@ -118,19 +118,6 @@ enum KeychainHelper {
         return SecureBytes(data)
     }
 
-    // MARK: - Secure Comparison
-
-    /// Constant-time byte comparison — prevents timing side-channel attacks.
-    /// An attacker cannot infer how many bytes matched by measuring response time.
-    static func constantTimeEqual(_ lhs: Data, _ rhs: Data) -> Bool {
-        guard lhs.count == rhs.count else { return false }
-        var result: UInt8 = 0
-        for byteIndex in 0 ..< lhs.count {
-            result |= lhs[byteIndex] ^ rhs[byteIndex]
-        }
-        return result == 0
-    }
-
     // MARK: - Delete
 
     @discardableResult

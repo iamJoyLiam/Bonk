@@ -231,7 +231,6 @@ struct ServerInfoPanel: View {
     }
 
     private func statusText(_ state: SSHConnectionState) -> String {
-        let i18n = i18n
         switch state {
         case .disconnected: return i18n.t(.disconnected)
         case .connecting: return i18n.t(.connectingTo)

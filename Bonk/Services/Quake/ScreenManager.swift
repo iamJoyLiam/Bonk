@@ -58,11 +58,4 @@ struct ScreenManager {
             height: targetFrame.height
         )
     }
-
-    /// Check if a point is within the visible frame of any screen.
-    static func isPointOnScreen(_ point: CGPoint) -> Bool {
-        NSScreen.screens.contains { screen in
-            NSMouseInRect(point, screen.frame, false)
-        }
-    }
 }

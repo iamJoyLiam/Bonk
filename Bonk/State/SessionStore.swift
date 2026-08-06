@@ -32,11 +32,6 @@ final class SessionStore {
         return session
     }
 
-    /// Get an existing session for a tab (returns nil if none exists).
-    func existingSession(for tabID: UUID) -> TerminalSession? {
-        activeSessions[tabID]
-    }
-
     /// Check if a session is connecting.
     func isConnecting(_ tabID: UUID) -> Bool {
         connectingSessions.contains(tabID)
@@ -47,7 +42,7 @@ final class SessionStore {
         connectingSessions.insert(tabID)
     }
 
-    /// Mark a session as connected.
+    /// Mark a session as finished connecting.
     func markConnected(_ tabID: UUID) {
         connectingSessions.remove(tabID)
     }
@@ -66,15 +61,5 @@ final class SessionStore {
             await session.sshService?.disconnect()
         }
         session.disconnect()
-    }
-
-    /// Get all active session IDs.
-    var activeSessionIDs: [UUID] {
-        Array(activeSessions.keys)
-    }
-
-    /// Check if a session exists.
-    func hasSession(for tabID: UUID) -> Bool {
-        activeSessions[tabID] != nil
     }
 }

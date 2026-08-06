@@ -44,9 +44,4 @@ final class OperationLog {
     func clear() {
         entries.removeAll()
     }
-
-    /// Get the last N entries.
-    func recent(_ count: Int = 10) -> [Entry] {
-        Array(entries.suffix(count))
-    }
 }

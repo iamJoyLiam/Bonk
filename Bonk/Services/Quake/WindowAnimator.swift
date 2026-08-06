@@ -108,17 +108,4 @@ final class WindowAnimator {
 
         logger.debug("Animating hide")
     }
-
-    /// Instantly show window without animation.
-    func showInstant(panel: NSPanel, frame: CGRect) {
-        panel.alphaValue = 1.0
-        panel.setFrame(frame, display: true)
-        panel.orderFront(nil)
-    }
-
-    /// Instantly hide window without animation.
-    func hideInstant(panel: NSPanel) {
-        panel.orderOut(nil)
-        panel.alphaValue = 1.0
-    }
 }

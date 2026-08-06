@@ -20,6 +20,7 @@ struct LocalFileEntry: Identifiable, Hashable {
 // MARK: - Local File Row (matches SFTPFileRow layout)
 
 struct LocalFileRow: View {
+    @Environment(I18n.self) var i18n
     let file: LocalFileEntry
 
     var body: some View {
@@ -36,7 +37,7 @@ struct LocalFileRow: View {
 
                 HStack(spacing: 8) {
                     if file.isDirectory {
-                        Text("Folder")
+                        Text(i18n.t(.folder))
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
                     } else {

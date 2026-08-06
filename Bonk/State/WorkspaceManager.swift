@@ -45,9 +45,6 @@ final class WorkspaceManager {
     // MARK: - Title Bar Sheet Presentations
 
     let broadcastManager = BroadcastManager()
-    var isBroadcastEnabled: Bool {
-        broadcastManager.isEnabled
-    }
 
     var isSerialPortPresented = false
     var isPortForwardingPresented = false

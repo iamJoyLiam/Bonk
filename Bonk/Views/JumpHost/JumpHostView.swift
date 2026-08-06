@@ -112,7 +112,7 @@ struct JumpHostView: View {
             Button {
                 editingHost = host
             } label: {
-                Label("Edit", systemImage: "pencil")
+                Label(i18n.t(.edit), systemImage: "pencil")
             }
             Button {
                 testConnection(host)

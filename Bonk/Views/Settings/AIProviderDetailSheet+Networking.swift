@@ -32,7 +32,7 @@ extension AIProviderDetailSheet {
             fetchedModels = []; modelFetchError = nil; return
         }
         guard let url = AIProviderNetworking.modelsURL(
-            endpoint: draft.endpoint, type: draft.type, apiKey: draft.apiKey
+            endpoint: draft.endpoint, type: draft.type
         ) else { return }
 
         isFetchingModels = true; modelFetchError = nil
@@ -68,7 +68,7 @@ extension AIProviderDetailSheet {
                     isSuccess = try await testCustomProvider()
                 } else {
                     guard let url = AIProviderNetworking.modelsURL(
-                        endpoint: draft.endpoint, type: draft.type, apiKey: draft.apiKey
+                        endpoint: draft.endpoint, type: draft.type
                     ) else {
                         await MainActor.run { isTesting = false; testResult = .failure(i18n.t(.connectionTestFailed)) }
                         return

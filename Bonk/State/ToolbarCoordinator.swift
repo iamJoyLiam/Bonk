@@ -21,7 +21,6 @@ final class ToolbarCoordinator {
     var showWorkspaces = false
     var showSSHConfigImport = false
     var showAddHostSheet = false
-    var showQuickConnect = false
 
     init(workspace: WorkspaceManager, sessionManager: SessionManager, i18n: I18n) {
         self.workspace = workspace

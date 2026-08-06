@@ -14,8 +14,6 @@ import Foundation
     final class UpdaterManager {
         private let updaterController: SPUStandardUpdaterController
 
-        var canCheckForUpdates = true
-
         init() {
             updaterController = SPUStandardUpdaterController(
                 startingUpdater: true,
@@ -32,7 +30,6 @@ import Foundation
     /// Stub when Sparkle is not yet added as a dependency
     @Observable
     final class UpdaterManager {
-        var canCheckForUpdates = true
         func checkForUpdates() {}
     }
 #endif

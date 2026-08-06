@@ -13,15 +13,14 @@ import os
 final class CopilotService {
     static let shared = CopilotService()
 
-    private static let logger = Log.copilot
+    nonisolated private static let logger = Log.copilot
 
     // GitHub Copilot OAuth app credentials (same used by VS Code / Neovim plugins)
-    private static let clientID = "Iv1.b507a08c87ecfe98"
-    private static let scope = "read:user"
-    private static let deviceCodeURL = URL(string: "https://github.com/login/device/code")!
-    private static let tokenURL = URL(string: "https://github.com/login/oauth/access_token")!
-    private static let copilotTokenURL = URL(string: "https://api.github.com/copilot_internal/v2/token")!
-    private static let verifyURL = URL(string: "https://github.com/login/device")!
+    nonisolated private static let clientID = "Iv1.b507a08c87ecfe98"
+    nonisolated private static let scope = "read:user"
+    nonisolated private static let deviceCodeURL = URL(string: "https://github.com/login/device/code")!
+    nonisolated private static let tokenURL = URL(string: "https://github.com/login/oauth/access_token")!
+    nonisolated private static let verifyURL = URL(string: "https://github.com/login/device")!
 
     enum Status: Equatable {
         case stopped
@@ -163,39 +162,70 @@ final class CopilotService {
 
     // MARK: - Private
 
-    // swiftlint:disable:next function_body_length cyclomatic_complexity
+    /// Result of the device-code polling loop.
+    private enum PollResult: Sendable {
+        case signedIn(accessToken: String, username: String)
+        case expired
+        case denied
+        case timedOut
+    }
+
     private func pollForToken(deviceCode: String, interval: Int, expiresIn: Int) async {
+        let result = await Self.pollForTokenLoop(
+            deviceCode: deviceCode, interval: interval, expiresIn: expiresIn
+        )
+
+        guard !Task.isCancelled else { return }
+
+        switch result {
+        case let .signedIn(accessToken, username):
+            oauthToken = accessToken
+            authState = .signedIn(username: username)
+            KeychainHelper.set(accessToken, for: tokenKey)
+            KeychainHelper.set(username, for: usernameKey)
+            Self.logger.info("Signed in as \(username)")
+        case .expired:
+            authState = .signedOut
+            errorMessage = L.t(.signInExpired)
+        case .denied:
+            authState = .signedOut
+            errorMessage = L.t(.accessDenied)
+        case .timedOut:
+            authState = .signedOut
+            errorMessage = L.t(.signInTimedOut)
+        }
+    }
+
+    /// Poll GitHub until the user authorizes the device code.
+    /// Runs off the main actor; only network I/O and sleeps happen here.
+    private nonisolated static func pollForTokenLoop(
+        deviceCode: String, interval: Int, expiresIn: Int
+    ) async -> PollResult {
         let pollInterval = max(interval, 5)
         let maxAttempts = expiresIn / pollInterval
         let deadline = Date().addingTimeInterval(TimeInterval(expiresIn))
 
         for _ in 0 ..< maxAttempts {
-            guard !Task.isCancelled else { return }
-            guard Date() < deadline else {
-                await MainActor.run {
-                    authState = .signedOut
-                    errorMessage = L.t(.signInExpired)
-                }
-                return
-            }
+            guard !Task.isCancelled else { return .timedOut }
+            guard Date() < deadline else { return .expired }
 
             try? await Task.sleep(for: .seconds(pollInterval))
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else { return .timedOut }
 
             do {
-                var request = URLRequest(url: Self.tokenURL)
+                var request = URLRequest(url: tokenURL)
                 request.httpMethod = "POST"
                 request.setValue("application/json", forHTTPHeaderField: "Accept")
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 let body: [String: String] = [
-                    "client_id": Self.clientID,
+                    "client_id": clientID,
                     "device_code": deviceCode,
                     "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
                 ]
                 request.httpBody = try JSONEncoder().encode(body)
 
                 let (data, response) = try await URLSession.shared.data(for: request)
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled else { return .timedOut }
 
                 guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                     continue
@@ -211,49 +241,29 @@ final class CopilotService {
                         try? await Task.sleep(for: .seconds(5))
                         continue
                     case "expired_token":
-                        await MainActor.run {
-                            authState = .signedOut
-                            errorMessage = L.t(.signInExpired)
-                        }
-                        return
+                        return .expired
                     case "access_denied":
-                        await MainActor.run {
-                            authState = .signedOut
-                            errorMessage = L.t(.accessDenied)
-                        }
-                        return
+                        return .denied
                     default:
-                        Self.logger.error("Token error: \(error)")
+                        logger.error("Token error: \(error)")
                         continue
                     }
                 }
 
                 guard let accessToken = tokenResponse.accessToken else { continue }
 
-                let username = await fetchUsername(token: accessToken) ?? "unknown"
-
-                await MainActor.run {
-                    self.oauthToken = accessToken
-                    self.authState = .signedIn(username: username)
-                    KeychainHelper.set(accessToken, for: tokenKey)
-                    KeychainHelper.set(username, for: usernameKey)
-                }
-
-                Self.logger.info("Signed in as \(username)")
-                return
+                let username = await Self.fetchUsername(token: accessToken) ?? "unknown"
+                return .signedIn(accessToken: accessToken, username: username)
             } catch {
-                Self.logger.error("Poll error: \(error.localizedDescription)")
+                logger.error("Poll error: \(error.localizedDescription)")
                 continue
             }
         }
 
-        await MainActor.run {
-            authState = .signedOut
-            errorMessage = L.t(.signInTimedOut)
-        }
+        return .timedOut
     }
 
-    private func fetchUsername(token: String) async -> String? {
+    private nonisolated static func fetchUsername(token: String) async -> String? {
         guard let url = URL(string: "https://api.github.com/user") else { return nil }
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -265,7 +275,7 @@ final class CopilotService {
             let response = try JSONDecoder().decode(UserResponse.self, from: data)
             return response.login
         } catch {
-            Self.logger.error("Failed to fetch username: \(error.localizedDescription)")
+            logger.error("Failed to fetch username: \(error.localizedDescription)")
             return nil
         }
     }
@@ -276,7 +286,7 @@ final class CopilotService {
             return
         }
 
-        guard let username = await fetchUsername(token: token) else {
+        guard let username = await Self.fetchUsername(token: token) else {
             oauthToken = nil
             authState = .signedOut
             KeychainHelper.delete(for: tokenKey)
@@ -284,27 +294,6 @@ final class CopilotService {
             return
         }
         authState = .signedIn(username: username)
-    }
-
-    // MARK: - Copilot Token (for API access)
-
-    /// Fetch a short-lived Copilot API token using the OAuth token.
-    func fetchCopilotToken() async throws -> String {
-        guard let oauthToken else {
-            throw CopilotError.authenticationFailed("Not signed in")
-        }
-
-        var request = URLRequest(url: Self.copilotTokenURL)
-        request.setValue("Bearer \(oauthToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw CopilotError.authenticationFailed("Failed to fetch Copilot token")
-        }
-
-        let tokenResponse = try JSONDecoder().decode(CopilotTokenResponse.self, from: data)
-        return tokenResponse.token
     }
 }
 
@@ -339,16 +328,6 @@ private struct TokenResponse: Decodable {
         case scope
         case error
         case errorDescription = "error_description"
-    }
-}
-
-private struct CopilotTokenResponse: Decodable {
-    let token: String
-    let expiresAt: Int
-
-    enum CodingKeys: String, CodingKey {
-        case token
-        case expiresAt = "expires_at"
     }
 }
 

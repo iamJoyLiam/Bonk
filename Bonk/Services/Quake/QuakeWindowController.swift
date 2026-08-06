@@ -104,57 +104,9 @@ final class QuakeWindowController {
         logger.info("Hiding Quake window")
     }
 
-    /// Toggle window visibility.
-    func toggle(heightRatio: CGFloat = 0.5, widthRatio: CGFloat = 1.0) {
-        if isVisible {
-            hide()
-        } else {
-            show(heightRatio: heightRatio, widthRatio: widthRatio)
-        }
-    }
-
-    /// Show without animation (for initial setup).
-    func showInstant(heightRatio: CGFloat = 0.5, widthRatio: CGFloat = 1.0) {
-        let frame = ScreenManager.quakeFrame(heightRatio: heightRatio, widthRatio: widthRatio)
-        animator.showInstant(panel: panel, frame: frame)
-    }
-
     /// Update window frame.
     func updateFrame(heightRatio: CGFloat = 0.5, widthRatio: CGFloat = 1.0) {
         let frame = ScreenManager.quakeFrame(heightRatio: heightRatio, widthRatio: widthRatio)
         panel.setFrame(frame, display: true)
-    }
-
-    /// Make the window key (for keyboard input).
-    func makeKey() {
-        panel.makeKeyAndOrderFront(nil)
-        // Force focus to content view
-        NSApp.activate(ignoringOtherApps: true)
-        panel.makeKey()
-    }
-
-    /// Focus the first responder in the content view.
-    func focusContentView() {
-        // Find and focus the terminal view
-        if let terminalView = findTerminalView(in: contentViewController.view) {
-            panel.makeFirstResponder(terminalView)
-        } else {
-            panel.makeFirstResponder(contentViewController.view)
-        }
-    }
-
-    /// Recursively find a SwiftTerm TerminalView in the view hierarchy.
-    private func findTerminalView(in view: NSView) -> NSView? {
-        // Check if this is a TerminalView
-        if NSStringFromClass(type(of: view)).contains("TerminalView") {
-            return view
-        }
-        // Check subviews
-        for subview in view.subviews {
-            if let found = findTerminalView(in: subview) {
-                return found
-            }
-        }
-        return nil
     }
 }

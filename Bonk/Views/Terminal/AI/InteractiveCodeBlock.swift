@@ -46,7 +46,7 @@ struct InteractiveCodeBlock: View {
                     Button { toggleExecution() } label: {
                         HStack(spacing: 4) {
                             Image(systemName: executionStatus == .running ? "stop.fill" : "play.fill")
-                            Text(executionStatus == .running ? "STOP" : "RUN")
+                            Text(executionStatus == .running ? i18n.t(.stop) : i18n.t(.run))
                                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         }
                         .foregroundStyle(executionStatus == .running ? .red : .green)
@@ -170,6 +170,6 @@ struct InteractiveCodeBlock: View {
         executionTask?.cancel()
         executionTask = nil
         executionStatus = .finished(exitCode: -1)
-        consoleOutput += "\n[Cancelled]"
+        consoleOutput += "\n" + i18n.t(.cancelled)
     }
 }

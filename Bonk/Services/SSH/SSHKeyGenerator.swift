@@ -197,7 +197,7 @@ enum SSHKeyGenerator {
         guard let privateKeyData = SecKeyCopyExternalRepresentation(privateKey, &error) as Data? else {
             throw SSHKeyGeneratorError.keyGenerationFailed("Failed to export private key")
         }
-        let privateKeyPEM = formatECDSAPrivateKeyPEM(privateKeyData, bits: bits)
+        let privateKeyPEM = formatECDSAPrivateKeyPEM(privateKeyData)
 
         // Export public key in SSH format
         guard let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, &error) as Data? else {
@@ -217,11 +217,9 @@ enum SSHKeyGenerator {
         )
     }
 
-    private static func formatECDSAPrivateKeyPEM(_ data: Data, bits: Int) -> String {
+    private static func formatECDSAPrivateKeyPEM(_ data: Data) -> String {
         let base64 = data.base64EncodedString()
-        let header = bits == 256
-            ? "EC PRIVATE KEY"
-            : "EC PRIVATE KEY"
+        let header = "EC PRIVATE KEY"
         return """
         -----BEGIN \(header)-----
         \(chunkBase64(base64))

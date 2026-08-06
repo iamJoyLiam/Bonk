@@ -86,7 +86,7 @@ struct TerminalTabView: View {
                 copySelection()
             }
             .onReceive(NotificationCenter.default.publisher(for: .showCopyMessage)) { _ in
-                withAnimation { copyMessage = "已复制" }
+                withAnimation { copyMessage = i18n.t(.copied) }
                 Task { @MainActor in
                     try? await Task.sleep(for: .seconds(2))
                     withAnimation { copyMessage = nil }
@@ -270,7 +270,7 @@ extension TerminalTabView {
         if let selectedText = cached.view.getSelection(), !selectedText.isEmpty {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(selectedText, forType: .string)
-            withAnimation { copyMessage = "已复制" }
+            withAnimation { copyMessage = i18n.t(.copied) }
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(2))
                 withAnimation { copyMessage = nil }

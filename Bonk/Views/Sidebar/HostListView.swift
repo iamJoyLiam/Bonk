@@ -68,7 +68,7 @@ struct HostListView: View {
                     Section {
                         ForEach(items) { host in
                             let tab = tabsByHostID[host.id]
-                            hostRow(host, groupColor: groupModel(for: groupName)?.resolvedColor)
+                            hostRow(host, groupColor: groupModel(for: groupName)?.resolvedColor, tab: tab)
                                 .tag(tab?.id as UUID?)
                         }
                         .onDelete { indexSet in
@@ -182,8 +182,7 @@ struct HostListView: View {
 
     @ViewBuilder
     // swiftlint:disable:next function_body_length
-    private func hostRow(_ host: HostItem, groupColor: Color? = nil) -> some View {
-        let tab = sessionManager.tabs.first(where: { $0.hostItem.id == host.id })
+    private func hostRow(_ host: HostItem, groupColor: Color? = nil, tab: TerminalTab?) -> some View {
         let state = tab?.session?.connectionState ?? .disconnected
 
         Button {

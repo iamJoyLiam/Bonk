@@ -250,10 +250,7 @@ enum SecureEnclaveKeyManager {
         ]
 
         let status = SecItemCopyMatching(query as CFDictionary, nil)
-        
-        // Log for debugging
-        print("[SecureEnclave] Checking keyExists for tag: \(keyTag), status: \(status)")
-        
+
         // errSecItemNotFound = -25300
         return status == errSecSuccess
     }

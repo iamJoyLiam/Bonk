@@ -15,7 +15,10 @@ final class JumpHost {
     var port: Int
     var username: String
     var authType: String
+    /// Deprecated — kept for migration, use `credentialRef`.
     var credentialID: UUID?
+    @Relationship(deleteRule: .nullify)
+    var credentialRef: Credential?
     var sortOrder: Int
     var createdAt: Date
 

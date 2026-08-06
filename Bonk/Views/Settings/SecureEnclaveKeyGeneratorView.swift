@@ -73,7 +73,7 @@ struct SecureEnclaveKeyGeneratorView: View {
     private var keyConfigSection: some View {
         Form {
             Section(i18n.t(.keyIdentifier)) {
-                TextField("e.g., my-server, production", text: $keyTag)
+                TextField(i18n.t(.exampleKeyTag), text: $keyTag)
                     .textFieldStyle(.roundedBorder)
 
                 Text(i18n.t(.keyIdentifierHint))
@@ -106,7 +106,7 @@ struct SecureEnclaveKeyGeneratorView: View {
                     }
                 }
             } header: {
-                Text("Security Features")
+                Text(i18n.t(.securityFeatures))
             }
         }
         .formStyle(.grouped)
@@ -138,7 +138,7 @@ struct SecureEnclaveKeyGeneratorView: View {
                             Text(keyTag)
                         }
                         LabeledContent("Security") {
-                            Text("Hardware-protected, non-exportable")
+                            Text(i18n.t(.hardwareNonExportable))
                                 .foregroundStyle(.green)
                         }
                     }

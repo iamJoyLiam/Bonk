@@ -211,13 +211,4 @@ final class QuakeController {
 
         logger.info("Configuration updated")
     }
-
-    // MARK: - Cleanup
-
-    func cleanup() {
-        hotkeyService.unregister()
-        focusManager.stopMonitoring()
-        windowController = nil
-        logger.info("QuakeController cleaned up")
-    }
 }

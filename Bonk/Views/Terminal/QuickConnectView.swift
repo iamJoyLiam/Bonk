@@ -92,7 +92,7 @@ struct QuickConnectView: View {
                                     Text("\(i18n.t(.connectTo)) \(searchText)")
                                         .foregroundStyle(.primary)
                                     Spacer()
-                                    Text("Enter")
+                                    Text(i18n.t(.enter))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }

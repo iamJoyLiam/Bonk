@@ -142,7 +142,7 @@ struct PaneTerminalView: View {
                         onReconnect: { Task { await sessionManager.reconnectTab(tab.id) } }
                     )
                     .overlay(alignment: .bottomTrailing) {
-                        Label("Linked", systemImage: "link")
+                        Label(i18n.t(.linked), systemImage: "link")
                             .font(.caption2)
                             .padding(4)
                             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 4))
@@ -193,7 +193,7 @@ struct PaneTerminalView: View {
                     .foregroundStyle(tab.isBroadcastEnabled ? .orange : .secondary)
             }
             .buttonStyle(.plain)
-            .help(tab.isBroadcastEnabled ? "Disable Broadcast" : "Enable Broadcast")
+            .help(tab.isBroadcastEnabled ? i18n.t(.disableBroadcast) : i18n.t(.enableBroadcast))
 
             // Unsplit button (only show when there are multiple panes)
             if tab.layout.root.paneCount > 1 {

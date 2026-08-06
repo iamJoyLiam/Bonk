@@ -69,32 +69,6 @@ extension TerminalTabView {
         )
     }
 
-    // MARK: - Capsule Background
-
-    private func capsuleBackground(tab: TerminalTab, isActive: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .fill(capsuleFill(tab: tab, isActive: isActive))
-    }
-
-    /// Capsule fill color: respects color label, neutral when none.
-    private func capsuleFill(tab: TerminalTab, isActive: Bool) -> Color {
-        if let labelColor = tab.resolvedColor {
-            return isActive ? labelColor.opacity(0.3) : labelColor.opacity(0.12)
-        }
-        // No color label: neutral — slightly elevated for active, transparent for inactive
-        return isActive ? Color.primary.opacity(0.1) : Color.clear
-    }
-
-    // MARK: - Underline Indicator
-
-    private func capsuleUnderline(tab: TerminalTab) -> some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .fill(tab.resolvedColor ?? Color.primary.opacity(0.5))
-            .frame(height: 2)
-            .padding(.horizontal, 8)
-            .offset(y: 1)
-    }
-
     // MARK: - Context Menu
 
     // MARK: - Context Menu
@@ -123,7 +97,7 @@ extension TerminalTabView {
                 }
             }
         } label: {
-            Label("Color", systemImage: "paintpalette")
+            Label(i18n.t(.color), systemImage: "paintpalette")
         }
 
         Divider()

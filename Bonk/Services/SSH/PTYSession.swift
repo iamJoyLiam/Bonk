@@ -58,10 +58,6 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// Prevents window-change packets from being silently dropped during connection setup.
     private let pendingSize = NIOLockedValueBox<(cols: Int, rows: Int)?>(nil)
 
-    /// Callback invoked when the SSH channel writer becomes ready.
-    /// Replaces the polling loop for faster PTY initialization.
-    var onWriterReady: (@Sendable () -> Void)?
-
     init() {
         var endCont: AsyncStream<Void>.Continuation!
         (sessionEndStream, endCont) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
@@ -177,7 +173,6 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         let endCont = sessionEndContinuation
         let endStream = sessionEndStream
         let writerBox = OSAllocatedUnfairLock<TTYStdinWriter?>(uncheckedState: nil)
-        let onReady = self.onWriterReady
 
         let ptyTask = Task.detached {
             let request = SSHChannelRequestEvent.PseudoTerminalRequest(
@@ -196,9 +191,6 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
                     // Propagate writer to instance property (sendInput/resize read from here)
                     self.writerBox.withLockedValue { $0 = outbound }
-
-                    // Writer is ready — notify via callback
-                    onReady?()
 
                     // Flush any pending resize that was queued before channel was ready
                     if let size = self.pendingSize.withLockedValue({ $0 }) {

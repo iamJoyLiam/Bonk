@@ -127,7 +127,7 @@ final class AIProviderStore {
 
     func fetchModels(for provider: AIProviderConfig) {
         guard let url = AIProviderNetworking.modelsURL(
-            endpoint: provider.endpoint, type: provider.type, apiKey: provider.apiKey
+            endpoint: provider.endpoint, type: provider.type
         ) else { return }
         Task {
             do {

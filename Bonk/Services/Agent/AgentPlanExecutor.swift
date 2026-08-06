@@ -17,7 +17,6 @@ extension AgentEngine {
 
         // Phase 1: Generate plan
         guard let plan = await generatePlan(
-            input: input, sshService: sshService,
             conversation: conversation, context: context
         ) else { return }
 
@@ -44,8 +43,6 @@ extension AgentEngine {
     // MARK: - Phase 1: Generate Plan
 
     private func generatePlan(
-        input _: String,
-        sshService _: SSHNetworkService,
         conversation: AIConversationRecord?,
         context: ModelContext?
     ) async -> AgentPlan? {

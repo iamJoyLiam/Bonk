@@ -121,7 +121,7 @@ final class HostItem {
     }
 
     /// Resolve the effective username.
-    func resolveUsername(modelContext _: ModelContext) -> String {
+    func resolveUsername() -> String {
         if let cred = credentialRef,
            let credUsername = cred.username, !credUsername.isEmpty
         {
@@ -131,7 +131,7 @@ final class HostItem {
     }
 
     /// Resolve the effective SSH auth method.
-    func resolveAuthMethod(modelContext _: ModelContext) -> SSHAuthMethod? {
+    func resolveAuthMethod() -> SSHAuthMethod? {
         // 1. Try vault credential
         if let cred = credentialRef,
            let secret = cred.loadSecret(), !secret.isEmpty

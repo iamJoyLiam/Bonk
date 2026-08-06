@@ -23,7 +23,7 @@ struct KeyboardSettingsView: View {
             Section(i18n.t(.shortcuts)) {
                 ForEach(ShortcutAction.allCases) { action in
                     KeyRecorderView(
-                        label: action.displayName,
+                        label: i18n.t(LKey(rawValue: action.displayName) ?? .actionNewTerminal),
                         shortcut: binding(for: action)
                     )
                 }
@@ -57,6 +57,7 @@ struct KeyboardSettingsView: View {
                 if let encoded = try? JSONEncoder().encode(allShortcuts) {
                     shortcutsData = encoded
                 }
+                ShortcutManager.shared.reload()
             }
         )
     }

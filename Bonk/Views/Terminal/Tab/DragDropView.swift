@@ -214,14 +214,6 @@ class DragDropNSView: NSView {
         }
     }
 
-    /// Check if pasteboard contains files
-    private func containsFiles(_ pasteboard: NSPasteboard) -> Bool {
-        if let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL], !urls.isEmpty {
-            return true
-        }
-        return false
-    }
-
     /// Check if pasteboard contains Tab UUID
     private func containsTabUUID(_ pasteboard: NSPasteboard) -> UUID? {
         guard let uuidString = pasteboard.string(forType: .string) else {

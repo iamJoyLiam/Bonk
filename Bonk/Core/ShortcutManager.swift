@@ -20,23 +20,19 @@ final class ShortcutManager: @unchecked Sendable {
 
     init() {
         loadShortcuts()
-        // Listen for shortcut changes from settings
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(shortcutsChanged),
-            name: UserDefaults.didChangeNotification,
-            object: nil
-        )
     }
 
-    @objc private func shortcutsChanged() {
+    /// Reload shortcuts from storage. Called by the settings UI after saving.
+    func reload() {
         loadShortcuts()
         NotificationCenter.default.post(name: Self.shortcutsDidChange, object: nil)
     }
 
+    private static let storageKey = "keyboard_shortcuts"
+
     /// Load shortcuts from @AppStorage.
     func loadShortcuts() {
-        let data = UserDefaults.standard.data(forKey: "keyboard_shortcuts")
+        let data = UserDefaults.standard.data(forKey: Self.storageKey)
         if let data,
            let decoded = try? JSONDecoder().decode([String: KeyboardShortcut].self, from: data)
         {

@@ -34,14 +34,11 @@ struct SSHConfigEntry: Identifiable, Sendable {
 
 enum SSHConfigError: Error, LocalizedError {
     case fileNotFound(String)
-    case invalidFormat(String)
 
     var errorDescription: String? {
         switch self {
         case let .fileNotFound(path):
             "SSH config file not found: \(path)"
-        case let .invalidFormat(detail):
-            "Invalid SSH config format: \(detail)"
         }
     }
 }

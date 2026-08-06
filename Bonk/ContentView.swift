@@ -111,14 +111,6 @@ struct ContentView: View {
                 toggleSFTPWindow()
             }
             // Sheets
-            .sheet(isPresented: $toolbarCoordinator.showQuickConnect) {
-                QuickConnectView(
-                    sessionManager: sessionManager,
-                    isPresented: $toolbarCoordinator.showQuickConnect,
-                    defaultPort: preferences.defaultPort
-                )
-                .environment(i18n)
-            }
             .sheet(isPresented: $toolbarCoordinator.showAddHostSheet) {
                 NavigationStack {
                     AddHostSheet(defaultPort: preferences.defaultPort) { host in
@@ -299,7 +291,6 @@ struct ContentView: View {
                     workspace.snippetsHistoryTab = .history
                     workspace.activeRightPanel = .snippetsHistory
                 }
-                .focusedSceneValue(\.menuQuickConnect) { toolbarCoordinator.showQuickConnect = true }
                 .focusedSceneValue(\.menuShowWorkspaces) { toolbarCoordinator.showWorkspaces = true }
         }
     }
@@ -313,8 +304,8 @@ struct ContentView: View {
             content
                 .focusedSceneValue(\.menuChangeTheme) { themeID in themeManager.setActive(themeID) }
                 .focusedSceneValue(\.menuFind) {
-                    appStore.dispatch(.toggleSearch)
-                    showTerminalSearch = appStore.uiState.showSearch
+                    appStore.toggleSearch()
+                    showTerminalSearch = appStore.showSearch
                 }
         }
     }

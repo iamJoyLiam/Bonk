@@ -40,3 +40,22 @@ func applyColorScheme(to view: SwiftTerm.TerminalView, scheme: TerminalColorSche
     view.nativeForegroundColor = scheme.foreground.nsColor
     view.installColors(scheme.swiftTermColors)
 }
+
+#if os(macOS)
+    import AppKit
+
+    /// Inset of the terminal view within its container.
+    let terminalViewInsets = NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
+
+    /// Create a monospaced font, falling back to the system font when the
+    /// requested family is unavailable.
+    func createSafeFont(family: String, size: CGFloat) -> NSFont {
+        guard !family.isEmpty, family != "SF Mono" else {
+            return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+        }
+        guard let targetFont = NSFont(name: family, size: size) else {
+            return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+        }
+        return targetFont
+    }
+#endif

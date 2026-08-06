@@ -45,16 +45,6 @@ final class AIConversationStore {
         save(context, operation: "delete")
     }
 
-    /// Delete all conversations.
-    func deleteAll(context: ModelContext) {
-        do {
-            try context.delete(model: AIConversationRecord.self)
-            try context.save()
-        } catch {
-            Self.logger.error("deleteAll failed: \(error)")
-        }
-    }
-
     // MARK: - Private
 
     private func save(_ context: ModelContext, operation: String) {

@@ -185,10 +185,10 @@ import SwiftUI
 
             NSLayoutConstraint.deactivate(cached.constraints)
             cached.constraints = [
-                cached.view.leadingAnchor.constraint(equalTo: nsView.leadingAnchor, constant: 8),
-                cached.view.trailingAnchor.constraint(equalTo: nsView.trailingAnchor, constant: -8),
-                cached.view.topAnchor.constraint(equalTo: nsView.topAnchor, constant: 4),
-                cached.view.bottomAnchor.constraint(equalTo: nsView.bottomAnchor, constant: -4),
+                cached.view.leadingAnchor.constraint(equalTo: nsView.leadingAnchor, constant: terminalViewInsets.left),
+                cached.view.trailingAnchor.constraint(equalTo: nsView.trailingAnchor, constant: -terminalViewInsets.right),
+                cached.view.topAnchor.constraint(equalTo: nsView.topAnchor, constant: terminalViewInsets.top),
+                cached.view.bottomAnchor.constraint(equalTo: nsView.bottomAnchor, constant: -terminalViewInsets.bottom),
             ]
             NSLayoutConstraint.activate(cached.constraints)
 
@@ -201,16 +201,6 @@ import SwiftUI
         }
 
         static func dismantleNSView(_: NSView, coordinator _: PaneCoordinator) {}
-
-        private func createSafeFont(family: String, size: CGFloat) -> NSFont {
-            guard !family.isEmpty, family != "SF Mono" else {
-                return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
-            }
-            guard let targetFont = NSFont(name: family, size: size) else {
-                return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
-            }
-            return targetFont
-        }
 
         private func createTerminalView(for paneID: UUID, context _: Context) -> CachedTerminalView {
             let font = createSafeFont(family: fontFamily, size: CGFloat(fontSize))
@@ -268,10 +258,10 @@ import SwiftUI
 
             NSLayoutConstraint.deactivate(cached.constraints)
             cached.constraints = [
-                cached.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
-                cached.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -8),
-                cached.view.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 4),
-                cached.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -4),
+                cached.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: terminalViewInsets.left),
+                cached.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -terminalViewInsets.right),
+                cached.view.topAnchor.constraint(equalTo: containerView.topAnchor, constant: terminalViewInsets.top),
+                cached.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -terminalViewInsets.bottom),
             ]
             NSLayoutConstraint.activate(cached.constraints)
             context.coordinator.lastPaneID = paneID

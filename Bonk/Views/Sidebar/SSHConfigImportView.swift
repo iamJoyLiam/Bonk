@@ -52,7 +52,7 @@ struct SSHConfigImportView: View {
             do {
                 entries = try SSHConfigParser.parse()
             } catch {
-                print("Failed to parse SSH config: \(error)")
+                Log.general.error("Failed to parse SSH config: \(error.localizedDescription)")
             }
             // Select all by default
             selectedIDs = Set(entries.map(\.id))

@@ -97,21 +97,6 @@ final class TerminalViewCache {
             source.resume()
             self.memoryPressureSource = source
         }
-        
-        /// Get diagnostic info about cache state
-        func getDiagnosticInfo() -> String {
-            let cacheInfo = cache.keys.map { $0.uuidString.prefix(8).description }.joined(separator: ", ")
-            let accessInfo = accessOrder.map { $0.uuidString.prefix(8).description }.joined(separator: ", ")
-            return "Cache: [\(cacheInfo)], AccessOrder: [\(accessInfo)]"
-        }
-        
-        /// Log recent eviction events (for debugging)
-        func logRecentEvictions() {
-            let recent = evictionLog.suffix(10)
-            for (date, reason, tabID) in recent {
-                Log.ui.info("[Cache-Evict] \(date) - \(reason) - tab: \(tabID.uuidString.prefix(8))")
-            }
-        }
     #endif
 
     /// Store a terminal view for a tab.

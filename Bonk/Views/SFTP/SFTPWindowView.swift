@@ -140,6 +140,7 @@ struct SFTPWindowView: View {
             // File list — uses LocalFileRow matching SFTPFileRow
             List(localFiles) { file in
                 LocalFileRow(file: file)
+                    .environment(i18n)
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) {
                         if file.isDirectory {
@@ -297,13 +298,6 @@ struct SFTPWindowView: View {
         } catch {
             sftp.errorMessage = error.localizedDescription
         }
-    }
-
-    private func formatSize(_ bytes: UInt64) -> String {
-        if bytes < 1024 { return "\(bytes) B" }
-        if bytes < 1024 * 1024 { return String(format: "%.1f KB", Double(bytes) / 1024) }
-        if bytes < 1024 * 1024 * 1024 { return String(format: "%.1f MB", Double(bytes) / 1024 / 1024) }
-        return String(format: "%.1f GB", Double(bytes) / 1024 / 1024 / 1024)
     }
 
     private func ensureSFTP(for tab: TerminalTab) async -> SFTPService? {

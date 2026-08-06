@@ -17,7 +17,7 @@ extension PaneTerminalView {
         Button {
             NotificationCenter.default.post(name: .requestTerminalSelection, object: nil)
         } label: {
-            Label("Copy", systemImage: "doc.on.doc")
+            Label(i18n.t(.copy), systemImage: "doc.on.doc")
         }
 
         Button {
@@ -25,7 +25,7 @@ extension PaneTerminalView {
                 sendInput(ArraySlice(text.utf8))
             }
         } label: {
-            Label("Paste", systemImage: "doc.on.clipboard")
+            Label(i18n.t(.paste), systemImage: "doc.on.clipboard")
         }
 
         Button {
@@ -33,7 +33,7 @@ extension PaneTerminalView {
                 cached.view.selectAll()
             }
         } label: {
-            Label("Select All", systemImage: "selection.pin.in.out")
+            Label(i18n.t(.selectAll), systemImage: "selection.pin.in.out")
         }
 
         Divider()
@@ -51,7 +51,7 @@ extension PaneTerminalView {
             Button {
                 sessionManager.toggleTabBroadcast(tab.id)
             } label: {
-                let title = tab.isBroadcastEnabled ? "Disable Broadcast" : "Enable Broadcast"
+                let title = tab.isBroadcastEnabled ? i18n.t(.disableBroadcast) : i18n.t(.enableBroadcast)
                 let icon = tab.isBroadcastEnabled
                     ? "antenna.radiowaves.left.and.right.slash"
                     : "antenna.radiowaves.left.and.right"
@@ -66,15 +66,15 @@ extension PaneTerminalView {
             Button {
                 showFilePickerForZmodem()
             } label: {
-                Label("Send File", systemImage: "arrow.up.circle")
+                Label(i18n.t(.sendFile), systemImage: "arrow.up.circle")
             }
             Button {
                 sessionManager.startZmodemReceive(tabID: tab.id, paneID: paneState.id)
             } label: {
-                Label("Receive File", systemImage: "arrow.down.circle")
+                Label(i18n.t(.receiveFile), systemImage: "arrow.down.circle")
             }
         } label: {
-            Label("File Transfer (Zmodem)", systemImage: "arrow.up.arrow.down.circle")
+            Label(i18n.t(.fileTransfer), systemImage: "arrow.up.arrow.down.circle")
         }
 
         Divider()
@@ -83,7 +83,7 @@ extension PaneTerminalView {
         Button {
             NotificationCenter.default.post(name: .toggleAIChat, object: nil)
         } label: {
-            Label("AI Assistant", systemImage: "sparkles")
+            Label(i18n.t(.aiAssistant), systemImage: "sparkles")
         }
 
         Divider()
@@ -119,7 +119,7 @@ extension PaneTerminalView {
                 VStack(spacing: 8) {
                     Image(systemName: "plus.rectangle.on.rectangle")
                         .font(.system(size: 24))
-                    Text("Drop to split")
+                    Text(i18n.t(.dropToSplit))
                         .font(.caption)
                 }
                 .foregroundStyle(Color.accentColor)
