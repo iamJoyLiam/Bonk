@@ -140,35 +140,72 @@ final class SFTPService {
     }
 
     /// Download file chunks with progress updates.
+    /// Reads are pipelined (multiple in flight) so throughput isn't limited to one
+    /// round trip per chunk, then reassembled in order locally.
     private func downloadChunks(
         file: SFTPFile, entry: SFTPFileEntry, localURL: URL,
         transferID: UUID
     ) async throws {
-        let chunkSize: UInt32 = 32768
-        var offset: UInt64 = 0
+        // 32_000 fits within the SSH channel's max packet size (Citadel uses the
+        // same limit internally for writes).
+        let chunkSize: UInt32 = 32_000
+        // In-flight read window: 16 × 32KB = 512KB, enough to keep a high-latency
+        // link saturated without buffering the whole file in memory.
+        let pipelineDepth = 16
+        var nextReadOffset: UInt64 = 0
+        var nextWriteOffset: UInt64 = 0
+        var pending: [UInt64: Data] = [:]
+        var readDone = false
+        var inFlight = 0
+        var updateCounter = 0
+
         FileManager.default.createFile(atPath: localURL.path, contents: nil)
         let handle = try FileHandle(forWritingTo: localURL)
         defer { try? handle.close() }
 
-        var updateCounter = 0
         // Don't rely on entry.size for loop control - it may be inaccurate
         // for some file types or SFTP servers. Read until EOF.
-        while true {
-            let data = try await file.read(from: offset, length: chunkSize)
-            guard data.readableBytes > 0 else { break }
-            let bytes = Data(buffer: data)
-            try handle.write(contentsOf: bytes)
-            offset += UInt64(bytes.count)
-            updateCounter += 1
-            if updateCounter % 10 == 0 {
-                if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                    transfers[idx].transferredBytes = offset
+        try await withThrowingTaskGroup(of: (UInt64, Data).self) { group in
+            while !readDone || inFlight > 0 {
+                // Top up the read pipeline
+                while !readDone && inFlight < pipelineDepth {
+                    let readOffset = nextReadOffset
+                    nextReadOffset += UInt64(chunkSize)
+                    inFlight += 1
+                    group.addTask {
+                        let data = try await file.read(from: readOffset, length: chunkSize)
+                        return (readOffset, Data(buffer: data))
+                    }
+                }
+
+                guard let (readOffset, data) = try await group.next() else { break }
+                inFlight -= 1
+                if data.isEmpty || data.count < chunkSize {
+                    // SFTP servers return a short or empty read only at EOF.
+                    readDone = true
+                }
+                if !data.isEmpty {
+                    pending[readOffset] = data
+                }
+
+                // Write completed chunks back in order
+                while let bytes = pending.removeValue(forKey: nextWriteOffset) {
+                    try handle.write(contentsOf: bytes)
+                    nextWriteOffset += UInt64(bytes.count)
+                    updateCounter += 1
+                    if updateCounter % 10 == 0 {
+                        if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                            transfers[idx].transferredBytes = nextWriteOffset
+                        }
+                    }
                 }
             }
+            try await group.waitForAll()
         }
+
         // Final progress update
         if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-            transfers[idx].transferredBytes = offset
+            transfers[idx].transferredBytes = nextWriteOffset
         }
     }
 
@@ -274,7 +311,10 @@ final class SFTPService {
         try? await listDirectory()
     }
 
-    /// Write file chunks with throttled progress updates.
+    /// Write file chunks with pipelined concurrent writes.
+    /// SFTP is request/response: a write waits for the server's status reply, so
+    /// sequential writes cost one round trip per 32KB chunk. Keeping multiple
+    /// writes in flight raises throughput to window/RTT instead of 32KB/RTT.
     private func writeChunks(
         handle: FileHandle,
         file: SFTPFile,
@@ -282,33 +322,54 @@ final class SFTPService {
         transferID: UUID,
         continuation: AsyncThrowingStream<Double, Error>.Continuation
     ) async throws {
+        // 32_000 matches Citadel's internal SFTP write slice (SFTPFile.write).
+        // Larger buffers are split into sequential 32KB requests anyway.
+        let chunkSize = 32_000
+        // In-flight write window: 16 × 32KB = 512KB.
+        let pipelineDepth = 16
         var offset: UInt64 = 0
-        let chunkSize = 32768
+        var completedBytes: UInt64 = 0
+        var pending = 0
         var updateCounter = 0
         var lastReportedProgress: Double = -1
 
-        while true {
-            let isCancelled = transfers.first(where: { $0.id == transferID })?.isCancelled ?? false
-            if isCancelled { throw SFTPServiceError.transferCancelled }
+        try await withThrowingTaskGroup(of: Int.self) { group in
+            while true {
+                let isCancelled = transfers.first(where: { $0.id == transferID })?.isCancelled ?? false
+                if isCancelled { throw SFTPServiceError.transferCancelled }
 
-            guard let chunkData = try handle.read(upToCount: chunkSize), !chunkData.isEmpty else { break }
-            var buffer = ByteBuffer(data: chunkData)
-            try await file.write(buffer, at: offset)
-            offset += UInt64(chunkData.count)
-            updateCounter += 1
-
-            if updateCounter % 10 == 0 || offset == totalBytes {
-                let progress = totalBytes > 0 ? Double(offset) / Double(totalBytes) : 1.0
-
-                if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                    transfers[idx].transferredBytes = offset
+                // Top up the write pipeline
+                while pending < pipelineDepth {
+                    guard let chunkData = try handle.read(upToCount: chunkSize), !chunkData.isEmpty else { break }
+                    let chunkOffset = offset
+                    offset += UInt64(chunkData.count)
+                    pending += 1
+                    var buffer = ByteBuffer(data: chunkData)
+                    group.addTask {
+                        try await file.write(buffer, at: chunkOffset)
+                        return chunkData.count
+                    }
                 }
 
-                if progress - lastReportedProgress >= 0.01 || offset == totalBytes {
-                    lastReportedProgress = progress
-                    continuation.yield(progress)
+                if pending == 0 { break }
+                // Wait for the oldest write to complete
+                guard let written = try await group.next() else { break }
+                pending -= 1
+                completedBytes += UInt64(written)
+                updateCounter += 1
+
+                if updateCounter % 10 == 0 || completedBytes == totalBytes {
+                    if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                        transfers[idx].transferredBytes = completedBytes
+                    }
+                    let progress = totalBytes > 0 ? Double(completedBytes) / Double(totalBytes) : 1.0
+                    if progress - lastReportedProgress >= 0.01 || completedBytes == totalBytes {
+                        lastReportedProgress = progress
+                        continuation.yield(progress)
+                    }
                 }
             }
+            try await group.waitForAll()
         }
     }
 
