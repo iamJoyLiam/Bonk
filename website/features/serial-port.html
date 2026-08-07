@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#F5F5F7" />
+  <meta name="color-scheme" content="light" />
+  <title>串口连接 — Bonk，macOS 原生 SSH 终端直连串口设备调试</title>
+  <meta name="description" content="Bonk 支持直连 /dev/tty.* 串口设备，调试路由器、交换机、嵌入式硬件。macOS 原生终端应用，SSH + 串口一屏搞定。" />
+  <link rel="canonical" href="https://bonk-terminal.pages.dev/features/serial-port.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="串口连接 — Bonk 直连串口设备" />
+  <meta property="og:description" content="直连 /dev/tty.* 串口，调试路由器、嵌入式硬件。" />
+  <meta property="og:image" content="../assets/img/icon-1024.png" />
+  <link rel="icon" href="../assets/img/icon-64.png" type="image/png" />
+  <link rel="stylesheet" href="../assets/css/tokens.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/base.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/components.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/responsive.css?v=2026.1.2" />
+  <script>
+    window.BonkPageI18n = {
+      zh: {
+        "feat.serial.eyebrow": "功能 · 串口",
+        "feat.serial.h1": "串口连接",
+        "feat.serial.desc": "直连 /dev/tty.* 串口设备，调试路由器、交换机、嵌入式硬件。SSH 与串口同一个应用，少装一个工具。",
+        "feat.serial.cta.dl": "下载 Bonk",
+        "feat.serial.cta.home": "返回首页",
+        "feat.serial.s1.eyebrow": "能力",
+        "feat.serial.s1.title": "硬件调试不用换工具",
+        "feat.serial.s1.l1s": "设备直连",
+        "feat.serial.s1.l1": "选择 /dev/tty.* 端口即连，支持常见波特率。",
+        "feat.serial.s1.l2s": "终端体验一致",
+        "feat.serial.s1.l2": "同样的标签、主题、滚动与快捷键。",
+        "feat.serial.s1.l3s": "与 SSH 并存",
+        "feat.serial.s1.l3": "串口标签和 SSH 标签混排，日志对照方便。",
+        "feat.serial.s2.eyebrow": "相关功能",
+        "feat.serial.s2.title": "继续了解",
+        "feat.serial.s2.r1": "SSH 终端",
+        "feat.serial.s2.r2": "SFTP",
+        "feat.serial.s2.r3": "端口转发",
+      },
+      en: {
+        "feat.serial.eyebrow": "Feature · Serial Port",
+        "feat.serial.h1": "Serial Connection",
+        "feat.serial.desc": "Connect directly to /dev/tty.* devices — debug routers, switches and embedded hardware. SSH and serial in one app, one less tool to install.",
+        "feat.serial.cta.dl": "Download Bonk",
+        "feat.serial.cta.home": "Back to Home",
+        "feat.serial.s1.eyebrow": "Capabilities",
+        "feat.serial.s1.title": "Hardware debugging without switching tools",
+        "feat.serial.s1.l1s": "Direct device connection",
+        "feat.serial.s1.l1": "Pick a /dev/tty.* port and connect; common baud rates supported.",
+        "feat.serial.s1.l2s": "Same terminal experience",
+        "feat.serial.s1.l2": "Same tabs, themes, scrolling and shortcuts.",
+        "feat.serial.s1.l3s": "Sits alongside SSH",
+        "feat.serial.s1.l3": "Mix serial and SSH tabs — easy to cross-check logs.",
+        "feat.serial.s2.eyebrow": "Related",
+        "feat.serial.s2.title": "Keep exploring",
+        "feat.serial.s2.r1": "SSH Terminal",
+        "feat.serial.s2.r2": "SFTP",
+        "feat.serial.s2.r3": "Port Forwarding",
+      },
+    };
+  </script>
+</head>
+<body>
+  <header class="nav" id="nav">
+    <div class="container nav__inner">
+      <a href="../index.html" class="nav__brand" aria-label="Bonk">
+        <img class="nav__logo" src="../assets/img/icon-256.png" alt="Bonk" width="28" height="28" />
+        <span>Bonk</span>
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="../index.html#features" class="nav__link" data-i18n="nav.features">功能</a>
+        <a href="../compare/termius-alternative.html" class="nav__link" data-i18n="nav.compare">对比</a>
+        <a href="../docs/getting-started.html" class="nav__link" data-i18n="nav.docs">文档</a>
+        <a href="../index.html#download" class="nav__link" data-i18n="nav.download">下载</a>
+      </nav>
+      <div class="nav__actions">
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button type="button" data-lang="zh" aria-pressed="true">中</button>
+          <button type="button" data-lang="en" aria-pressed="false">EN</button>
+        </div>
+        <a href="https://github.com/iamJoyLiam/Bonk" class="gh-badge" target="_blank" rel="noopener" aria-label="GitHub">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span class="gh-badge__label" data-i18n="nav.github">GitHub</span>
+        </a>
+        <button class="nav__toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="container hero__inner">
+        <p class="hero__mono" data-i18n="feat.serial.eyebrow">功能 · 串口</p>
+        <h1 class="hero__title" data-i18n="feat.serial.h1">串口连接</h1>
+        <p class="hero__desc" data-i18n="feat.serial.desc">直连 /dev/tty.* 串口设备，调试路由器、交换机、嵌入式硬件。</p>
+        <div class="hero__cta">
+          <a href="../index.html#download" class="btn btn-primary btn-lg" data-i18n="feat.serial.cta.dl">下载 Bonk</a>
+          <a href="../index.html" class="btn btn-ghost btn-lg" data-i18n="feat.serial.cta.home">返回首页</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="feat.serial.s1.eyebrow">能力</span>
+          <h2 class="section__title" data-i18n="feat.serial.s1.title">硬件调试不用换工具</h2>
+        </div>
+        <ul>
+          <li><strong data-i18n="feat.serial.s1.l1s">设备直连</strong><span data-i18n="feat.serial.s1.l1">：选择 /dev/tty.* 端口即连，支持常见波特率。</span></li>
+          <li><strong data-i18n="feat.serial.s1.l2s">终端体验一致</strong><span data-i18n="feat.serial.s1.l2">：同样的标签、主题、滚动与快捷键。</span></li>
+          <li><strong data-i18n="feat.serial.s1.l3s">与 SSH 并存</strong><span data-i18n="feat.serial.s1.l3">：串口标签和 SSH 标签混排，日志对照方便。</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="feat.serial.s2.eyebrow">相关功能</span>
+          <h2 class="section__title" data-i18n="feat.serial.s2.title">继续了解</h2>
+        </div>
+        <div class="hero__cta">
+          <a href="../features/ssh-terminal.html" class="btn btn-ghost" data-i18n="feat.serial.s2.r1">SSH 终端</a>
+          <a href="../features/sftp.html" class="btn btn-ghost" data-i18n="feat.serial.s2.r2">SFTP</a>
+          <a href="../features/port-forwarding.html" class="btn btn-ghost" data-i18n="feat.serial.s2.r3">端口转发</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <img class="footer__logo" src="../assets/img/icon-256.png" alt="Bonk" width="26" height="26" />
+        <span>Bonk</span>
+      </div>
+      <nav class="footer__links" aria-label="Footer">
+        <a href="https://github.com/iamJoyLiam/Bonk" target="_blank" rel="noopener" data-i18n="nav.source">源码</a>
+        <a href="https://github.com/iamJoyLiam/Bonk/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="../index.html#features" data-i18n="nav.features">功能</a>
+        <a href="../compare/termius-alternative.html" data-i18n="nav.compare">对比</a>
+        <a href="../docs/getting-started.html" data-i18n="nav.docs">文档</a>
+        <a href="../index.html#download" data-i18n="nav.download">下载</a>
+      </nav>
+      <div class="footer__copy"><span data-i18n="footer.copy">© 2026 Bonk. 保留所有权利。</span></div>
+    </div>
+  </footer>
+  <script src="../assets/js/i18n.js?v=2026.1.2" defer></script>
+  <script src="../assets/js/main.js?v=2026.1.2" defer></script>
+</body>
+</html>

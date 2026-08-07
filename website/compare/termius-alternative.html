@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#F5F5F7" />
+  <meta name="color-scheme" content="light" />
+  <title>Termius Alternative — Bonk, Free Native SSH Client for macOS</title>
+  <meta name="description" content="Compare Termius vs Bonk: pricing, SFTP, port forwarding, jump hosts, Keychain security. Bonk is a free open-source native macOS SSH client — no subscription, no account." />
+  <link rel="canonical" href="https://bonk-terminal.pages.dev/compare/termius-alternative.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Termius Alternative — Bonk, Free Native SSH Client for macOS" />
+  <meta property="og:description" content="Free open-source native macOS SSH client. No subscription, no account, no cloud lock-in." />
+  <meta property="og:image" content="../assets/img/icon-1024.png" />
+  <link rel="icon" href="../assets/img/icon-64.png" type="image/png" />
+  <link rel="stylesheet" href="../assets/css/tokens.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/base.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/components.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/responsive.css?v=2026.1.2" />
+  <script>
+    window.BonkPageI18n = {
+      zh: {
+        "cmp.eyebrow": "对比 · Bonk vs Termius",
+        "cmp.h1": "Termius 替代品",
+        "cmp.desc": "Termius 是不错的跨平台 SSH 客户端，但大多数人常用的功能都在订阅后面。Bonk 是免费开源的 macOS 原生 SSH 客户端，日常功能全有——无账号、无云、无月费。",
+        "cmp.cta.dl": "下载 Bonk — 免费",
+        "cmp.cta.home": "返回首页",
+        "cmp.s1.eyebrow": "正面对比",
+        "cmp.s1.title": "Termius 对比 Bonk",
+        "cmp.t.platformL": "平台",
+        "cmp.t.platformB": "macOS 15+（arm64 / x86_64）",
+        "cmp.t.platformX": "macOS · Windows · Linux · iOS · Android",
+        "cmp.t.priceL": "价格",
+        "cmp.t.priceB": "永久免费",
+        "cmp.t.priceX": "免费版；完整功能需 Pro 订阅",
+        "cmp.t.ossL": "开源",
+        "cmp.t.ossB": "是（MIT）",
+        "cmp.t.ossX": "否",
+        "cmp.t.accountL": "需要账号",
+        "cmp.t.accountB": "不需要",
+        "cmp.t.accountX": "需要（云同步）",
+        "cmp.t.sshL": "内置 SSH 客户端（主机 + 凭据）",
+        "cmp.t.sshB": "有",
+        "cmp.t.sshX": "有",
+        "cmp.t.sftpL": "可视化 SFTP 浏览器",
+        "cmp.t.sftpB": "有",
+        "cmp.t.sftpX": "有",
+        "cmp.t.pfL": "端口转发（本地 / 远程 / SOCKS5）",
+        "cmp.t.pfB": "有",
+        "cmp.t.pfX": "有（Pro 版）",
+        "cmp.t.jumpL": "跳板机",
+        "cmp.t.jumpB": "有，多级",
+        "cmp.t.jumpX": "有",
+        "cmp.t.splitL": "分屏",
+        "cmp.t.splitB": "有",
+        "cmp.t.splitX": "有",
+        "cmp.t.bcastL": "广播输入",
+        "cmp.t.bcastB": "有",
+        "cmp.t.bcastX": "有",
+        "cmp.t.serialL": "串口",
+        "cmp.t.serialB": "有",
+        "cmp.t.serialX": "—",
+        "cmp.t.quakeL": "Quake 下拉终端",
+        "cmp.t.quakeB": "有（⌘`）",
+        "cmp.t.quakeX": "无",
+        "cmp.t.wsL": "工作区（布局保存/恢复）",
+        "cmp.t.wsB": "有",
+        "cmp.t.wsX": "无",
+        "cmp.t.mobileL": "移动端",
+        "cmp.t.mobileB": "无（仅 macOS）",
+        "cmp.t.mobileX": "有",
+        "cmp.t.credsL": "凭据存储",
+        "cmp.t.credsB": "macOS Keychain + Secure Enclave",
+        "cmp.t.credsX": "Termius 云保险库",
+        "cmp.t.syncL": "同步",
+        "cmp.t.syncB": "本地 / iCloud 友好",
+        "cmp.t.syncX": "云",
+        "cmp.s2.eyebrow": "定价",
+        "cmp.s2.title": "订阅到底买了什么",
+        "cmp.s2.desc": "Termius Pro 加的是跨设备同步、SSH agent 转发、SFTP 等高级功能。单 Mac 上的个人开发者/运维，日常的 SSH、SFTP、端口转发、跳板机——Bonk 全免费。",
+        "cmp.s2.cta": "下载 Bonk — $0",
+        "cmp.s3.eyebrow": "为什么换",
+        "cmp.s3.title": "从 Termius 迁到 Bonk 的人",
+        "cmp.s3.l1s": "停止为 SSH 付费。",
+        "cmp.s3.l1": "核心流程——连接、SFTP、端口转发、跳板机——Bonk 全免费。",
+        "cmp.s3.l2s": "凭据留在本地。",
+        "cmp.s3.l2": "密钥和密码放 macOS Keychain，不落在第三方云保险库。",
+        "cmp.s3.l3s": "原生体验。",
+        "cmp.s3.l3": "SwiftUI + SwiftTerm，Apple Silicon / Intel 原生，没有 Electron 包袱。",
+        "cmp.s3.l4s": "SSH config 直接导入。",
+        "cmp.s3.l4": "读 ~/.ssh/config，迁移按分钟计。",
+        "cmp.s3.l5s": "Quake 工作流。",
+        "cmp.s3.l5": "全局 ⌘` 下拉终端，Termius 桌面端没有。",
+        "cmp.s4.eyebrow": "迁移",
+        "cmp.s4.title": "5 分钟从 Termius 迁过来",
+        "cmp.s4.l1": "下载 Bonk，拖进 Applications。",
+        "cmp.s4.l2": "导入现有配置：文件 → 导入 SSH Config。",
+        "cmp.s4.l3": "添加私钥，存进 macOS Keychain。",
+        "cmp.s4.l4": "连第一台主机，工具栏开 SFTP / 端口转发。",
+        "cmp.s4.l5": "存成工作区，明天一键回到现场。",
+        "cmp.s5.eyebrow": "FAQ",
+        "cmp.s5.title": "常见问题",
+        "cmp.s5.l1s": "Bonk 真免费吗？",
+        "cmp.s5.l1": "是。免费、开源、MIT，核心功能无付费墙。",
+        "cmp.s5.l2s": "Bonk 有 SFTP 吗？",
+        "cmp.s5.l2": "有——内置可视化拖拽 SFTP 浏览器。",
+        "cmp.s5.l3s": "能导入 Termius 主机吗？",
+        "cmp.s5.l3": "Termius 无导出格式，不能直接导；~/.ssh/config 导入覆盖大多数场景。",
+        "cmp.s5.l4s": "Bonk 支持 iPhone / Android 吗？",
+        "cmp.s5.l4": "不支持，仅 macOS。移动端是硬需求就留在 Termius。",
+        "cmp.s5.l5s": "数据上云吗？",
+        "cmp.s5.l5": "不上。凭据在 macOS Keychain，同步本地/iCloud 友好。",
+        "cmp.r1": "Tabby 替代品",
+        "cmp.r2": "Warp 替代品",
+        "cmp.r3": "iTerm2 替代品",
+        "cmp.r4": "快速上手",
+      },
+      en: {
+        "cmp.eyebrow": "Comparison · Bonk vs Termius",
+        "cmp.h1": "Termius Alternative",
+        "cmp.desc": "Termius is a solid cross-platform SSH client, but the features most people use live behind a subscription. Bonk is a free, open-source, native macOS SSH client with the same daily-driver features — no account, no cloud, no monthly fee.",
+        "cmp.cta.dl": "Download Bonk — Free",
+        "cmp.cta.home": "Back to Home",
+        "cmp.s1.eyebrow": "Head to head",
+        "cmp.s1.title": "Termius vs Bonk",
+        "cmp.t.platformL": "Platform",
+        "cmp.t.platformB": "macOS 15+ (arm64 / x86_64)",
+        "cmp.t.platformX": "macOS · Windows · Linux · iOS · Android",
+        "cmp.t.priceL": "Price",
+        "cmp.t.priceB": "Free, forever",
+        "cmp.t.priceX": "Free tier; Pro subscription for full features",
+        "cmp.t.ossL": "Open source",
+        "cmp.t.ossB": "Yes (MIT)",
+        "cmp.t.ossX": "No",
+        "cmp.t.accountL": "Account required",
+        "cmp.t.accountB": "No",
+        "cmp.t.accountX": "Yes (cloud sync)",
+        "cmp.t.sshL": "Built-in SSH client (hosts + credentials)",
+        "cmp.t.sshB": "Yes",
+        "cmp.t.sshX": "Yes",
+        "cmp.t.sftpL": "Visual SFTP browser",
+        "cmp.t.sftpB": "Yes",
+        "cmp.t.sftpX": "Yes",
+        "cmp.t.pfL": "Port forwarding (local / remote / SOCKS5)",
+        "cmp.t.pfB": "Yes",
+        "cmp.t.pfX": "Yes (Pro tier)",
+        "cmp.t.jumpL": "Jump hosts",
+        "cmp.t.jumpB": "Yes, multi-hop",
+        "cmp.t.jumpX": "Yes",
+        "cmp.t.splitL": "Split panes",
+        "cmp.t.splitB": "Yes",
+        "cmp.t.splitX": "Yes",
+        "cmp.t.bcastL": "Broadcast input",
+        "cmp.t.bcastB": "Yes",
+        "cmp.t.bcastX": "Yes",
+        "cmp.t.serialL": "Serial port",
+        "cmp.t.serialB": "Yes",
+        "cmp.t.serialX": "—",
+        "cmp.t.quakeL": "Quake dropdown terminal",
+        "cmp.t.quakeB": "Yes (⌘`)",
+        "cmp.t.quakeX": "No",
+        "cmp.t.wsL": "Workspaces (layout save/restore)",
+        "cmp.t.wsB": "Yes",
+        "cmp.t.wsX": "No",
+        "cmp.t.mobileL": "Mobile apps",
+        "cmp.t.mobileB": "No (macOS only)",
+        "cmp.t.mobileX": "Yes",
+        "cmp.t.credsL": "Credentials storage",
+        "cmp.t.credsB": "macOS Keychain + Secure Enclave",
+        "cmp.t.credsX": "Termius cloud vault",
+        "cmp.t.syncL": "Sync",
+        "cmp.t.syncB": "Local / iCloud-friendly",
+        "cmp.t.syncX": "Cloud",
+        "cmp.s2.eyebrow": "Pricing",
+        "cmp.s2.title": "What subscription actually buys you",
+        "cmp.s2.desc": "Termius Pro adds cross-device sync, SSH agent forwarding, SFTP and other power features. For a solo developer or ops engineer on one Mac, those daily features — SSH, SFTP, port forwarding, jump hosts — are built into Bonk for free.",
+        "cmp.s2.cta": "Download Bonk — $0",
+        "cmp.s3.eyebrow": "Why switch",
+        "cmp.s3.title": "When people move from Termius to Bonk",
+        "cmp.s3.l1s": "Stop paying for SSH.",
+        "cmp.s3.l1": "Core workflow — connect, browse SFTP, forward ports, jump hosts — is fully free in Bonk.",
+        "cmp.s3.l2s": "Keep credentials local.",
+        "cmp.s3.l2": "Keys and passwords stay in macOS Keychain; nothing sits on a third-party cloud vault.",
+        "cmp.s3.l3s": "Native feel.",
+        "cmp.s3.l3": "SwiftUI + SwiftTerm on Apple Silicon and Intel, no Electron weight.",
+        "cmp.s3.l4s": "SSH config already exists.",
+        "cmp.s3.l4": "Bonk imports ~/.ssh/config directly, so migration is minutes.",
+        "cmp.s3.l5s": "Quake workflow.",
+        "cmp.s3.l5": "Global ⌘` dropdown terminal — Termius desktop doesn't have it.",
+        "cmp.s4.eyebrow": "Migration",
+        "cmp.s4.title": "Move from Termius in 5 minutes",
+        "cmp.s4.l1": "Download Bonk and drag it into Applications.",
+        "cmp.s4.l2": "Import your existing config: File → Import SSH Config.",
+        "cmp.s4.l3": "Add your private key in Bonk; it is stored in the macOS Keychain.",
+        "cmp.s4.l4": "Connect to your first host; open SFTP / port forwarding from the toolbar.",
+        "cmp.s4.l5": "Save your layout as a Workspace for one-click restarts.",
+        "cmp.s5.eyebrow": "FAQ",
+        "cmp.s5.title": "Common questions",
+        "cmp.s5.l1s": "Is Bonk really free?",
+        "cmp.s5.l1": "Yes. Free, open source, MIT license. No paid tiers for core features.",
+        "cmp.s5.l2s": "Does Bonk have SFTP?",
+        "cmp.s5.l2": "Yes — a visual drag-and-drop SFTP browser built in.",
+        "cmp.s5.l3s": "Can I import my Termius hosts?",
+        "cmp.s5.l3": "Not directly (Termius has no export format), but ~/.ssh/config import covers most setups.",
+        "cmp.s5.l4s": "Does Bonk work on iPhone/Android?",
+        "cmp.s5.l4": "No. Bonk is macOS only. Keep Termius if mobile access is a hard requirement.",
+        "cmp.s5.l5s": "Is my data stored in a cloud?",
+        "cmp.s5.l5": "No. Credentials live in your macOS Keychain; sync is local and iCloud-friendly.",
+        "cmp.r1": "Tabby Alternative",
+        "cmp.r2": "Warp Alternative",
+        "cmp.r3": "iTerm2 Alternative",
+        "cmp.r4": "Getting Started",
+      },
+    };
+  </script>
+</head>
+<body>
+  <header class="nav" id="nav">
+    <div class="container nav__inner">
+      <a href="../index.html" class="nav__brand" aria-label="Bonk">
+        <img class="nav__logo" src="../assets/img/icon-256.png" alt="Bonk" width="28" height="28" />
+        <span>Bonk</span>
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="../index.html#features" class="nav__link" data-i18n="nav.features">Features</a>
+        <a href="termius-alternative.html" class="nav__link" data-i18n="nav.compare">Compare</a>
+        <a href="../docs/getting-started.html" class="nav__link" data-i18n="nav.docs">Docs</a>
+        <a href="../index.html#download" class="nav__link" data-i18n="nav.download">Download</a>
+      </nav>
+      <div class="nav__actions">
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button type="button" data-lang="zh" aria-pressed="true">中</button>
+          <button type="button" data-lang="en" aria-pressed="false">EN</button>
+        </div>
+        <a href="https://github.com/iamJoyLiam/Bonk" class="gh-badge" target="_blank" rel="noopener" aria-label="GitHub">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span class="gh-badge__label" data-i18n="nav.github">GitHub</span>
+        </a>
+        <button class="nav__toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="container hero__inner">
+        <p class="hero__mono" data-i18n="cmp.eyebrow">Comparison · Bonk vs Termius</p>
+        <h1 class="hero__title" data-i18n="cmp.h1">Termius Alternative</h1>
+        <p class="hero__desc" data-i18n="cmp.desc">Termius is a solid cross-platform SSH client, but the features most people use live behind a subscription.</p>
+        <div class="hero__cta">
+          <a href="../index.html#download" class="btn btn-primary btn-lg" data-i18n="cmp.cta.dl">Download Bonk — Free</a>
+          <a href="../index.html" class="btn btn-ghost btn-lg" data-i18n="cmp.cta.home">Back to Home</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="cmp.s1.eyebrow">Head to head</span>
+          <h2 class="section__title" data-i18n="cmp.s1.title">Termius vs Bonk</h2>
+        </div>
+        <table class="cmp-table">
+          <thead>
+            <tr>
+              <th data-i18n="cmp.t.platformL">Feature</th>
+              <th class="cmp-bonk">Bonk</th>
+              <th>Termius</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td data-i18n="cmp.t.platformL">Platform</td><td class="cmp-bonk" data-i18n="cmp.t.platformB">macOS 15+ (arm64 / x86_64)</td><td data-i18n="cmp.t.platformX">macOS · Windows · Linux · iOS · Android</td></tr>
+            <tr><td data-i18n="cmp.t.priceL">Price</td><td class="cmp-bonk" data-i18n="cmp.t.priceB">Free, forever</td><td data-i18n="cmp.t.priceX">Free tier; Pro subscription for full features</td></tr>
+            <tr><td data-i18n="cmp.t.ossL">Open source</td><td class="cmp-bonk" data-i18n="cmp.t.ossB">Yes (MIT)</td><td data-i18n="cmp.t.ossX">No</td></tr>
+            <tr><td data-i18n="cmp.t.accountL">Account required</td><td class="cmp-bonk" data-i18n="cmp.t.accountB">No</td><td data-i18n="cmp.t.accountX">Yes (cloud sync)</td></tr>
+            <tr><td data-i18n="cmp.t.sshL">Built-in SSH client (hosts + credentials)</td><td class="cmp-bonk" data-i18n="cmp.t.sshB">Yes</td><td data-i18n="cmp.t.sshX">Yes</td></tr>
+            <tr><td data-i18n="cmp.t.sftpL">Visual SFTP browser</td><td class="cmp-bonk" data-i18n="cmp.t.sftpB">Yes</td><td data-i18n="cmp.t.sftpX">Yes</td></tr>
+            <tr><td data-i18n="cmp.t.pfL">Port forwarding (local / remote / SOCKS5)</td><td class="cmp-bonk" data-i18n="cmp.t.pfB">Yes</td><td data-i18n="cmp.t.pfX">Yes (Pro tier)</td></tr>
+            <tr><td data-i18n="cmp.t.jumpL">Jump hosts</td><td class="cmp-bonk" data-i18n="cmp.t.jumpB">Yes, multi-hop</td><td data-i18n="cmp.t.jumpX">Yes</td></tr>
+            <tr><td data-i18n="cmp.t.splitL">Split panes</td><td class="cmp-bonk" data-i18n="cmp.t.splitB">Yes</td><td data-i18n="cmp.t.splitX">Yes</td></tr>
+            <tr><td data-i18n="cmp.t.bcastL">Broadcast input</td><td class="cmp-bonk" data-i18n="cmp.t.bcastB">Yes</td><td data-i18n="cmp.t.bcastX">Yes</td></tr>
+            <tr><td data-i18n="cmp.t.serialL">Serial port</td><td class="cmp-bonk" data-i18n="cmp.t.serialB">Yes</td><td data-i18n="cmp.t.serialX">—</td></tr>
+            <tr><td data-i18n="cmp.t.quakeL">Quake dropdown terminal</td><td class="cmp-bonk" data-i18n="cmp.t.quakeB">Yes (⌘`)</td><td data-i18n="cmp.t.quakeX">No</td></tr>
+            <tr><td data-i18n="cmp.t.wsL">Workspaces (layout save/restore)</td><td class="cmp-bonk" data-i18n="cmp.t.wsB">Yes</td><td data-i18n="cmp.t.wsX">No</td></tr>
+            <tr><td data-i18n="cmp.t.mobileL">Mobile apps</td><td class="cmp-bonk" data-i18n="cmp.t.mobileB">No (macOS only)</td><td data-i18n="cmp.t.mobileX">Yes</td></tr>
+            <tr><td data-i18n="cmp.t.credsL">Credentials storage</td><td class="cmp-bonk" data-i18n="cmp.t.credsB">macOS Keychain + Secure Enclave</td><td data-i18n="cmp.t.credsX">Termius cloud vault</td></tr>
+            <tr><td data-i18n="cmp.t.syncL">Sync</td><td class="cmp-bonk" data-i18n="cmp.t.syncB">Local / iCloud-friendly</td><td data-i18n="cmp.t.syncX">Cloud</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="cmp.s2.eyebrow">Pricing</span>
+          <h2 class="section__title" data-i18n="cmp.s2.title">What subscription actually buys you</h2>
+        </div>
+        <div class="callout">
+          <p class="callout__text" data-i18n="cmp.s2.desc">Termius Pro adds cross-device sync, SSH agent forwarding, SFTP and other power features.</p>
+          <a href="../index.html#download" class="btn btn-primary" data-i18n="cmp.s2.cta">Download Bonk — $0</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="cmp.s3.eyebrow">Why switch</span>
+          <h2 class="section__title" data-i18n="cmp.s3.title">When people move from Termius to Bonk</h2>
+        </div>
+        <ul class="tips">
+          <li class="tip"><strong data-i18n="cmp.s3.l1s">Stop paying for SSH.</strong><span data-i18n="cmp.s3.l1"> Core workflow — connect, browse SFTP, forward ports, jump hosts — is fully free in Bonk.</span></li>
+          <li class="tip"><strong data-i18n="cmp.s3.l2s">Prefer local credentials.</strong><span data-i18n="cmp.s3.l2"> Keys and passwords stay in macOS Keychain; nothing sits on a third-party cloud vault.</span></li>
+          <li class="tip"><strong data-i18n="cmp.s3.l3s">Want native feel.</strong><span data-i18n="cmp.s3.l3"> SwiftUI + SwiftTerm on Apple Silicon and Intel, no Electron weight.</span></li>
+          <li class="tip"><strong data-i18n="cmp.s3.l4s">SSH config already exists.</strong><span data-i18n="cmp.s3.l4"> Bonk imports ~/.ssh/config directly, so migration is minutes, not an afternoon.</span></li>
+          <li class="tip"><strong data-i18n="cmp.s3.l5s">Quake workflow.</strong><span data-i18n="cmp.s3.l5"> Global ⌘` dropdown terminal is a thing Termius simply doesn't have on desktop.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="cmp.s4.eyebrow">Migration</span>
+          <h2 class="section__title" data-i18n="cmp.s4.title">Move from Termius in 5 minutes</h2>
+        </div>
+        <ol class="steps">
+          <li class="step"><span class="step__num">1</span><div class="step__body"><p class="step__desc" data-i18n="cmp.s4.l1">Download Bonk and drag it into Applications.</p></div></li>
+          <li class="step"><span class="step__num">2</span><div class="step__body"><p class="step__desc" data-i18n="cmp.s4.l2">Import your existing config: File → Import SSH Config (reads ~/.ssh/config).</p></div></li>
+          <li class="step"><span class="step__num">3</span><div class="step__body"><p class="step__desc" data-i18n="cmp.s4.l3">Add your private key in Bonk; it is stored in the macOS Keychain.</p></div></li>
+          <li class="step"><span class="step__num">4</span><div class="step__body"><p class="step__desc" data-i18n="cmp.s4.l4">Connect to your first host and open SFTP / port forwarding from the toolbar.</p></div></li>
+          <li class="step"><span class="step__num">5</span><div class="step__body"><p class="step__desc" data-i18n="cmp.s4.l5">Save your layout as a Workspace so tomorrow starts where you left off.</p></div></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="cmp.s5.eyebrow">FAQ</span>
+          <h2 class="section__title" data-i18n="cmp.s5.title">Common questions</h2>
+        </div>
+        <ul class="faq">
+          <li class="faq-item"><strong data-i18n="cmp.s5.l1s">Is Bonk really free?</strong><span data-i18n="cmp.s5.l1"> Yes. Free, open source, MIT license. No paid tiers for core features.</span></li>
+          <li class="faq-item"><strong data-i18n="cmp.s5.l2s">Does Bonk have SFTP?</strong><span data-i18n="cmp.s5.l2"> Yes — a visual drag-and-drop SFTP browser built in.</span></li>
+          <li class="faq-item"><strong data-i18n="cmp.s5.l3s">Can I import my Termius hosts?</strong><span data-i18n="cmp.s5.l3"> Not directly (Termius has no export format), but ~/.ssh/config import covers most setups.</span></li>
+          <li class="faq-item"><strong data-i18n="cmp.s5.l4s">Does Bonk work on iPhone/Android?</strong><span data-i18n="cmp.s5.l4"> No. Bonk is macOS only. Keep Termius if mobile access is a hard requirement.</span></li>
+          <li class="faq-item"><strong data-i18n="cmp.s5.l5s">Is my data stored in a cloud?</strong><span data-i18n="cmp.s5.l5"> No. Credentials live in your macOS Keychain; sync is local and iCloud-friendly.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="hero__cta">
+          <a href="../compare/tabby-alternative.html" class="btn btn-ghost" data-i18n="cmp.r1">Tabby Alternative</a>
+          <a href="../compare/warp-alternative.html" class="btn btn-ghost" data-i18n="cmp.r2">Warp Alternative</a>
+          <a href="../compare/iterm2-alternative.html" class="btn btn-ghost" data-i18n="cmp.r3">iTerm2 Alternative</a>
+          <a href="../docs/getting-started.html" class="btn btn-ghost" data-i18n="cmp.r4">Getting Started</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <img class="footer__logo" src="../assets/img/icon-256.png" alt="Bonk" width="26" height="26" />
+        <span>Bonk</span>
+      </div>
+      <nav class="footer__links" aria-label="Footer">
+        <a href="https://github.com/iamJoyLiam/Bonk" target="_blank" rel="noopener" data-i18n="nav.source">Source</a>
+        <a href="https://github.com/iamJoyLiam/Bonk/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="../index.html#features" data-i18n="nav.features">Features</a>
+        <a href="termius-alternative.html" data-i18n="nav.compare">Compare</a>
+        <a href="../docs/getting-started.html" data-i18n="nav.docs">Docs</a>
+        <a href="../index.html#download" data-i18n="nav.download">Download</a>
+      </nav>
+      <div class="footer__copy"><span data-i18n="footer.copy">© 2026 Bonk. All rights reserved.</span></div>
+    </div>
+  </footer>
+  <script src="../assets/js/i18n.js?v=2026.1.2" defer></script>
+  <script src="../assets/js/main.js?v=2026.1.2" defer></script>
+</body>
+</html>

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#F5F5F7" />
+  <meta name="color-scheme" content="light" />
+  <title>工作区 — Bonk，macOS 原生 SSH 终端一键恢复多会话布局</title>
+  <meta name="description" content="Bonk 工作区功能：保存整套多标签分屏会话布局，一键恢复，开机即回到工作现场。适合日常维护多台服务器的运维工程师，macOS 15+。" />
+  <link rel="canonical" href="https://bonk-terminal.pages.dev/features/workspaces.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="工作区 — Bonk 一键恢复多会话布局" />
+  <meta property="og:description" content="保存整套多标签分屏布局，一键恢复。" />
+  <meta property="og:image" content="../assets/img/icon-1024.png" />
+  <link rel="icon" href="../assets/img/icon-64.png" type="image/png" />
+  <link rel="stylesheet" href="../assets/css/tokens.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/base.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/components.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/responsive.css?v=2026.1.2" />
+  <script>
+    window.BonkPageI18n = {
+      zh: {
+        "feat.ws.eyebrow": "功能 · 工作区",
+        "feat.ws.h1": "工作区",
+        "feat.ws.desc": "保存并一键恢复整套多会话布局，开机即回到工作现场。多标签、分屏、主机连接，全部按原样回来。",
+        "feat.ws.cta.dl": "下载 Bonk",
+        "feat.ws.cta.home": "返回首页",
+        "feat.ws.s1.eyebrow": "用法",
+        "feat.ws.s1.title": "收工时保存，上班时一键恢复",
+        "feat.ws.s1.l1s": "保存布局",
+        "feat.ws.s1.l1": "当前所有标签、分屏结构、主机连接存档为工作区。",
+        "feat.ws.s1.l2s": "一键恢复",
+        "feat.ws.s1.l2": "打开工作区，自动重建标签与分屏并连接。",
+        "feat.ws.s1.l3s": "多工作区",
+        "feat.ws.s1.l3": "不同项目 / 客户环境各自存档，互不干扰。",
+        "feat.ws.s1.l4s": "快速切换",
+        "feat.ws.s1.l4": "菜单或快捷键直达，告别每天手工重开一堆标签。",
+        "feat.ws.s2.eyebrow": "相关功能",
+        "feat.ws.s2.title": "继续了解",
+        "feat.ws.s2.r1": "分屏",
+        "feat.ws.s2.r2": "SSH 终端",
+        "feat.ws.s2.r3": "Quake 终端",
+      },
+      en: {
+        "feat.ws.eyebrow": "Feature · Workspaces",
+        "feat.ws.h1": "Workspaces",
+        "feat.ws.desc": "Save and restore entire multi-session layouts with one click. Tabs, splits and host connections come back exactly as you left them.",
+        "feat.ws.cta.dl": "Download Bonk",
+        "feat.ws.cta.home": "Back to Home",
+        "feat.ws.s1.eyebrow": "Usage",
+        "feat.ws.s1.title": "Save when you clock out, restore with one click",
+        "feat.ws.s1.l1s": "Save layout",
+        "feat.ws.s1.l1": "Archive all current tabs, split structure and host connections as a workspace.",
+        "feat.ws.s1.l2s": "One-click restore",
+        "feat.ws.s1.l2": "Open a workspace; tabs, panes and connections rebuild automatically.",
+        "feat.ws.s1.l3s": "Multiple workspaces",
+        "feat.ws.s1.l3": "Keep per-project or per-client environments separate.",
+        "feat.ws.s1.l4s": "Quick switch",
+        "feat.ws.s1.l4": "Menu or shortcut — no more manually reopening a pile of tabs every morning.",
+        "feat.ws.s2.eyebrow": "Related",
+        "feat.ws.s2.title": "Keep exploring",
+        "feat.ws.s2.r1": "Split Panes",
+        "feat.ws.s2.r2": "SSH Terminal",
+        "feat.ws.s2.r3": "Quake Terminal",
+      },
+    };
+  </script>
+</head>
+<body>
+  <header class="nav" id="nav">
+    <div class="container nav__inner">
+      <a href="../index.html" class="nav__brand" aria-label="Bonk">
+        <img class="nav__logo" src="../assets/img/icon-256.png" alt="Bonk" width="28" height="28" />
+        <span>Bonk</span>
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="../index.html#features" class="nav__link" data-i18n="nav.features">功能</a>
+        <a href="../compare/termius-alternative.html" class="nav__link" data-i18n="nav.compare">对比</a>
+        <a href="../docs/getting-started.html" class="nav__link" data-i18n="nav.docs">文档</a>
+        <a href="../index.html#download" class="nav__link" data-i18n="nav.download">下载</a>
+      </nav>
+      <div class="nav__actions">
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button type="button" data-lang="zh" aria-pressed="true">中</button>
+          <button type="button" data-lang="en" aria-pressed="false">EN</button>
+        </div>
+        <a href="https://github.com/iamJoyLiam/Bonk" class="gh-badge" target="_blank" rel="noopener" aria-label="GitHub">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span class="gh-badge__label" data-i18n="nav.github">GitHub</span>
+        </a>
+        <button class="nav__toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="container hero__inner">
+        <p class="hero__mono" data-i18n="feat.ws.eyebrow">功能 · 工作区</p>
+        <h1 class="hero__title" data-i18n="feat.ws.h1">工作区</h1>
+        <p class="hero__desc" data-i18n="feat.ws.desc">保存并一键恢复整套多会话布局，开机即回到工作现场。</p>
+        <div class="hero__cta">
+          <a href="../index.html#download" class="btn btn-primary btn-lg" data-i18n="feat.ws.cta.dl">下载 Bonk</a>
+          <a href="../index.html" class="btn btn-ghost btn-lg" data-i18n="feat.ws.cta.home">返回首页</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="feat.ws.s1.eyebrow">用法</span>
+          <h2 class="section__title" data-i18n="feat.ws.s1.title">收工时保存，上班时一键恢复</h2>
+        </div>
+        <ul>
+          <li><strong data-i18n="feat.ws.s1.l1s">保存布局</strong><span data-i18n="feat.ws.s1.l1">：当前所有标签、分屏结构、主机连接存档为工作区。</span></li>
+          <li><strong data-i18n="feat.ws.s1.l2s">一键恢复</strong><span data-i18n="feat.ws.s1.l2">：打开工作区，自动重建标签与分屏并连接。</span></li>
+          <li><strong data-i18n="feat.ws.s1.l3s">多工作区</strong><span data-i18n="feat.ws.s1.l3">：不同项目 / 客户环境各自存档，互不干扰。</span></li>
+          <li><strong data-i18n="feat.ws.s1.l4s">快速切换</strong><span data-i18n="feat.ws.s1.l4">：菜单或快捷键直达，告别每天手工重开一堆标签。</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="feat.ws.s2.eyebrow">相关功能</span>
+          <h2 class="section__title" data-i18n="feat.ws.s2.title">继续了解</h2>
+        </div>
+        <div class="hero__cta">
+          <a href="../features/split-panes.html" class="btn btn-ghost" data-i18n="feat.ws.s2.r1">分屏</a>
+          <a href="../features/ssh-terminal.html" class="btn btn-ghost" data-i18n="feat.ws.s2.r2">SSH 终端</a>
+          <a href="../features/quake-terminal.html" class="btn btn-ghost" data-i18n="feat.ws.s2.r3">Quake 终端</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <img class="footer__logo" src="../assets/img/icon-256.png" alt="Bonk" width="26" height="26" />
+        <span>Bonk</span>
+      </div>
+      <nav class="footer__links" aria-label="Footer">
+        <a href="https://github.com/iamJoyLiam/Bonk" target="_blank" rel="noopener" data-i18n="nav.source">源码</a>
+        <a href="https://github.com/iamJoyLiam/Bonk/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="../index.html#features" data-i18n="nav.features">功能</a>
+        <a href="../compare/termius-alternative.html" data-i18n="nav.compare">对比</a>
+        <a href="../docs/getting-started.html" data-i18n="nav.docs">文档</a>
+        <a href="../index.html#download" data-i18n="nav.download">下载</a>
+      </nav>
+      <div class="footer__copy"><span data-i18n="footer.copy">© 2026 Bonk. 保留所有权利。</span></div>
+    </div>
+  </footer>
+  <script src="../assets/js/i18n.js?v=2026.1.2" defer></script>
+  <script src="../assets/js/main.js?v=2026.1.2" defer></script>
+</body>
+</html>

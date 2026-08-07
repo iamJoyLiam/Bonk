@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#F5F5F7" />
+  <meta name="color-scheme" content="light" />
+  <title>Warp Alternative — Bonk, Native SSH Client for macOS</title>
+  <meta name="description" content="Compare Warp vs Bonk: account-free SSH, SFTP, jump hosts, Keychain security, open source. Bonk is a free native macOS SSH client — no forced login, no cloud." />
+  <link rel="canonical" href="https://bonk-terminal.pages.dev/compare/warp-alternative.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Warp Alternative — Bonk, Native SSH Client for macOS" />
+  <meta property="og:description" content="Free native SSH client. No account required, no cloud lock-in." />
+  <meta property="og:image" content="../assets/img/icon-1024.png" />
+  <link rel="icon" href="../assets/img/icon-64.png" type="image/png" />
+  <link rel="stylesheet" href="../assets/css/tokens.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/base.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/components.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/responsive.css?v=2026.1.2" />
+  <script>
+    window.BonkPageI18n = {
+      zh: {
+        "cmp.eyebrow": "对比 · Bonk vs Warp",
+        "cmp.h1": "Warp 替代品",
+        "cmp.desc": "Warp 用 AI 和块重新发明终端。Bonk 走经典路线：快速的原生 SSH 客户端，完全离线可用，无强制账号、无云。",
+        "cmp.cta.dl": "下载 Bonk — 免费",
+        "cmp.cta.home": "返回首页",
+        "cmp.s1.eyebrow": "正面对比",
+        "cmp.s1.title": "Warp 对比 Bonk",
+        "cmp.t.platformL": "平台",
+        "cmp.t.platformB": "macOS 15+（arm64 / x86_64）",
+        "cmp.t.platformX": "macOS · Windows · Linux",
+        "cmp.t.priceL": "价格",
+        "cmp.t.priceB": "永久免费",
+        "cmp.t.priceX": "免费版；团队版收费",
+        "cmp.t.ossL": "开源",
+        "cmp.t.ossB": "是（MIT）",
+        "cmp.t.ossX": "否（闭源）",
+        "cmp.t.accountL": "需要账号",
+        "cmp.t.accountB": "不需要",
+        "cmp.t.accountX": "需要",
+        "cmp.t.sshL": "内置 SSH 客户端（主机 + 凭据）",
+        "cmp.t.sshB": "有",
+        "cmp.t.sshX": "部分（较新，走 ssh）",
+        "cmp.t.sftpL": "可视化 SFTP 浏览器",
+        "cmp.t.sftpB": "有",
+        "cmp.t.sftpX": "无",
+        "cmp.t.pfL": "端口转发（本地 / 远程 / SOCKS5）",
+        "cmp.t.pfB": "有",
+        "cmp.t.pfX": "走 ssh 参数",
+        "cmp.t.jumpL": "跳板机",
+        "cmp.t.jumpB": "有，多级 UI",
+        "cmp.t.jumpX": "走 SSH config",
+        "cmp.t.splitL": "分屏",
+        "cmp.t.splitB": "有",
+        "cmp.t.splitX": "有",
+        "cmp.t.bcastL": "广播输入",
+        "cmp.t.bcastB": "有",
+        "cmp.t.bcastX": "无",
+        "cmp.t.serialL": "串口",
+        "cmp.t.serialB": "有",
+        "cmp.t.serialX": "无",
+        "cmp.t.quakeL": "Quake 下拉终端",
+        "cmp.t.quakeB": "有（⌘`）",
+        "cmp.t.quakeX": "无",
+        "cmp.t.wsL": "工作区（布局保存/恢复）",
+        "cmp.t.wsB": "有",
+        "cmp.t.wsX": "Warp Drive（块同步）",
+        "cmp.t.aiL": "AI 功能",
+        "cmp.t.aiB": "无（隐私优先）",
+        "cmp.t.aiX": "有（内置）",
+        "cmp.t.credsL": "凭据存储",
+        "cmp.t.credsB": "macOS Keychain + Secure Enclave",
+        "cmp.t.credsX": "Warp 云",
+        "cmp.t.syncL": "同步",
+        "cmp.t.syncB": "本地 / iCloud 友好",
+        "cmp.t.syncX": "云（Warp Drive）",
+        "cmp.s2.eyebrow": "为什么换",
+        "cmp.s2.title": "从 Warp 迁到 Bonk 的人",
+        "cmp.s2.l1s": "无账号、无云。",
+        "cmp.s2.l1": "Warp 把功能绑在登录和云同步上；Bonk 离线可用，凭据在 Keychain。",
+        "cmp.s2.l2s": "完整 SSH 客户端。",
+        "cmp.s2.l2": "主机管理、可视化 SFTP、端口转发、跳板机都在应用内——不是 ssh 一行命令。",
+        "cmp.s2.l3s": "开源。",
+        "cmp.s2.l3": "MIT 协议，能检查你的终端到底做了什么。",
+        "cmp.s2.l4s": "隐私。",
+        "cmp.s2.l4": "命令历史不被 AI 分析，shell 只属于你。",
+        "cmp.s2.l5s": "串口 + Quake。",
+        "cmp.s2.l5": "硬件调试和全局下拉终端，Warp 都没有。",
+        "cmp.s3.eyebrow": "迁移",
+        "cmp.s3.title": "5 分钟从 Warp 迁过来",
+        "cmp.s3.l1": "下载 Bonk，拖进 Applications。",
+        "cmp.s3.l2": "导入 SSH 配置：文件 → 导入 SSH Config。",
+        "cmp.s3.l3": "添加私钥，存进 macOS Keychain。",
+        "cmp.s3.l4": "连第一台主机，工具栏开 SFTP / 端口转发。",
+        "cmp.s3.l5": "存成工作区，一键重启回到现场。",
+        "cmp.s4.eyebrow": "FAQ",
+        "cmp.s4.title": "常见问题",
+        "cmp.s4.l1s": "Bonk 像 Warp 一样有 AI 吗？",
+        "cmp.s4.l1": "没有内置 AI。隐私比 AI 补全更重要，这正是要点。",
+        "cmp.s4.l2s": "Bonk 要账号吗？",
+        "cmp.s4.l2": "不要。下载、连接、完事。",
+        "cmp.s4.l3s": "Bonk 能当本地 shell 用吗？",
+        "cmp.s4.l3": "能，是完整终端模拟器，但重点在远程工作。",
+        "cmp.s4.l4s": "数据上云吗？",
+        "cmp.s4.l4": "不上。凭据留在 macOS Keychain。",
+        "cmp.r1": "Termius 替代品",
+        "cmp.r2": "Tabby 替代品",
+        "cmp.r3": "iTerm2 替代品",
+        "cmp.r4": "快速上手",
+      },
+      en: {
+        "cmp.eyebrow": "Comparison · Bonk vs Warp",
+        "cmp.h1": "Warp Alternative",
+        "cmp.desc": "Warp reimagines the terminal with AI and blocks. Bonk takes the classic path: a fast native SSH client that works fully offline, with no forced account and no cloud.",
+        "cmp.cta.dl": "Download Bonk — Free",
+        "cmp.cta.home": "Back to Home",
+        "cmp.s1.eyebrow": "Head to head",
+        "cmp.s1.title": "Warp vs Bonk",
+        "cmp.t.platformL": "Platform",
+        "cmp.t.platformB": "macOS 15+ (arm64 / x86_64)",
+        "cmp.t.platformX": "macOS · Windows · Linux",
+        "cmp.t.priceL": "Price",
+        "cmp.t.priceB": "Free, forever",
+        "cmp.t.priceX": "Free tier; paid Teams plans",
+        "cmp.t.ossL": "Open source",
+        "cmp.t.ossB": "Yes (MIT)",
+        "cmp.t.ossX": "No (proprietary)",
+        "cmp.t.accountL": "Account required",
+        "cmp.t.accountB": "No",
+        "cmp.t.accountX": "Yes",
+        "cmp.t.sshL": "Built-in SSH client (hosts + credentials)",
+        "cmp.t.sshB": "Yes",
+        "cmp.t.sshX": "Partial (newer, via ssh)",
+        "cmp.t.sftpL": "Visual SFTP browser",
+        "cmp.t.sftpB": "Yes",
+        "cmp.t.sftpX": "No",
+        "cmp.t.pfL": "Port forwarding (local / remote / SOCKS5)",
+        "cmp.t.pfB": "Yes",
+        "cmp.t.pfX": "Via ssh flags",
+        "cmp.t.jumpL": "Jump hosts",
+        "cmp.t.jumpB": "Yes, multi-hop UI",
+        "cmp.t.jumpX": "Via SSH config",
+        "cmp.t.splitL": "Split panes",
+        "cmp.t.splitB": "Yes",
+        "cmp.t.splitX": "Yes",
+        "cmp.t.bcastL": "Broadcast input",
+        "cmp.t.bcastB": "Yes",
+        "cmp.t.bcastX": "No",
+        "cmp.t.serialL": "Serial port",
+        "cmp.t.serialB": "Yes",
+        "cmp.t.serialX": "No",
+        "cmp.t.quakeL": "Quake dropdown terminal",
+        "cmp.t.quakeB": "Yes (⌘`)",
+        "cmp.t.quakeX": "No",
+        "cmp.t.wsL": "Workspaces (layout save/restore)",
+        "cmp.t.wsB": "Yes",
+        "cmp.t.wsX": "Warp Drive (block sync)",
+        "cmp.t.aiL": "AI features",
+        "cmp.t.aiB": "No (privacy first)",
+        "cmp.t.aiX": "Yes (built-in)",
+        "cmp.t.credsL": "Credentials storage",
+        "cmp.t.credsB": "macOS Keychain + Secure Enclave",
+        "cmp.t.credsX": "Warp cloud",
+        "cmp.t.syncL": "Sync",
+        "cmp.t.syncB": "Local / iCloud-friendly",
+        "cmp.t.syncX": "Cloud (Warp Drive)",
+        "cmp.s2.eyebrow": "Why switch",
+        "cmp.s2.title": "When people move from Warp to Bonk",
+        "cmp.s2.l1s": "No account, no cloud.",
+        "cmp.s2.l1": "Warp ties features to sign-in and cloud sync; Bonk works offline with credentials in the Keychain.",
+        "cmp.s2.l2s": "Full SSH client.",
+        "cmp.s2.l2": "Host manager, visual SFTP, port forwarding and jump hosts in-app — not ssh one-liners.",
+        "cmp.s2.l3s": "Open source.",
+        "cmp.s2.l3": "MIT license; you can inspect exactly what your terminal does.",
+        "cmp.s2.l4s": "Privacy.",
+        "cmp.s2.l4": "No AI analysis of your command history; your shell stays yours.",
+        "cmp.s2.l5s": "Serial + Quake.",
+        "cmp.s2.l5": "Hardware debugging and global dropdown terminal, neither of which Warp offers.",
+        "cmp.s3.eyebrow": "Migration",
+        "cmp.s3.title": "Move from Warp in 5 minutes",
+        "cmp.s3.l1": "Download Bonk and drag it into Applications.",
+        "cmp.s3.l2": "Import your SSH config: File → Import SSH Config.",
+        "cmp.s3.l3": "Add your private key in Bonk; it is stored in the macOS Keychain.",
+        "cmp.s3.l4": "Connect, then open SFTP / port forwarding from the toolbar.",
+        "cmp.s3.l5": "Save your layout as a Workspace for one-click restarts.",
+        "cmp.s4.eyebrow": "FAQ",
+        "cmp.s4.title": "Common questions",
+        "cmp.s4.l1s": "Does Bonk have AI like Warp?",
+        "cmp.s4.l1": "No built-in AI. If privacy matters more than AI autocomplete, that is the point.",
+        "cmp.s4.l2s": "Does Bonk require an account?",
+        "cmp.s4.l2": "No. Download, connect, done.",
+        "cmp.s4.l3s": "Can I use Bonk as my local shell?",
+        "cmp.s4.l3": "Yes, it is a full terminal emulator, but the focus is remote work.",
+        "cmp.s4.l4s": "Is my data stored in the cloud?",
+        "cmp.s4.l4": "No. Credentials stay in the macOS Keychain.",
+        "cmp.r1": "Termius Alternative",
+        "cmp.r2": "Tabby Alternative",
+        "cmp.r3": "iTerm2 Alternative",
+        "cmp.r4": "Getting Started",
+      },
+    };
+  </script>
+</head>
+<body>
+  <header class="nav" id="nav">
+    <div class="container nav__inner">
+      <a href="../index.html" class="nav__brand" aria-label="Bonk">
+        <img class="nav__logo" src="../assets/img/icon-256.png" alt="Bonk" width="28" height="28" />
+        <span>Bonk</span>
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="../index.html#features" class="nav__link" data-i18n="nav.features">Features</a>
+        <a href="termius-alternative.html" class="nav__link" data-i18n="nav.compare">Compare</a>
+        <a href="../docs/getting-started.html" class="nav__link" data-i18n="nav.docs">Docs</a>
+        <a href="../index.html#download" class="nav__link" data-i18n="nav.download">Download</a>
+      </nav>
+      <div class="nav__actions">
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button type="button" data-lang="zh" aria-pressed="true">中</button>
+          <button type="button" data-lang="en" aria-pressed="false">EN</button>
+        </div>
+        <a href="https://github.com/iamJoyLiam/Bonk" class="gh-badge" target="_blank" rel="noopener" aria-label="GitHub">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span class="gh-badge__label" data-i18n="nav.github">GitHub</span>
+        </a>
+        <button class="nav__toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="container hero__inner">
+        <p class="hero__mono" data-i18n="cmp.eyebrow">Comparison · Bonk vs Warp</p>
+        <h1 class="hero__title" data-i18n="cmp.h1">Warp Alternative</h1>
+        <p class="hero__desc" data-i18n="cmp.desc">Warp reimagines the terminal with AI and blocks. Bonk takes the classic path: a fast native SSH client that works fully offline, with no forced account and no cloud.</p>
+        <div class="hero__cta">
+          <a href="../index.html#download" class="btn btn-primary btn-lg" data-i18n="cmp.cta.dl">Download Bonk — Free</a>
+          <a href="../index.html" class="btn btn-ghost btn-lg" data-i18n="cmp.cta.home">Back to Home</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="cmp.s1.eyebrow">Head to head</span>
+          <h2 class="section__title" data-i18n="cmp.s1.title">Warp vs Bonk</h2>
+        </div>
+        <table class="cmp-table">
+          <thead>
+            <tr>
+              <th>Feature</th>
+              <th class="cmp-bonk">Bonk</th>
+              <th>Warp</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td data-i18n="cmp.t.platformL">Platform</td><td class="cmp-bonk" data-i18n="cmp.t.platformB">macOS 15+ (arm64 / x86_64)</td><td data-i18n="cmp.t.platformX">macOS · Windows · Linux</td></tr>
+            <tr><td data-i18n="cmp.t.priceL">Price</td><td class="cmp-bonk" data-i18n="cmp.t.priceB">Free, forever</td><td data-i18n="cmp.t.priceX">Free tier; paid Teams plans</td></tr>
+            <tr><td data-i18n="cmp.t.ossL">Open source</td><td class="cmp-bonk" data-i18n="cmp.t.ossB">Yes (MIT)</td><td data-i18n="cmp.t.ossX">No (proprietary)</td></tr>
+            <tr><td data-i18n="cmp.t.accountL">Account required</td><td class="cmp-bonk" data-i18n="cmp.t.accountB">No</td><td data-i18n="cmp.t.accountX">Yes</td></tr>
+            <tr><td data-i18n="cmp.t.sshL">Built-in SSH client (hosts + credentials)</td><td class="cmp-bonk" data-i18n="cmp.t.sshB">Yes</td><td data-i18n="cmp.t.sshX">Partial (newer, via ssh)</td></tr>
+            <tr><td data-i18n="cmp.t.sftpL">Visual SFTP browser</td><td class="cmp-bonk" data-i18n="cmp.t.sftpB">Yes</td><td data-i18n="cmp.t.sftpX">No</td></tr>
+            <tr><td data-i18n="cmp.t.pfL">Port forwarding (local / remote / SOCKS5)</td><td class="cmp-bonk" data-i18n="cmp.t.pfB">Yes</td><td data-i18n="cmp.t.pfX">Via ssh flags</td></tr>
+            <tr><td data-i18n="cmp.t.jumpL">Jump hosts</td><td class="cmp-bonk" data-i18n="cmp.t.jumpB">Yes, multi-hop UI</td><td data-i18n="cmp.t.jumpX">Via SSH config</td></tr>
+            <tr><td data-i18n="cmp.t.splitL">Split panes</td><td class="cmp-bonk" data-i18n="cmp.t.splitB">Yes</td><td data-i18n="cmp.t.splitX">Yes</td></tr>
+            <tr><td data-i18n="cmp.t.bcastL">Broadcast input</td><td class="cmp-bonk" data-i18n="cmp.t.bcastB">Yes</td><td data-i18n="cmp.t.bcastX">No</td></tr>
+            <tr><td data-i18n="cmp.t.serialL">Serial port</td><td class="cmp-bonk" data-i18n="cmp.t.serialB">Yes</td><td data-i18n="cmp.t.serialX">No</td></tr>
+            <tr><td data-i18n="cmp.t.quakeL">Quake dropdown terminal</td><td class="cmp-bonk" data-i18n="cmp.t.quakeB">Yes (⌘`)</td><td data-i18n="cmp.t.quakeX">No</td></tr>
+            <tr><td data-i18n="cmp.t.wsL">Workspaces (layout save/restore)</td><td class="cmp-bonk" data-i18n="cmp.t.wsB">Yes</td><td data-i18n="cmp.t.wsX">Warp Drive (block sync)</td></tr>
+            <tr><td data-i18n="cmp.t.aiL">AI features</td><td class="cmp-bonk" data-i18n="cmp.t.aiB">No (privacy first)</td><td data-i18n="cmp.t.aiX">Yes (built-in)</td></tr>
+            <tr><td data-i18n="cmp.t.credsL">Credentials storage</td><td class="cmp-bonk" data-i18n="cmp.t.credsB">macOS Keychain + Secure Enclave</td><td data-i18n="cmp.t.credsX">Warp cloud</td></tr>
+            <tr><td data-i18n="cmp.t.syncL">Sync</td><td class="cmp-bonk" data-i18n="cmp.t.syncB">Local / iCloud-friendly</td><td data-i18n="cmp.t.syncX">Cloud (Warp Drive)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="cmp.s2.eyebrow">Why switch</span>
+          <h2 class="section__title" data-i18n="cmp.s2.title">When people move from Warp to Bonk</h2>
+        </div>
+        <ul class="tips">
+          <li class="tip"><strong data-i18n="cmp.s2.l1s">No account, no cloud.</strong><span data-i18n="cmp.s2.l1"> Warp ties features to sign-in and cloud sync; Bonk works offline with credentials in the Keychain.</span></li>
+          <li class="tip"><strong data-i18n="cmp.s2.l2s">Full SSH client.</strong><span data-i18n="cmp.s2.l2"> Host manager, visual SFTP, port forwarding and jump hosts in-app — not ssh one-liners.</span></li>
+          <li class="tip"><strong data-i18n="cmp.s2.l3s">Open source.</strong><span data-i18n="cmp.s2.l3"> MIT license; you can inspect exactly what your terminal does.</span></li>
+          <li class="tip"><strong data-i18n="cmp.s2.l4s">Privacy.</strong><span data-i18n="cmp.s2.l4"> No AI analysis of your command history; your shell stays yours.</span></li>
+          <li class="tip"><strong data-i18n="cmp.s2.l5s">Serial + Quake.</strong><span data-i18n="cmp.s2.l5"> Hardware debugging and global dropdown terminal, neither of which Warp offers.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="cmp.s3.eyebrow">Migration</span>
+          <h2 class="section__title" data-i18n="cmp.s3.title">Move from Warp in 5 minutes</h2>
+        </div>
+        <ol class="steps">
+          <li class="step"><span class="step__num">1</span><div class="step__body"><p class="step__desc" data-i18n="cmp.s3.l1">Download Bonk and drag it into Applications.</p></div></li>
+          <li class="step"><span class="step__num">2</span><div class="step__body"><p class="step__desc" data-i18n="cmp.s3.l2">Import your SSH config: File → Import SSH Config (reads ~/.ssh/config).</p></div></li>
+          <li class="step"><span class="step__num">3</span><div class="step__body"><p class="step__desc" data-i18n="cmp.s3.l3">Add your private key in Bonk; it is stored in the macOS Keychain.</p></div></li>
+          <li class="step"><span class="step__num">4</span><div class="step__body"><p class="step__desc" data-i18n="cmp.s3.l4">Connect, then open SFTP / port forwarding from the toolbar.</p></div></li>
+          <li class="step"><span class="step__num">5</span><div class="step__body"><p class="step__desc" data-i18n="cmp.s3.l5">Save your layout as a Workspace for one-click restarts.</p></div></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="cmp.s4.eyebrow">FAQ</span>
+          <h2 class="section__title" data-i18n="cmp.s4.title">Common questions</h2>
+        </div>
+        <ul class="faq">
+          <li class="faq-item"><strong data-i18n="cmp.s4.l1s">Does Bonk have AI like Warp?</strong><span data-i18n="cmp.s4.l1"> No built-in AI. If privacy matters more than AI autocomplete, that is the point.</span></li>
+          <li class="faq-item"><strong data-i18n="cmp.s4.l2s">Does Bonk require an account?</strong><span data-i18n="cmp.s4.l2"> No. Download, connect, done.</span></li>
+          <li class="faq-item"><strong data-i18n="cmp.s4.l3s">Can I use Bonk as my local shell?</strong><span data-i18n="cmp.s4.l3"> Yes, it is a full terminal emulator, but the focus is remote work.</span></li>
+          <li class="faq-item"><strong data-i18n="cmp.s4.l4s">Is my data stored in the cloud?</strong><span data-i18n="cmp.s4.l4"> No. Credentials stay in the macOS Keychain.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="hero__cta">
+          <a href="../compare/termius-alternative.html" class="btn btn-ghost" data-i18n="cmp.r1">Termius Alternative</a>
+          <a href="../compare/tabby-alternative.html" class="btn btn-ghost" data-i18n="cmp.r2">Tabby Alternative</a>
+          <a href="../compare/iterm2-alternative.html" class="btn btn-ghost" data-i18n="cmp.r3">iTerm2 Alternative</a>
+          <a href="../docs/getting-started.html" class="btn btn-ghost" data-i18n="cmp.r4">Getting Started</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <img class="footer__logo" src="../assets/img/icon-256.png" alt="Bonk" width="26" height="26" />
+        <span>Bonk</span>
+      </div>
+      <nav class="footer__links" aria-label="Footer">
+        <a href="https://github.com/iamJoyLiam/Bonk" target="_blank" rel="noopener" data-i18n="nav.source">Source</a>
+        <a href="https://github.com/iamJoyLiam/Bonk/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="../index.html#features" data-i18n="nav.features">Features</a>
+        <a href="termius-alternative.html" data-i18n="nav.compare">Compare</a>
+        <a href="../docs/getting-started.html" data-i18n="nav.docs">Docs</a>
+        <a href="../index.html#download" data-i18n="nav.download">Download</a>
+      </nav>
+      <div class="footer__copy"><span data-i18n="footer.copy">© 2026 Bonk. All rights reserved.</span></div>
+    </div>
+  </footer>
+  <script src="../assets/js/i18n.js?v=2026.1.2" defer></script>
+  <script src="../assets/js/main.js?v=2026.1.2" defer></script>
+</body>
+</html>

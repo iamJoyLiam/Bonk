@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#F5F5F7" />
+  <meta name="color-scheme" content="light" />
+  <title>Tabby Alternative — Bonk, Native macOS SSH Client</title>
+  <meta name="description" content="Compare Tabby vs Bonk: Electron vs native, SSH, SFTP, serial port, jump hosts, Keychain security. Bonk is a free open-source native macOS SSH client." />
+  <link rel="canonical" href="https://bonk-terminal.pages.dev/compare/tabby-alternative.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Tabby Alternative — Bonk, Native macOS SSH Client" />
+  <meta property="og:description" content="Native macOS SSH client. Same power features, no Electron." />
+  <meta property="og:image" content="../assets/img/icon-1024.png" />
+  <link rel="icon" href="../assets/img/icon-64.png" type="image/png" />
+  <link rel="stylesheet" href="../assets/css/tokens.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/base.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/components.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/responsive.css?v=2026.1.2" />
+  <script>
+    window.BonkPageI18n = {
+      zh: {
+        "cmp.eyebrow": "对比 · Bonk vs Tabby",
+        "cmp.h1": "Tabby 替代品",
+        "cmp.desc": "Tabby 是能干的跨平台开源终端。在 macOS 上，Bonk 用原生 SwiftUI 覆盖同样的 SSH / SFTP / 串口工作流：更轻、Keychain 集成更好、没有 Electron。",
+        "cmp.cta.dl": "下载 Bonk — 免费",
+        "cmp.cta.home": "返回首页",
+        "cmp.s1.eyebrow": "正面对比",
+        "cmp.s1.title": "Tabby 对比 Bonk",
+        "cmp.t.platformL": "平台",
+        "cmp.t.platformB": "macOS 15+（arm64 / x86_64）",
+        "cmp.t.platformX": "macOS · Windows · Linux",
+        "cmp.t.appL": "应用类型",
+        "cmp.t.appB": "原生 SwiftUI",
+        "cmp.t.appX": "Electron",
+        "cmp.t.priceL": "价格",
+        "cmp.t.priceB": "永久免费",
+        "cmp.t.priceX": "免费",
+        "cmp.t.ossL": "开源",
+        "cmp.t.ossB": "是（MIT）",
+        "cmp.t.ossX": "是（MIT）",
+        "cmp.t.accountL": "需要账号",
+        "cmp.t.accountB": "不需要",
+        "cmp.t.accountX": "不需要",
+        "cmp.t.sshL": "内置 SSH 客户端（主机 + 凭据）",
+        "cmp.t.sshB": "有",
+        "cmp.t.sshX": "有",
+        "cmp.t.sftpL": "可视化 SFTP 浏览器",
+        "cmp.t.sftpB": "有",
+        "cmp.t.sftpX": "有",
+        "cmp.t.pfL": "端口转发（本地 / 远程 / SOCKS5）",
+        "cmp.t.pfB": "有",
+        "cmp.t.pfX": "有",
+        "cmp.t.jumpL": "跳板机",
+        "cmp.t.jumpB": "有，多级 UI",
+        "cmp.t.jumpX": "走 SSH config",
+        "cmp.t.splitL": "分屏",
+        "cmp.t.splitB": "有",
+        "cmp.t.splitX": "有",
+        "cmp.t.bcastL": "广播输入",
+        "cmp.t.bcastB": "有",
+        "cmp.t.bcastX": "—",
+        "cmp.t.serialL": "串口",
+        "cmp.t.serialB": "有",
+        "cmp.t.serialX": "有",
+        "cmp.t.quakeL": "Quake 下拉终端",
+        "cmp.t.quakeB": "有（⌘`）",
+        "cmp.t.quakeX": "无",
+        "cmp.t.wsL": "工作区（布局保存/恢复）",
+        "cmp.t.wsB": "有",
+        "cmp.t.wsX": "无",
+        "cmp.t.mobileL": "移动端",
+        "cmp.t.mobileB": "无（仅 macOS）",
+        "cmp.t.mobileX": "无",
+        "cmp.t.credsL": "凭据存储",
+        "cmp.t.credsB": "macOS Keychain + Secure Enclave",
+        "cmp.t.credsX": "应用本地 / 配置文件",
+        "cmp.t.syncL": "同步",
+        "cmp.t.syncB": "本地 / iCloud 友好",
+        "cmp.t.syncX": "手动配置",
+        "cmp.s2.eyebrow": "为什么换",
+        "cmp.s2.title": "从 Tabby 迁到 Bonk 的人",
+        "cmp.s2.l1s": "原生性能。",
+        "cmp.s2.l1": "Tabby 带 Electron 运行时；Bonk 是原生 SwiftUI，为 Apple Silicon / Intel 打造。",
+        "cmp.s2.l2s": "macOS 凭据。",
+        "cmp.s2.l2": "密钥和密码在 Keychain，支持 Secure Enclave P256——不是配置文件。",
+        "cmp.s2.l3s": "Quake 下拉。",
+        "cmp.s2.l3": "全局 ⌘` 终端内置，Tabby 没有对应功能。",
+        "cmp.s2.l4s": "工作区。",
+        "cmp.s2.l4": "保存恢复整套多标签布局——Tabby 没有布局存档。",
+        "cmp.s2.l5s": "广播输入。",
+        "cmp.s2.l5": "一条命令发到所有窗格，开箱即用。",
+        "cmp.s3.eyebrow": "迁移",
+        "cmp.s3.title": "5 分钟从 Tabby 迁过来",
+        "cmp.s3.l1": "下载 Bonk，拖进 Applications。",
+        "cmp.s3.l2": "导入 SSH 配置：文件 → 导入 SSH Config。",
+        "cmp.s3.l3": "添加私钥，存进 macOS Keychain。",
+        "cmp.s3.l4": "连第一台主机，工具栏开 SFTP / 端口转发。",
+        "cmp.s3.l5": "存成工作区，一键重启回到现场。",
+        "cmp.s4.eyebrow": "FAQ",
+        "cmp.s4.title": "常见问题",
+        "cmp.s4.l1s": "Bonk 真免费吗？",
+        "cmp.s4.l1": "是。免费、开源、MIT。",
+        "cmp.s4.l2s": "Bonk 像 Tabby 一样支持串口吗？",
+        "cmp.s4.l2": "支持——直连 /dev/tty.* 设备。",
+        "cmp.s4.l3s": "Windows / Linux 还能用 Tabby 吗？",
+        "cmp.s4.l3": "可以。Bonk 仅 macOS，两者可共存。",
+        "cmp.s4.l4s": "Bonk 有插件吗？",
+        "cmp.s4.l4": "无插件系统。SSH、SFTP、串口、转发、工作区都内置。",
+        "cmp.r1": "Termius 替代品",
+        "cmp.r2": "Warp 替代品",
+        "cmp.r3": "iTerm2 替代品",
+        "cmp.r4": "快速上手",
+      },
+      en: {
+        "cmp.eyebrow": "Comparison · Bonk vs Tabby",
+        "cmp.h1": "Tabby Alternative",
+        "cmp.desc": "Tabby is a capable open-source cross-platform terminal. On macOS, Bonk covers the same SSH / SFTP / serial workflow with a native SwiftUI app: lighter, tighter Keychain integration, no Electron runtime.",
+        "cmp.cta.dl": "Download Bonk — Free",
+        "cmp.cta.home": "Back to Home",
+        "cmp.s1.eyebrow": "Head to head",
+        "cmp.s1.title": "Tabby vs Bonk",
+        "cmp.t.platformL": "Platform",
+        "cmp.t.platformB": "macOS 15+ (arm64 / x86_64)",
+        "cmp.t.platformX": "macOS · Windows · Linux",
+        "cmp.t.appL": "App type",
+        "cmp.t.appB": "Native SwiftUI",
+        "cmp.t.appX": "Electron",
+        "cmp.t.priceL": "Price",
+        "cmp.t.priceB": "Free, forever",
+        "cmp.t.priceX": "Free",
+        "cmp.t.ossL": "Open source",
+        "cmp.t.ossB": "Yes (MIT)",
+        "cmp.t.ossX": "Yes (MIT)",
+        "cmp.t.accountL": "Account required",
+        "cmp.t.accountB": "No",
+        "cmp.t.accountX": "No",
+        "cmp.t.sshL": "Built-in SSH client (hosts + credentials)",
+        "cmp.t.sshB": "Yes",
+        "cmp.t.sshX": "Yes",
+        "cmp.t.sftpL": "Visual SFTP browser",
+        "cmp.t.sftpB": "Yes",
+        "cmp.t.sftpX": "Yes",
+        "cmp.t.pfL": "Port forwarding (local / remote / SOCKS5)",
+        "cmp.t.pfB": "Yes",
+        "cmp.t.pfX": "Yes",
+        "cmp.t.jumpL": "Jump hosts",
+        "cmp.t.jumpB": "Yes, multi-hop UI",
+        "cmp.t.jumpX": "Via SSH config",
+        "cmp.t.splitL": "Split panes",
+        "cmp.t.splitB": "Yes",
+        "cmp.t.splitX": "Yes",
+        "cmp.t.bcastL": "Broadcast input",
+        "cmp.t.bcastB": "Yes",
+        "cmp.t.bcastX": "—",
+        "cmp.t.serialL": "Serial port",
+        "cmp.t.serialB": "Yes",
+        "cmp.t.serialX": "Yes",
+        "cmp.t.quakeL": "Quake dropdown terminal",
+        "cmp.t.quakeB": "Yes (⌘`)",
+        "cmp.t.quakeX": "No",
+        "cmp.t.wsL": "Workspaces (layout save/restore)",
+        "cmp.t.wsB": "Yes",
+        "cmp.t.wsX": "No",
+        "cmp.t.mobileL": "Mobile apps",
+        "cmp.t.mobileB": "No (macOS only)",
+        "cmp.t.mobileX": "No",
+        "cmp.t.credsL": "Credentials storage",
+        "cmp.t.credsB": "macOS Keychain + Secure Enclave",
+        "cmp.t.credsX": "App-local / config file",
+        "cmp.t.syncL": "Sync",
+        "cmp.t.syncB": "Local / iCloud-friendly",
+        "cmp.t.syncX": "Manual config",
+        "cmp.s2.eyebrow": "Why switch",
+        "cmp.s2.title": "When people move from Tabby to Bonk",
+        "cmp.s2.l1s": "Native performance.",
+        "cmp.s2.l1": "Tabby ships an Electron runtime; Bonk is a native SwiftUI app built for Apple Silicon and Intel.",
+        "cmp.s2.l2s": "macOS credentials.",
+        "cmp.s2.l2": "Keys and passwords live in the Keychain, with Secure Enclave P256 key support — not a config file.",
+        "cmp.s2.l3s": "Quake dropdown.",
+        "cmp.s2.l3": "Global ⌘` terminal is built in; Tabby has no equivalent.",
+        "cmp.s2.l4s": "Workspaces.",
+        "cmp.s2.l4": "Save and restore full multi-tab layouts — Tabby has no layout save/restore.",
+        "cmp.s2.l5s": "Broadcast input.",
+        "cmp.s2.l5": "One command to many panes, out of the box.",
+        "cmp.s3.eyebrow": "Migration",
+        "cmp.s3.title": "Move from Tabby in 5 minutes",
+        "cmp.s3.l1": "Download Bonk and drag it into Applications.",
+        "cmp.s3.l2": "Import your SSH config: File → Import SSH Config.",
+        "cmp.s3.l3": "Add your private key in Bonk; it is stored in the macOS Keychain.",
+        "cmp.s3.l4": "Connect, then open SFTP / port forwarding from the toolbar.",
+        "cmp.s3.l5": "Save your layout as a Workspace for one-click restarts.",
+        "cmp.s4.eyebrow": "FAQ",
+        "cmp.s4.title": "Common questions",
+        "cmp.s4.l1s": "Is Bonk really free?",
+        "cmp.s4.l1": "Yes. Free, open source, MIT license.",
+        "cmp.s4.l2s": "Does Bonk support serial ports like Tabby?",
+        "cmp.s4.l2": "Yes — direct /dev/tty.* connections.",
+        "cmp.s4.l3s": "Can I keep Tabby for Windows/Linux?",
+        "cmp.s4.l3": "Yes. Bonk is macOS only; the two can coexist.",
+        "cmp.s4.l4s": "Does Bonk have plugins?",
+        "cmp.s4.l4": "No plugin system. Built-in features cover SSH, SFTP, serial, forwarding, workspaces.",
+        "cmp.r1": "Termius Alternative",
+        "cmp.r2": "Warp Alternative",
+        "cmp.r3": "iTerm2 Alternative",
+        "cmp.r4": "Getting Started",
+      },
+    };
+  </script>
+</head>
+<body>
+  <header class="nav" id="nav">
+    <div class="container nav__inner">
+      <a href="../index.html" class="nav__brand" aria-label="Bonk">
+        <img class="nav__logo" src="../assets/img/icon-256.png" alt="Bonk" width="28" height="28" />
+        <span>Bonk</span>
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="../index.html#features" class="nav__link" data-i18n="nav.features">Features</a>
+        <a href="termius-alternative.html" class="nav__link" data-i18n="nav.compare">Compare</a>
+        <a href="../docs/getting-started.html" class="nav__link" data-i18n="nav.docs">Docs</a>
+        <a href="../index.html#download" class="nav__link" data-i18n="nav.download">Download</a>
+      </nav>
+      <div class="nav__actions">
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button type="button" data-lang="zh" aria-pressed="true">中</button>
+          <button type="button" data-lang="en" aria-pressed="false">EN</button>
+        </div>
+        <a href="https://github.com/iamJoyLiam/Bonk" class="gh-badge" target="_blank" rel="noopener" aria-label="GitHub">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span class="gh-badge__label" data-i18n="nav.github">GitHub</span>
+        </a>
+        <button class="nav__toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="container hero__inner">
+        <p class="hero__mono" data-i18n="cmp.eyebrow">Comparison · Bonk vs Tabby</p>
+        <h1 class="hero__title" data-i18n="cmp.h1">Tabby Alternative</h1>
+        <p class="hero__desc" data-i18n="cmp.desc">Tabby is a capable open-source cross-platform terminal.</p>
+        <div class="hero__cta">
+          <a href="../index.html#download" class="btn btn-primary btn-lg" data-i18n="cmp.cta.dl">Download Bonk — Free</a>
+          <a href="../index.html" class="btn btn-ghost btn-lg" data-i18n="cmp.cta.home">Back to Home</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="cmp.s1.eyebrow">Head to head</span>
+          <h2 class="section__title" data-i18n="cmp.s1.title">Tabby vs Bonk</h2>
+        </div>
+        <table class="cmp-table">
+          <thead>
+            <tr>
+              <th>Feature</th>
+              <th class="cmp-bonk">Bonk</th>
+              <th>Tabby</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td data-i18n="cmp.t.platformL">Platform</td><td class="cmp-bonk" data-i18n="cmp.t.platformB">macOS 15+ (arm64 / x86_64)</td><td data-i18n="cmp.t.platformX">macOS · Windows · Linux</td></tr>
+            <tr><td data-i18n="cmp.t.appL">App type</td><td class="cmp-bonk" data-i18n="cmp.t.appB">Native SwiftUI</td><td data-i18n="cmp.t.appX">Electron</td></tr>
+            <tr><td data-i18n="cmp.t.priceL">Price</td><td class="cmp-bonk" data-i18n="cmp.t.priceB">Free, forever</td><td data-i18n="cmp.t.priceX">Free</td></tr>
+            <tr><td data-i18n="cmp.t.ossL">Open source</td><td class="cmp-bonk" data-i18n="cmp.t.ossB">Yes (MIT)</td><td data-i18n="cmp.t.ossX">Yes (MIT)</td></tr>
+            <tr><td data-i18n="cmp.t.accountL">Account required</td><td class="cmp-bonk" data-i18n="cmp.t.accountB">No</td><td data-i18n="cmp.t.accountX">No</td></tr>
+            <tr><td data-i18n="cmp.t.sshL">Built-in SSH client (hosts + credentials)</td><td class="cmp-bonk" data-i18n="cmp.t.sshB">Yes</td><td data-i18n="cmp.t.sshX">Yes</td></tr>
+            <tr><td data-i18n="cmp.t.sftpL">Visual SFTP browser</td><td class="cmp-bonk" data-i18n="cmp.t.sftpB">Yes</td><td data-i18n="cmp.t.sftpX">Yes</td></tr>
+            <tr><td data-i18n="cmp.t.pfL">Port forwarding (local / remote / SOCKS5)</td><td class="cmp-bonk" data-i18n="cmp.t.pfB">Yes</td><td data-i18n="cmp.t.pfX">Yes</td></tr>
+            <tr><td data-i18n="cmp.t.jumpL">Jump hosts</td><td class="cmp-bonk" data-i18n="cmp.t.jumpB">Yes, multi-hop UI</td><td data-i18n="cmp.t.jumpX">Via SSH config</td></tr>
+            <tr><td data-i18n="cmp.t.splitL">Split panes</td><td class="cmp-bonk" data-i18n="cmp.t.splitB">Yes</td><td data-i18n="cmp.t.splitX">Yes</td></tr>
+            <tr><td data-i18n="cmp.t.bcastL">Broadcast input</td><td class="cmp-bonk" data-i18n="cmp.t.bcastB">Yes</td><td data-i18n="cmp.t.bcastX">—</td></tr>
+            <tr><td data-i18n="cmp.t.serialL">Serial port</td><td class="cmp-bonk" data-i18n="cmp.t.serialB">Yes</td><td data-i18n="cmp.t.serialX">Yes</td></tr>
+            <tr><td data-i18n="cmp.t.quakeL">Quake dropdown terminal</td><td class="cmp-bonk" data-i18n="cmp.t.quakeB">Yes (⌘`)</td><td data-i18n="cmp.t.quakeX">No</td></tr>
+            <tr><td data-i18n="cmp.t.wsL">Workspaces (layout save/restore)</td><td class="cmp-bonk" data-i18n="cmp.t.wsB">Yes</td><td data-i18n="cmp.t.wsX">No</td></tr>
+            <tr><td data-i18n="cmp.t.mobileL">Mobile apps</td><td class="cmp-bonk" data-i18n="cmp.t.mobileB">No (macOS only)</td><td data-i18n="cmp.t.mobileX">No</td></tr>
+            <tr><td data-i18n="cmp.t.credsL">Credentials storage</td><td class="cmp-bonk" data-i18n="cmp.t.credsB">macOS Keychain + Secure Enclave</td><td data-i18n="cmp.t.credsX">App-local / config file</td></tr>
+            <tr><td data-i18n="cmp.t.syncL">Sync</td><td class="cmp-bonk" data-i18n="cmp.t.syncB">Local / iCloud-friendly</td><td data-i18n="cmp.t.syncX">Manual config</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="cmp.s2.eyebrow">Why switch</span>
+          <h2 class="section__title" data-i18n="cmp.s2.title">When people move from Tabby to Bonk</h2>
+        </div>
+        <ul class="tips">
+          <li class="tip"><strong data-i18n="cmp.s2.l1s">Native performance.</strong><span data-i18n="cmp.s2.l1"> Tabby ships an Electron runtime; Bonk is a native SwiftUI app built for Apple Silicon and Intel.</span></li>
+          <li class="tip"><strong data-i18n="cmp.s2.l2s">macOS credentials.</strong><span data-i18n="cmp.s2.l2"> Keys and passwords live in the Keychain, with Secure Enclave P256 key support — not a config file.</span></li>
+          <li class="tip"><strong data-i18n="cmp.s2.l3s">Quake dropdown.</strong><span data-i18n="cmp.s2.l3"> Global ⌘` terminal is built in; Tabby has no equivalent.</span></li>
+          <li class="tip"><strong data-i18n="cmp.s2.l4s">Workspaces.</strong><span data-i18n="cmp.s2.l4"> Save and restore full multi-tab layouts — Tabby has no layout save/restore.</span></li>
+          <li class="tip"><strong data-i18n="cmp.s2.l5s">Broadcast input.</strong><span data-i18n="cmp.s2.l5"> One command to many panes, out of the box.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="cmp.s3.eyebrow">Migration</span>
+          <h2 class="section__title" data-i18n="cmp.s3.title">Move from Tabby in 5 minutes</h2>
+        </div>
+        <ol class="steps">
+          <li class="step"><span class="step__num">1</span><div class="step__body"><p class="step__desc" data-i18n="cmp.s3.l1">Download Bonk and drag it into Applications.</p></div></li>
+          <li class="step"><span class="step__num">2</span><div class="step__body"><p class="step__desc" data-i18n="cmp.s3.l2">Import your SSH config: File → Import SSH Config (reads ~/.ssh/config).</p></div></li>
+          <li class="step"><span class="step__num">3</span><div class="step__body"><p class="step__desc" data-i18n="cmp.s3.l3">Add your private key in Bonk; it is stored in the macOS Keychain.</p></div></li>
+          <li class="step"><span class="step__num">4</span><div class="step__body"><p class="step__desc" data-i18n="cmp.s3.l4">Connect, then open SFTP / port forwarding from the toolbar.</p></div></li>
+          <li class="step"><span class="step__num">5</span><div class="step__body"><p class="step__desc" data-i18n="cmp.s3.l5">Save your layout as a Workspace for one-click restarts.</p></div></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="cmp.s4.eyebrow">FAQ</span>
+          <h2 class="section__title" data-i18n="cmp.s4.title">Common questions</h2>
+        </div>
+        <ul class="faq">
+          <li class="faq-item"><strong data-i18n="cmp.s4.l1s">Is Bonk really free?</strong><span data-i18n="cmp.s4.l1"> Yes. Free, open source, MIT license.</span></li>
+          <li class="faq-item"><strong data-i18n="cmp.s4.l2s">Does Bonk support serial ports like Tabby?</strong><span data-i18n="cmp.s4.l2"> Yes — direct /dev/tty.* connections.</span></li>
+          <li class="faq-item"><strong data-i18n="cmp.s4.l3s">Can I keep Tabby for Windows/Linux?</strong><span data-i18n="cmp.s4.l3"> Yes. Bonk is macOS only; the two can coexist.</span></li>
+          <li class="faq-item"><strong data-i18n="cmp.s4.l4s">Does Bonk have plugins?</strong><span data-i18n="cmp.s4.l4"> No plugin system. Built-in features cover SSH, SFTP, serial, forwarding, workspaces.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="hero__cta">
+          <a href="../compare/termius-alternative.html" class="btn btn-ghost" data-i18n="cmp.r1">Termius Alternative</a>
+          <a href="../compare/warp-alternative.html" class="btn btn-ghost" data-i18n="cmp.r2">Warp Alternative</a>
+          <a href="../compare/iterm2-alternative.html" class="btn btn-ghost" data-i18n="cmp.r3">iTerm2 Alternative</a>
+          <a href="../docs/getting-started.html" class="btn btn-ghost" data-i18n="cmp.r4">Getting Started</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <img class="footer__logo" src="../assets/img/icon-256.png" alt="Bonk" width="26" height="26" />
+        <span>Bonk</span>
+      </div>
+      <nav class="footer__links" aria-label="Footer">
+        <a href="https://github.com/iamJoyLiam/Bonk" target="_blank" rel="noopener" data-i18n="nav.source">Source</a>
+        <a href="https://github.com/iamJoyLiam/Bonk/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="../index.html#features" data-i18n="nav.features">Features</a>
+        <a href="termius-alternative.html" data-i18n="nav.compare">Compare</a>
+        <a href="../docs/getting-started.html" data-i18n="nav.docs">Docs</a>
+        <a href="../index.html#download" data-i18n="nav.download">Download</a>
+      </nav>
+      <div class="footer__copy"><span data-i18n="footer.copy">© 2026 Bonk. All rights reserved.</span></div>
+    </div>
+  </footer>
+  <script src="../assets/js/i18n.js?v=2026.1.2" defer></script>
+  <script src="../assets/js/main.js?v=2026.1.2" defer></script>
+</body>
+</html>

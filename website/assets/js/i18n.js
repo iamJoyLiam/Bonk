@@ -13,6 +13,8 @@
       "nav.download": "下载",
       "nav.github": "GitHub",
       "nav.source": "源码",
+      "nav.compare": "对比",
+      "nav.docs": "文档",
 
       "hero.badge": "开源 · 免费 · macOS 原生 · MIT",
       "hero.title": "原生 macOS SSH 终端",
@@ -92,6 +94,8 @@
       "nav.download": "Download",
       "nav.github": "GitHub",
       "nav.source": "Source",
+      "nav.compare": "Compare",
+      "nav.docs": "Docs",
 
       "hero.badge": "Open source · Free · macOS native · MIT",
       "hero.title": "The native macOS SSH terminal",
@@ -175,7 +179,7 @@
   }
 
   function applyLang(lang) {
-    const dict = I18N[lang];
+    const dict = Object.assign({}, I18N[lang], window.BonkPageI18n ? window.BonkPageI18n[lang] : {});
     if (!dict) return;
 
     document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";

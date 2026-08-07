@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#F5F5F7" />
+  <meta name="color-scheme" content="light" />
+  <title>SSH 终端 — Bonk，macOS 原生多标签 SSH 客户端</title>
+  <meta name="description" content="Bonk 是 macOS 原生 SSH 终端客户端：多标签、水平/垂直分屏、Keychain 与 Secure Enclave 密钥、跳板机、串口、Zmodem。免费开源，macOS 15+，MIT 协议。" />
+  <link rel="canonical" href="https://bonk-terminal.pages.dev/features/ssh-terminal.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="SSH 终端 — Bonk，macOS 原生多标签 SSH 客户端" />
+  <meta property="og:description" content="多标签分屏、Keychain 认证、Secure Enclave P256 密钥、跳板机——Bonk 是面向日常运维的 macOS 原生 SSH 终端。" />
+  <meta property="og:image" content="../assets/img/icon-1024.png" />
+  <link rel="icon" href="../assets/img/icon-64.png" type="image/png" />
+  <link rel="stylesheet" href="../assets/css/tokens.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/base.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/components.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/responsive.css?v=2026.1.2" />
+  <script>
+    window.BonkPageI18n = {
+      zh: {
+        "feat.ssh.eyebrow": "功能 · SSH 终端",
+        "feat.ssh.h1": "SSH 终端",
+        "feat.ssh.desc": "多标签、水平/垂直分屏，一个窗口同时盯多台机器。基于 SwiftTerm 的终端模拟，配合 Keychain 与 Secure Enclave 认证，开箱即用。",
+        "feat.ssh.cta.dl": "下载 Bonk",
+        "feat.ssh.cta.home": "返回首页",
+        "feat.ssh.s1.eyebrow": "核心能力",
+        "feat.ssh.s1.title": "日常运维够用，重活也能干",
+        "feat.ssh.s1.l1s": "多标签管理",
+        "feat.ssh.s1.l1": "每个主机一个标签，点一下切换，标签可重命名、拖拽排序。",
+        "feat.ssh.s1.l2s": "水平 / 垂直分屏",
+        "feat.ssh.s1.l2": "同一会话拆成多窗格，或独立连接另一台主机，快捷键一键拆分。",
+        "feat.ssh.s1.l3s": "广播输入",
+        "feat.ssh.s1.l3": "一次输入同步到所有分屏面板，批量运维利器。",
+        "feat.ssh.s1.l4s": "跳板机",
+        "feat.ssh.s1.l4": "多级 Jump Host 链式跳转，复杂网络拓扑从容应对。",
+        "feat.ssh.s1.l5s": "Zmodem",
+        "feat.ssh.s1.l5": "终端内直接收发文件，支持 rz / sz。",
+        "feat.ssh.s1.l6s": "OSC 7 目录同步",
+        "feat.ssh.s1.l6": "新标签自动进入当前目录。",
+        "feat.ssh.s2.eyebrow": "安全",
+        "feat.ssh.s2.title": "凭据不落地",
+        "feat.ssh.s2.l1s": "Keychain 凭据",
+        "feat.ssh.s2.l1": "密码、私钥存系统钥匙串，不在本地明文落盘。",
+        "feat.ssh.s2.l2s": "Secure Enclave P256 密钥",
+        "feat.ssh.s2.l2": "私钥永不离开安全芯片，支持免密登录。",
+        "feat.ssh.s2.l3s": "主机密钥校验",
+        "feat.ssh.s2.l3": "首次连接指纹确认，防中间人。",
+        "feat.ssh.s2.l4s": "SSH Config 导入",
+        "feat.ssh.s2.l4": "直接读取现有 ~/.ssh/config，迁移零成本。",
+        "feat.ssh.s3.eyebrow": "相关功能",
+        "feat.ssh.s3.title": "继续了解",
+        "feat.ssh.s3.desc": "SFTP 文件管理、端口转发、Quake 下拉终端、工作区，都是同一个应用的一部分。",
+        "feat.ssh.s3.r1": "SFTP 文件管理",
+        "feat.ssh.s3.r2": "端口转发",
+        "feat.ssh.s3.r3": "Quake 下拉终端",
+      },
+      en: {
+        "feat.ssh.eyebrow": "Feature · SSH Terminal",
+        "feat.ssh.h1": "SSH Terminal",
+        "feat.ssh.desc": "Tabs and horizontal/vertical split panes — watch several machines at once. SwiftTerm-based emulation, Keychain and Secure Enclave auth, ready out of the box.",
+        "feat.ssh.cta.dl": "Download Bonk",
+        "feat.ssh.cta.home": "Back to Home",
+        "feat.ssh.s1.eyebrow": "Core capabilities",
+        "feat.ssh.s1.title": "Enough for daily ops, strong enough for heavy work",
+        "feat.ssh.s1.l1s": "Multi-tab management",
+        "feat.ssh.s1.l1": "One tab per host, click to switch; rename and drag to reorder.",
+        "feat.ssh.s1.l2s": "Horizontal / vertical split",
+        "feat.ssh.s1.l2": "Split a session into panes, or connect another host side by side.",
+        "feat.ssh.s1.l3s": "Broadcast input",
+        "feat.ssh.s1.l3": "Type once, echo across every pane — batch-ops powerhouse.",
+        "feat.ssh.s1.l4s": "Jump hosts",
+        "feat.ssh.s1.l4": "Multi-hop Jump Host chains for complex network topologies.",
+        "feat.ssh.s1.l5s": "Zmodem",
+        "feat.ssh.s1.l5": "Send and receive files in-terminal with rz / sz.",
+        "feat.ssh.s1.l6s": "OSC 7 directory sync",
+        "feat.ssh.s1.l6": "New tabs open in the current remote directory.",
+        "feat.ssh.s2.eyebrow": "Security",
+        "feat.ssh.s2.title": "Credentials never hit disk",
+        "feat.ssh.s2.l1s": "Keychain credentials",
+        "feat.ssh.s2.l1": "Passwords and keys live in the macOS Keychain, never plaintext.",
+        "feat.ssh.s2.l2s": "Secure Enclave P256 keys",
+        "feat.ssh.s2.l2": "P256 private keys never leave the Secure Enclave — passwordless login.",
+        "feat.ssh.s2.l3s": "Host key verification",
+        "feat.ssh.s2.l3": "Host key fingerprint confirmation on first connect.",
+        "feat.ssh.s2.l4s": "SSH config import",
+        "feat.ssh.s2.l4": "Import ~/.ssh/config directly — migration in minutes.",
+        "feat.ssh.s3.eyebrow": "Related",
+        "feat.ssh.s3.title": "Keep exploring",
+        "feat.ssh.s3.desc": "SFTP, port forwarding, Quake dropdown and workspaces are all part of the same app.",
+        "feat.ssh.s3.r1": "SFTP File Browser",
+        "feat.ssh.s3.r2": "Port Forwarding",
+        "feat.ssh.s3.r3": "Quake Terminal",
+      },
+    };
+  </script>
+</head>
+<body>
+  <header class="nav" id="nav">
+    <div class="container nav__inner">
+      <a href="../index.html" class="nav__brand" aria-label="Bonk">
+        <img class="nav__logo" src="../assets/img/icon-256.png" alt="Bonk" width="28" height="28" />
+        <span>Bonk</span>
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="../index.html#features" class="nav__link" data-i18n="nav.features">功能</a>
+        <a href="../compare/termius-alternative.html" class="nav__link" data-i18n="nav.compare">对比</a>
+        <a href="../docs/getting-started.html" class="nav__link" data-i18n="nav.docs">文档</a>
+        <a href="../index.html#download" class="nav__link" data-i18n="nav.download">下载</a>
+      </nav>
+      <div class="nav__actions">
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button type="button" data-lang="zh" aria-pressed="true">中</button>
+          <button type="button" data-lang="en" aria-pressed="false">EN</button>
+        </div>
+        <a href="https://github.com/iamJoyLiam/Bonk" class="gh-badge" target="_blank" rel="noopener" aria-label="GitHub">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span class="gh-badge__label" data-i18n="nav.github">GitHub</span>
+        </a>
+        <button class="nav__toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="container hero__inner">
+        <p class="hero__mono" data-i18n="feat.ssh.eyebrow">功能 · SSH 终端</p>
+        <h1 class="hero__title" data-i18n="feat.ssh.h1">SSH 终端</h1>
+        <p class="hero__desc" data-i18n="feat.ssh.desc">多标签、水平/垂直分屏，一个窗口同时盯多台机器。</p>
+        <div class="hero__cta">
+          <a href="../index.html#download" class="btn btn-primary btn-lg" data-i18n="feat.ssh.cta.dl">下载 Bonk</a>
+          <a href="../index.html" class="btn btn-ghost btn-lg" data-i18n="feat.ssh.cta.home">返回首页</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="feat.ssh.s1.eyebrow">核心能力</span>
+          <h2 class="section__title" data-i18n="feat.ssh.s1.title">日常运维够用，重活也能干</h2>
+        </div>
+        <ul>
+          <li><strong data-i18n="feat.ssh.s1.l1s">多标签管理</strong><span data-i18n="feat.ssh.s1.l1">：每个主机一个标签，点一下切换，标签可重命名、拖拽排序。</span></li>
+          <li><strong data-i18n="feat.ssh.s1.l2s">水平 / 垂直分屏</strong><span data-i18n="feat.ssh.s1.l2">：同一会话拆成多窗格，或独立连接另一台主机，快捷键一键拆分。</span></li>
+          <li><strong data-i18n="feat.ssh.s1.l3s">广播输入</strong><span data-i18n="feat.ssh.s1.l3">：一次输入同步到所有分屏面板，批量运维利器。</span></li>
+          <li><strong data-i18n="feat.ssh.s1.l4s">跳板机</strong><span data-i18n="feat.ssh.s1.l4">：多级 Jump Host 链式跳转，复杂网络拓扑从容应对。</span></li>
+          <li><strong data-i18n="feat.ssh.s1.l5s">Zmodem</strong><span data-i18n="feat.ssh.s1.l5">：终端内直接收发文件，支持 rz / sz。</span></li>
+          <li><strong data-i18n="feat.ssh.s1.l6s">OSC 7 目录同步</strong><span data-i18n="feat.ssh.s1.l6">：新标签自动进入当前目录。</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="feat.ssh.s2.eyebrow">安全</span>
+          <h2 class="section__title" data-i18n="feat.ssh.s2.title">凭据不落地</h2>
+        </div>
+        <ul>
+          <li><strong data-i18n="feat.ssh.s2.l1s">Keychain 凭据</strong><span data-i18n="feat.ssh.s2.l1">：密码、私钥存系统钥匙串，不在本地明文落盘。</span></li>
+          <li><strong data-i18n="feat.ssh.s2.l2s">Secure Enclave P256 密钥</strong><span data-i18n="feat.ssh.s2.l2">：私钥永不离开安全芯片，支持免密登录。</span></li>
+          <li><strong data-i18n="feat.ssh.s2.l3s">主机密钥校验</strong><span data-i18n="feat.ssh.s2.l3">：首次连接指纹确认，防中间人。</span></li>
+          <li><strong data-i18n="feat.ssh.s2.l4s">SSH Config 导入</strong><span data-i18n="feat.ssh.s2.l4">：直接读取现有 ~/.ssh/config，迁移零成本。</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="feat.ssh.s3.eyebrow">相关功能</span>
+          <h2 class="section__title" data-i18n="feat.ssh.s3.title">继续了解</h2>
+        </div>
+        <p data-i18n="feat.ssh.s3.desc">SFTP 文件管理、端口转发、Quake 下拉终端、工作区，都是同一个应用的一部分。</p>
+        <div class="hero__cta">
+          <a href="../features/sftp.html" class="btn btn-ghost" data-i18n="feat.ssh.s3.r1">SFTP 文件管理</a>
+          <a href="../features/port-forwarding.html" class="btn btn-ghost" data-i18n="feat.ssh.s3.r2">端口转发</a>
+          <a href="../features/quake-terminal.html" class="btn btn-ghost" data-i18n="feat.ssh.s3.r3">Quake 下拉终端</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <img class="footer__logo" src="../assets/img/icon-256.png" alt="Bonk" width="26" height="26" />
+        <span>Bonk</span>
+      </div>
+      <nav class="footer__links" aria-label="Footer">
+        <a href="https://github.com/iamJoyLiam/Bonk" target="_blank" rel="noopener" data-i18n="nav.source">源码</a>
+        <a href="https://github.com/iamJoyLiam/Bonk/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="../index.html#features" data-i18n="nav.features">功能</a>
+        <a href="../compare/termius-alternative.html" data-i18n="nav.compare">对比</a>
+        <a href="../docs/getting-started.html" data-i18n="nav.docs">文档</a>
+        <a href="../index.html#download" data-i18n="nav.download">下载</a>
+      </nav>
+      <div class="footer__copy"><span data-i18n="footer.copy">© 2026 Bonk. 保留所有权利。</span></div>
+    </div>
+  </footer>
+  <script src="../assets/js/i18n.js?v=2026.1.2" defer></script>
+  <script src="../assets/js/main.js?v=2026.1.2" defer></script>
+</body>
+</html>

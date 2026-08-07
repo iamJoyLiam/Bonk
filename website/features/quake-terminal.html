@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#F5F5F7" />
+  <meta name="color-scheme" content="light" />
+  <title>Quake 下拉终端 — Bonk，macOS 全局热键 ⌘` 秒开终端</title>
+  <meta name="description" content="Bonk 的 Quake 下拉终端：任意应用里按全局热键 ⌘` 从屏幕顶部呼出终端，与主窗口共享同一个 SSH 会话，不打断当前工作流。" />
+  <link rel="canonical" href="https://bonk-terminal.pages.dev/features/quake-terminal.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Quake 下拉终端 — 全局热键秒开" />
+  <meta property="og:description" content="任意应用里 ⌘` 呼出终端，共享 SSH 会话。" />
+  <meta property="og:image" content="../assets/img/icon-1024.png" />
+  <link rel="icon" href="../assets/img/icon-64.png" type="image/png" />
+  <link rel="stylesheet" href="../assets/css/tokens.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/base.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/components.css?v=2026.1.2" />
+  <link rel="stylesheet" href="../assets/css/responsive.css?v=2026.1.2" />
+  <script>
+    window.BonkPageI18n = {
+      zh: {
+        "feat.quake.eyebrow": "功能 · Quake 终端",
+        "feat.quake.h1": "Quake 下拉终端",
+        "feat.quake.desc": "全局热键 ⌘` 呼出下拉终端，任何应用里随时一键到达。与主窗口共享同一个 SSH 会话，屏幕顶部滑出，用完即走。",
+        "feat.quake.cta.dl": "下载 Bonk",
+        "feat.quake.cta.home": "返回首页",
+        "feat.quake.s1.eyebrow": "能力",
+        "feat.quake.s1.title": "不打断工作流的终端",
+        "feat.quake.s1.l1s": "全局热键",
+        "feat.quake.s1.l1": "⌘` 从任意应用呼出 / 收起。",
+        "feat.quake.s1.l2s": "共享会话",
+        "feat.quake.s1.l2": "下拉终端就是当前活动标签，同一 SSH 会话，无重复连接。",
+        "feat.quake.s1.l3s": "跟随主题",
+        "feat.quake.s1.l3": "使用你的终端配色，不突兀。",
+        "feat.quake.s1.l4s": "快速连接",
+        "feat.quake.s1.l4": "下拉内可直接 Quick Connect 新主机。",
+        "feat.quake.s2.eyebrow": "相关功能",
+        "feat.quake.s2.title": "继续了解",
+        "feat.quake.s2.r1": "SSH 终端",
+        "feat.quake.s2.r2": "工作区",
+        "feat.quake.s2.r3": "分屏",
+      },
+      en: {
+        "feat.quake.eyebrow": "Feature · Quake Terminal",
+        "feat.quake.h1": "Quake Dropdown Terminal",
+        "feat.quake.desc": "Global ⌘` hotkey drops a terminal from the top of the screen, from any app. It shares the same SSH session as the main window — use it and go.",
+        "feat.quake.cta.dl": "Download Bonk",
+        "feat.quake.cta.home": "Back to Home",
+        "feat.quake.s1.eyebrow": "Capabilities",
+        "feat.quake.s1.title": "A terminal that never breaks your flow",
+        "feat.quake.s1.l1s": "Global hotkey",
+        "feat.quake.s1.l1": "⌘` shows / hides from any application.",
+        "feat.quake.s1.l2s": "Shared session",
+        "feat.quake.s1.l2": "The dropdown is your active tab — same SSH session, no duplicate connections.",
+        "feat.quake.s1.l3s": "Theme aware",
+        "feat.quake.s1.l3": "Uses your terminal colors, blends right in.",
+        "feat.quake.s1.l4s": "Quick connect",
+        "feat.quake.s1.l4": "Quick Connect a new host right from the dropdown.",
+        "feat.quake.s2.eyebrow": "Related",
+        "feat.quake.s2.title": "Keep exploring",
+        "feat.quake.s2.r1": "SSH Terminal",
+        "feat.quake.s2.r2": "Workspaces",
+        "feat.quake.s2.r3": "Split Panes",
+      },
+    };
+  </script>
+</head>
+<body>
+  <header class="nav" id="nav">
+    <div class="container nav__inner">
+      <a href="../index.html" class="nav__brand" aria-label="Bonk">
+        <img class="nav__logo" src="../assets/img/icon-256.png" alt="Bonk" width="28" height="28" />
+        <span>Bonk</span>
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="../index.html#features" class="nav__link" data-i18n="nav.features">功能</a>
+        <a href="../compare/termius-alternative.html" class="nav__link" data-i18n="nav.compare">对比</a>
+        <a href="../docs/getting-started.html" class="nav__link" data-i18n="nav.docs">文档</a>
+        <a href="../index.html#download" class="nav__link" data-i18n="nav.download">下载</a>
+      </nav>
+      <div class="nav__actions">
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button type="button" data-lang="zh" aria-pressed="true">中</button>
+          <button type="button" data-lang="en" aria-pressed="false">EN</button>
+        </div>
+        <a href="https://github.com/iamJoyLiam/Bonk" class="gh-badge" target="_blank" rel="noopener" aria-label="GitHub">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span class="gh-badge__label" data-i18n="nav.github">GitHub</span>
+        </a>
+        <button class="nav__toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="container hero__inner">
+        <p class="hero__mono" data-i18n="feat.quake.eyebrow">功能 · Quake 终端</p>
+        <h1 class="hero__title" data-i18n="feat.quake.h1">Quake 下拉终端</h1>
+        <p class="hero__desc" data-i18n="feat.quake.desc">全局热键 ⌘` 呼出下拉终端，任何应用里随时一键到达。</p>
+        <div class="hero__cta">
+          <a href="../index.html#download" class="btn btn-primary btn-lg" data-i18n="feat.quake.cta.dl">下载 Bonk</a>
+          <a href="../index.html" class="btn btn-ghost btn-lg" data-i18n="feat.quake.cta.home">返回首页</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="feat.quake.s1.eyebrow">能力</span>
+          <h2 class="section__title" data-i18n="feat.quake.s1.title">不打断工作流的终端</h2>
+        </div>
+        <ul>
+          <li><strong data-i18n="feat.quake.s1.l1s">全局热键</strong><span data-i18n="feat.quake.s1.l1">：⌘` 从任意应用呼出 / 收起。</span></li>
+          <li><strong data-i18n="feat.quake.s1.l2s">共享会话</strong><span data-i18n="feat.quake.s1.l2">：下拉终端就是当前活动标签，同一 SSH 会话，无重复连接。</span></li>
+          <li><strong data-i18n="feat.quake.s1.l3s">跟随主题</strong><span data-i18n="feat.quake.s1.l3">：使用你的终端配色，不突兀。</span></li>
+          <li><strong data-i18n="feat.quake.s1.l4s">快速连接</strong><span data-i18n="feat.quake.s1.l4">：下拉内可直接 Quick Connect 新主机。</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section__head section__head--center">
+          <span class="section__eyebrow" data-i18n="feat.quake.s2.eyebrow">相关功能</span>
+          <h2 class="section__title" data-i18n="feat.quake.s2.title">继续了解</h2>
+        </div>
+        <div class="hero__cta">
+          <a href="../features/ssh-terminal.html" class="btn btn-ghost" data-i18n="feat.quake.s2.r1">SSH 终端</a>
+          <a href="../features/workspaces.html" class="btn btn-ghost" data-i18n="feat.quake.s2.r2">工作区</a>
+          <a href="../features/split-panes.html" class="btn btn-ghost" data-i18n="feat.quake.s2.r3">分屏</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <img class="footer__logo" src="../assets/img/icon-256.png" alt="Bonk" width="26" height="26" />
+        <span>Bonk</span>
+      </div>
+      <nav class="footer__links" aria-label="Footer">
+        <a href="https://github.com/iamJoyLiam/Bonk" target="_blank" rel="noopener" data-i18n="nav.source">源码</a>
+        <a href="https://github.com/iamJoyLiam/Bonk/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="../index.html#features" data-i18n="nav.features">功能</a>
+        <a href="../compare/termius-alternative.html" data-i18n="nav.compare">对比</a>
+        <a href="../docs/getting-started.html" data-i18n="nav.docs">文档</a>
+        <a href="../index.html#download" data-i18n="nav.download">下载</a>
+      </nav>
+      <div class="footer__copy"><span data-i18n="footer.copy">© 2026 Bonk. 保留所有权利。</span></div>
+    </div>
+  </footer>
+  <script src="../assets/js/i18n.js?v=2026.1.2" defer></script>
+  <script src="../assets/js/main.js?v=2026.1.2" defer></script>
+</body>
+</html>

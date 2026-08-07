@@ -374,6 +374,201 @@
   color: var(--text-primary);
 }
 
+/* ==================== COMPARISON TABLE ==================== */
+.cmp-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.cmp-table th,
+.cmp-table td {
+  padding: var(--space-4) var(--space-5);
+  text-align: left;
+  vertical-align: top;
+  font-size: var(--text-base);
+}
+
+.cmp-table thead th {
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.cmp-table thead th:first-child {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.cmp-table tbody tr + tr {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.cmp-table td:first-child {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.cmp-table .cmp-bonk {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  font-weight: 600;
+}
+
+.cmp-yes {
+  color: var(--success, #1d7a3d);
+  font-weight: 600;
+}
+
+.cmp-no {
+  color: var(--text-tertiary);
+}
+
+/* ==================== STEPS（文档步骤卡） ==================== */
+.steps {
+  list-style: none;
+  padding: 0;
+  margin: 0 auto;
+  max-width: 720px;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.step {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5) var(--space-6);
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.step:hover {
+  border-color: var(--border-strong);
+}
+
+.step__num {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent-green);
+  color: #ffffff;
+  font-weight: 600;
+  font-size: var(--text-sm);
+  margin-top: 1px;
+}
+
+.step__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.step__title {
+  font-weight: 600;
+  font-size: var(--text-base);
+  color: var(--text-primary);
+}
+
+.step__desc {
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+}
+
+/* ==================== TIPS（要点卡） ==================== */
+.tips {
+  list-style: none;
+  padding: 0;
+  margin: 0 auto;
+  max-width: 720px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.tip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5) var(--space-6);
+}
+
+.tip strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tip span {
+  color: var(--text-secondary);
+}
+
+@media (max-width: 767px) {
+  .tips {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==================== CALLOUT（重点卡片） ==================== */
+.callout {
+  max-width: 720px;
+  margin: 0 auto;
+  background: color-mix(in srgb, var(--accent-green) 7%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--accent-green) 35%, var(--border-subtle));
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.callout__text {
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+}
+
+.callout .btn {
+  align-self: center;
+}
+
+/* ==================== FAQ（问答卡） ==================== */
+.faq {
+  list-style: none;
+  padding: 0;
+  margin: 0 auto;
+  max-width: 720px;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.faq-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5) var(--space-6);
+}
+
+.faq-item strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.faq-item span {
+  color: var(--text-secondary);
+}
+
 /* ==================== DOWNLOAD ==================== */
 .download-grid {
   display: grid;
