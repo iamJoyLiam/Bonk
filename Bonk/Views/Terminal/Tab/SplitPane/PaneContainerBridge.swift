@@ -64,7 +64,8 @@ import SwiftUI
                         onSend: onSend,
                         onResize: onResize,
                         onTitleChange: onTitleChange,
-                        completionContext: completionContext
+                        completionContext: completionContext,
+                        onViewReady: connectOutputStreamWithRetry
                     )
                 case let .reconnecting(attempt, max):
                     reconnectingView(attempt: attempt, max: max)
@@ -118,6 +119,16 @@ import SwiftUI
                         return
                     }
                     // Already connected
+                    if let coordinator = cached.coordinator as? ContainerTerminalCoordinator,
+                       coordinator.feedTask == nil,
+                       let stream = cached.outputStream,
+                       let bytesProcessed = cached.onBytesProcessed
+                    {
+                        Log.session.info("[PTY-RETRY] Output stream exists but feed task nil, restarting for pane \(paneState.id.uuidString.prefix(8))")
+                        coordinator.startFeeding(from: stream, onBytesProcessed: bytesProcessed)
+                    } else {
+                        Log.session.info("[PTY-RETRY] Already connected for pane \(paneState.id.uuidString.prefix(8))")
+                    }
                     return
                 }
                 Log.session.warning("[PTY-RETRY] Failed to connect output stream after \(maxRetries) attempts")
@@ -168,6 +179,10 @@ import SwiftUI
         let onResize: (@Sendable (Int, Int) -> Void)?
         let onTitleChange: (@Sendable (String) -> Void)?
         let completionContext: (@MainActor () -> InlineCompletionContext)?
+        /// Fired every time this bridge attaches a terminal view for a pane.
+        /// SwiftUI reuses the surrounding container across tab switches, so
+        /// onAppear is unreliable — updateNSView is the reliable hook.
+        let onViewReady: () -> Void
 
         func makeCoordinator() -> PaneCoordinator {
             PaneCoordinator()
@@ -177,6 +192,7 @@ import SwiftUI
             let containerView = NSView()
             containerView.translatesAutoresizingMaskIntoConstraints = false
             setupTerminalView(for: paneID, in: containerView, context: context)
+            onViewReady()
             return containerView
         }
 
@@ -215,6 +231,7 @@ import SwiftUI
 
             // Force re-render after re-adding cached view
             cached.view.needsDisplay = true
+            onViewReady()
 
             Task { @MainActor in try? await Task.sleep(for: .milliseconds(100))
                 nsView.window?.makeFirstResponder(cached.view)

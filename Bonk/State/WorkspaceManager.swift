@@ -25,6 +25,11 @@ final class WorkspaceManager {
 
     var activeRightPanel: RightPanel = .none
 
+    /// Whether the inspector split item is currently collapsed. Manual
+    /// divider drags collapse/expand it without touching `activeRightPanel`,
+    /// so the toggle needs this to reopen the same panel.
+    var isInspectorCollapsed = true
+
     // MARK: - Snippets/History Sub-tab
 
     enum SnippetsHistoryTab: String, CaseIterable, Identifiable {
@@ -53,7 +58,14 @@ final class WorkspaceManager {
 
     func toggleRightPanel(_ panel: RightPanel) {
         if activeRightPanel == panel {
-            activeRightPanel = .none
+            if isInspectorCollapsed {
+                // Reopen the collapsed inspector with the same panel. Write
+                // through `.none` so the change is observed.
+                activeRightPanel = .none
+                activeRightPanel = panel
+            } else {
+                activeRightPanel = .none
+            }
         } else {
             activeRightPanel = panel
         }
