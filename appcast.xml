@@ -6,6 +6,37 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.3</title>
+            <pubDate>Mon, 10 Aug 2026 08:00:00 +0000</pubDate>
+            <sparkle:version>2026103</sparkle:version>
+            <sparkle:shortVersionString>2026.1.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>更新内容</h3>
+                <ul>
+                    <li>新增 AI 内联补全功能</li>
+                    <li>SFTP 传输流水线化，显著降低网络往返延迟</li>
+                    <li>修复右侧面板拖拽收起后未松手拖回，内容丢失的问题</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.3/Bonk-2026.1.3-arm64.dmg"
+                length="9026819"
+                type="application/octet-stream"
+                sparkle:edSignature="86eR5/8JR4EuIeFpq9ylvgRgpoWB10IUI1qO1N7Q885B6Bi5Duo4DQcIIoh+kM9eOv6CE04151KKo2ab1XRJAQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.3/Bonk-2026.1.3-x86_64.dmg"
+                length="9713879"
+                type="application/octet-stream"
+                sparkle:edSignature="d4mW6Yc57kmmi9T9zqZZyTcmRDkUwnMQ9SIWvsaTUFvA6iKnEmOBmdLhDoNsVRzTWbhB0KSFdztYaZRv/kJ7DA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.2</title>
             <pubDate>Wed, 05 Aug 2026 08:00:00 +0000</pubDate>
             <sparkle:version>2026102</sparkle:version>
