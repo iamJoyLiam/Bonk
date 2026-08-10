@@ -24,6 +24,7 @@ final class MainSplitViewController: NSSplitViewController {
 
     private var inspectorSplitItem: NSSplitViewItem!
     private var collapsedObservation: NSKeyValueObservation?
+    private var isResizingInspector = false
     nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
 
     deinit {
@@ -165,13 +166,39 @@ final class MainSplitViewController: NSSplitViewController {
     private func startInspectorObservation() {
         observeActiveRightPanel()
 
-        // Collapsing the inspector by hand resets the active panel.
+        // Bracket divider drags so a collapse that happens mid-drag (and is
+        // then reversed) doesn't wipe the active panel. Reset only after the
+        // drag ends while still collapsed.
         collapsedObservation = inspectorSplitItem.observe(\.isCollapsed, options: [.new]) { [weak self] _, _ in
             MainActor.assumeIsolated {
-                guard let self, let item = self.inspectorSplitItem, item.isCollapsed, self.workspace.activeRightPanel != .none else { return }
+                guard let self,
+                      let item = self.inspectorSplitItem,
+                      item.isCollapsed,
+                      self.workspace.activeRightPanel != .none,
+                      !self.isResizingInspector
+                else { return }
                 self.workspace.activeRightPanel = .none
             }
         }
+
+        observers.append(NotificationCenter.default.addObserver(
+            forName: NSSplitView.willResizeSubviewsNotification,
+            object: splitView, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.isResizingInspector = true }
+        })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: NSSplitView.didResizeSubviewsNotification,
+            object: splitView, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.isResizingInspector = false
+                if self.inspectorSplitItem.isCollapsed, self.workspace.activeRightPanel != .none {
+                    self.workspace.activeRightPanel = .none
+                }
+            }
+        })
     }
 
     private func observeActiveRightPanel() {

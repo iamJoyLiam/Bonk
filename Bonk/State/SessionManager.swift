@@ -122,14 +122,14 @@ final class SessionManager {
 
             guard tabs.contains(where: { $0.id == tab.id }) else { return }
 
-            session.connectionState = .connected
-            session.connectedAt = Date()
-
-
             // Connect the first pane
             if let firstPane = tab.layout.root.paneState {
                 try await setupPTYSession(for: tab, pane: firstPane, session: session, service: service)
             }
+            // Only mark connected once the PTY is actually established, so the
+            // UI never renders a terminal view without a live PTY session.
+            session.connectionState = .connected
+            session.connectedAt = Date()
             Log.session.info("[CONNECT] PTY session established successfully")
         } catch {
             Log.session.error("[CONNECT] Connection failed: \(error.localizedDescription)")
@@ -284,7 +284,7 @@ final class SessionManager {
 
         guard tabs.contains(where: { $0.id == tab.id }) else {
             Log.session.warning("[PTY] Tab was closed during PTY setup, aborting")
-            return
+            throw SSHServiceError.connectionFailed("Tab was closed during PTY setup")
         }
 
         pane.ptySession = ptySession
@@ -361,7 +361,6 @@ final class SessionManager {
             for await state in service.stateStream {
                 guard !Task.isCancelled else { break }
                 guard tab.session === session else { break }
-                session.connectionState = state
 
                 switch state {
                 case .connected:
@@ -374,10 +373,20 @@ final class SessionManager {
                         }
                         session.connectedAt = Date()
                         session.errorMessage = nil
+                        session.connectionState = .connected
+                    } else if tab.layout.root.paneState?.ptySession != nil {
+                        // Initial connect: PTY already attached by connectTab.
+                        session.connectionState = .connected
+                    } else {
+                        // Stale/early connected signal — no PTY yet. Holding the
+                        // current state avoids a blank terminal with no session.
+                        Log.session.debug("[CONNECT] Ignoring .connected before PTY ready")
                     }
                 case .disconnected:
                     session.connectedAt = nil
+                    session.connectionState = .disconnected
                 default:
+                    session.connectionState = state
                     break
                 }
             }

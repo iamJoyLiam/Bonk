@@ -97,14 +97,15 @@ enum AIProviderNetworking {
         apiKey: String,
         systemPrompt: String,
         userPrompt: String,
-        stream: Bool
+        stream: Bool,
+        maxTokens: Int? = nil
     ) throws -> URLRequest {
         let endpoint = baseEndpoint(
             provider.endpoint.isEmpty ? provider.type.defaultEndpoint : provider.endpoint
         )
         guard !endpoint.isEmpty else { throw AIError.invalidEndpoint }
 
-        let maxTokens = provider.maxOutputTokens ?? 500
+        let maxTokens = maxTokens ?? provider.maxOutputTokens ?? 500
         let url: URL
         let headers: [String: String]
         let body: [String: Any]
@@ -243,18 +244,21 @@ enum AIProviderNetworking {
         apiKey: String,
         systemPrompt: String,
         userPrompt: String,
+        maxTokens: Int? = nil,
         onDelta: ((String) -> Void)? = nil
     ) async throws -> String {
         if provider.type == .gemini {
             return try await nonStreamRequest(
                 provider: provider, apiKey: apiKey,
-                systemPrompt: systemPrompt, userPrompt: userPrompt
+                systemPrompt: systemPrompt, userPrompt: userPrompt,
+                maxTokens: maxTokens
             )
         }
 
         let request = try buildRequest(
             provider: provider, apiKey: apiKey,
-            systemPrompt: systemPrompt, userPrompt: userPrompt, stream: true
+            systemPrompt: systemPrompt, userPrompt: userPrompt, stream: true,
+            maxTokens: maxTokens
         )
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
 
@@ -278,11 +282,13 @@ enum AIProviderNetworking {
         provider: AIProviderConfig,
         apiKey: String,
         systemPrompt: String,
-        userPrompt: String
+        userPrompt: String,
+        maxTokens: Int? = nil
     ) async throws -> String {
         let request = try buildRequest(
             provider: provider, apiKey: apiKey,
-            systemPrompt: systemPrompt, userPrompt: userPrompt, stream: false
+            systemPrompt: systemPrompt, userPrompt: userPrompt, stream: false,
+            maxTokens: maxTokens
         )
         let (data, response) = try await URLSession.shared.data(for: request)
 

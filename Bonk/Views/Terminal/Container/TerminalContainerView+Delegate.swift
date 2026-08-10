@@ -27,9 +27,11 @@ import SwiftTerm
         }
 
         func hostCurrentDirectoryUpdate(source _: SwiftTerm.TerminalView, directory _: String?) {}
-        func scrolled(source terminal: SwiftTerm.TerminalView, position _: Double) {
+        func scrolled(source terminal: SwiftTerm.TerminalView, position: Double) {
             flashScroller(in: terminal)
+            (terminal as? NativeTerminalView)?.handleScroll(position: position)
         }
+
         func requestOpenLink(source _: SwiftTerm.TerminalView, link _: String, params _: [String: String]) {}
         func bell(source _: SwiftTerm.TerminalView) {}
         func clipboardCopy(source _: SwiftTerm.TerminalView, content: Data) {

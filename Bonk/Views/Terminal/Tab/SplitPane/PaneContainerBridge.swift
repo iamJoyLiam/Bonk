@@ -30,6 +30,18 @@ import SwiftUI
         let onTitleChange: (@Sendable (String) -> Void)?
         let onReconnect: (() -> Void)?
 
+        /// Lazily gathers terminal context for inline AI completion.
+        private var completionContext: @MainActor () -> InlineCompletionContext {
+            { [weak tab] in
+                InlineCompletionContext(
+                    inputBuffer: tab?.session?.inputBuffer ?? "",
+                    currentDirectory: tab?.currentDirectory,
+                    recentCommands: GlobalCommandHistory.shared.commands.suffix(10).map(\.command),
+                    recentOutput: tab?.session?.ptySession?.recentOutput(maxLines: 40) ?? ""
+                )
+            }
+        }
+
         var body: some View {
             ZStack {
                 switch tab.session?.connectionState ?? .disconnected {
@@ -51,7 +63,8 @@ import SwiftUI
                         copyOnSelect: copyOnSelect,
                         onSend: onSend,
                         onResize: onResize,
-                        onTitleChange: onTitleChange
+                        onTitleChange: onTitleChange,
+                        completionContext: completionContext
                     )
                 case let .reconnecting(attempt, max):
                     reconnectingView(attempt: attempt, max: max)
@@ -70,23 +83,31 @@ import SwiftUI
         }
 
         /// Connect output stream with retry mechanism.
-        /// Retries up to 5 times with increasing delay (100ms, 200ms, 400ms, 800ms, 1600ms).
+        /// Retries until both the PTY session and the terminal view exist
+        /// (increasing delay, ~30s window), then attaches the output stream.
         private func connectOutputStreamWithRetry() {
             Task { @MainActor in
-                let maxRetries = 5
+                let maxRetries = 10
                 var delay: UInt64 = 100
 
                 for attempt in 0 ..< maxRetries {
                     try? await Task.sleep(for: .milliseconds(Double(delay)))
 
                     guard let ptySession = paneState.ptySession else {
-                        Log.session.debug("[PTY-RETRY] No PTY session yet, retry \(attempt + 1)/\(maxRetries)")
+                        Log.session.info("[PTY-RETRY] No PTY session yet, retry \(attempt + 1)/\(maxRetries)")
                         delay = min(delay * 2, 1600)
                         continue
                     }
 
                     let cached = TerminalViewCache.shared.retrieve(paneState.id)
-                    if cached?.outputStream == nil {
+                    guard let cached else {
+                        // View created after this task started — wait for it.
+                        Log.session.info("[PTY-RETRY] Terminal view not cached yet, retry \(attempt + 1)/\(maxRetries)")
+                        delay = min(delay * 2, 1600)
+                        continue
+                    }
+
+                    if cached.outputStream == nil {
                         let result = ptySession.makeOutputStream()
                         TerminalViewCache.shared.connectOutputStream(
                             result.stream,
@@ -95,10 +116,9 @@ import SwiftUI
                         )
                         Log.session.info("[PTY-RETRY] Connected output stream on attempt \(attempt + 1)")
                         return
-                    } else {
-                        // Already connected
-                        return
                     }
+                    // Already connected
+                    return
                 }
                 Log.session.warning("[PTY-RETRY] Failed to connect output stream after \(maxRetries) attempts")
             }
@@ -147,6 +167,7 @@ import SwiftUI
         let onSend: @Sendable (ArraySlice<UInt8>) -> Void
         let onResize: (@Sendable (Int, Int) -> Void)?
         let onTitleChange: (@Sendable (String) -> Void)?
+        let completionContext: (@MainActor () -> InlineCompletionContext)?
 
         func makeCoordinator() -> PaneCoordinator {
             PaneCoordinator()
@@ -206,6 +227,7 @@ import SwiftUI
             let font = createSafeFont(family: fontFamily, size: CGFloat(fontSize))
             let terminal = NativeTerminalView(frame: .zero, font: font)
             terminal.configureNativeColors()
+            terminal.completionContextProvider = completionContext
 
             // 滚动条：初始隐藏，滚动时显示，使用小尺寸
             for subview in terminal.subviews {
@@ -239,6 +261,7 @@ import SwiftUI
 
             coordinator.observeThemeChanges()
             coordinator.installCopyOnSelectMonitor()
+            coordinator.installInlineCompletionMonitor()
 
             let cached = CachedTerminalView(tabID: paneID, view: terminal, coordinator: coordinator)
             TerminalViewCache.shared.store(tabID: paneID, parentTabID: tabID, view: terminal, coordinator: coordinator)

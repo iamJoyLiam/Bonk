@@ -94,7 +94,8 @@ import SwiftUI
             } else if let coordinator = cached?.coordinator as? ContainerTerminalCoordinator,
                       coordinator.feedTask == nil,
                       let stream = cached?.outputStream,
-                      let bytesProcessed = cached?.onBytesProcessed {
+                      let bytesProcessed = cached?.onBytesProcessed
+            {
                 Log.ui.info("[TerminalContainer] connectOutputStreamIfNeeded: feed task nil for tab \(activeTab.id.uuidString.prefix(8)), restarting")
                 coordinator.startFeeding(from: stream, onBytesProcessed: bytesProcessed)
             }
@@ -238,6 +239,7 @@ import SwiftUI
 
             coordinator.observeThemeChanges()
             coordinator.installCopyOnSelectMonitor()
+            coordinator.installInlineCompletionMonitor()
 
             let cached = CachedTerminalView(tabID: tabID, view: terminal, coordinator: coordinator)
             TerminalViewCache.shared.store(tabID: tabID, view: terminal, coordinator: coordinator)
@@ -296,6 +298,7 @@ import SwiftUI
         private var _feedTask: Task<Void, Never>?
         var themeObserver: NSObjectProtocol?
         private nonisolated(unsafe) var mouseUpMonitor: Any?
+        private nonisolated(unsafe) var completionKeyMonitor: Any?
         var fontObserver: NSObjectProtocol?
         var selectionObserver: NSObjectProtocol?
         var selectAllObserver: NSObjectProtocol?
@@ -341,6 +344,7 @@ import SwiftUI
         deinit {
             removeThemeObserver()
             removeCopyOnSelectMonitor()
+            removeInlineCompletionMonitor()
             feedTask?.cancel()
         }
 
@@ -376,6 +380,27 @@ import SwiftUI
                 installCopyOnSelectMonitor()
             } else if !enabled, mouseUpMonitor != nil {
                 removeCopyOnSelectMonitor()
+            }
+        }
+
+        // MARK: - Inline Completion Keys
+
+        /// Intercept Tab/Esc while an inline suggestion is shown. The monitor
+        /// runs before SwiftTerm's keyDown, so the event can be swallowed
+        /// entirely (Tab accept / Esc dismiss) without reaching the terminal.
+        func installInlineCompletionMonitor() {
+            guard completionKeyMonitor == nil else { return }
+            completionKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self,
+                      let view = terminalView as? NativeTerminalView else { return event }
+                return view.processKeyEvent(event)
+            }
+        }
+
+        func removeInlineCompletionMonitor() {
+            if let monitor = completionKeyMonitor {
+                NSEvent.removeMonitor(monitor)
+                completionKeyMonitor = nil
             }
         }
     }

@@ -24,16 +24,16 @@ import SwiftTerm
 
             Log.ui.info("[Feed] Starting new feed task")
             feedTask = Task { [weak self] in
-                guard let self else { 
+                guard let self else {
                     Log.ui.warning("[Feed] Self deallocated, exiting")
-                    return 
+                    return
                 }
                 try? await Task.sleep(for: .milliseconds(50)) // Reduced from 150ms to 50ms
                 Log.ui.info("[Feed] Feed task started, waiting for data")
                 for await text in stream {
-                    guard !Task.isCancelled else { 
+                    guard !Task.isCancelled else {
                         Log.ui.info("[Feed] Feed task cancelled")
-                        break 
+                        break
                     }
                     let byteCount = text.utf8.count
                     let (shouldFlush, endsCR) = batchBuffer.withLock { buf -> (Bool, Bool) in
@@ -82,6 +82,8 @@ import SwiftTerm
 
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                // Remote output arrived — any inline completion is stale.
+                (self.terminalView as? NativeTerminalView)?.handleRemoteOutput()
                 self.terminalView?.feed(text: text)
                 // Signal backpressure AFTER terminal actually processes the text
                 onBytesProcessed?(byteCount)
