@@ -6,6 +6,37 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.4</title>
+            <pubDate>Mon, 10 Aug 2026 10:00:00 +0000</pubDate>
+            <sparkle:version>2026104</sparkle:version>
+            <sparkle:shortVersionString>2026.1.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Bug 修复</h3>
+                <ul>
+                    <li>修复右侧面板拖拽收起后再次打开内容丢失的问题</li>
+                    <li>修复工作区列表打开按钮旁重复显示下拉图标的问题</li>
+                    <li>修复多终端快速切换时终端只剩光标、加载失败的问题</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.4/Bonk-2026.1.4-arm64.dmg"
+                length="9029307"
+                type="application/octet-stream"
+                sparkle:edSignature="JXzknpNR/1RGIVhgcCIyl7i9+m8dcBe6UZD3H2PcAeCv7p5yM/mO4JIjTphZCsT8UPnn7JiwEYLbds9NOJMLDw=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.4/Bonk-2026.1.4-x86_64.dmg"
+                length="9717629"
+                type="application/octet-stream"
+                sparkle:edSignature="EzNtv8tnylSS83vSxBKs+3J0gk83+nIBD5TRA4urCDWvZqEdZnhs5POY1vPoaMwc6hrUGreJ6DEvAKJMDnOTDA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.3</title>
             <pubDate>Mon, 10 Aug 2026 08:00:00 +0000</pubDate>
             <sparkle:version>2026103</sparkle:version>
