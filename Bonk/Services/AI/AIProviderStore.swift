@@ -33,8 +33,15 @@ final class AIProviderStore {
             let records = try context.fetch(FetchDescriptor<AIProviderRecord>(
                 sortBy: [SortDescriptor(\.name)]
             ))
-            providers = records.map { AIProviderConfig(from: $0) }
-            activeProviderID = records.first(where: { $0.isActive })?.id
+            // Copilot provider was removed — drop any persisted records.
+            let legacy = records.filter { $0.typeRaw == "copilot" }
+            if !legacy.isEmpty {
+                legacy.forEach(context.delete)
+                try? context.save()
+            }
+            let remaining = records.filter { $0.typeRaw != "copilot" }
+            providers = remaining.map { AIProviderConfig(from: $0) }
+            activeProviderID = remaining.first(where: { $0.isActive })?.id
         } catch {
             Self.logger.error("Failed to load providers: \(error)")
         }

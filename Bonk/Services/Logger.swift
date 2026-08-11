@@ -9,7 +9,6 @@ enum Log {
     static let sftp = Logger(subsystem: subsystem, category: "SFTP")
     static let session = Logger(subsystem: subsystem, category: "Session")
     static let general = Logger(subsystem: subsystem, category: "General")
-    static let copilot = Logger(subsystem: subsystem, category: "Copilot")
     static let ai = Logger(subsystem: subsystem, category: "AI")
     static let ui = Logger(subsystem: subsystem, category: "UI")
     static let app = Logger(subsystem: subsystem, category: "App")

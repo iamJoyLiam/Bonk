@@ -2,7 +2,7 @@
 //  AIProviderDetailSheet+Networking.swift
 //  Bonk
 //
-//  Network operations and Copilot actions for AIProviderDetailSheet.
+//  Network operations for AIProviderDetailSheet.
 //
 
 import SwiftUI
@@ -124,21 +124,5 @@ extension AIProviderDetailSheet {
         }
 
         return false
-    }
-}
-
-// MARK: - Copilot Actions
-
-extension AIProviderDetailSheet {
-    func copilotSignIn() async {
-        do { try await copilotService.signIn() } catch {
-            copilotService.errorMessage = error.localizedDescription
-        }
-    }
-
-    func copilotCompleteSignIn() async {
-        do { try await copilotService.completeSignIn() } catch {
-            copilotService.errorMessage = error.localizedDescription
-        }
     }
 }

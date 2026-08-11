@@ -118,14 +118,8 @@ enum LKey: String, CaseIterable {
     case modelRequired = "model_required"
     case modelRequiredHint = "model_required_hint"
     case advanced, apiKeyRequired = "api_key_required"
-    case authenticationRequired = "authentication_required"
-    case signInGithub = "sign_in_github", signedIn = "signed_in", signOut = "sign_out"
-    case serviceStopped = "service_stopped", sendTelemetry = "send_telemetry"
     case fetchingModels = "fetching_models", reload
     case connectionTestFailed = "connection_test_failed"
-    case enterCodeGithub = "enter_code_github", codeCopied = "code_copied"
-    case codeExpires = "code_expires", completeSignIn = "complete_sign_in"
-    case signedInAs = "signed_in_as", startingService = "starting_service"
 
     /// General extras
     case custom, notConfigured = "not_configured"
@@ -363,11 +357,6 @@ enum LKey: String, CaseIterable {
     case broadcastMode = "broadcast_mode"
     case broadcastPanes = "broadcast_panes"
 
-    // Copilot errors
-    case signInExpired = "sign_in_expired"
-    case accessDenied = "access_denied"
-    case signInTimedOut = "sign_in_timed_out"
-
     // Command safety levels
     case safe
     case moderate
@@ -484,7 +473,6 @@ enum LKey: String, CaseIterable {
     case width = "width"
     case autoHideOnFocusLoss = "auto_hide_on_focus_loss"
     case escKeyBehavior = "esc_key_behavior"
-    case testQuake = "test_quake"
     case quakeTerminal = "quake_terminal"
     case connectFromMainWindow = "connect_from_main_window"
 }

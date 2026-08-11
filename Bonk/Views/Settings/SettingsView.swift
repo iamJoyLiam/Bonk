@@ -37,14 +37,14 @@ struct SettingsView: View {
             AISettingsView()
                 .tabItem { Label(i18n.t(.ai), systemImage: "sparkles") }
                 .tag("ai")
-
-            AccountSettingsView()
-                .tabItem { Label(i18n.t(.account), systemImage: "person.crop.circle") }
-                .tag("account")
         }
         .frame(width: 720, height: 500)
         .environment(\.locale, Locale(identifier: i18n.lang))
-        .onAppear { updateWindowTitle() }
+        .onAppear {
+            // Account settings tab was removed — drop any stale selection.
+            if selectedTab == "account" { selectedTab = "general" }
+            updateWindowTitle()
+        }
         .onChange(of: selectedTab) { _, _ in updateWindowTitle() }
         .onChange(of: i18n.lang) { _, _ in updateWindowTitle() }
     }
@@ -52,7 +52,9 @@ struct SettingsView: View {
     private func updateWindowTitle() {
         #if os(macOS)
             DispatchQueue.main.async {
-                NSApplication.shared.keyWindow?.title = i18n.t(LKey(rawValue: selectedTab) ?? .settings)
+                // Account settings tab was removed — fall back to General.
+                let tag = selectedTab == "account" ? "general" : selectedTab
+                NSApplication.shared.keyWindow?.title = i18n.t(LKey(rawValue: tag) ?? .settings)
             }
         #endif
     }

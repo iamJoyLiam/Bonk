@@ -6,6 +6,38 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.5</title>
+            <pubDate>Tue, 11 Aug 2026 08:00:00 +0000</pubDate>
+            <sparkle:version>2026105</sparkle:version>
+            <sparkle:shortVersionString>2026.1.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>更新内容</h3>
+                <ul>
+                    <li>AI 网络层迁移到社区 SDK（OpenAI 兼容 + Claude），兼容更多服务商</li>
+                    <li>新增 DeepSeek、Qwen、Kimi 国内默认提供商</li>
+                    <li>移除 GitHub Copilot 提供商</li>
+                    <li>隐藏账户设置页，统一 SSH 密钥按钮样式</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.5/Bonk-2026.1.5-arm64.dmg"
+                length="13473078"
+                type="application/octet-stream"
+                sparkle:edSignature="Pdiu9a8hQJ9R91mFPsDtCsZij6ndOUECk34AivYzoFjW5dpJBoFfM4bpyoE7w7NZf7fX0mPKYdUeIhYXzlUqCA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.5/Bonk-2026.1.5-x86_64.dmg"
+                length="13992736"
+                type="application/octet-stream"
+                sparkle:edSignature="9pArN7ByquL0+bTCcofayZ0+l2be4LgJ05KOUJr8AzCf2GMtTdqwjsPViWCqCUylDpPXKxc0xsX5BGqq+fJJDA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.4</title>
             <pubDate>Mon, 10 Aug 2026 10:00:00 +0000</pubDate>
             <sparkle:version>2026104</sparkle:version>

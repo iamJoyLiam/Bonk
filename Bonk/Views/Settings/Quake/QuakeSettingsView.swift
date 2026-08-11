@@ -111,14 +111,6 @@ struct QuakeSettingsView: View {
                     }
                 }
 
-                // Test section
-                Section {
-                    Button {
-                        quakeController.toggle()
-                    } label: {
-                        Label(i18n.t(.testQuake), systemImage: "play.circle")
-                    }
-                }
             }
         }
         .formStyle(.grouped)

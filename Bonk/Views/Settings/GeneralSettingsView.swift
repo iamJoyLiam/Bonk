@@ -58,17 +58,8 @@ struct GeneralSettingsView: View {
                 Button {
                     showKeyGenerator = true
                 } label: {
-                    HStack {
-                        Image(systemName: "key.fill")
-                            .frame(width: 20)
-                        Text(i18n.t(.generateSSHKey))
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundStyle(.secondary)
-                            .font(.caption)
-                    }
+                    Label(i18n.t(.generateSSHKey), systemImage: "key.fill")
                 }
-                .buttonStyle(.plain)
             }
         }
         .formStyle(.grouped)

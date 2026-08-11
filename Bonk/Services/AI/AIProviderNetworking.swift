@@ -2,7 +2,7 @@ import Foundation
 
 /// Networking helpers for AI provider API interactions.
 enum AIProviderNetworking {
-    private static let anthropicVersion = "2023-06-01"
+    static let anthropicVersion = "2023-06-01"
 
     // MARK: - Build API Request
 
@@ -44,14 +44,12 @@ enum AIProviderNetworking {
 
         let suffix: String
         switch type {
-        case .openAI, .openRouter, .openCode, .claude, .custom:
+        case .openAI, .openRouter, .openCode, .deepSeek, .qwen, .kimi, .claude, .custom:
             suffix = "/v1/models"
         case .gemini:
             suffix = "/v1beta/models"
         case .ollama:
             suffix = "/api/tags"
-        case .copilot:
-            return nil
         }
 
         // Append suffix to existing path (preserves /api for OpenRouter etc.)
@@ -126,7 +124,7 @@ enum AIProviderNetworking {
                 "messages": [["role": "user", "content": userPrompt]],
             ].merging(stream ? ["stream": true] : [:]) { $1 }
 
-        case .openAI, .openRouter, .copilot, .openCode, .custom:
+        case .openAI, .openRouter, .openCode, .deepSeek, .qwen, .kimi, .custom:
             // swiftlint:disable:next line_length
             guard let endpointURL = URL(string: "\(endpoint)/v1/chat/completions") else { throw AIError.invalidEndpoint }
             url = endpointURL
@@ -238,7 +236,9 @@ enum AIProviderNetworking {
     // MARK: - Streaming Request
 
     /// Execute a streaming request and return the accumulated response.
-    /// Falls back to non-streaming for Gemini.
+    /// OpenAI-compatible providers and Claude use their official SDK clients;
+    /// Gemini falls back to non-streaming; Ollama falls back to its native
+    /// `/api/chat` endpoint when the `/v1` OpenAI-compatible API is missing.
     static func streamRequest(
         provider: AIProviderConfig,
         apiKey: String,
@@ -247,37 +247,46 @@ enum AIProviderNetworking {
         maxTokens: Int? = nil,
         onDelta: ((String) -> Void)? = nil
     ) async throws -> String {
-        if provider.type == .gemini {
+        switch provider.type {
+        case .gemini:
             return try await nonStreamRequest(
                 provider: provider, apiKey: apiKey,
                 systemPrompt: systemPrompt, userPrompt: userPrompt,
                 maxTokens: maxTokens
             )
-        }
-
-        let request = try buildRequest(
-            provider: provider, apiKey: apiKey,
-            systemPrompt: systemPrompt, userPrompt: userPrompt, stream: true,
-            maxTokens: maxTokens
-        )
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
-
-        guard let http = response as? HTTPURLResponse else { throw AIError.invalidResponse }
-        guard http.statusCode == 200 else {
-            var errorData = Data()
-            for try await byte in bytes {
-                errorData.append(byte)
+        case .claude:
+            return try await claudeStream(
+                provider: provider, apiKey: apiKey,
+                systemPrompt: systemPrompt, userPrompt: userPrompt,
+                maxTokens: maxTokens, onDelta: onDelta
+            )
+        case .openAI, .openRouter, .openCode, .deepSeek, .qwen, .kimi, .custom:
+            return try await openAIStream(
+                provider: provider, apiKey: apiKey,
+                systemPrompt: systemPrompt, userPrompt: userPrompt,
+                maxTokens: maxTokens, onDelta: onDelta
+            )
+        case .ollama:
+            do {
+                return try await openAIStream(
+                    provider: provider, apiKey: apiKey,
+                    systemPrompt: systemPrompt, userPrompt: userPrompt,
+                    maxTokens: maxTokens, onDelta: onDelta
+                )
+            } catch {
+                // Older Ollama builds lack /v1/chat/completions; use native /api/chat.
+                return try await legacyStream(
+                    provider: provider, apiKey: apiKey,
+                    systemPrompt: systemPrompt, userPrompt: userPrompt,
+                    maxTokens: maxTokens, onDelta: onDelta
+                )
             }
-            let body = String(data: errorData, encoding: .utf8) ?? "Unknown error"
-            throw AIError.apiError(statusCode: http.statusCode, message: body)
         }
-
-        return try await parseStream(bytes: bytes, providerType: provider.type, onDelta: onDelta)
     }
 
     // MARK: - Non-Streaming Request
 
-    /// Execute a non-streaming request (used as Gemini fallback).
+    /// Execute a non-streaming request (used as Gemini fallback and for agent mode).
     static func nonStreamRequest(
         provider: AIProviderConfig,
         apiKey: String,
@@ -285,20 +294,40 @@ enum AIProviderNetworking {
         userPrompt: String,
         maxTokens: Int? = nil
     ) async throws -> String {
-        let request = try buildRequest(
-            provider: provider, apiKey: apiKey,
-            systemPrompt: systemPrompt, userPrompt: userPrompt, stream: false,
-            maxTokens: maxTokens
-        )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            let body = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw AIError.apiError(statusCode: code, message: body)
+        switch provider.type {
+        case .claude:
+            return try await claudeNonStream(
+                provider: provider, apiKey: apiKey,
+                systemPrompt: systemPrompt, userPrompt: userPrompt,
+                maxTokens: maxTokens
+            )
+        case .openAI, .openRouter, .openCode, .deepSeek, .qwen, .kimi, .custom:
+            return try await openAINonStream(
+                provider: provider, apiKey: apiKey,
+                systemPrompt: systemPrompt, userPrompt: userPrompt,
+                maxTokens: maxTokens
+            )
+        case .ollama:
+            do {
+                return try await openAINonStream(
+                    provider: provider, apiKey: apiKey,
+                    systemPrompt: systemPrompt, userPrompt: userPrompt,
+                    maxTokens: maxTokens
+                )
+            } catch {
+                return try await legacyNonStream(
+                    provider: provider, apiKey: apiKey,
+                    systemPrompt: systemPrompt, userPrompt: userPrompt,
+                    maxTokens: maxTokens
+                )
+            }
+        case .gemini:
+            return try await legacyNonStream(
+                provider: provider, apiKey: apiKey,
+                systemPrompt: systemPrompt, userPrompt: userPrompt,
+                maxTokens: maxTokens
+            )
         }
-
-        return try extractResponse(from: data, type: provider.type)
     }
 
     // MARK: - Stream Parsing
