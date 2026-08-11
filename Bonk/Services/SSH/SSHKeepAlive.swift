@@ -20,10 +20,9 @@ actor SSHKeepAlive {
                 guard !Task.isCancelled else { break }
                 guard let client else { break }
 
-                do {
-                    _ = try await client.executeCommand("echo ok")
+                if await self.checkAlive(client) {
                     self.missedResponses = 0
-                } catch {
+                } else {
                     self.missedResponses += 1
                     Log.ssh.warning("Keepalive missed (\(self.missedResponses)/\(self.maxMissed))")
                     if self.missedResponses >= self.maxMissed {
@@ -33,6 +32,26 @@ actor SSHKeepAlive {
                     }
                 }
             }
+        }
+    }
+
+    /// One keepalive probe with a hard timeout. On a half-open connection
+    /// (peer gone, NAT dropped) `executeCommand` can hang forever waiting for
+    /// a channel response; the timeout turns that into a counted miss so the
+    /// reconnect path actually fires.
+    private func checkAlive(_ client: SSHClient) async -> Bool {
+        await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                _ = try? await client.executeCommand("echo ok")
+                return true
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(10))
+                return false
+            }
+            let result = await group.next() ?? false
+            group.cancelAll()
+            return result
         }
     }
 

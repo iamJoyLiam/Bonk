@@ -206,6 +206,9 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
         } else {
             broadcastItem.image = symbol
         }
+        // NSToolbar can cache the rendered item; force a revalidation so the
+        // state change is visible immediately.
+        broadcastItem.toolbar?.validateVisibleItems()
     }
 
     /// Keep the icon in sync even if broadcast is toggled outside this item.

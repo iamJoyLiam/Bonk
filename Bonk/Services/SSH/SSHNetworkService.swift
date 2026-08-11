@@ -154,7 +154,7 @@ public actor SSHNetworkService {
 
             if config.maxReconnectAttempts > 0 {
                 Log.ssh.info("[CONNECT] Attempting reconnection...")
-                try await reconnect()
+                await reconnect()
             } else {
                 throw SSHServiceError.connectionFailed(String(describing: error))
             }
@@ -302,19 +302,22 @@ public actor SSHNetworkService {
         // Network is back — attempt immediate reconnection
         guard config != nil else { return }
         Task {
-            try? await reconnect()
+            await reconnect()
         }
     }
 
     // MARK: - Reconnection State Machine
 
-    private func reconnect() async throws {
+    private func reconnect() async {
         guard let config else { return }
 
         let maxAttempts = config.maxReconnectAttempts
         var attempt = 0
 
-        while attempt < maxAttempts, !Task.isCancelled {
+        // Auto-reconnect until the tab is closed, like iTerm2: retry forever
+        // with exponential backoff capped at 30s. Giving up after a few tries
+        // leaves the session dead after overnight idle.
+        while !Task.isCancelled {
             connectionState = .reconnecting(attempt: attempt + 1, maxAttempts: maxAttempts)
             stateContinuation.yield(.reconnecting(attempt: attempt + 1, maxAttempts: maxAttempts))
 
@@ -349,13 +352,16 @@ public actor SSHNetworkService {
                 switch error {
                 case .hostKeyMismatch, .alreadyConnected:
                     Log.ssh.error("Fatal SSH error, aborting reconnect: \(error.localizedDescription)")
-                    throw error
+                    return
                 case .notConnected, .connectionFailed, .reconnectExhausted:
                     Log.ssh.warning(
                         "Recoverable SSH error (attempt \(attempt + 1)/\(maxAttempts)): \(error.localizedDescription)"
                     )
                     attempt += 1
                 }
+            } catch is SSHTimeoutError {
+                Log.ssh.warning("Reconnect attempt \(attempt + 1)/\(maxAttempts) timed out")
+                attempt += 1
             } catch {
                 // Generic errors (network timeouts, DNS failures, etc.) — retry
                 Log.ssh.warning(
@@ -364,15 +370,6 @@ public actor SSHNetworkService {
                 attempt += 1
             }
         }
-
-        // All attempts exhausted — start network monitor for when connectivity returns
-        Log.ssh.info("[RECONNECT] All attempts exhausted, starting network monitor...")
-        isWaitingForNetwork = true
-        startNetworkMonitor()
-
-        connectionState = .disconnected
-        stateContinuation.yield(.disconnected)
-        throw SSHServiceError.reconnectExhausted(attempts: maxAttempts)
     }
 
     // MARK: - Disconnect Monitor
@@ -402,13 +399,7 @@ public actor SSHNetworkService {
             return
         }
 
-        do {
-            try await reconnect()
-        } catch {
-            Log.ssh.error("Reconnect failed: \(error.localizedDescription)")
-            connectionState = .disconnected
-            stateContinuation.yield(.disconnected)
-        }
+        await reconnect()
     }
 
     // MARK: - Host Key Verification (TOFU)
