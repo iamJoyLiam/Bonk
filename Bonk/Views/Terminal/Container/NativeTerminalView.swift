@@ -147,6 +147,11 @@ import SwiftTerm
             }
 
             if shouldSchedule {
+                // A new request is starting — drop any stale ghost text so the
+                // old suggestion doesn't linger while the model thinks.
+                MainActor.assumeIsolated {
+                    hideGhost()
+                }
                 scheduleCompletion()
             }
             return event
@@ -211,7 +216,17 @@ import SwiftTerm
             // only when scrolled to the end; yDisp == 0 covers buffers smaller
             // than the viewport. Alternate screens (vim, less) never satisfy this.
             let atBottom = scrollPosition >= 1.0 || yDisp == 0
-            guard atBottom, cursorY >= 0, cursorY < terminal.rows,
+            // Prefer OSC 133 prompt marks when the shell emits them (semantic
+            // prompt integration); fall back to the bottom-of-buffer heuristic
+            // for shells without the integration.
+            let bufferRow = yDisp + cursorY
+            let onPromptRow: Bool
+            if let rowKind = terminal.semanticRowKind(at: bufferRow) {
+                onPromptRow = rowKind == .initial || rowKind == .continuation
+            } else {
+                onPromptRow = atBottom
+            }
+            guard onPromptRow, cursorY >= 0, cursorY < terminal.rows,
                   let line = terminal.getLine(row: cursorY) else { return }
 
             let baseContext = contextProvider()
@@ -265,7 +280,11 @@ import SwiftTerm
 
         @MainActor
         private func showGhost(text: String) {
-            guard !text.isEmpty, window?.firstResponder === self else { return }
+            guard window?.firstResponder === self else { return }
+            guard !text.isEmpty else {
+                hideGhost()
+                return
+            }
             let overlay = ensureGhostOverlay()
             overlay.font = font
             overlay.text = text
@@ -296,7 +315,10 @@ import SwiftTerm
 
             let originX = CGFloat(cursorX) * cell.width
             let available = max(0, bounds.width - originX)
-            let width = min(overlay.measuredWidth(), available)
+            // Keep the frame width fixed to the remaining line space: the text
+            // grows inside it while streaming, so the overlay never re-measures
+            // per delta (which caused visible jitter).
+            let width = available
             overlay.frame = NSRect(
                 x: originX,
                 y: bounds.height - CGFloat(cursorY + 1) * cell.height,

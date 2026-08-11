@@ -27,7 +27,14 @@ struct ModelPickerButton: View {
         .contentShape(Capsule())
         .onTapGesture { isOpen.toggle() }
         .popover(isPresented: $isOpen, arrowEdge: .bottom) {
-            modelList.frame(width: 220)
+            let provider = store.activeProvider
+            let models = provider.flatMap { store.cachedModels[$0.id] } ?? []
+            let rowCount = models.isEmpty ? 1 : models.count
+            let height = min(320, max(44, CGFloat(rowCount) * 24 + 12))
+            ScrollView(.vertical) {
+                modelList
+            }
+            .frame(width: 220, height: height)
                 .onAppear {
                     if let provider = store.activeProvider,
                        store.cachedModels[provider.id] == nil
@@ -39,46 +46,27 @@ struct ModelPickerButton: View {
     }
 
     private var modelList: some View {
-        let activeID = store.activeProviderID
-        return VStack(alignment: .leading, spacing: 0) {
-            ForEach(store.providers, id: \.id) { provider in
-                let isActive = provider.id == activeID
-                let selectedModel = provider.model
-                let noModel = selectedModel.isEmpty
+        // Only the ACTIVE provider's models belong in this menu.
+        guard let provider = store.activeProvider else {
+            return AnyView(Text("—").font(.system(size: 12)).foregroundStyle(.secondary).padding(8))
+        }
+        let selectedModel = provider.model
+        let models = store.cachedModels[provider.id] ?? []
 
-                if noModel, store.cachedModels[provider.id] == nil {
-                    EmptyView()
-                } else if let models = store.cachedModels[provider.id], !models.isEmpty {
-                    ForEach(models, id: \.self) { model in
-                        Button {
-                            var updated = provider
-                            updated.model = model
-                            store.update(updated)
-                            store.setActive(provider.id)
-                            isOpen = false
-                        } label: {
-                            HStack {
-                                Text(model).font(.system(size: 12)).lineLimit(1)
-                                Spacer()
-                                if model == selectedModel, isActive {
-                                    Image(systemName: "checkmark").font(.system(size: 10))
-                                }
-                            }
-                            .padding(.horizontal, 10).padding(.vertical, 5)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                } else {
-                    // Has configured model but no cache → show only that model
+        return AnyView(VStack(alignment: .leading, spacing: 0) {
+            if !models.isEmpty {
+                ForEach(models, id: \.self) { model in
                     Button {
+                        var updated = provider
+                        updated.model = model
+                        store.update(updated)
                         store.setActive(provider.id)
                         isOpen = false
                     } label: {
                         HStack {
-                            Text(selectedModel).font(.system(size: 12)).lineLimit(1)
+                            Text(model).font(.system(size: 12)).lineLimit(1)
                             Spacer()
-                            if isActive {
+                            if model == selectedModel {
                                 Image(systemName: "checkmark").font(.system(size: 10))
                             }
                         }
@@ -87,9 +75,26 @@ struct ModelPickerButton: View {
                     }
                     .buttonStyle(.plain)
                 }
+            } else if !selectedModel.isEmpty {
+                // Configured model but no cached list → show it only.
+                Button {
+                    store.setActive(provider.id)
+                    isOpen = false
+                } label: {
+                    HStack {
+                        Text(selectedModel).font(.system(size: 12)).lineLimit(1)
+                        Spacer()
+                        Image(systemName: "checkmark").font(.system(size: 10))
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text("—").font(.system(size: 12)).foregroundStyle(.secondary).padding(8)
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 6))
     }
 }
 

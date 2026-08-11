@@ -13,6 +13,16 @@ import SwiftAnthropic
 
 extension AIProviderNetworking {
 
+    /// Provider-specific payload that disables reasoning/thinking for
+    /// OpenAI-compatible APIs. Unknown providers get nil (no payload).
+    static func reasoningDisablePayload(for type: AIProviderType) -> [String: Any]? {
+        switch type {
+        case .deepSeek: ["thinking": ["type": "disabled"]]
+        case .qwen, .kimi: ["enable_thinking": false]
+        default: nil
+        }
+    }
+
     // MARK: - SDK Clients
 
     /// Builds a MacPaw/OpenAI client for any OpenAI-compatible endpoint.
@@ -193,12 +203,13 @@ extension AIProviderNetworking {
         systemPrompt: String,
         userPrompt: String,
         maxTokens: Int?,
+        disableReasoning: Bool,
         onDelta: ((String) -> Void)?
     ) async throws -> String {
         let request = try buildRequest(
             provider: provider, apiKey: apiKey,
             systemPrompt: systemPrompt, userPrompt: userPrompt, stream: true,
-            maxTokens: maxTokens
+            maxTokens: maxTokens, disableReasoning: disableReasoning
         )
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
 
@@ -279,12 +290,13 @@ extension AIProviderNetworking {
         apiKey: String,
         systemPrompt: String,
         userPrompt: String,
-        maxTokens: Int?
+        maxTokens: Int?,
+        disableReasoning: Bool
     ) async throws -> String {
         let request = try buildRequest(
             provider: provider, apiKey: apiKey,
             systemPrompt: systemPrompt, userPrompt: userPrompt, stream: false,
-            maxTokens: maxTokens
+            maxTokens: maxTokens, disableReasoning: disableReasoning
         )
         let (data, response) = try await URLSession.shared.data(for: request)
 

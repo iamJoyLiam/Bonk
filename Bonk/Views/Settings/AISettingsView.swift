@@ -115,7 +115,7 @@ struct AISettingsView: View {
                 .pickerStyle(.menu)
                 .fixedSize()
                 .disabled(store.providers.isEmpty)
-                .onChange(of: store.activeProviderID) { _, _ in store.save() }
+                .onChange(of: store.activeProviderID) { _, newValue in store.setActive(newValue) }
             }
         }
     }

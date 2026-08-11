@@ -6,6 +6,38 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.6</title>
+            <pubDate>Tue, 11 Aug 2026 12:00:00 +0000</pubDate>
+            <sparkle:version>2026106</sparkle:version>
+            <sparkle:shortVersionString>2026.1.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- AI 行内补全：关闭模型默认推理、边生成边显示、3 秒超时、去重补全、OSC 133 精确提示行定位
+- 切换 AI 供应商后立即生效（不再请求旧供应商）
+- OpenCode Zen 需填写 API Key
+- 侧边栏模型菜单：只显示当前供应商模型，支持滚动
+- 粘贴 SSH 私钥时自动检测密钥类型（RSA / ED25519 / ECDSA）
+- 依赖升级：Sparkle 2.9.5（含安全修复）、SwiftTerm 1.18、Citadel 0.12
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.6/Bonk-2026.1.6-arm64.dmg"
+                length="13633238"
+                type="application/octet-stream"
+                sparkle:edSignature="DD72OYuSNreze3fsxsJFSB6utNMS3KVzuyK2ZiLmPnRduPBh4YpxXyU0yPSG4NsBRv1wFP9di3kvorQecgi+DA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.6/Bonk-2026.1.6-x86_64.dmg"
+                length="14559453"
+                type="application/octet-stream"
+                sparkle:edSignature="urXXDM1f0c7FjueSBKAVd/bXuMLZERaTnU0xmDWOYdSQIxmbkLPIGcUD3r57Be6hXsqvnMUIoecAwCcxNjUUAg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.5</title>
             <pubDate>Tue, 11 Aug 2026 08:00:00 +0000</pubDate>
             <sparkle:version>2026105</sparkle:version>

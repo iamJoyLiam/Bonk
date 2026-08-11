@@ -42,6 +42,7 @@ final class AIProviderStore {
             let remaining = records.filter { $0.typeRaw != "copilot" }
             providers = remaining.map { AIProviderConfig(from: $0) }
             activeProviderID = remaining.first(where: { $0.isActive })?.id
+            syncActiveProviderToServices()
         } catch {
             Self.logger.error("Failed to load providers: \(error)")
         }
@@ -128,6 +129,16 @@ final class AIProviderStore {
     func setActive(_ id: UUID?) {
         activeProviderID = id
         save()
+        syncActiveProviderToServices()
+    }
+
+    /// Push the selected provider into long-lived AI services. Previously they
+    /// cached `activeProvider` on panel appear, so switching the provider in
+    /// settings left requests going to the stale provider.
+    private func syncActiveProviderToServices() {
+        let provider = activeProvider
+        AIService.shared.activeProvider = provider
+        AgentEngine.shared.activeProvider = provider
     }
 
     // MARK: - Model Fetching

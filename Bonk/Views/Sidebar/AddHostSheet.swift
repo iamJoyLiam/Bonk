@@ -1,6 +1,7 @@
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
+import Citadel
 
 struct AddHostSheet: View {
     @Environment(I18n.self) var i18n
@@ -35,6 +36,13 @@ struct AddHostSheet: View {
     @State private var jumpHostPort = "22"
     @State private var jumpHostUsername = ""
     @State private var showJumpHost = false
+
+    /// Detected key algorithm (Citadel 0.11+) for the pasted private key.
+    private var detectedPrivateKeyType: String? {
+        let trimmed = privateKeyPEM.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return (try? SSHKeyDetection.detectPrivateKeyType(from: trimmed))?.description
+    }
 
     // Secure Enclave state
     @State private var secureEnclaveKeyTag: String?
@@ -174,6 +182,11 @@ struct AddHostSheet: View {
                                 design: .monospaced
                             ))
                             .frame(minHeight: 120)
+                        if let type = detectedPrivateKeyType {
+                            Text(i18n.tr(.detectedKeyType, args: type))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     case .certificate:
                         // Private Key
                         HStack {
@@ -199,6 +212,11 @@ struct AddHostSheet: View {
                             TextEditor(text: $privateKeyPEM)
                                 .font(.system(.caption, design: .monospaced))
                                 .frame(minHeight: 100)
+                            if let type = detectedPrivateKeyType {
+                                Text(i18n.tr(.detectedKeyType, args: type))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
 
                         // Certificate

@@ -422,6 +422,7 @@
   "generate_new": "Generate New Key",
   "copied": "Copied!",
   "ssh_keys": "SSH Keys",
+  "detected_key_type": "Detected key type: %@",
   "file_transfer": "File Transfer (Zmodem)",
   "send_file": "Send File",
   "receive_file": "Receive File",

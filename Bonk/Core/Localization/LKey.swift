@@ -427,6 +427,7 @@ enum LKey: String, CaseIterable {
     case generateNew = "generate_new"
     case copied = "copied"
     case sshKeys = "ssh_keys"
+    case detectedKeyType = "detected_key_type"
 
     // Secure Enclave
     case secureEnclave = "secure_enclave"

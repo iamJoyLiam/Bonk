@@ -96,7 +96,8 @@ enum AIProviderNetworking {
         systemPrompt: String,
         userPrompt: String,
         stream: Bool,
-        maxTokens: Int? = nil
+        maxTokens: Int? = nil,
+        disableReasoning: Bool = false
     ) throws -> URLRequest {
         let endpoint = baseEndpoint(
             provider.endpoint.isEmpty ? provider.type.defaultEndpoint : provider.endpoint
@@ -141,6 +142,13 @@ enum AIProviderNetworking {
                     ["role": "user", "content": userPrompt],
                 ],
             ].merging(stream ? ["stream": true] : [:]) { $1 }
+            // Inline completions must be fast — disable reasoning so the small
+            // budget produces a suggestion instead of thinking tokens.
+            .merging(
+                disableReasoning
+                    ? (reasoningDisablePayload(for: provider.type) ?? [:])
+                    : [:]
+            ) { $1 }
 
         case .gemini:
             let geminiPath = "\(endpoint)/v1beta/models/\(provider.model):generateContent"
@@ -237,14 +245,14 @@ enum AIProviderNetworking {
 
     /// Execute a streaming request and return the accumulated response.
     /// Claude streams via SwiftAnthropic; OpenAI-compatible providers use the
-    /// tolerant SSE parser (MacPaw requires `id` per chunk, which reasoning
-    /// models omit); Gemini is non-streaming; Ollama falls back to `/api/chat`.
+    /// tolerant SSE parser; Gemini is non-streaming; Ollama falls back.
     static func streamRequest(
         provider: AIProviderConfig,
         apiKey: String,
         systemPrompt: String,
         userPrompt: String,
         maxTokens: Int? = nil,
+        disableReasoning: Bool = false,
         onDelta: ((String) -> Void)? = nil
     ) async throws -> String {
         switch provider.type {
@@ -264,7 +272,7 @@ enum AIProviderNetworking {
             return try await legacyStream(
                 provider: provider, apiKey: apiKey,
                 systemPrompt: systemPrompt, userPrompt: userPrompt,
-                maxTokens: maxTokens, onDelta: onDelta
+                maxTokens: maxTokens, disableReasoning: disableReasoning, onDelta: onDelta
             )
         case .ollama:
             do {
@@ -278,7 +286,7 @@ enum AIProviderNetworking {
                 return try await legacyStream(
                     provider: provider, apiKey: apiKey,
                     systemPrompt: systemPrompt, userPrompt: userPrompt,
-                    maxTokens: maxTokens, onDelta: onDelta
+                    maxTokens: maxTokens, disableReasoning: disableReasoning, onDelta: onDelta
                 )
             }
         }
@@ -292,7 +300,8 @@ enum AIProviderNetworking {
         apiKey: String,
         systemPrompt: String,
         userPrompt: String,
-        maxTokens: Int? = nil
+        maxTokens: Int? = nil,
+        disableReasoning: Bool = false
     ) async throws -> String {
         switch provider.type {
         case .claude:
@@ -314,7 +323,7 @@ enum AIProviderNetworking {
                 return try await legacyNonStream(
                     provider: provider, apiKey: apiKey,
                     systemPrompt: systemPrompt, userPrompt: userPrompt,
-                    maxTokens: maxTokens
+                    maxTokens: maxTokens, disableReasoning: disableReasoning
                 )
             }
         case .ollama:
@@ -328,14 +337,14 @@ enum AIProviderNetworking {
                 return try await legacyNonStream(
                     provider: provider, apiKey: apiKey,
                     systemPrompt: systemPrompt, userPrompt: userPrompt,
-                    maxTokens: maxTokens
+                    maxTokens: maxTokens, disableReasoning: disableReasoning
                 )
             }
         case .gemini:
             return try await legacyNonStream(
                 provider: provider, apiKey: apiKey,
                 systemPrompt: systemPrompt, userPrompt: userPrompt,
-                maxTokens: maxTokens
+                maxTokens: maxTokens, disableReasoning: disableReasoning
             )
         }
     }

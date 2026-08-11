@@ -422,6 +422,7 @@
   "generate_new": "生成新密钥",
   "copied": "已复制！",
   "ssh_keys": "SSH 密钥",
+  "detected_key_type": "检测到密钥类型：%@",
   "file_transfer": "文件传输 (Zmodem)",
   "send_file": "发送文件",
   "receive_file": "接收文件",

@@ -38,10 +38,15 @@ final class InlineCompletionService {
 
     private static let logger = Logger(subsystem: "com.bonk", category: "InlineCompletion")
 
-    /// Tokens budget — suggestions are short; keep latency and cost low.
-    private static let maxSuggestionTokens = 60
+    /// Tokens budget — suggestions are short, but reasoning models (e.g.
+    /// DeepSeek V4) burn tokens on thinking before any visible content,
+    /// so 200 leaves room for an actual suggestion.
+    nonisolated static let maxSuggestionTokens = 200
     /// Cap on suggestion length to avoid a runaway model hijacking the line.
-    private static let maxSuggestionChars = 200
+    nonisolated static let maxSuggestionChars = 200
+    /// Hard cap on how long a suggestion request may take. Suggestions that
+    /// arrive late feel broken — keep it short (Warp-style: fast or nothing).
+    nonisolated static let requestTimeout: Duration = .seconds(3)
 
     init(providerStore: AIProviderStore = .shared, defaults: UserDefaults = .standard) {
         self.providerStore = providerStore
@@ -100,26 +105,75 @@ final class InlineCompletionService {
         currentTask = Task { [weak self] in
             defer { self?.isRequesting = false }
             guard let self else { return }
+            let buffer = RawSuggestionBuffer()
             do {
-                let response = try await AIProviderNetworking.streamRequest(
-                    provider: provider, apiKey: apiKey,
-                    systemPrompt: prompt, userPrompt: typed,
-                    maxTokens: Self.maxSuggestionTokens
-                )
-                guard !Task.isCancelled else { return }
-                let normalized = Self.normalize(response)
-                guard !normalized.isEmpty else {
-                    Self.logger.debug("completion: empty suggestion for \(typed, privacy: .public)")
-                    return
+                let response = try await Self.runWithTimeout {
+                    try await AIProviderNetworking.streamRequest(
+                        provider: provider, apiKey: apiKey,
+                        systemPrompt: prompt, userPrompt: typed,
+                        maxTokens: Self.maxSuggestionTokens,
+                        disableReasoning: true
+                    ) { [weak self] delta in
+                        // Show the ghost as soon as the first tokens arrive —
+                        // waiting for the full stream makes slow providers feel
+                        // broken. `suggestion` updates so Tab works mid-stream.
+                        let candidate = Self.suggestionSuffix(from: buffer.append(delta), typed: typed)
+                        guard !candidate.isEmpty,
+                              candidate.count <= Self.maxSuggestionChars
+                        else { return }
+                        Task { @MainActor [weak self] in
+                            self?.suggestion = candidate
+                            onSuggestion?(candidate)
+                        }
+                    }
                 }
-                suggestion = normalized
-                Self.logger.info("completion: suggested \(normalized.count) chars for \(typed, privacy: .public)")
-                onSuggestion?(normalized)
+                guard !Task.isCancelled else { return }
+                let suffix = Self.suggestionSuffix(from: response, typed: typed)
+                suggestion = suffix
+                onSuggestion?(suffix)
+            } catch is CancellationError {
+                // Timed out or superseded. If a suggestion is already showing,
+                // keep it — killing a visible ghost mid-read feels broken.
+                if suggestion.isEmpty {
+                    onSuggestion?("")
+                }
+                return
             } catch {
                 if Task.isCancelled { return }
                 lastError = error.localizedDescription
+                if suggestion.isEmpty {
+                    onSuggestion?("")
+                }
                 Self.logger.error("completion failed: \(error.localizedDescription, privacy: .public)")
             }
+        }
+    }
+
+    /// Strip the already-typed prefix from a model response (models sometimes
+    /// echo the full command) and keep it to a single line for ghost display.
+    nonisolated static func suggestionSuffix(from raw: String, typed: String) -> String {
+        let firstLine = raw.split(whereSeparator: \.isNewline).first.map(String.init) ?? raw
+        let text = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        let suffix = text.hasPrefix(typed) ? String(text.dropFirst(typed.count)) : text
+        return suffix.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Runs the request but gives up after `requestTimeout` so a slow provider
+    /// can't freeze the typing flow waiting for a suggestion.
+    private static func runWithTimeout<T: Sendable>(
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(for: requestTimeout)
+                throw CancellationError()
+            }
+            guard let result = try await group.next() else {
+                throw CancellationError()
+            }
+            group.cancelAll()
+            return result
         }
     }
 
@@ -180,11 +234,13 @@ final class InlineCompletionService {
             contextLines.append("- Working directory: \(cwd)")
         }
         if includeHistory, !context.recentCommands.isEmpty {
-            let history = context.recentCommands.suffix(8).joined(separator: "; ")
+            // Keep the context tiny — big prompts slow the TTFT on reasoning
+            // models and defeat the whole point of inline completion.
+            let history = context.recentCommands.suffix(3).joined(separator: "; ")
             contextLines.append("- Recent commands: \(history)")
         }
         if includeOutput, !context.recentOutput.isEmpty {
-            let output = String(context.recentOutput.suffix(2000))
+            let output = String(context.recentOutput.suffix(300))
             contextLines.append("- Recent terminal output:\n\(output)")
         }
         if !contextLines.isEmpty {
@@ -233,5 +289,20 @@ final class InlineCompletionService {
         guard group.location != NSNotFound else { return nil }
         let cmd = nsLine.substring(with: group).trimmingCharacters(in: .whitespaces)
         return cmd.isEmpty ? nil : cmd
+    }
+
+}
+
+/// Thread-safe accumulator for streaming suggestion chunks (onDelta fires on
+/// a background thread while the UI state stays on the main actor).
+private final class RawSuggestionBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var text = ""
+
+    func append(_ chunk: String) -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        text += chunk
+        return text
     }
 }
