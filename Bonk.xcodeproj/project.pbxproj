@@ -398,7 +398,7 @@
 			repositoryURL = "https://github.com/orlandos-nl/Citadel.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 0.7.0;
+				minimumVersion = 0.12.0;
 			};
 		};
 		AE000003AAAA000000000003 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
@@ -406,7 +406,7 @@
 			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 1.15.0;
+				minimumVersion = 1.18.0;
 			};
 		};
 		AE000005AAAA000000000005 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
@@ -414,7 +414,7 @@
 			repositoryURL = "https://github.com/sparkle-project/Sparkle.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 2.6.0;
+				minimumVersion = 2.9.5;
 			};
 		};
 		AE000007AAAA000000000007 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
@@ -422,7 +422,7 @@
 			repositoryURL = "https://github.com/gonzalezreal/swift-markdown-ui.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 2.0.0;
+				minimumVersion = 2.4.0;
 			};
 		};
 		AE00000DAAAA00000000000D /* XCRemoteSwiftPackageReference "OpenAI" */ = {
@@ -430,7 +430,7 @@
 			repositoryURL = "https://github.com/MacPaw/OpenAI.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 0.5.0;
+				minimumVersion = 0.5.1;
 			};
 		};
 		AE00000BAAAA00000000000B /* XCRemoteSwiftPackageReference "SwiftAnthropic" */ = {
