@@ -236,9 +236,9 @@ enum AIProviderNetworking {
     // MARK: - Streaming Request
 
     /// Execute a streaming request and return the accumulated response.
-    /// OpenAI-compatible providers and Claude use their official SDK clients;
-    /// Gemini falls back to non-streaming; Ollama falls back to its native
-    /// `/api/chat` endpoint when the `/v1` OpenAI-compatible API is missing.
+    /// Claude streams via SwiftAnthropic; OpenAI-compatible providers use the
+    /// tolerant SSE parser (MacPaw requires `id` per chunk, which reasoning
+    /// models omit); Gemini is non-streaming; Ollama falls back to `/api/chat`.
     static func streamRequest(
         provider: AIProviderConfig,
         apiKey: String,
@@ -261,7 +261,7 @@ enum AIProviderNetworking {
                 maxTokens: maxTokens, onDelta: onDelta
             )
         case .openAI, .openRouter, .openCode, .deepSeek, .qwen, .kimi, .custom:
-            return try await openAIStream(
+            return try await legacyStream(
                 provider: provider, apiKey: apiKey,
                 systemPrompt: systemPrompt, userPrompt: userPrompt,
                 maxTokens: maxTokens, onDelta: onDelta
@@ -302,11 +302,21 @@ enum AIProviderNetworking {
                 maxTokens: maxTokens
             )
         case .openAI, .openRouter, .openCode, .deepSeek, .qwen, .kimi, .custom:
-            return try await openAINonStream(
-                provider: provider, apiKey: apiKey,
-                systemPrompt: systemPrompt, userPrompt: userPrompt,
-                maxTokens: maxTokens
-            )
+            do {
+                return try await openAINonStream(
+                    provider: provider, apiKey: apiKey,
+                    systemPrompt: systemPrompt, userPrompt: userPrompt,
+                    maxTokens: maxTokens
+                )
+            } catch {
+                // Fall back to the tolerant hand-built parser if the SDK's
+                // strict decode rejects the provider's response shape.
+                return try await legacyNonStream(
+                    provider: provider, apiKey: apiKey,
+                    systemPrompt: systemPrompt, userPrompt: userPrompt,
+                    maxTokens: maxTokens
+                )
+            }
         case .ollama:
             do {
                 return try await openAINonStream(

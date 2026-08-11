@@ -111,6 +111,13 @@ extension AIProviderNetworking {
         if let anthropicError = error as? SwiftAnthropic.APIError {
             return .apiError(statusCode: 0, message: anthropicError.displayDescription)
         }
+        // Empty/missing response body — typically a proxy or network hiccup.
+        // Map to a retryable 500 so AIService's retry loop gets another chance,
+        // and surface a readable message instead of "data couldn't be read".
+        if let nsError = error as NSError?,
+           nsError.domain == NSCocoaErrorDomain, nsError.code == 4865 {
+            return .apiError(statusCode: 500, message: "Empty response from AI provider — check network or proxy")
+        }
         return .apiError(statusCode: 0, message: error.localizedDescription)
     }
 
