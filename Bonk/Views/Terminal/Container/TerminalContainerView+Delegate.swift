@@ -32,7 +32,20 @@ import SwiftTerm
             (terminal as? NativeTerminalView)?.handleScroll(position: position)
         }
 
-        func requestOpenLink(source _: SwiftTerm.TerminalView, link _: String, params _: [String: String]) {}
+        func requestOpenLink(source _: SwiftTerm.TerminalView, link: String, params _: [String: String]) {
+            // SwiftTerm detects OSC 8 links and implicit URLs (linkReporting
+            // defaults to .implicit); open them in the default browser.
+            // Cmd+click activates; plain click only when no selection/drag.
+            var components = URLComponents(string: link)
+            if components?.scheme == nil {
+                components?.scheme = "https"
+            }
+            guard let scheme = components?.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https",
+                  let url = components?.url
+            else { return }
+            NSWorkspace.shared.open(url)
+        }
         func bell(source _: SwiftTerm.TerminalView) {}
         func clipboardCopy(source _: SwiftTerm.TerminalView, content: Data) {
             NSPasteboard.general.clearContents()

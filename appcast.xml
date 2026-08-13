@@ -6,6 +6,35 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.7</title>
+            <pubDate>Thu, 13 Aug 2026 12:00:00 +0000</pubDate>
+            <sparkle:version>2026107</sparkle:version>
+            <sparkle:shortVersionString>2026.1.7</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- 终端链接可点击：Cmd+点击打开 URL（OSC 8 链接 + 隐式识别）
+- 修复 Cmd+F 搜索：改为原生按键处理，窗口焦点异常时也能打开搜索栏；Esc 关闭
+- 支持 Kitty 键盘协议（shell 启用后自动生效）
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.7/Bonk-2026.1.7-arm64.dmg"
+                length="13635301"
+                type="application/octet-stream"
+                sparkle:edSignature="KpT0GokRg1DVMt2S/FImiU5/hStgztHFVYFRp5oamcdkvglr3Ygo07Ybo/brWPQnAmHMxCwDUjE08FcU99iQAg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.7/Bonk-2026.1.7-x86_64.dmg"
+                length="13598635"
+                type="application/octet-stream"
+                sparkle:edSignature="ZVkHsb5e5CW2jTFpHDjULI4w89zpugHFO5Av/cgHyEe2tFQJ7XCjedVOzOuJRhoozkLAzf4enc/WQ8DC63ytBw=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.6</title>
             <pubDate>Tue, 11 Aug 2026 12:00:00 +0000</pubDate>
             <sparkle:version>2026106</sparkle:version>

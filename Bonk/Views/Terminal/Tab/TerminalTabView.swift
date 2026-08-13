@@ -64,6 +64,9 @@ struct TerminalTabView: View {
             .onReceive(NotificationCenter.default.publisher(for: .toggleAIChat)) { _ in
                 toggleAIChat()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .toggleTerminalSearch)) { _ in
+                showSearch = !showSearch
+            }
             .renameAlert(i18n: i18n, renamingTab: $renamingTab, renameText: $renameText)
             .aiEnableAlert(i18n: i18n, isPresented: $showAIEnableAlert)
             .dropOverlay(message: uploadManagerBinding, uploadProgress: uploadManager.uploadProgress)

@@ -114,6 +114,22 @@ import SwiftTerm
             // so it must not cross into the MainActor closures below.
             let keyCode = event.keyCode
             let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+
+            // Cmd+F toggles terminal search. The SwiftUI menu shortcut can miss
+            // when focus is odd, so handle the key directly (only while focused).
+            if keyCode == 3, modifiers == [.command] {
+                let isFocused = MainActor.assumeIsolated { window?.firstResponder === self }
+                if isFocused {
+                    NotificationCenter.default.post(name: .toggleTerminalSearch, object: nil)
+                    return nil
+                }
+            }
+            // Esc closes the search bar when it's open.
+            if keyCode == 53, MainActor.assumeIsolated({ TerminalSearchState.isActive }) {
+                NotificationCenter.default.post(name: .toggleTerminalSearch, object: nil)
+                return nil
+            }
+
             let shouldSchedule = shouldTriggerCompletion(
                 keyCode: keyCode,
                 modifiers: event.modifierFlags,
