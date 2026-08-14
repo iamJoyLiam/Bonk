@@ -215,9 +215,14 @@ extension TerminalTabView {
     @ViewBuilder
     private var aiFloatingBubble: some View {
         if showAIChat {
-            AIAssistantPanel(
+            TerminalAIPanel(
                 initialText: selectedTextForAI,
+                terminalContext: TerminalContext(tab: sessionManager.activeTab),
                 onPaste: { text in
+                    pasteOnly(text)
+                    showAIChat = false; selectedTextForAI = ""
+                },
+                onRun: { text in
                     sessionManager.sendTextToActiveTab(text)
                     showAIChat = false; selectedTextForAI = ""
                 },
@@ -226,7 +231,19 @@ extension TerminalTabView {
                     focusTerminal()
                 }
             )
+            .frame(maxHeight: .infinity, alignment: .bottom)
+            .padding(.bottom, 16)
             .zIndex(1)
+        }
+    }
+
+    /// Paste text without sending Enter.
+    private func pasteOnly(_ text: String) {
+        guard let tab = sessionManager.activeTab,
+              let paneID = tab.activePaneID else { return }
+        let bytes = ArraySlice(text.utf8)
+        Task {
+            try? await sessionManager.sendInput(bytes, to: tab.id, paneID: paneID)
         }
     }
 

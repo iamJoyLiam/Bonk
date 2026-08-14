@@ -63,7 +63,8 @@ final class AgentEngine {
     func execute(
         input: String,
         mode: AIMode,
-        context: TerminalContext = TerminalContext()
+        context: TerminalContext = TerminalContext(),
+        systemPromptOverride: String? = nil
     ) async -> String? {
         isProcessing = true
         streamingResponse = ""
@@ -73,7 +74,7 @@ final class AgentEngine {
             return nil
         }
 
-        var basePrompt = mode.systemPrompt
+        var basePrompt = systemPromptOverride ?? mode.systemPrompt
         if let ctx = buildContextString(context) {
             basePrompt += "\n\n## Terminal Context\n\(ctx)"
         }

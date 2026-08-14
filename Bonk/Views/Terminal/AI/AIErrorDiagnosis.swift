@@ -10,7 +10,7 @@ import SwiftUI
 /// Error diagnosis floating bubble.
 struct AIErrorDiagnosis: View {
     @Environment(I18n.self) var i18n
-    @State private var aiService = AIService.shared
+    @State private var engine = AgentEngine.shared
     @State private var isProcessing = false
     @State private var diagnosis: String?
 
@@ -103,11 +103,21 @@ struct AIErrorDiagnosis: View {
         isProcessing = true
         Task {
             let context = TerminalContext()
-            await aiService.explainError(selectedText, context: context)
+            let systemPrompt = """
+            You are a terminal error diagnoser embedded in an SSH client.
+            Explain the error briefly and suggest a fix. \
+            Reply in plain text, no markdown.
+            Match the user's language.
+            """
+            let response = await engine.execute(
+                input: selectedText,
+                mode: .ask,
+                context: context,
+                systemPromptOverride: systemPrompt
+            )
             await MainActor.run {
                 isProcessing = false
-                diagnosis = aiService.currentExplanation ?? i18n.t(.couldNotDiagnose)
-                aiService.currentExplanation = nil
+                diagnosis = response ?? engine.lastError ?? i18n.t(.couldNotDiagnose)
             }
         }
     }

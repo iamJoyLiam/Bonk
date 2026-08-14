@@ -7,6 +7,7 @@ struct AIChatSidebarView: View {
     @Environment(I18n.self) var i18n
     @Environment(\.modelContext) var modelContext
     let sshService: SSHNetworkService?
+    var terminalContext: TerminalContext?
     var onPaste: ((String) -> Void)?
     var engine: AgentEngine {
         AgentEngine.shared
@@ -28,6 +29,7 @@ struct AIChatSidebarView: View {
     @State private var wasCancelled = false
     @State private var showModelPicker = false
     @State var pendingDeleteConversation: UUID?
+    @State private var currentTask: Task<Void, Never>?
 
     private var aiColors: [Color] {
         AppStyle.aiRainbowColors
@@ -253,6 +255,8 @@ struct AIChatSidebarView: View {
     private func cancelCurrentTask() {
         wasCancelled = true
         let partial = engine.streamingResponse
+        currentTask?.cancel()
+        currentTask = nil
         engine.cancel()
 
         if !partial.isEmpty, let conversation = currentConversation {
@@ -294,8 +298,13 @@ struct AIChatSidebarView: View {
         inputText = ""
         engine.isProcessing = true
 
-        Task {
-            let response = await engine.execute(input: text, mode: selectedMode)
+        currentTask?.cancel()
+        currentTask = Task {
+            let response = await engine.execute(
+                input: text,
+                mode: selectedMode,
+                context: terminalContext ?? TerminalContext()
+            )
 
             if let response, !response.isEmpty, !wasCancelled {
                 conversationStore.addMessage(
@@ -328,7 +337,8 @@ struct AIChatSidebarView: View {
         wasCancelled = false
         engine.isProcessing = true
 
-        Task {
+        currentTask?.cancel()
+        currentTask = Task {
             await engine.runAgent(
                 input: text, sshService: ssh,
                 conversation: conversation, context: modelContext

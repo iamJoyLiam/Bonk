@@ -137,7 +137,6 @@ final class AIProviderStore {
     /// settings left requests going to the stale provider.
     private func syncActiveProviderToServices() {
         let provider = activeProvider
-        AIService.shared.activeProvider = provider
         AgentEngine.shared.activeProvider = provider
     }
 

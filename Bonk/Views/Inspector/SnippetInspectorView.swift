@@ -327,37 +327,32 @@ struct AIGenerateSheet: View {
         Return ONLY the command, no explanation, no markdown, no code blocks.
         If the description is in Chinese, still return an English terminal command.
         """
-        let aiService = AIService.shared
-        aiService.activeProvider = provider
-        await aiService.chat("\(systemPrompt)\n\nUser: \(prompt)", context: TerminalContext())
+        let engine = AgentEngine.shared
+        engine.activeProvider = provider
+        let response = await engine.execute(
+            input: prompt,
+            mode: .ask,
+            context: TerminalContext(),
+            systemPromptOverride: systemPrompt
+        )
 
         // Check for errors first
-        if let error = aiService.lastError {
+        if let error = engine.lastError {
             errorMessage = error
             showError = true
             return
         }
 
         // Process response
-        if let response = aiService.currentExplanation, !response.isEmpty {
+        if let response, !response.isEmpty {
             let cleaned = response
                 .components(separatedBy: .newlines).first ?? response
                 .replacingOccurrences(of: "`", with: "")
                 .trimmingCharacters(in: .whitespaces)
             generatedCommand = cleaned
         } else {
-            // Fallback: check streaming response
-            let streamingResponse = aiService.streamingResponse
-            if !streamingResponse.isEmpty {
-                let cleaned = streamingResponse
-                    .components(separatedBy: .newlines).first ?? streamingResponse
-                    .replacingOccurrences(of: "`", with: "")
-                    .trimmingCharacters(in: .whitespaces)
-                generatedCommand = cleaned
-            } else {
-                errorMessage = i18n.t(.aiNoResponse)
-                showError = true
-            }
+            errorMessage = i18n.t(.aiNoResponse)
+            showError = true
         }
     }
 }

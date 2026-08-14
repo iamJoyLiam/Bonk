@@ -143,22 +143,22 @@ struct PaneNavigationModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onKeyPress(.init("l"), phases: .down) { press in
+            .onKeyPress(.rightArrow, phases: .down) { press in
                 guard press.modifiers.contains([.command, .option]) else { return .ignored }
                 navigate(.right)
                 return .handled
             }
-            .onKeyPress(.init("h"), phases: .down) { press in
+            .onKeyPress(.leftArrow, phases: .down) { press in
                 guard press.modifiers.contains([.command, .option]) else { return .ignored }
                 navigate(.left)
                 return .handled
             }
-            .onKeyPress(.init("k"), phases: .down) { press in
+            .onKeyPress(.upArrow, phases: .down) { press in
                 guard press.modifiers.contains([.command, .option]) else { return .ignored }
                 navigate(.upward)
                 return .handled
             }
-            .onKeyPress(.init("j"), phases: .down) { press in
+            .onKeyPress(.downArrow, phases: .down) { press in
                 guard press.modifiers.contains([.command, .option]) else { return .ignored }
                 navigate(.downward)
                 return .handled
