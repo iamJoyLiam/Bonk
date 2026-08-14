@@ -6,6 +6,35 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.11</title>
+            <pubDate>Fri, 14 Aug 2026 20:00:00 +0000</pubDate>
+            <sparkle:version>20261011</sparkle:version>
+            <sparkle:shortVersionString>2026.1.11</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- 堡垒机兼容：启用 Citadel SSHAlgorithms.all（diffie-hellman-group14-sha1/sha256 KEX + RSA 主机密钥），修复 `keyExchangeNegotiationFailure`
+- 新增 RFC 8332 rsa-sha2-256 / rsa-sha2-512 主机密钥支持（vendored swift-nio-ssh 补丁），RSA 主机密钥的堡垒机可直连
+- 已用本地 sshd 模拟验证：group14 + RSA（rsa-sha2-256/512）连接成功，现代 curve25519/ed25519 回归正常
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.11/Bonk-2026.1.11-arm64.dmg"
+                length="13935347"
+                type="application/octet-stream"
+                sparkle:edSignature="9mo8pay7nUKJe8BX+4aSmzxVcgVOkDL7OgZSC5m7IN5/XXTuSjxTES7yJixpIhzHPGYe5v4g4eJE2flKfu74DQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.11/Bonk-2026.1.11-x86_64.dmg"
+                length="14826792"
+                type="application/octet-stream"
+                sparkle:edSignature="MniOZCQx1SzEbkdDZ6QRSofCdxnHeX210X/+2OTdjchlTDWOjzNYgw2C+zfwq1bvFTK4ehnGr9UbmDG9sCyZCg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.10</title>
             <pubDate>Fri, 14 Aug 2026 16:00:00 +0000</pubDate>
             <sparkle:version>20261010</sparkle:version>
