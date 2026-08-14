@@ -303,6 +303,9 @@ import SwiftTerm
             }
             let overlay = ensureGhostOverlay()
             overlay.font = font
+            // Skip redundant updates — same text re-renders on every stream
+            // chunk and that is what makes the ghost look like it is jittering.
+            if overlay.text == text { return }
             overlay.text = text
             overlay.isHidden = false
             positionGhostOverlay()

@@ -36,7 +36,7 @@ import SwiftUI
                 InlineCompletionContext(
                     inputBuffer: tab?.session?.inputBuffer ?? "",
                     currentDirectory: tab?.currentDirectory,
-                    recentCommands: GlobalCommandHistory.shared.commands.suffix(10).map(\.command),
+                    recentCommands: GlobalCommandHistory.shared.commands.suffix(50).map(\.command),
                     recentOutput: tab?.session?.ptySession?.recentOutput(maxLines: 40) ?? ""
                 )
             }

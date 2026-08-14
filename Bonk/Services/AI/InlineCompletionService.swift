@@ -81,6 +81,14 @@ final class InlineCompletionService {
     /// Start (or replace) a completion request for the given context.
     /// Cancels any in-flight request — one suggestion per typing pause.
     /// `onSuggestion` fires on the main actor when a suggestion is ready.
+    ///
+    /// Strategy (Warp-style: fast or nothing):
+    /// 1. Show an instant suggestion from command history before the model
+    ///    even connects — no waiting for a slow provider's TTFT.
+    /// 2. Fire the model request in the background; when it streams in it
+    ///    replaces the local suggestion with a smarter one.
+    /// 3. If the model comes back empty or errors out, keep the local
+    ///    suggestion instead of wiping a visible ghost.
     func request(
         context: InlineCompletionContext,
         onSuggestion: (@MainActor @Sendable (String) -> Void)? = nil
@@ -102,51 +110,98 @@ final class InlineCompletionService {
             includeEnv: includeEnvironmentInfo
         )
 
-        currentTask = Task { [weak self] in
-            defer { self?.isRequesting = false }
-            guard let self else { return }
-            let buffer = RawSuggestionBuffer()
-            do {
-                let response = try await Self.runWithTimeout {
-                    try await AIProviderNetworking.streamRequest(
-                        provider: provider, apiKey: apiKey,
-                        systemPrompt: prompt, userPrompt: typed,
-                        maxTokens: Self.maxSuggestionTokens,
-                        disableReasoning: true
-                    ) { [weak self] delta in
-                        // Show the ghost as soon as the first tokens arrive —
-                        // waiting for the full stream makes slow providers feel
-                        // broken. `suggestion` updates so Tab works mid-stream.
-                        let candidate = Self.suggestionSuffix(from: buffer.append(delta), typed: typed)
-                        guard !candidate.isEmpty,
-                              candidate.count <= Self.maxSuggestionChars
-                        else { return }
-                        Task { @MainActor [weak self] in
-                            self?.suggestion = candidate
-                            onSuggestion?(candidate)
-                        }
-                    }
-                }
-                guard !Task.isCancelled else { return }
-                let suffix = Self.suggestionSuffix(from: response, typed: typed)
-                suggestion = suffix
-                onSuggestion?(suffix)
-            } catch is CancellationError {
-                // Timed out or superseded. If a suggestion is already showing,
-                // keep it — killing a visible ghost mid-read feels broken.
-                if suggestion.isEmpty {
-                    onSuggestion?("")
-                }
-                return
-            } catch {
-                if Task.isCancelled { return }
-                lastError = error.localizedDescription
-                if suggestion.isEmpty {
-                    onSuggestion?("")
-                }
-                Self.logger.error("completion failed: \(error.localizedDescription, privacy: .public)")
+        // Instant local fallback — history is the fastest, most accurate
+        // predictor for commands the user has already run. Gated by the same
+        // setting that controls history in the model prompt.
+        if includeCommandHistory, !context.recentCommands.isEmpty {
+            let local = Self.localSuggestion(history: context.recentCommands, typed: typed)
+            if !local.isEmpty {
+                suggestion = local
+                onSuggestion?(local)
             }
         }
+
+        currentTask = Task { [weak self] in
+            guard let self else { return }
+            await self.streamModelSuggestion(
+                provider: provider, apiKey: apiKey,
+                prompt: prompt, typed: typed, onSuggestion: onSuggestion
+            )
+        }
+    }
+
+    /// Stream the model suggestion in the background. The local history
+    /// suggestion stays visible until the model produces a real replacement —
+    /// an empty or failed model response never wipes a visible ghost.
+    @MainActor
+    private func streamModelSuggestion(
+        provider: AIProviderConfig,
+        apiKey: String,
+        prompt: String,
+        typed: String,
+        onSuggestion: (@MainActor @Sendable (String) -> Void)?
+    ) async {
+        defer { isRequesting = false }
+        let buffer = RawSuggestionBuffer()
+        do {
+            let response = try await Self.runWithTimeout {
+                try await AIProviderNetworking.streamRequest(
+                    provider: provider, apiKey: apiKey,
+                    systemPrompt: prompt, userPrompt: typed,
+                    maxTokens: Self.maxSuggestionTokens,
+                    disableReasoning: true
+                ) { [weak self] delta in
+                    // Show the ghost as soon as the first tokens arrive —
+                    // waiting for the full stream makes slow providers feel
+                    // broken. `suggestion` updates so Tab works mid-stream.
+                    let candidate = Self.suggestionSuffix(from: buffer.append(delta), typed: typed)
+                    guard !candidate.isEmpty,
+                          candidate.count <= Self.maxSuggestionChars
+                    else { return }
+                    Task { @MainActor [weak self] in
+                        self?.suggestion = candidate
+                        onSuggestion?(candidate)
+                    }
+                }
+            }
+            guard !Task.isCancelled else { return }
+            let suffix = Self.suggestionSuffix(from: response, typed: typed)
+            if !suffix.isEmpty {
+                suggestion = suffix
+                onSuggestion?(suffix)
+            }
+        } catch is CancellationError {
+            // Timed out or superseded. If a suggestion is already showing,
+            // keep it — killing a visible ghost mid-read feels broken.
+            if suggestion.isEmpty {
+                onSuggestion?("")
+            }
+            return
+        } catch {
+            if Task.isCancelled { return }
+            lastError = error.localizedDescription
+            if suggestion.isEmpty {
+                onSuggestion?("")
+            }
+            Self.logger.error("completion failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Instant history-based suggestion. Returns the suffix to append after
+    /// `typed`, or empty when nothing matches. Most recent command wins.
+    nonisolated static func localSuggestion(history: [String], typed: String) -> String {
+        let typed = typed.trimmingCharacters(in: .whitespaces)
+        guard typed.count >= 2 else { return "" }
+
+        for cmd in history.reversed() {
+            let candidate = cmd.trimmingCharacters(in: .whitespaces)
+            guard candidate.count > typed.count, candidate.hasPrefix(typed) else { continue }
+            let suffix = String(candidate.dropFirst(typed.count))
+                .trimmingCharacters(in: .whitespaces)
+            guard !suffix.isEmpty, suffix.count <= maxSuggestionChars else { continue }
+            return suffix
+        }
+        return ""
     }
 
     /// Strip the already-typed prefix from a model response (models sometimes

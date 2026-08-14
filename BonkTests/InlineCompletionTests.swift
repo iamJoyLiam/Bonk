@@ -137,4 +137,58 @@ final class InlineCompletionTests: XCTestCase {
         XCTAssertTrue(prompt.contains("appended after the cursor"))
         XCTAssertTrue(prompt.contains("Do NOT repeat anything"))
     }
+
+    // MARK: - localSuggestion (instant history fallback)
+
+    func testLocalSuggestionMatchesMostRecentCommand() {
+        let history = ["cd /tmp", "docker ps", "docker run -d nginx"]
+        XCTAssertEqual(
+            InlineCompletionService.localSuggestion(history: history, typed: "docker"),
+            "run -d nginx"
+        )
+    }
+
+    func testLocalSuggestionMatchesMidCommand() {
+        let history = ["docker run -d --name web nginx", "ls -la"]
+        XCTAssertEqual(
+            InlineCompletionService.localSuggestion(history: history, typed: "docker run"),
+            "-d --name web nginx"
+        )
+    }
+
+    func testLocalSuggestionPrefersRecentOverOlder() {
+        let history = ["docker run -d nginx", "cd /tmp", "docker ps"]
+        XCTAssertEqual(
+            InlineCompletionService.localSuggestion(history: history, typed: "docker"),
+            "ps"
+        )
+    }
+
+    func testLocalSuggestionSkipsIdenticalOrShorter() {
+        let history = ["docker", "docker ps", "cd /tmp"]
+        XCTAssertEqual(
+            InlineCompletionService.localSuggestion(history: history, typed: "docker"),
+            "ps"
+        )
+    }
+
+    func testLocalSuggestionEmptyWithoutMatch() {
+        let history = ["cd /tmp", "ls -la"]
+        XCTAssertEqual(
+            InlineCompletionService.localSuggestion(history: history, typed: "git"),
+            ""
+        )
+        XCTAssertEqual(
+            InlineCompletionService.localSuggestion(history: history, typed: "l"),
+            ""
+        )
+    }
+
+    func testLocalSuggestionSkipsOverlong() {
+        let long = "a" + String(repeating: "b", count: 300)
+        XCTAssertEqual(
+            InlineCompletionService.localSuggestion(history: [long], typed: "a"),
+            ""
+        )
+    }
 }
