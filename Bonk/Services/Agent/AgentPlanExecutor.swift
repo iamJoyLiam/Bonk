@@ -15,6 +15,28 @@ extension AgentEngine {
     ) async {
         appendAgentMessage(.user, content: input, conversation: conversation, context: context)
 
+        let provider = resolveProvider()?.0
+        if provider?.type.supportsToolCalls == true {
+            await runAgentToolLoop(
+                input: input, sshService: sshService,
+                conversation: conversation, context: context
+            )
+        } else {
+            await runAgentLegacy(
+                input: input, sshService: sshService,
+                conversation: conversation, context: context
+            )
+        }
+    }
+
+    // MARK: - Legacy Plan Flow (Claude / Gemini / Ollama / fallback)
+
+    func runAgentLegacy(
+        input: String,
+        sshService: SSHNetworkService,
+        conversation: AIConversationRecord?,
+        context: ModelContext?
+    ) async {
         // Phase 1: Generate plan
         guard let plan = await generatePlan(
             conversation: conversation, context: context

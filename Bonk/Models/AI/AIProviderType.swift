@@ -74,4 +74,16 @@ enum AIProviderType: String, CaseIterable, Identifiable, Codable {
         default: true
         }
     }
+
+    /// Providers that speak the OpenAI `tools` protocol (function calling).
+    /// Agent mode uses a real tool loop on these; the rest keep the legacy
+    /// plan → approve → execute flow.
+    var supportsToolCalls: Bool {
+        switch self {
+        case .openAI, .openRouter, .openCode, .deepSeek, .qwen, .kimi, .custom:
+            true
+        case .claude, .gemini, .ollama:
+            false
+        }
+    }
 }

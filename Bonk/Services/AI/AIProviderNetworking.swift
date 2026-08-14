@@ -219,28 +219,6 @@ enum AIProviderNetworking {
         throw AIError.invalidResponse
     }
 
-    /// Extract incremental text from a streaming SSE event.
-    static func extractDelta(from json: [String: Any]) -> String? {
-        // OpenAI: choices[0].delta.content
-        if let choices = json["choices"] as? [[String: Any]],
-           let delta = choices.first?["delta"] as? [String: Any],
-           let text = delta["content"] as? String
-        { return text }
-
-        // Claude: type == "content_block_delta"
-        if json["type"] as? String == "content_block_delta",
-           let delta = json["delta"] as? [String: Any],
-           let text = delta["text"] as? String
-        { return text }
-
-        // Ollama: message.content
-        if let message = json["message"] as? [String: Any],
-           let text = message["content"] as? String
-        { return text }
-
-        return nil
-    }
-
     // MARK: - Streaming Request
 
     /// Execute a streaming request and return the accumulated response.
@@ -347,38 +325,6 @@ enum AIProviderNetworking {
                 maxTokens: maxTokens, disableReasoning: disableReasoning
             )
         }
-    }
-
-    // MARK: - Stream Parsing
-
-    /// Parse an SSE stream and return the accumulated response text.
-    /// Calls `onDelta` for each incremental chunk (caller controls UI cadence).
-    static func parseStream(
-        bytes: URLSession.AsyncBytes,
-        providerType _: AIProviderType,
-        onDelta: ((String) -> Void)? = nil
-    ) async throws -> String {
-        var result = ""
-        var buffer = Data()
-
-        for try await byte in bytes {
-            buffer.append(byte)
-            // Decode whole lines at once so multi-byte UTF-8 (Chinese, emoji) survives.
-            guard byte == 0x0A, let line = String(data: buffer, encoding: .utf8) else { continue }
-            buffer = Data()
-
-            guard line.hasPrefix("data: ") else { continue }
-            let json = line.dropFirst(6).trimmingCharacters(in: .whitespacesAndNewlines)
-            guard json != "[DONE]",
-                  let data = json.data(using: .utf8),
-                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
-
-            if let text = extractDelta(from: obj) {
-                result += text
-                onDelta?(text)
-            }
-        }
-        return result
     }
 
     // MARK: - Parse Models
