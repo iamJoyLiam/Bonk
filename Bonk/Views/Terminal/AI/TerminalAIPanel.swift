@@ -203,14 +203,17 @@ struct TerminalAIPanel: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                MarkdownTextView(content: engine.streamingResponse)
-                    .font(.system(size: 12))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                ScrollView {
+                    MarkdownTextView(content: engine.streamingResponse)
+                        .font(.system(size: 12))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 240)
             }
         }
         .padding(12)
-        .frame(maxWidth: .infinity, maxHeight: 240, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(Color(nsColor: .controlColor))
         .clipShape(.rect(cornerRadius: 10))
     }

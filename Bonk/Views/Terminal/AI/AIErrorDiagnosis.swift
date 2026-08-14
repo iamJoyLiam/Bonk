@@ -41,7 +41,7 @@ struct AIErrorDiagnosis: View {
                         .foregroundStyle(.secondary)
                 }
             } else if let diagnosis {
-                Text.markdown(diagnosis)
+                MarkdownTextView(content: diagnosis)
                     .font(.system(size: 12))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)

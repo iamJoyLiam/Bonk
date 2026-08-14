@@ -1,16 +1,6 @@
 import MarkdownUI
 import SwiftUI
 
-// MARK: - Text Extension (for backward compatibility)
-
-extension Text {
-    /// Render text with basic markdown support. Falls back to plain text on failure.
-    static func markdown(_ content: String) -> Text {
-        if let attr = try? AttributedString(markdown: content) { return Text(attr) }
-        return Text(content)
-    }
-}
-
 // MARK: - Rich Markdown View (powered by MarkdownUI)
 
 struct MarkdownTextView: View {
@@ -68,7 +58,44 @@ extension MarkdownUI.Theme {
                 .padding(.vertical, 4)
         }
 
+        // Headings — sized by level, tight margins, no heavy decoration.
+        theme.heading1 = headingStyle(size: 16)
+        theme.heading2 = headingStyle(size: 14)
+        theme.heading3 = headingStyle(size: 13)
+        theme.heading4 = headingStyle(size: 12)
+
+        // Blockquotes — left accent bar, muted text.
+        theme.blockquote = BlockStyle<BlockConfiguration> { configuration in
+            HStack(spacing: 8) {
+                Rectangle()
+                    .fill(Color.accentColor.opacity(0.5))
+                    .frame(width: 3)
+                configuration.label
+                    .italic()
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 4)
+        }
+
+        // Tables — card background, readable header.
+        theme.table = BlockStyle<BlockConfiguration> { configuration in
+            configuration.label
+                .padding(8)
+                .background(Color(nsColor: .controlColor).opacity(0.35))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .padding(.vertical, 4)
+        }
+
         return theme
+    }
+
+    private static func headingStyle(size: CGFloat) -> BlockStyle<BlockConfiguration> {
+        BlockStyle<BlockConfiguration> { configuration in
+            configuration.label
+                .font(.system(size: size, weight: .semibold))
+                .padding(.top, 8)
+                .padding(.bottom, 3)
+        }
     }
 }
 
