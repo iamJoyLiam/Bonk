@@ -184,7 +184,12 @@ public actor SSHNetworkService {
             port: Int(config.port),
             authenticationMethod: citadelAuth,
             hostKeyValidator: .custom(validator),
-            reconnect: .never
+            reconnect: .never,
+            // Citadel's default algorithm set is empty (only swift-nio-ssh
+            // bundled KEX: curve25519/ecdh). Bastions often only offer
+            // diffie-hellman-group14-sha1/sha256 and RSA host keys, which
+            // Citadel ships but doesn't enable by default.
+            algorithms: SSHAlgorithms.all
         )
         Log.ssh.info("[ESTABLISH] SSHClient.connect returned successfully")
 
