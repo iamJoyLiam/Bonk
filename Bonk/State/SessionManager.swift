@@ -252,24 +252,14 @@ final class SessionManager {
             session.errorMessage = I18n.shared.t(.noModelContext)
             return nil
         }
-        guard (1 ... 65535).contains(hostItem.port) else {
+        switch SSHConnectionConfigBuilder.makeConfig(for: hostItem) {
+        case .success(let config):
+            return config
+        case .failure(let message):
             session.connectionState = .disconnected
-            session.errorMessage = I18n.shared.t(.invalidPort)
+            session.errorMessage = message.localizedDescription
             return nil
         }
-        guard let authMethod = hostItem.resolveAuthMethod() else {
-            session.connectionState = .disconnected
-            session.errorMessage = I18n.shared.t(.credentialsNotSet)
-            return nil
-        }
-        return SSHConnectionConfig(
-            host: hostItem.host,
-            port: UInt16(hostItem.port),
-            username: hostItem.resolveUsername(),
-            authMethod: authMethod,
-            maxReconnectAttempts: 0,
-            baseReconnectDelay: .seconds(1)
-        )
     }
 
     private func setupPTYSession(

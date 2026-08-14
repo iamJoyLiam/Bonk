@@ -187,9 +187,28 @@ extension AIChatSidebarView {
         Group {
             avatar("terminal")
             VStack(alignment: .leading, spacing: 4) {
-                Text(i18n.t(.output))
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    if let status = msg.status {
+                        Image(systemName: status.icon)
+                            .font(.system(size: 10))
+                            .foregroundStyle(status.color)
+                    }
+                    if let command = msg.command, !command.isEmpty {
+                        Text(command)
+                            .font(.system(size: 11, design: .monospaced))
+                            .lineLimit(1)
+                    } else {
+                        Text(i18n.t(.output))
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    if let duration = msg.duration {
+                        Text(String(format: "%.1fs", duration))
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                    }
+                    Spacer()
+                }
+                .foregroundStyle(.secondary)
                 ScrollView(.horizontal, showsIndicators: false) {
                     Text(msg.content)
                         .font(.system(size: 11, design: .monospaced))

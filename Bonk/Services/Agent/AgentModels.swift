@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// A message in an Agent conversation.
 struct AgentMessage: Identifiable {
@@ -7,6 +8,8 @@ struct AgentMessage: Identifiable {
     let content: String
     let command: String?
     let thinking: String?
+    let status: CommandStatus?
+    let duration: TimeInterval?
     let timestamp = Date()
 
     enum Role {
@@ -16,11 +19,45 @@ struct AgentMessage: Identifiable {
         case commandOutput
     }
 
-    init(role: Role, content: String, command: String? = nil, thinking: String? = nil) {
+    enum CommandStatus: String {
+        case success
+        case failed
+        case blocked
+        case skipped
+
+        var icon: String {
+            switch self {
+            case .success: "checkmark.circle.fill"
+            case .failed: "xmark.octagon.fill"
+            case .blocked: "xmark.shield.fill"
+            case .skipped: "hand.raised.fill"
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .success: .green
+            case .failed: .red
+            case .blocked: .gray
+            case .skipped: .orange
+            }
+        }
+    }
+
+    init(
+        role: Role,
+        content: String,
+        command: String? = nil,
+        thinking: String? = nil,
+        status: CommandStatus? = nil,
+        duration: TimeInterval? = nil
+    ) {
         self.role = role
         self.content = content
         self.command = command
         self.thinking = thinking
+        self.status = status
+        self.duration = duration
     }
 
     /// Convert to AI API message format.

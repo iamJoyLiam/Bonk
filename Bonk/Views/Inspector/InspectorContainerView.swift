@@ -31,7 +31,8 @@ struct InspectorContainerView: View {
 
     private var aiPanel: some View {
         AIChatSidebarView(
-            sshService: sessionManager.activeTab?.session?.sshService,
+            sessionManager: sessionManager,
+            tab: sessionManager.activeTab,
             terminalContext: TerminalContext(tab: sessionManager.activeTab),
             onPaste: { text in
                 sessionManager.sendTextToActiveTab(text)

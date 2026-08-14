@@ -186,10 +186,16 @@ final class AgentEngine {
         content: String,
         thinking: String? = nil,
         command: String? = nil,
+        status: AgentMessage.CommandStatus? = nil,
+        duration: TimeInterval? = nil,
         conversation: AIConversationRecord?,
         context: ModelContext?
     ) {
-        agentMessages.append(AgentMessage(role: role, content: content, command: command, thinking: thinking))
+        agentMessages.append(AgentMessage(
+            role: role, content: content,
+            command: command, thinking: thinking,
+            status: status, duration: duration
+        ))
 
         // Persist to SwiftData if conversation is available
         if let conversation, let context {

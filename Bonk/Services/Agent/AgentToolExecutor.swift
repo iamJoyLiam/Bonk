@@ -160,7 +160,8 @@ extension AgentEngine {
         if risk == .blocked {
             let message = "Blocked: \(command) violates the safety policy."
             appendAgentMessage(
-                .commandOutput, content: message,
+                .commandOutput, content: message, command: command,
+                status: .blocked,
                 conversation: toolContext.conversation, context: toolContext.context
             )
             return message
@@ -172,7 +173,8 @@ extension AgentEngine {
             guard confirmed else {
                 let message = "Skipped by user."
                 appendAgentMessage(
-                    .commandOutput, content: message,
+                    .commandOutput, content: message, command: command,
+                    status: .skipped,
                     conversation: toolContext.conversation, context: toolContext.context
                 )
                 return message
@@ -181,13 +183,16 @@ extension AgentEngine {
 
         do {
             let sshService = toolContext.sshService
+            let start = Date()
             let output = try await withTimeout(seconds: 30) {
                 try await sshService.executeCommand(command)
             }
+            let duration = Date().timeIntervalSince(start)
             let truncated = String(output.prefix(4000))
             let message = truncated.isEmpty ? "(no output)" : truncated
             appendAgentMessage(
-                .commandOutput, content: message,
+                .commandOutput, content: message, command: command,
+                status: .success, duration: duration,
                 conversation: toolContext.conversation, context: toolContext.context
             )
             OperationLog.shared.record(command: command, output: truncated, success: true)
@@ -195,7 +200,8 @@ extension AgentEngine {
         } catch {
             let message = "Error: \(error.localizedDescription)"
             appendAgentMessage(
-                .commandOutput, content: message,
+                .commandOutput, content: message, command: command,
+                status: .failed,
                 conversation: toolContext.conversation, context: toolContext.context
             )
             OperationLog.shared.record(command: command, output: message, success: false)

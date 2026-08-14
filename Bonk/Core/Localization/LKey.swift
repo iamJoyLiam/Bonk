@@ -98,6 +98,11 @@ enum LKey: String, CaseIterable {
 
     // AI — Sidebar
     case aiNotEnabled = "ai_not_enabled"
+    case aiAllowDirectConnect = "ai_allow_direct_connect"
+    case aiDirectConnectDesc = "ai_direct_connect_desc"
+    case aiCurrentSession = "ai_current_session"
+    case aiConfirmConnect = "ai_confirm_connect"
+    case aiDirectConnectDisabled = "ai_direct_connect_disabled"
     case goToSettings = "go_to_settings"
     case enableAIHint = "enable_ai_hint"
     case describeTask = "describe_task"
@@ -147,6 +152,7 @@ enum LKey: String, CaseIterable {
     // TerminalView
     case connectingTo = "connecting_to"
     case disconnected, reconnecting
+    case reconnectingPlain = "reconnecting_plain"
 
     // TerminalTabView
     case rename, enterNewName = "enter_new_name"

@@ -6,11 +6,16 @@ import SwiftUI
 struct AIChatSidebarView: View {
     @Environment(I18n.self) var i18n
     @Environment(\.modelContext) var modelContext
-    let sshService: SSHNetworkService?
+    @Bindable var sessionManager: SessionManager
+    var tab: TerminalTab?
     var terminalContext: TerminalContext?
     var onPaste: ((String) -> Void)?
     var engine: AgentEngine {
         AgentEngine.shared
+    }
+
+    var sshService: SSHNetworkService? {
+        tab?.session?.sshService
     }
 
     @State var providerStore = AIProviderStore.shared
@@ -18,18 +23,25 @@ struct AIChatSidebarView: View {
     @Query(sort: \AIConversationRecord.updatedAt, order: .reverse)
     var conversations: [AIConversationRecord]
     @State var currentConversation: AIConversationRecord?
-    @State private var inputText = ""
+    @State var inputText = ""
     @State var showHistory = false
     @State private var selectedMode: AIMode = .ask
     @FocusState var isInputFocused: Bool
 
     @AppStorage("ai_enabled") var aiEnabled = false
+    @AppStorage("ai_allow_direct_connect") var allowDirectConnect = true
 
     @State private var rotationAngle: Double = 0
-    @State private var wasCancelled = false
+    @State var wasCancelled = false
     @State private var showModelPicker = false
     @State var pendingDeleteConversation: UUID?
-    @State private var currentTask: Task<Void, Never>?
+    @State var currentTask: Task<Void, Never>?
+    @State var targetStore = AgentTargetStore.shared
+    @State var connectionService = AgentConnectionService.shared
+    @State var pendingConnectHost: HostItem?
+    @State var pendingSubmitText: String?
+    @State var connectError: String?
+    @Query(sort: \HostItem.sortOrder) var hosts: [HostItem]
 
     private var aiColors: [Color] {
         AppStyle.aiRainbowColors
@@ -43,6 +55,7 @@ struct AIChatSidebarView: View {
         VStack(spacing: 0) {
             if aiEnabled {
                 header
+                targetBar
                 Divider()
                 if selectedMode == .agent {
                     agentMessageList
@@ -60,6 +73,20 @@ struct AIChatSidebarView: View {
             } else {
                 aiDisabledView
             }
+        }
+        .alert(
+            Text(String(format: i18n.t(.aiConfirmConnect), pendingConnectHost?.name ?? "")),
+            isPresented: connectConfirmBinding
+        ) {
+            Button(i18n.t(.connect)) { confirmPendingConnect() }
+            Button(i18n.t(.cancel), role: .cancel) { pendingConnectHost = nil }
+        } message: {
+            Text(pendingConnectHost?.host ?? "")
+        }
+        .alert(i18n.t(.connectionError), isPresented: errorBinding) {
+            Button(i18n.t(.ok)) { connectError = nil }
+        } message: {
+            Text(connectError ?? "")
         }
     }
 
@@ -267,7 +294,7 @@ struct AIChatSidebarView: View {
         }
     }
 
-    private func createNewConversation() {
+    func createNewConversation() {
         if selectedMode == .agent {
             engine.agentMessages = []
         } else {
@@ -281,6 +308,7 @@ struct AIChatSidebarView: View {
     private func submit() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        guard !engine.isProcessing else { return }
 
         if selectedMode == .agent {
             submitAgent(text: text)
@@ -322,28 +350,4 @@ struct AIChatSidebarView: View {
         }
     }
 
-    private func submitAgent(text: String) {
-        guard let ssh = sshService else {
-            engine.agentMessages = [AgentMessage(
-                role: .system, content: i18n.t(.noSSHConnectionAgent)
-            )]
-            return
-        }
-
-        if currentConversation == nil { createNewConversation() }
-        let conversation = currentConversation
-
-        inputText = ""
-        wasCancelled = false
-        engine.isProcessing = true
-
-        currentTask?.cancel()
-        currentTask = Task {
-            await engine.runAgent(
-                input: text, sshService: ssh,
-                conversation: conversation, context: modelContext
-            )
-            engine.isProcessing = false
-        }
-    }
 }

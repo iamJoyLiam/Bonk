@@ -10,6 +10,7 @@ struct AISettingsView: View {
     @AppStorage("ai_include_history") private var includeCommandHistory = true
     @AppStorage("ai_include_env") private var includeEnvironmentInfo = false
     @AppStorage("ai_connection_policy") private var defaultConnectionPolicyRaw = "askEachTime"
+    @AppStorage("ai_allow_direct_connect") private var allowDirectConnect = true
 
     @State private var store = AIProviderStore.shared
 
@@ -40,6 +41,9 @@ struct AISettingsView: View {
 
                 // Inline Suggestions
                 inlineSuggestionsSection
+
+                // Agent
+                agentSection
 
                 // Context
                 contextSection
@@ -239,6 +243,20 @@ struct AISettingsView: View {
             Text(i18n.t(.inlineSuggestions))
         } footer: {
             Text(i18n.t(.inlineSuggestionsFooter))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Agent
+
+    private var agentSection: some View {
+        Section {
+            Toggle(i18n.t(.aiAllowDirectConnect), isOn: $allowDirectConnect)
+        } header: {
+            Text(i18n.t(.agentMode))
+        } footer: {
+            Text(i18n.t(.aiDirectConnectDesc))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
