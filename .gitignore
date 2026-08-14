@@ -92,3 +92,10 @@ docs/
 
 # Web
 docs/FEATURE_ROADMAP.md
+
+# Vendored swift-nio-ssh build artifacts
+/Bonk/Vendor/swift-nio-ssh/.build/
+/Bonk/Vendor/swift-nio-ssh/Package.resolved
+
+# Derived data
+/build2/

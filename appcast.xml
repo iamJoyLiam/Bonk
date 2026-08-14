@@ -6,6 +6,35 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.12</title>
+            <pubDate>Fri, 14 Aug 2026 22:00:00 +0000</pubDate>
+            <sparkle:version>20261012</sparkle:version>
+            <sparkle:shortVersionString>2026.1.12</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- 新增 diffie-hellman-group-exchange-sha256 支持（RFC 4419）：仅提供该 KEX 的老堡垒机现在可直连
+- 常见堡垒机兼容矩阵：curve25519 / ecdh / group14-sha1+sha256 / group-exchange-sha256 KEX，ed25519 / ecdsa / ssh-rsa / rsa-sha2 主机密钥
+- 已用本地 sshd 验证：group-exchange + ed25519、group-exchange + RSA（rsa-sha2）、现代 curve25519/ed25519 回归全部通过
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.12/Bonk-2026.1.12-arm64.dmg"
+                length="13800712"
+                type="application/octet-stream"
+                sparkle:edSignature="QTqtKSHXCVzbHMlQIJ0u7HZyO/sSNdXXa/j6S+p/cXQB0EyLeBVwCHTOzRNRQd90O/BgFU4XZB6MzRYbiWwCAQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.12/Bonk-2026.1.12-x86_64.dmg"
+                length="14699932"
+                type="application/octet-stream"
+                sparkle:edSignature="O8ArrPF3b1rQ0Ef5UF90glf//5xV6Ms9us68cY095yK9IG2AqyCMxaVfgoYJnGA2/RUXkM5qblZntjufWzM3CQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.11</title>
             <pubDate>Fri, 14 Aug 2026 20:00:00 +0000</pubDate>
             <sparkle:version>20261011</sparkle:version>
