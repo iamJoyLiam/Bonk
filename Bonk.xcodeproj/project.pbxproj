@@ -13,6 +13,7 @@
 		AE17758D302EF163006C4F34 /* SwiftAnthropic in Frameworks */ = {isa = PBXBuildFile; productRef = AE00000CAAAA00000000000C /* SwiftAnthropic */; };
 		AEF73C8A2FC47AEE00F14E56 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = AE000002AAAA000000000002 /* Citadel */; };
 		AEF73C8B2FC47AEE00F14E57 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = AE000004AAAA000000000004 /* SwiftTerm */; };
+		AE000013AAAA000000000013 /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = AE000010AAAA000000000010 /* NIOSSH */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -51,6 +52,7 @@
 				AEF73C8A2FC47AEE00F14E56 /* Citadel in Frameworks */,
 				AEF73C8B2FC47AEE00F14E57 /* SwiftTerm in Frameworks */,
 				AE000009AAAA000000000009 /* MarkdownUI in Frameworks */,
+				AE000013AAAA000000000013 /* NIOSSH in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -99,6 +101,7 @@
 				AE000008AAAA000000000008 /* MarkdownUI */,
 				AE00000AAAAA00000000000A /* OpenAI */,
 				AE00000CAAAA00000000000C /* SwiftAnthropic */,
+				AE000010AAAA000000000010 /* NIOSSH */,
 			);
 			productName = Bonk;
 			productReference = AEF360DD2FC35EB700D936FC /* Bonk.app */;
@@ -447,6 +450,13 @@
 		};
 /* End XCRemoteSwiftPackageReference section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		AE00000EAAAA00000000000E /* XCLocalSwiftPackageReference "swift-nio-ssh" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/swift-nio-ssh;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		AE000002AAAA000000000002 /* Citadel */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -477,6 +487,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AE00000BAAAA00000000000B /* XCRemoteSwiftPackageReference "SwiftAnthropic" */;
 			productName = SwiftAnthropic;
+		};
+		AE000010AAAA000000000010 /* NIOSSH */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AE00000EAAAA00000000000E /* XCRemoteSwiftPackageReference "swift-nio-ssh" */;
+			productName = NIOSSH;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -179,6 +179,9 @@ public actor SSHNetworkService {
         }
 
         Log.ssh.info("[ESTABLISH] Calling SSHClient.connect to \(config.host):\(config.port)...")
+        // RFC 8332 host-key algorithms (rsa-sha2-256/512) for bastions with
+        // RSA host keys. Idempotent; safe to call on every connection.
+        RSASHA2Support.register()
         let sshClient = try await SSHClient.connect(
             host: config.host,
             port: Int(config.port),
