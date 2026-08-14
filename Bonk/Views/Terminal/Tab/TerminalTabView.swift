@@ -68,6 +68,9 @@ struct TerminalTabView: View {
             .onReceive(NotificationCenter.default.publisher(for: .toggleTerminalSearch)) { _ in
                 showSearch = !showSearch
             }
+            .onReceive(NotificationCenter.default.publisher(for: .aiAgentCommandExecuted)) { note in
+                handleAgentMirror(note)
+            }
             .renameAlert(i18n: i18n, renamingTab: $renamingTab, renameText: $renameText)
             .aiEnableAlert(i18n: i18n, isPresented: $showAIEnableAlert)
             .dropOverlay(message: uploadManagerBinding, uploadProgress: uploadManager.uploadProgress)
@@ -149,6 +152,26 @@ struct TerminalTabView: View {
             guard !Task.isCancelled else { return }
             updateMatchCount(newValue)
         }
+    }
+
+    /// Mirror AI agent command executions into the active terminal view.
+    private func handleAgentMirror(_ notification: Notification) {
+        guard let tab = sessionManager.activeTab,
+              let paneID = tab.activePaneID,
+              let cached = TerminalViewCache.shared.retrieve(paneID),
+              let command = notification.userInfo?[AITerminalMirror.commandKey] as? String,
+              let raw = notification.userInfo?[AITerminalMirror.statusKey] as? String,
+              let status = AgentMessage.CommandStatus(rawValue: raw)
+        else { return }
+
+        let duration = notification.userInfo?[AITerminalMirror.durationKey] as? Double
+        let output = notification.userInfo?[AITerminalMirror.outputKey] as? String
+        let host = notification.userInfo?[AITerminalMirror.hostKey] as? String
+        let text = AITerminalMirror.format(
+            command: command, status: status,
+            duration: duration, output: output, hostName: host
+        )
+        cached.view.feed(text: text)
     }
 
     private func toggleAIChat() {

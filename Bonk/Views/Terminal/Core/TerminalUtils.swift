@@ -22,6 +22,7 @@ extension Notification.Name {
     static let focusTerminal = Notification.Name("com.bonk.focusTerminal")
     static let showCopyMessage = Notification.Name("com.bonk.showCopyMessage")
     static let toggleTerminalSearch = Notification.Name("com.bonk.toggleTerminalSearch")
+    static let aiAgentCommandExecuted = Notification.Name("com.bonk.aiAgentCommandExecuted")
     /// Posted when PTY session is ready and output stream should be connected.
     static let terminalPTYSessionReady = Notification.Name("com.bonk.terminalPTYSessionReady")
 }

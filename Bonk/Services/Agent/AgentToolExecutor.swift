@@ -7,6 +7,7 @@ private struct AgentToolContext {
     let provider: AIProviderConfig
     let apiKey: String
     let sshService: SSHNetworkService
+    let hostName: String?
     let conversation: AIConversationRecord?
     let context: ModelContext?
 }
@@ -20,13 +21,15 @@ extension AgentEngine {
     func runAgentToolLoop(
         input: String,
         sshService: SSHNetworkService,
+        hostName: String?,
         conversation: AIConversationRecord?,
         context: ModelContext?
     ) async {
         guard let (provider, apiKey) = resolveProvider() else { return }
         let toolContext = AgentToolContext(
             provider: provider, apiKey: apiKey,
-            sshService: sshService, conversation: conversation, context: context
+            sshService: sshService, hostName: hostName,
+            conversation: conversation, context: context
         )
 
         let systemPrompt = CustomInstructions.buildSystemPrompt(base: AgentPrompts.toolSystemPrompt)
@@ -164,6 +167,7 @@ extension AgentEngine {
                 status: .blocked,
                 conversation: toolContext.conversation, context: toolContext.context
             )
+            mirror(command: command, status: .blocked, output: message, toolContext: toolContext)
             return message
         }
 
@@ -177,6 +181,7 @@ extension AgentEngine {
                     status: .skipped,
                     conversation: toolContext.conversation, context: toolContext.context
                 )
+                mirror(command: command, status: .skipped, output: message, toolContext: toolContext)
                 return message
             }
         }
@@ -195,6 +200,10 @@ extension AgentEngine {
                 status: .success, duration: duration,
                 conversation: toolContext.conversation, context: toolContext.context
             )
+            mirror(
+                command: command, status: .success, duration: duration,
+                output: message, toolContext: toolContext
+            )
             OperationLog.shared.record(command: command, output: truncated, success: true)
             return message
         } catch {
@@ -204,8 +213,22 @@ extension AgentEngine {
                 status: .failed,
                 conversation: toolContext.conversation, context: toolContext.context
             )
+            mirror(command: command, status: .failed, output: message, toolContext: toolContext)
             OperationLog.shared.record(command: command, output: message, success: false)
             return message
         }
+    }
+
+    private func mirror(
+        command: String,
+        status: AgentMessage.CommandStatus,
+        duration: TimeInterval? = nil,
+        output: String,
+        toolContext: AgentToolContext
+    ) {
+        AITerminalMirror.post(
+            command: command, status: status, duration: duration,
+            output: output, hostName: toolContext.hostName
+        )
     }
 }

@@ -10,6 +10,7 @@ extension AgentEngine {
     func runAgent(
         input: String,
         sshService: SSHNetworkService,
+        hostName: String? = nil,
         conversation: AIConversationRecord? = nil,
         context: ModelContext? = nil
     ) async {
@@ -18,7 +19,7 @@ extension AgentEngine {
         let provider = resolveProvider()?.0
         if provider?.type.supportsToolCalls == true {
             await runAgentToolLoop(
-                input: input, sshService: sshService,
+                input: input, sshService: sshService, hostName: hostName,
                 conversation: conversation, context: context
             )
         } else {

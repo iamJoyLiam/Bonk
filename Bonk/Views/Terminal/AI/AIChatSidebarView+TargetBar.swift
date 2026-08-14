@@ -27,7 +27,7 @@ extension AIChatSidebarView {
             do {
                 let ssh = try await connectionService.service(for: host)
                 if let pendingText {
-                    submitAgentTask(text: pendingText, ssh: ssh)
+                    submitAgentTask(text: pendingText, ssh: ssh, hostName: hostDisplayName(host))
                 }
             } catch {
                 connectError = error.localizedDescription
@@ -42,20 +42,20 @@ extension AIChatSidebarView {
     func submitAgent(text: String) {
         switch targetStore.target {
         case .activeTab:
-            guard let ssh = sshService else {
+            guard let tab, let ssh = tab.session?.sshService else {
                 engine.agentMessages = [AgentMessage(
                     role: .system, content: i18n.t(.noSSHConnectionAgent)
                 )]
                 return
             }
-            submitAgentTask(text: text, ssh: ssh)
+            submitAgentTask(text: text, ssh: ssh, hostName: hostDisplayName(tab.hostItem))
         case .host(let hostID):
             guard let host = hosts.first(where: { $0.id == hostID }) else { return }
             if connectionService.connectedHostID == hostID {
                 Task {
                     do {
                         let ssh = try await connectionService.service(for: host)
-                        submitAgentTask(text: text, ssh: ssh)
+                        submitAgentTask(text: text, ssh: ssh, hostName: hostDisplayName(host))
                     } catch {
                         engine.agentMessages = [AgentMessage(
                             role: .system,
@@ -70,7 +70,7 @@ extension AIChatSidebarView {
         }
     }
 
-    private func submitAgentTask(text: String, ssh: SSHNetworkService) {
+    private func submitAgentTask(text: String, ssh: SSHNetworkService, hostName: String) {
         if currentConversation == nil { createNewConversation() }
         let conversation = currentConversation
 
@@ -81,7 +81,7 @@ extension AIChatSidebarView {
         currentTask?.cancel()
         currentTask = Task {
             await engine.runAgent(
-                input: text, sshService: ssh,
+                input: text, sshService: ssh, hostName: hostName,
                 conversation: conversation, context: modelContext
             )
             engine.isProcessing = false

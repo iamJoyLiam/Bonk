@@ -6,6 +6,39 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.9</title>
+            <pubDate>Fri, 14 Aug 2026 12:00:00 +0000</pubDate>
+            <sparkle:version>2026109</sparkle:version>
+            <sparkle:shortVersionString>2026.1.9</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- AI 全面重构：统一 AgentEngine，快捷 AI 面板（Cmd+Option+K）携带真实终端上下文（cwd / 历史 / 输出 / 选区）
+- Agent 工具调用循环：模型直接调 `run_command` 执行命令（OpenAI 兼容供应商），危险命令分级确认，输出回喂自动迭代
+- AI 可直连任意已保存主机：exec-only 通道（不建 tab / 不开 PTY），凭证复用 Keychain，连接前用户确认，设置可关闭
+- AI 执行实时镜像到终端：彩色 `[AI·主机] $ cmd` + 状态 + 耗时 + 输出节选
+- 内联建议重构：本地历史命令即时兜底，模型慢不再干等；模型失败不抹掉已显示提示
+- 输出重写：Codex 风格提示词（直接给答案、无废话），MarkdownUI 统一渲染（标题 / 引用 / 表格）
+- 修复 Cmd+Option+K 被 pane 导航劫持；pane 导航改用方向键
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.9/Bonk-2026.1.9-arm64.dmg"
+                length="13757925"
+                type="application/octet-stream"
+                sparkle:edSignature="0Ye10SgRNt44Pw34oMsCJw+JGR280rgxrf9sdLGo8ZKdLwdzEiqdk6yPFTDr9oZXgNodt4bDN4xY1d+ODJZhAg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.9/Bonk-2026.1.9-x86_64.dmg"
+                length="14618012"
+                type="application/octet-stream"
+                sparkle:edSignature="S17CWaCkRs5AYsQqzNDhVq7dkxBPZo3tPPnOXJHopl5YrVXgZ5A24vak3JZGtctGI0ZPlOS6HBhUlhq1lYDcCw=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.8</title>
             <pubDate>Fri, 14 Aug 2026 08:00:00 +0000</pubDate>
             <sparkle:version>2026108</sparkle:version>
