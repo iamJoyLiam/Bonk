@@ -42,8 +42,15 @@ actor SSHKeepAlive {
     private func checkAlive(_ client: SSHClient) async -> Bool {
         await withTaskGroup(of: Bool.self) { group in
             group.addTask {
-                _ = try? await client.executeCommand("echo ok")
-                return true
+                do {
+                    _ = try await client.executeCommand("echo ok")
+                    return true
+                } catch {
+                    // A dead/half-open connection throws immediately — that is
+                    // a miss, not a success. (try? here previously masked the
+                    // failure and reconnect never fired.)
+                    return false
+                }
             }
             group.addTask {
                 try? await Task.sleep(for: .seconds(10))

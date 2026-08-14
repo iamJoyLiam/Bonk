@@ -69,7 +69,11 @@ struct TerminalSearchBar: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
         .onAppear {
-            isFocused = true
+            // Small delay so the TextField exists before focusing.
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(80))
+                isFocused = true
+            }
         }
         .onKeyPress(.escape) {
             isPresented = false

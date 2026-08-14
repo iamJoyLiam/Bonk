@@ -37,18 +37,35 @@ final class TerminalThemeManager: ObservableObject {
 
     #if os(macOS)
         private var appearanceObservation: NSKeyValueObservation?
+        private var wakeObserver: NSObjectProtocol?
+        private var activeObserver: NSObjectProtocol?
         private var lastAppearance: NSAppearance?
 
         /// Start observing system appearance changes for "system" theme.
         func startAppearanceObservation() {
             guard appearanceObservation == nil else { return }
             lastAppearance = NSApp.effectiveAppearance
-            appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) {
-                [weak self] _, _ in
+            appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
                 guard let self else { return }
                 Task { @MainActor in
                     let currentAppearance = NSApp.effectiveAppearance
                     self.handleAppearanceChange(currentAppearance)
+                }
+            }
+            // KVO on effectiveAppearance can miss changes across sleep/wake —
+            // re-check when the machine wakes or the app becomes active.
+            wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.handleAppearanceChange(NSApp.effectiveAppearance)
+                }
+            }
+            activeObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.handleAppearanceChange(NSApp.effectiveAppearance)
                 }
             }
         }
@@ -57,6 +74,14 @@ final class TerminalThemeManager: ObservableObject {
         func stopAppearanceObservation() {
             appearanceObservation?.invalidate()
             appearanceObservation = nil
+            if let wakeObserver {
+                NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
+            }
+            if let activeObserver {
+                NotificationCenter.default.removeObserver(activeObserver)
+            }
+            wakeObserver = nil
+            activeObserver = nil
             lastAppearance = nil
         }
 

@@ -59,6 +59,7 @@ struct TerminalTabView: View {
                     searchText = ""
                     matchCount = 0
                     currentMatch = 0
+                    focusTerminal()
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .toggleAIChat)) { _ in
