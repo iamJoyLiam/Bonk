@@ -139,6 +139,9 @@ public class RSASHA2PublicKey512: RSASHA2PublicKeyBase {
 public enum RSASHA2Support {
     private static let registeredOnce: Void = {
         NIOSSHAlgorithms.register(
+            keyExchangeAlgorithm: DiffieHellmanGroupExchangeSha256.self
+        )
+        NIOSSHAlgorithms.register(
             publicKey: RSASHA2PublicKey256.self,
             signature: RSASHA2Signature256.self
         )

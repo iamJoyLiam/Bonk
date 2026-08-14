@@ -32,6 +32,9 @@ enum SSHMessage: Equatable {
     case keyExchange(KeyExchangeMessage)
     case keyExchangeInit(KeyExchangeECDHInitMessage)
     case keyExchangeReply(KeyExchangeECDHReplyMessage)
+    case keyExchangeGEXRequest(KeyExchangeGEXRequestMessage)
+    case keyExchangeGEXGroup(KeyExchangeGEXGroupMessage)
+    case keyExchangeGEXInit(KeyExchangeGEXInitMessage)
     case newKeys
     case userAuthRequest(UserAuthRequestMessage)
     case userAuthFailure(UserAuthFailureMessage)
@@ -136,6 +139,29 @@ extension SSHMessage {
         var publicKey: ByteBuffer
         // the signature on the exchange hash
         var signature: NIOSSHSignature
+    }
+
+    // RFC 4419 § 3: SSH_MSG_KEX_DH_GEX_REQUEST_OLD (client → server).
+    // OpenSSH servers expect the old-style request: id 34 + n only.
+    struct KeyExchangeGEXRequestMessage: Equatable {
+        static let id: UInt8 = 34
+
+        var payload: ByteBuffer
+    }
+
+    // RFC 4419 § 3: SSH_MSG_KEX_DH_GEX_GROUP (server → client): p, g.
+    struct KeyExchangeGEXGroupMessage: Equatable {
+        static let id: UInt8 = 31
+
+        var p: ByteBuffer
+        var g: ByteBuffer
+    }
+
+    // RFC 4419 § 3: SSH_MSG_KEX_DH_GEX_INIT (client → server): e as string.
+    struct KeyExchangeGEXInitMessage: Equatable {
+        static let id: UInt8 = 32
+
+        var publicKey: ByteBuffer
     }
 
     struct UserAuthRequestMessage: Equatable {
@@ -413,6 +439,19 @@ extension ByteBuffer {
                 }
                 return .keyExchangeInit(message)
             case SSHMessage.KeyExchangeECDHReplyMessage.id:
+                // GEX_GROUP (31) shares the id with ECDH reply. Try the ECDH
+                // shape first (host key + pubkey + signature); GEX_GROUP is two
+                // mpints and fails that parse, so fall back.
+                let savedIndex = self.readerIndex
+                if let message = try self.readKeyExchangeECDHReplyMessage() {
+                    return .keyExchangeReply(message)
+                }
+                self.moveReaderIndex(to: savedIndex)
+                guard let message = self.readKeyExchangeGEXGroupMessage() else {
+                    return nil
+                }
+                return .keyExchangeGEXGroup(message)
+            case 33: // SSH_MSG_KEX_DH_GEX_REPLY — same shape as ECDH reply
                 guard let message = try self.readKeyExchangeECDHReplyMessage() else {
                     return nil
                 }
@@ -641,6 +680,17 @@ extension ByteBuffer {
             }
 
             return SSHMessage.KeyExchangeECDHReplyMessage(hostKey: hostKey, publicKey: publicKey, signature: signature)
+        }
+    }
+
+    mutating func readKeyExchangeGEXGroupMessage() -> SSHMessage.KeyExchangeGEXGroupMessage? {
+        self.rewindReaderOnNil { `self` in
+            guard let p = self.readSSHString(),
+                  let g = self.readSSHString()
+            else {
+                return nil
+            }
+            return SSHMessage.KeyExchangeGEXGroupMessage(p: p, g: g)
         }
     }
 
@@ -1154,6 +1204,15 @@ extension ByteBuffer {
         case .keyExchangeReply(let message):
             writtenBytes += self.writeInteger(SSHMessage.KeyExchangeECDHReplyMessage.id)
             writtenBytes += self.writeKeyExchangeECDHReplyMessage(message)
+        case .keyExchangeGEXRequest(let message):
+            writtenBytes += self.writeInteger(SSHMessage.KeyExchangeGEXRequestMessage.id)
+            writtenBytes += self.writeKeyExchangeGEXRequestMessage(message)
+        case .keyExchangeGEXGroup(let message):
+            writtenBytes += self.writeInteger(SSHMessage.KeyExchangeGEXGroupMessage.id)
+            writtenBytes += self.writeKeyExchangeGEXGroupMessage(message)
+        case .keyExchangeGEXInit(let message):
+            writtenBytes += self.writeInteger(SSHMessage.KeyExchangeGEXInitMessage.id)
+            writtenBytes += self.writeKeyExchangeGEXInitMessage(message)
         case .newKeys:
             writtenBytes += self.writeInteger(21 as UInt8)
         case .userAuthRequest(let message):
@@ -1283,6 +1342,23 @@ extension ByteBuffer {
             buffer.writeSSHSignature(message.signature)
         }
         return writtenBytes
+    }
+
+    mutating func writeKeyExchangeGEXRequestMessage(_ message: SSHMessage.KeyExchangeGEXRequestMessage) -> Int {
+        var message = message
+        return self.writeBuffer(&message.payload)
+    }
+
+    mutating func writeKeyExchangeGEXGroupMessage(_ message: SSHMessage.KeyExchangeGEXGroupMessage) -> Int {
+        var message = message
+        var written = self.writeSSHString(&message.p)
+        written += self.writeSSHString(&message.g)
+        return written
+    }
+
+    mutating func writeKeyExchangeGEXInitMessage(_ message: SSHMessage.KeyExchangeGEXInitMessage) -> Int {
+        var message = message
+        return self.writeSSHString(&message.publicKey)
     }
 
     mutating func writeAlgorithms(_ algorithms: [Substring]) -> Int {
@@ -1592,6 +1668,7 @@ internal struct SSHMultiMessage {
             self._count = 2
         }
     }
+
 }
 
 extension SSHMultiMessage: RandomAccessCollection {

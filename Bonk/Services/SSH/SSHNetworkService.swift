@@ -182,6 +182,10 @@ public actor SSHNetworkService {
         // RFC 8332 host-key algorithms (rsa-sha2-256/512) for bastions with
         // RSA host keys. Idempotent; safe to call on every connection.
         RSASHA2Support.register()
+        var algorithms = SSHAlgorithms.all
+        algorithms.keyExchangeAlgorithms = .add([
+            DiffieHellmanGroupExchangeSha256.self,
+        ])
         let sshClient = try await SSHClient.connect(
             host: config.host,
             port: Int(config.port),
@@ -192,7 +196,7 @@ public actor SSHNetworkService {
             // bundled KEX: curve25519/ecdh). Bastions often only offer
             // diffie-hellman-group14-sha1/sha256 and RSA host keys, which
             // Citadel ships but doesn't enable by default.
-            algorithms: SSHAlgorithms.all
+            algorithms: algorithms
         )
         Log.ssh.info("[ESTABLISH] SSHClient.connect returned successfully")
 

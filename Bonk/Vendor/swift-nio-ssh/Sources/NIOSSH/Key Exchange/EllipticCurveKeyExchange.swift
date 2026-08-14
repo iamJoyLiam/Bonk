@@ -55,6 +55,67 @@ public protocol NIOSSHKeyExchangeAlgorithmProtocol {
     ) throws -> KeyExchangeResult
 
     static var keyExchangeAlgorithmNames: [Substring] { get }
+
+    /// RFC 4419 group exchange is a multi-round-trip KEX: request → group →
+    /// init → reply. Default false; only group-exchange algorithms opt in.
+    var supportsGEX: Bool { get }
+
+    /// Client side: after receiving p/g from the server, produce e (mpint)
+    /// for SSH_MSG_KEX_DH_GEX_INIT and remember state for the final reply.
+    mutating func receiveGEXGroup(
+        p: ByteBuffer,
+        g: ByteBuffer,
+        allocator: ByteBufferAllocator,
+        expectedKeySizes: ExpectedKeySizes
+    ) throws -> ByteBuffer
+
+    /// Client side: finalize after SSH_MSG_KEX_DH_GEX_REPLY.
+    mutating func receiveGEXReply(
+        serverKeyExchangeMessage: NIOSSHKeyExchangeServerReply,
+        initialExchangeBytes: inout ByteBuffer,
+        allocator: ByteBufferAllocator,
+        expectedKeySizes: ExpectedKeySizes
+    ) throws -> KeyExchangeResult
+}
+
+extension NIOSSHKeyExchangeAlgorithmProtocol {
+    public var supportsGEX: Bool { false }
+
+    public mutating func receiveServerKeyExchangePayload(
+        serverKeyExchangeMessage _: NIOSSHKeyExchangeServerReply,
+        initialExchangeBytes _: inout ByteBuffer,
+        allocator _: ByteBufferAllocator,
+        expectedKeySizes _: ExpectedKeySizes
+    ) throws -> KeyExchangeResult {
+        throw NIOSSHError.protocolViolation(
+            protocolName: "key exchange",
+            violation: "GEX algorithm must use receiveGEXReply"
+        )
+    }
+
+    public mutating func receiveGEXGroup(
+        p _: ByteBuffer,
+        g _: ByteBuffer,
+        allocator _: ByteBufferAllocator,
+        expectedKeySizes _: ExpectedKeySizes
+    ) throws -> ByteBuffer {
+        throw NIOSSHError.protocolViolation(
+            protocolName: "key exchange",
+            violation: "GEX not supported by this algorithm"
+        )
+    }
+
+    public mutating func receiveGEXReply(
+        serverKeyExchangeMessage _: NIOSSHKeyExchangeServerReply,
+        initialExchangeBytes _: inout ByteBuffer,
+        allocator _: ByteBufferAllocator,
+        expectedKeySizes _: ExpectedKeySizes
+    ) throws -> KeyExchangeResult {
+        throw NIOSSHError.protocolViolation(
+            protocolName: "key exchange",
+            violation: "GEX not supported by this algorithm"
+        )
+    }
 }
 
 struct EllipticCurveKeyExchange<PrivateKey: ECDHCompatiblePrivateKey>: NIOSSHKeyExchangeAlgorithmProtocol {

@@ -44,6 +44,15 @@ extension AcceptsKeyExchangeMessages {
         return .possibleFutureMessage(message)
     }
 
+    mutating func receiveKeyExchangeGEXGroupMessage(_ message: SSHMessage.KeyExchangeGEXGroupMessage) throws -> SSHConnectionStateMachine.StateMachineInboundProcessResult {
+        let message = try self.keyExchangeStateMachine.handle(keyExchangeGEXGroup: message)
+        if let message = message {
+            return .emitMessage(message)
+        } else {
+            return .noMessage
+        }
+    }
+
     mutating func receiveNewKeysMessage() throws {
         // Received a new keys message. Apply the encryption keys to the parser.
         let result = try self.keyExchangeStateMachine.handleNewKeys()

@@ -36,6 +36,16 @@ extension SendsKeyExchangeMessages {
         try self.serializer.serialize(message: .keyExchangeReply(message), to: &buffer)
     }
 
+    mutating func writeKeyExchangeGEXRequestMessage(_ message: SSHMessage.KeyExchangeGEXRequestMessage, into buffer: inout ByteBuffer) throws {
+        self.keyExchangeStateMachine.send(keyExchangeGEXRequest: message)
+        try self.serializer.serialize(message: .keyExchangeGEXRequest(message), to: &buffer)
+    }
+
+    mutating func writeKeyExchangeGEXInitMessage(_ message: SSHMessage.KeyExchangeGEXInitMessage, into buffer: inout ByteBuffer) throws {
+        self.keyExchangeStateMachine.send(keyExchangeGEXInit: message)
+        try self.serializer.serialize(message: .keyExchangeGEXInit(message), to: &buffer)
+    }
+
     mutating func writeNewKeysMessage(into buffer: inout ByteBuffer) throws {
         let result = self.keyExchangeStateMachine.sendNewKeys()
         try self.serializer.serialize(message: .newKeys, to: &buffer)
