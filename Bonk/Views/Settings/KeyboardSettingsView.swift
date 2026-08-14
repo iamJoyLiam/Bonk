@@ -9,6 +9,8 @@ struct KeyboardSettingsView: View {
     @Environment(I18n.self) var i18n
     @Bindable var preferences: UserPreferences
     @AppStorage("keyboard_shortcuts") private var shortcutsData: Data = .init()
+    @AppStorage("right_click_paste_enabled") private var rightClickPasteEnabled = true
+    @AppStorage("right_click_menu_modifier") private var rightClickMenuModifier = "command"
 
     /// Load saved shortcuts or use defaults.
     private var shortcuts: [String: KeyboardShortcut] {
@@ -29,7 +31,23 @@ struct KeyboardSettingsView: View {
                 }
             }
 
-            Section(i18n.t(.input)) {
+            Section {
+                Toggle(i18n.t(.rightClickPaste), isOn: $rightClickPasteEnabled)
+                Picker(i18n.t(.rightClickPasteMenuModifier), selection: $rightClickMenuModifier) {
+                    Text("⌘").tag("command")
+                    Text("⌃").tag("control")
+                    Text("⌥").tag("option")
+                    Text("⇧").tag("shift")
+                }
+            } header: {
+                Text(i18n.t(.input))
+            } footer: {
+                Text(i18n.t(.rightClickPasteDesc))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Toggle(i18n.t(.optionMeta), isOn: $preferences.optionAsMeta)
                 Toggle(i18n.t(.mouseReporting), isOn: $preferences.mouseReporting)
                 Toggle(i18n.t(.aiDismissWithEsc), isOn: $preferences.escDismissAI)

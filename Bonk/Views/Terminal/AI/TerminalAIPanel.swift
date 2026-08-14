@@ -204,7 +204,10 @@ struct TerminalAIPanel: View {
                 }
             } else {
                 ScrollView {
-                    MarkdownTextView(content: engine.streamingResponse)
+                    MarkdownTextView(
+                        content: engine.streamingResponse,
+                        onRun: { code in onRun(code) }
+                    )
                         .font(.system(size: 12))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -221,7 +224,10 @@ struct TerminalAIPanel: View {
     private func responseBubble(_ response: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             ScrollView {
-                MarkdownTextView(content: response)
+                MarkdownTextView(
+                    content: response,
+                    onRun: { code in onRun(code) }
+                )
                     .font(.system(size: 12))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)

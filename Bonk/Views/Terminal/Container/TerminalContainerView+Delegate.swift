@@ -29,7 +29,6 @@ import SwiftTerm
         func hostCurrentDirectoryUpdate(source _: SwiftTerm.TerminalView, directory _: String?) {}
         func scrolled(source terminal: SwiftTerm.TerminalView, position: Double) {
             flashScroller(in: terminal)
-            (terminal as? NativeTerminalView)?.handleScroll(position: position)
         }
 
         func requestOpenLink(source _: SwiftTerm.TerminalView, link: String, params _: [String: String]) {

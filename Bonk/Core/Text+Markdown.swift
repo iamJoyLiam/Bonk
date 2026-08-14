@@ -5,28 +5,28 @@ import SwiftUI
 
 struct MarkdownTextView: View {
     let content: String
-    var sshService: SSHNetworkService?
+    var onRun: (@MainActor (String) -> Void)?
 
     var body: some View {
         MarkdownUI.Markdown(content, baseURL: nil)
-            .markdownTheme(.bonk(sshService: sshService))
+            .markdownTheme(.bonk(onRun: onRun))
     }
 }
 
 // MARK: - Bonk Theme
 
 extension MarkdownUI.Theme {
-    static func bonk(sshService: SSHNetworkService?) -> MarkdownUI.Theme {
+    static func bonk(onRun: (@MainActor (String) -> Void)? = nil) -> MarkdownUI.Theme {
         var theme = Theme.basic
 
         // Code blocks with proper spacing to prevent sticking to adjacent text
         theme.codeBlock = BlockStyle<CodeBlockConfiguration> { configuration in
             VStack(alignment: .leading, spacing: 0) {
-                if let ssh = sshService {
+                if let onRun {
                     InteractiveCodeBlock(
                         code: configuration.content,
                         language: configuration.language,
-                        sshService: ssh
+                        onRun: onRun
                     )
                 } else {
                     CodeBlockView(

@@ -23,6 +23,13 @@ extension Notification.Name {
     static let showCopyMessage = Notification.Name("com.bonk.showCopyMessage")
     static let toggleTerminalSearch = Notification.Name("com.bonk.toggleTerminalSearch")
     static let aiAgentCommandExecuted = Notification.Name("com.bonk.aiAgentCommandExecuted")
+    static let terminalNewTab = Notification.Name("com.bonk.terminalNewTab")
+    static let terminalCloseTab = Notification.Name("com.bonk.terminalCloseTab")
+    static let terminalClosePane = Notification.Name("com.bonk.terminalClosePane")
+    static let terminalSplitHorizontal = Notification.Name("com.bonk.terminalSplitHorizontal")
+    static let terminalSplitVertical = Notification.Name("com.bonk.terminalSplitVertical")
+    static let terminalReconnect = Notification.Name("com.bonk.terminalReconnect")
+    static let terminalClear = Notification.Name("com.bonk.terminalClear")
     /// Posted when PTY session is ready and output stream should be connected.
     static let terminalPTYSessionReady = Notification.Name("com.bonk.terminalPTYSessionReady")
 }

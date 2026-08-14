@@ -11,6 +11,7 @@ struct AISettingsView: View {
     @AppStorage("ai_include_env") private var includeEnvironmentInfo = false
     @AppStorage("ai_connection_policy") private var defaultConnectionPolicyRaw = "askEachTime"
     @AppStorage("ai_allow_direct_connect") private var allowDirectConnect = true
+    @AppStorage("ai_inline_provider_id") private var inlineProviderID = ""
 
     @State private var store = AIProviderStore.shared
 
@@ -230,6 +231,13 @@ struct AISettingsView: View {
             Toggle(i18n.t(.enableInlineSuggestions), isOn: $inlineSuggestionsEnabled)
                 .disabled(store.activeProviderID == nil)
                 .help(store.activeProviderID != nil ? "" : i18n.t(.configureProviderHint))
+            Picker(i18n.t(.aiInlineModel), selection: $inlineProviderID) {
+                Text(i18n.t(.aiFollowMainProvider)).tag("")
+                ForEach(store.providers) { provider in
+                    Text(provider.displayName).tag(provider.id.uuidString)
+                }
+            }
+            .disabled(!inlineSuggestionsEnabled)
             HStack {
                 Text(i18n.t(.debounce))
                 Spacer()
@@ -242,7 +250,7 @@ struct AISettingsView: View {
         } header: {
             Text(i18n.t(.inlineSuggestions))
         } footer: {
-            Text(i18n.t(.inlineSuggestionsFooter))
+            Text("\(i18n.t(.inlineSuggestionsFooter))\n\(i18n.t(.aiInlineModelDesc))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

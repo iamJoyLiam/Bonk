@@ -26,6 +26,7 @@ struct TerminalTabView: View {
     @State private var matchCount = 0
     @State private var currentMatch = 0
     @State private var searchDebounceTask: Task<Void, Never>?
+    @State private var lastAIToggle = Date.distantPast
 
     var preferences: UserPreferences {
         allPreferences.first ?? UserPreferences()
@@ -71,6 +72,7 @@ struct TerminalTabView: View {
             .onReceive(NotificationCenter.default.publisher(for: .aiAgentCommandExecuted)) { note in
                 handleAgentMirror(note)
             }
+            .terminalShortcuts(sessionManager)
             .renameAlert(i18n: i18n, renamingTab: $renamingTab, renameText: $renameText)
             .aiEnableAlert(i18n: i18n, isPresented: $showAIEnableAlert)
             .dropOverlay(message: uploadManagerBinding, uploadProgress: uploadManager.uploadProgress)
@@ -175,6 +177,9 @@ struct TerminalTabView: View {
     }
 
     private func toggleAIChat() {
+        let now = Date()
+        guard now.timeIntervalSince(lastAIToggle) > 0.2 else { return }
+        lastAIToggle = now
         if showAIChat {
             showAIChat = false
             selectedTextForAI = ""

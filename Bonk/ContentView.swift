@@ -110,6 +110,9 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .toggleSFTP)) { _ in
                 toggleSFTPWindow()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalNewTab)) { _ in
+                handleNewTabShortcut()
+            }
             // Sheets
             .sheet(isPresented: $toolbarCoordinator.showAddHostSheet) {
                 NavigationStack {
@@ -143,6 +146,15 @@ struct ContentView: View {
     #endif
 
     // MARK: - SFTP Window
+
+    @State private var lastNewTabAt = Date.distantPast
+
+    private func handleNewTabShortcut() {
+        let now = Date()
+        guard now.timeIntervalSince(lastNewTabAt) > 0.2 else { return }
+        lastNewTabAt = now
+        toolbarCoordinator.showAddHostSheet = true
+    }
 
     private func toggleSFTPWindow() {
         #if os(macOS)
@@ -278,7 +290,6 @@ struct ContentView: View {
                 .focusedSceneValue(\.menuToggleSFTP) {
                     NotificationCenter.default.post(name: .toggleSFTP, object: nil)
                 }
-                .focusedSceneValue(\.menuToggleAI) { workspace.toggleRightPanel(.ai) }
                 .focusedSceneValue(\.menuToggleAITerminal) {
                     NotificationCenter.default.post(name: .toggleAIChat, object: nil)
                 }

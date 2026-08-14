@@ -17,6 +17,9 @@ final class ShortcutManager: @unchecked Sendable {
 
     /// Notification name for shortcut changes.
     static let shortcutsDidChange = Notification.Name("com.bonk.shortcutsDidChange")
+    /// True while the settings recorder is capturing a shortcut. Menu key
+    /// equivalents are suppressed so recording can't trigger app actions.
+    nonisolated(unsafe) static var isRecording = false
 
     init() {
         loadShortcuts()
@@ -42,6 +45,9 @@ final class ShortcutManager: @unchecked Sendable {
 
     /// Get shortcut for a specific action, converting to SwiftUI KeyboardShortcut.
     func shortcut(for action: ShortcutAction) -> SwiftUI.KeyboardShortcut {
+        if Self.isRecording {
+            return SwiftUI.KeyboardShortcut(.delete, modifiers: [])
+        }
         let custom = shortcuts[action.rawValue] ?? action.defaultShortcut
         guard let custom else {
             return SwiftUI.KeyboardShortcut(.delete, modifiers: [])
@@ -57,6 +63,16 @@ final class ShortcutManager: @unchecked Sendable {
         if custom.modifiers.contains(.option) { modifiers.insert(.option) }
         if custom.modifiers.contains(.control) { modifiers.insert(.control) }
         return SwiftUI.KeyboardShortcut(KeyEquivalent(keyChar), modifiers: modifiers)
+    }
+
+    /// Raw keyCode + modifier flags for an action (custom or default).
+    /// Used by the terminal's direct key interception, so user-configured
+    /// shortcuts work even when the menu FocusedValue chain is broken.
+    func keyEquivalent(
+        for action: ShortcutAction
+    ) -> (keyCode: UInt16, modifiers: KeyboardShortcut.ModifierFlags)? {
+        let shortcut = shortcuts[action.rawValue] ?? action.defaultShortcut
+        return shortcut.map { ($0.keyCode, $0.modifiers) }
     }
 
     /// Map keyCode to character for common keys.

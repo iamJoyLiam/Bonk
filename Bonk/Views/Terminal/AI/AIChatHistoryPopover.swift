@@ -14,6 +14,7 @@ extension AIChatSidebarView {
                             HStack(spacing: 8) {
                                 Button {
                                     currentConversation = conversation
+                                    conversationStore.lastConversationID = conversation.id
                                     showHistory = false
                                 } label: {
                                     HStack {
@@ -58,6 +59,9 @@ extension AIChatSidebarView {
                 {
                     conversationStore.delete(conv, context: modelContext)
                     if currentConversation?.id == id { currentConversation = nil }
+                    if conversationStore.lastConversationID == id {
+                        conversationStore.lastConversationID = nil
+                    }
                 }
                 pendingDeleteConversation = nil
             }

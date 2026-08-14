@@ -252,7 +252,16 @@ final class InlineCompletionService {
     // MARK: - Provider
 
     private func resolveProvider() -> (AIProviderConfig, String)? {
-        guard let provider = providerStore.activeProvider else { return nil }
+        // Inline hints must be fast — allow a dedicated fast provider instead
+        // of whatever the main chat uses.
+        let overrideID = defaults.string(forKey: "ai_inline_provider_id") ?? ""
+        let provider: AIProviderConfig?
+        if !overrideID.isEmpty {
+            provider = providerStore.providers.first { $0.id.uuidString == overrideID }
+        } else {
+            provider = providerStore.activeProvider
+        }
+        guard let provider else { return nil }
         let key = provider.apiKey
         guard !key.isEmpty else { return nil }
         return (provider, key)

@@ -68,7 +68,10 @@ extension AIChatSidebarView {
             if msg.role == .assistant {
                 HStack(alignment: .top, spacing: 8) {
                     avatar("sparkles")
-                    MarkdownTextView(content: msg.content, sshService: sshService)
+                    MarkdownTextView(
+                        content: msg.content,
+                        onRun: { code in sessionManager.sendTextToActiveTab(code) }
+                    )
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             } else {
@@ -91,7 +94,10 @@ extension AIChatSidebarView {
     func streamingBubble(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             avatar("sparkles")
-            MarkdownTextView(content: text, sshService: sshService)
+            MarkdownTextView(
+                content: text,
+                onRun: { code in sessionManager.sendTextToActiveTab(code) }
+            )
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -171,7 +177,10 @@ extension AIChatSidebarView {
                             .foregroundStyle(.tertiary)
                     }
                 }
-                MarkdownTextView(content: msg.content, sshService: sshService)
+                MarkdownTextView(
+                    content: msg.content,
+                    onRun: { code in sessionManager.sendTextToActiveTab(code) }
+                )
                 if let command = msg.command, !command.isEmpty {
                     agentCommandBlock(command)
                 }

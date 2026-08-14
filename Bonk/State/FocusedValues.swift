@@ -15,7 +15,6 @@ struct MenuConnectKey: FocusedValueKey { typealias Value = @MainActor () -> Void
 struct MenuDisconnectKey: FocusedValueKey { typealias Value = @MainActor () -> Void }
 struct MenuReconnectKey: FocusedValueKey { typealias Value = @MainActor () -> Void }
 struct MenuToggleSFTPKey: FocusedValueKey { typealias Value = @MainActor () -> Void }
-struct MenuToggleAIKey: FocusedValueKey { typealias Value = @MainActor () -> Void }
 struct MenuShowSerialPortKey: FocusedValueKey { typealias Value = @MainActor () -> Void }
 struct MenuShowSnippetsKey: FocusedValueKey { typealias Value = @MainActor () -> Void }
 struct MenuShowPortForwardingKey: FocusedValueKey { typealias Value = @MainActor () -> Void }
@@ -59,11 +58,6 @@ extension FocusedValues {
     var menuToggleSFTP: MenuToggleSFTPKey.Value? {
         get { self[MenuToggleSFTPKey.self] }
         set { self[MenuToggleSFTPKey.self] = newValue }
-    }
-
-    var menuToggleAI: MenuToggleAIKey.Value? {
-        get { self[MenuToggleAIKey.self] }
-        set { self[MenuToggleAIKey.self] = newValue }
     }
 
     var menuShowSerialPort: MenuShowSerialPortKey.Value? {

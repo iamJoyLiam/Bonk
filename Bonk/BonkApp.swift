@@ -168,16 +168,12 @@ struct BonkApp: App {
     private struct AIMenuCommands: Commands {
         let i18n: I18n
         let shortcutManager: ShortcutManager
-        @FocusedValue(\.menuToggleAI) private var toggleAI
         @FocusedValue(\.menuToggleAITerminal) private var toggleAITerminal
         var body: some Commands {
             let aiAssistantShortcut = shortcutManager.shortcut(for: .aiAssistant)
-            let aiChatSidebarShortcut = shortcutManager.shortcut(for: .aiChatSidebar)
             CommandMenu(i18n.t(.menuAI)) {
                 Button(i18n.t(.aiAssistant)) { toggleAITerminal?() }
                     .keyboardShortcut(aiAssistantShortcut.key, modifiers: aiAssistantShortcut.modifiers)
-                Button(i18n.t(.aiChatSidebar)) { toggleAI?() }
-                    .keyboardShortcut(aiChatSidebarShortcut.key, modifiers: aiChatSidebarShortcut.modifiers)
             }
         }
     }

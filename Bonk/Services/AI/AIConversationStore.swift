@@ -9,6 +9,8 @@ final class AIConversationStore {
     static let shared = AIConversationStore()
     private static let logger = Logger(subsystem: "com.bonk", category: "AIConversationStore")
     var lastError: String?
+    /// Last opened conversation, so reopening the sidebar keeps the thread.
+    var lastConversationID: UUID?
 
     /// Create a new conversation and return it.
     func createConversation(title: String = "New Chat", context: ModelContext) -> AIConversationRecord {

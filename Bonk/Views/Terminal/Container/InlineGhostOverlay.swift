@@ -24,17 +24,27 @@ final class InlineGhostOverlay: NSView {
         didSet { needsDisplay = true }
     }
 
+    /// True while the model is thinking but nothing is suggested yet —
+    /// draws a subtle pending indicator so the user knows a hint is coming.
+    var waiting: Bool = false {
+        didSet { needsDisplay = true }
+    }
+
     override var isFlipped: Bool {
         true
     }
 
     override func draw(_: NSRect) {
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty || waiting else { return }
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: textColor,
         ]
-        (text as NSString).draw(at: .zero, withAttributes: attributes)
+        if !text.isEmpty {
+            (text as NSString).draw(at: .zero, withAttributes: attributes)
+        } else {
+            ("…" as NSString).draw(at: .zero, withAttributes: attributes)
+        }
     }
 
     /// Width of the current suggestion text in points.

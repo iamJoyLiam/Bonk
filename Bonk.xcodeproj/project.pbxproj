@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		AE000009AAAA000000000009 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = AE000008AAAA000000000008 /* MarkdownUI */; };
 		AE08640C2FD2A52D00C9EC5F /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = AE000006AAAA000000000006 /* Sparkle */; };
+		AE17758C302EF163006C4F34 /* OpenAI in Frameworks */ = {isa = PBXBuildFile; productRef = AE00000AAAAA00000000000A /* OpenAI */; };
+		AE17758D302EF163006C4F34 /* SwiftAnthropic in Frameworks */ = {isa = PBXBuildFile; productRef = AE00000CAAAA00000000000C /* SwiftAnthropic */; };
 		AEF73C8A2FC47AEE00F14E56 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = AE000002AAAA000000000002 /* Citadel */; };
 		AEF73C8B2FC47AEE00F14E57 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = AE000004AAAA000000000004 /* SwiftTerm */; };
 /* End PBXBuildFile section */
@@ -43,6 +45,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AE17758D302EF163006C4F34 /* SwiftAnthropic in Frameworks */,
+				AE17758C302EF163006C4F34 /* OpenAI in Frameworks */,
 				AE08640C2FD2A52D00C9EC5F /* Sparkle in Frameworks */,
 				AEF73C8A2FC47AEE00F14E56 /* Citadel in Frameworks */,
 				AEF73C8B2FC47AEE00F14E57 /* SwiftTerm in Frameworks */,
@@ -169,7 +173,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2026109;
+				CURRENT_PROJECT_VERSION = 20261010;
 				DEVELOPMENT_TEAM = 3R8JTKWB7F;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -191,7 +195,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 2026.1.9;
+				MARKETING_VERSION = 2026.1.10;
 				PRODUCT_BUNDLE_IDENTIFIER = JoyLiam.Bonk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -214,7 +218,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2026109;
+				CURRENT_PROJECT_VERSION = 20261010;
 				DEVELOPMENT_TEAM = 3R8JTKWB7F;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -236,7 +240,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 2026.1.9;
+				MARKETING_VERSION = 2026.1.10;
 				PRODUCT_BUNDLE_IDENTIFIER = JoyLiam.Bonk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -425,20 +429,20 @@
 				minimumVersion = 2.4.0;
 			};
 		};
-		AE00000DAAAA00000000000D /* XCRemoteSwiftPackageReference "OpenAI" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/MacPaw/OpenAI.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.5.1;
-			};
-		};
 		AE00000BAAAA00000000000B /* XCRemoteSwiftPackageReference "SwiftAnthropic" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/jamesrochabrun/SwiftAnthropic.git";
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 2.2.0;
+			};
+		};
+		AE00000DAAAA00000000000D /* XCRemoteSwiftPackageReference "OpenAI" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/MacPaw/OpenAI.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.5.1;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

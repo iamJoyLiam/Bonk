@@ -14,10 +14,6 @@ struct AIChatSidebarView: View {
         AgentEngine.shared
     }
 
-    var sshService: SSHNetworkService? {
-        tab?.session?.sshService
-    }
-
     @State var providerStore = AIProviderStore.shared
     @State var conversationStore = AIConversationStore.shared
     @Query(sort: \AIConversationRecord.updatedAt, order: .reverse)
@@ -252,8 +248,16 @@ struct AIChatSidebarView: View {
         .onAppear {
             providerStore.setModelContext(modelContext)
             engine.activeProvider = providerStore.activeProvider
+            restoreLastConversation()
             withAnimation(.linear(duration: 4.0).repeatForever(autoreverses: false)) { rotationAngle = 360 }
         }
+    }
+
+    private func restoreLastConversation() {
+        guard currentConversation == nil,
+              let lastID = conversationStore.lastConversationID
+        else { return }
+        currentConversation = conversations.first(where: { $0.id == lastID })
     }
 
     private var modeMenu: some View {
@@ -300,6 +304,7 @@ struct AIChatSidebarView: View {
         } else {
             let conv = conversationStore.createConversation(context: modelContext)
             currentConversation = conv
+            conversationStore.lastConversationID = conv.id
             inputText = ""
             engine.streamingResponse = ""
         }

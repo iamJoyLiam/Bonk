@@ -6,6 +6,39 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.10</title>
+            <pubDate>Fri, 14 Aug 2026 16:00:00 +0000</pubDate>
+            <sparkle:version>20261010</sparkle:version>
+            <sparkle:shortVersionString>2026.1.10</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- 内联建议稳定性重构：远程回显 / 滚动 / 瞬时失焦不再让提示一闪而逝；建议状态韧性保留，焦点恢复自动重显
+- 内联建议支持独立快模型（设置中单独指定，慢模型不再拖累输入节奏）；无命中时显示等待指示
+- AI 命令代码块统一为"运行"：直接发送到当前终端执行（不再隐藏在聊天内执行）
+- 右键直接粘贴 + 可配置菜单修饰键（默认 Cmd+右键 打开菜单）
+- 快捷键系统重构：Cmd+Shift+K 等终端内直通，不再受菜单焦点链影响；自定义快捷键全部生效；修复 Shift 修饰键记录丢失
+- 设置录制快捷键时全局屏蔽菜单快捷键，不再误触发动作
+- AI 菜单清理：移除侧边栏菜单项与快捷键；侧边栏面板保持上次对话；清空命令历史增加确认框
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.10/Bonk-2026.1.10-arm64.dmg"
+                length="13772430"
+                type="application/octet-stream"
+                sparkle:edSignature="em0vTpkzsBts4QN6oe81Qqrfb7VHUSRfevh3Rcp41mDLyMm547nfXGWMe9DJ8HCdRhpbfAbmEsav0YzFZgLwBw=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.10/Bonk-2026.1.10-x86_64.dmg"
+                length="14664481"
+                type="application/octet-stream"
+                sparkle:edSignature="BaLHaBOIegoTDVedO/lgROdetsJ/1+dKtGo/6T9gt6vyFlS9n+J8I4IhMbqDR+H3FjLjKy0hj9C1GfYaoAjYBA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.9</title>
             <pubDate>Fri, 14 Aug 2026 12:00:00 +0000</pubDate>
             <sparkle:version>2026109</sparkle:version>

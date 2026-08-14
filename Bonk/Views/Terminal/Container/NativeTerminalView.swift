@@ -38,10 +38,11 @@ import SwiftTerm
 
         // MARK: - Inline Completion
 
-        private let completionService = InlineCompletionService.shared
+        let completionService = InlineCompletionService.shared
         private var completionDebounceTask: Task<Void, Never>?
-        private var ghostOverlay: InlineGhostOverlay?
+        var ghostOverlay: InlineGhostOverlay?
         private nonisolated(unsafe) var resignObserver: NSObjectProtocol?
+        nonisolated(unsafe) var rightClickMonitor: Any?
 
         override func layout() {
             super.layout()
@@ -69,15 +70,21 @@ import SwiftTerm
                 NotificationCenter.default.removeObserver(observer)
                 resignObserver = nil
             }
+            if let monitor = rightClickMonitor {
+                NSEvent.removeMonitor(monitor)
+                rightClickMonitor = nil
+            }
             guard let window else {
                 MainActor.assumeIsolated {
                     completionService.dismiss()
-                    hideGhost()
+                    hideGhost(reason: "window-nil")
                 }
                 return
             }
             // Fires when the window's key status or first responder changes.
-            // The suggestion belongs to the focused pane — drop it otherwise.
+            // Only hide the ghost visually — transient focus shifts shouldn't
+            // destroy the suggestion state; it re-shows on the next layout
+            // when focus is back.
             resignObserver = NotificationCenter.default.addObserver(
                 forName: NSWindow.didUpdateNotification,
                 object: window,
@@ -87,18 +94,27 @@ import SwiftTerm
                     guard let self,
                           self.completionService.isRequesting || !self.completionService.suggestion.isEmpty
                     else { return }
-                    if !(self.window?.isKeyWindow ?? false) || self.window?.firstResponder !== self {
-                        self.completionService.dismiss()
-                        self.hideGhost()
+                    if self.window?.isKeyWindow == true, self.window?.firstResponder === self {
+                        // Focus is back — re-show a suggestion that was hidden
+                        // by a transient resign.
+                        if !self.completionService.suggestion.isEmpty {
+                            self.showGhost(text: self.completionService.suggestion)
+                        }
+                    } else {
+                        self.hideGhost(reason: "resign")
                     }
                 }
             }
+            installRightClickPasteMonitor()
         }
 
         deinit {
             completionDebounceTask?.cancel()
             if let observer = resignObserver {
                 NotificationCenter.default.removeObserver(observer)
+            }
+            if let monitor = rightClickMonitor {
+                NSEvent.removeMonitor(monitor)
             }
         }
 
@@ -115,19 +131,31 @@ import SwiftTerm
             let keyCode = event.keyCode
             let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
 
-            // Cmd+F toggles terminal search. The SwiftUI menu shortcut can miss
-            // when focus is odd, so handle the key directly (only while focused).
-            if keyCode == 3, modifiers == [.command] {
-                let isFocused = MainActor.assumeIsolated { window?.firstResponder === self }
-                if isFocused {
-                    NotificationCenter.default.post(name: .toggleTerminalSearch, object: nil)
-                    return nil
-                }
+            // App shortcuts handled directly (window-scoped, not
+            // first-responder-scoped) so they work even when the AI panel's
+            // text field holds focus, and the menu's FocusedValue chain can't
+            // swallow them. Event is consumed to avoid double-firing.
+            if !ShortcutManager.isRecording,
+               let shortcut = shortcutNotification(for: keyCode, modifiers: modifiers),
+               event.window === window
+            {
+                NotificationCenter.default.post(name: shortcut, object: nil)
+                return nil
             }
             // Esc closes the search bar when it's open.
             if keyCode == 53, MainActor.assumeIsolated({ TerminalSearchState.isActive }) {
                 NotificationCenter.default.post(name: .toggleTerminalSearch, object: nil)
                 return nil
+            }
+            // Enter — the command is running. Drop any pending suggestion and
+            // never arm a new request, or the ghost would render over the
+            // command's output.
+            if keyCode == 36 || keyCode == 76 {
+                MainActor.assumeIsolated {
+                    completionService.dismiss()
+                    hideGhost(reason: "enter")
+                }
+                return event
             }
 
             let shouldSchedule = shouldTriggerCompletion(
@@ -151,14 +179,14 @@ import SwiftTerm
                     // Esc — dismiss only.
                     MainActor.assumeIsolated {
                         completionService.dismiss()
-                        hideGhost()
+                        hideGhost(reason: "esc")
                     }
                     return nil
                 }
                 // Any other key — dismiss and forward normally.
                 MainActor.assumeIsolated {
                     completionService.dismiss()
-                    hideGhost()
+                    hideGhost(reason: "other-key")
                 }
             }
 
@@ -166,11 +194,46 @@ import SwiftTerm
                 // A new request is starting — drop any stale ghost text so the
                 // old suggestion doesn't linger while the model thinks.
                 MainActor.assumeIsolated {
-                    hideGhost()
+                    hideGhost(reason: "new-typing")
                 }
                 scheduleCompletion()
             }
             return event
+        }
+
+        /// Map app shortcuts to notifications. Returns nil for keys the
+        /// terminal should handle normally (or that the menu handles).
+        /// Reads the user's configured shortcuts, so custom key bindings work
+        /// even when the menu FocusedValue chain is broken.
+        private func shortcutNotification(
+            for keyCode: UInt16,
+            modifiers: NSEvent.ModifierFlags
+        ) -> Notification.Name? {
+            for action in ShortcutAction.allCases {
+                guard let equivalent = ShortcutManager.shared.keyEquivalent(for: action),
+                      equivalent.keyCode == keyCode,
+                      equivalent.modifiers.nsModifierFlags == modifiers,
+                      let notification = Self.notification(for: action)
+                else { continue }
+                return notification
+            }
+            return nil
+        }
+
+        private static func notification(for action: ShortcutAction) -> Notification.Name? {
+            switch action {
+            case .newTerminal: .terminalNewTab
+            case .closeTab: .terminalCloseTab
+            case .closePane: .terminalClosePane
+            case .find: .toggleTerminalSearch
+            case .reconnect: .terminalReconnect
+            case .clearTerminal: .terminalClear
+            case .splitHorizontal: .terminalSplitHorizontal
+            case .splitVertical: .terminalSplitVertical
+            case .sftpBrowser: .toggleSFTP
+            case .aiAssistant: .toggleAIChat
+            case .nextTab, .previousTab, .settings: nil
+            }
         }
 
         /// Only plain typing (printable characters, backspace/delete) should
@@ -183,27 +246,6 @@ import SwiftTerm
             guard modifiers.isDisjoint(with: [.command, .control]) else { return false }
             if keyCode == 51 || keyCode == 117 { return true }
             return !(characters?.isEmpty ?? true)
-        }
-
-        /// Called by the coordinator whenever remote output is fed into the
-        /// terminal — the shell state changed, so the suggestion is stale.
-        func handleRemoteOutput() {
-            MainActor.assumeIsolated {
-                guard completionService.isRequesting || !completionService.suggestion.isEmpty else { return }
-                completionService.dismiss()
-                hideGhost()
-            }
-        }
-
-        /// Called by the coordinator when the user scrolls away from the bottom —
-        /// the prompt (and any ghost text) is no longer in view.
-        func handleScroll(position: Double) {
-            MainActor.assumeIsolated {
-                guard position < 1.0,
-                      completionService.isRequesting || !completionService.suggestion.isEmpty else { return }
-                completionService.dismiss()
-                hideGhost()
-            }
         }
 
         // MARK: - Completion Flow
@@ -259,6 +301,11 @@ import SwiftTerm
                 guard let self else { return }
                 self.showGhost(text: text)
             }
+            // No instant history match — show a subtle pending indicator so a
+            // slow model doesn't look like it silently gave up.
+            if completionService.suggestion.isEmpty {
+                showWaiting()
+            }
         }
 
         /// Pick the command text to complete: prefer the pure typed buffer when it
@@ -274,76 +321,13 @@ import SwiftTerm
         private nonisolated(unsafe) func acceptSuggestion() {
             MainActor.assumeIsolated {
                 let text = completionService.accept()
-                hideGhost()
+                hideGhost(reason: "accept")
                 guard !text.isEmpty else { return }
                 let bytes = ArraySlice(text.utf8)
                 // Same forwarding as SwiftTerm's internal send — goes through
                 // onSend → SessionManager → InputHandler (history preserved).
                 terminalDelegate?.send(source: self, data: bytes)
             }
-        }
-
-        // MARK: - Ghost Overlay
-
-        private func ensureGhostOverlay() -> InlineGhostOverlay {
-            if let ghostOverlay { return ghostOverlay }
-            let overlay = InlineGhostOverlay()
-            overlay.font = font
-            addSubview(overlay, positioned: .above, relativeTo: nil)
-            ghostOverlay = overlay
-            return overlay
-        }
-
-        @MainActor
-        private func showGhost(text: String) {
-            guard window?.firstResponder === self else { return }
-            guard !text.isEmpty else {
-                hideGhost()
-                return
-            }
-            let overlay = ensureGhostOverlay()
-            overlay.font = font
-            // Skip redundant updates — same text re-renders on every stream
-            // chunk and that is what makes the ghost look like it is jittering.
-            if overlay.text == text { return }
-            overlay.text = text
-            overlay.isHidden = false
-            positionGhostOverlay()
-        }
-
-        @MainActor
-        private func hideGhost() {
-            ghostOverlay?.isHidden = true
-            ghostOverlay?.text = ""
-        }
-
-        /// Place the ghost text right after the terminal cursor.
-        private func positionGhostOverlay() {
-            guard let overlay = ghostOverlay, !overlay.isHidden, !overlay.text.isEmpty else { return }
-            let cell = Self.cellSize(for: font, backingScale: window?.backingScaleFactor ?? 2)
-            let (cursorX, cursorY) = terminal.getCursorLocation()
-            let yDisp = terminal.getTopVisibleRow()
-
-            // Same bottom-of-buffer gate as requestCompletion: at the bottom the
-            // cursor row equals the screen row; otherwise skip (off-screen).
-            let atBottom = scrollPosition >= 1.0 || yDisp == 0
-            guard atBottom, cursorY >= 0, cursorY < terminal.rows else {
-                overlay.isHidden = true
-                return
-            }
-
-            let originX = CGFloat(cursorX) * cell.width
-            let available = max(0, bounds.width - originX)
-            // Keep the frame width fixed to the remaining line space: the text
-            // grows inside it while streaming, so the overlay never re-measures
-            // per delta (which caused visible jitter).
-            let width = available
-            overlay.frame = NSRect(
-                x: originX,
-                y: bounds.height - CGFloat(cursorY + 1) * cell.height,
-                width: width,
-                height: cell.height
-            )
         }
 
         /// Mirror of SwiftTerm's cell dimension computation for the current font.

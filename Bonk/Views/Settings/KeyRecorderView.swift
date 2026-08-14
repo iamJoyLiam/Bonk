@@ -18,6 +18,14 @@ struct KeyRecorderView: View {
     @Binding var shortcut: KeyboardShortcut?
     @State private var isRecording = false
     @State private var eventMonitor: Any?
+    /// Menu key equivalents captured before recording so they can be restored.
+    @State private var savedKeyEquivalents: [SavedMenuItemShortcut] = []
+
+    private struct SavedMenuItemShortcut {
+        let item: NSMenuItem
+        let keyEquivalent: String
+        let modifierMask: NSEvent.ModifierFlags
+    }
 
     var body: some View {
         HStack {
@@ -86,6 +94,8 @@ struct KeyRecorderView: View {
 
     private func startRecording() {
         isRecording = true
+        ShortcutManager.isRecording = true
+        suppressMenuShortcuts()
         #if os(macOS)
             eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                 // Require at least one modifier key
@@ -112,12 +122,50 @@ struct KeyRecorderView: View {
 
     private func stopRecording() {
         isRecording = false
+        ShortcutManager.isRecording = false
+        restoreMenuShortcuts()
         #if os(macOS)
             if let monitor = eventMonitor {
                 NSEvent.removeMonitor(monitor)
                 eventMonitor = nil
             }
         #endif
+    }
+
+    /// Clear every main-menu key equivalent while recording, so pressing a
+    /// shortcut can never trigger an app action (SwiftUI Commands don't
+    /// re-evaluate when the recording flag changes).
+    private func suppressMenuShortcuts() {
+        guard let menu = NSApp.mainMenu else { return }
+        savedKeyEquivalents = []
+        collectKeyEquivalents(from: menu)
+        for entry in savedKeyEquivalents {
+            entry.item.keyEquivalent = ""
+            entry.item.keyEquivalentModifierMask = []
+        }
+    }
+
+    private func collectKeyEquivalents(from menu: NSMenu) {
+        for item in menu.items {
+            if !item.keyEquivalent.isEmpty {
+                savedKeyEquivalents.append(SavedMenuItemShortcut(
+                    item: item,
+                    keyEquivalent: item.keyEquivalent,
+                    modifierMask: item.keyEquivalentModifierMask
+                ))
+            }
+            if let submenu = item.submenu {
+                collectKeyEquivalents(from: submenu)
+            }
+        }
+    }
+
+    private func restoreMenuShortcuts() {
+        for entry in savedKeyEquivalents {
+            entry.item.keyEquivalent = entry.keyEquivalent
+            entry.item.keyEquivalentModifierMask = entry.modifierMask
+        }
+        savedKeyEquivalents = []
     }
 }
 
@@ -130,7 +178,10 @@ struct KeyboardShortcut: Codable, Equatable, Hashable {
     struct ModifierFlags: OptionSet, Codable, Hashable {
         let rawValue: UInt
 
-        static let shift = ModifierFlags(rawValue: 1 << 1)
+        // NSEvent.ModifierFlags.shift is 1 << 17 — the old 1 << 1 never
+        // matched, so recorded Cmd+Shift shortcuts were stored/displayed as
+        // Cmd-only (and then couldn't fire).
+        static let shift = ModifierFlags(rawValue: 1 << 17)
         static let control = ModifierFlags(rawValue: 1 << 18)
         static let option = ModifierFlags(rawValue: 1 << 19)
         static let command = ModifierFlags(rawValue: 1 << 20)
@@ -208,7 +259,6 @@ enum ShortcutAction: String, CaseIterable, Identifiable {
     case splitVertical
     case sftpBrowser
     case aiAssistant
-    case aiChatSidebar
 
     var id: String {
         rawValue
@@ -229,8 +279,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable {
         case .splitHorizontal: KeyboardShortcut(keyCode: 2, modifiers: .command) // Cmd+D
         case .splitVertical: KeyboardShortcut(keyCode: 2, modifiers: [.command, .shift]) // Cmd+Shift+D
         case .sftpBrowser: KeyboardShortcut(keyCode: 1, modifiers: [.command, .shift]) // Cmd+Shift+S
-        case .aiAssistant: KeyboardShortcut(keyCode: 40, modifiers: [.command, .option]) // Cmd+Option+K
-        case .aiChatSidebar: KeyboardShortcut(keyCode: 40, modifiers: [.command, .shift]) // Cmd+Shift+K
+        case .aiAssistant: KeyboardShortcut(keyCode: 40, modifiers: [.command, .shift]) // Cmd+Shift+K
         }
     }
 
@@ -250,7 +299,6 @@ enum ShortcutAction: String, CaseIterable, Identifiable {
         case .splitVertical: "action_split_vertical"
         case .sftpBrowser: "action_sftp_browser"
         case .aiAssistant: "action_ai_assistant"
-        case .aiChatSidebar: "action_ai_chat_sidebar"
         }
     }
 }

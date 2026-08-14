@@ -14,6 +14,7 @@ struct CommandHistoryInspectorView: View {
     var snippetCategories: [String] = []
     @Bindable var sessionManager: SessionManager
     @State private var snippetSource: CommandRecord?
+    @State private var showClearConfirm = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,7 +26,7 @@ struct CommandHistoryInspectorView: View {
                 Text(i18n.t(.commandHistory))
                     .font(.system(size: 13, weight: .medium))
                 Spacer()
-                Button { GlobalCommandHistory.shared.clear() } label: {
+                Button { showClearConfirm = true } label: {
                     Image(systemName: "trash")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
@@ -35,6 +36,12 @@ struct CommandHistoryInspectorView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
+            .alert(i18n.t(.clearHistoryConfirm), isPresented: $showClearConfirm) {
+                Button(i18n.t(.delete), role: .destructive) {
+                    GlobalCommandHistory.shared.clear()
+                }
+                Button(i18n.t(.cancel), role: .cancel) {}
+            }
 
             Divider()
 

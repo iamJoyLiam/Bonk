@@ -82,8 +82,6 @@ import SwiftTerm
 
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                // Remote output arrived — any inline completion is stale.
-                (self.terminalView as? NativeTerminalView)?.handleRemoteOutput()
                 self.terminalView?.feed(text: text)
                 // Signal backpressure AFTER terminal actually processes the text
                 onBytesProcessed?(byteCount)

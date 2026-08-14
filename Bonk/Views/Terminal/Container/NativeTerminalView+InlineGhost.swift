@@ -1,0 +1,93 @@
+import AppKit
+import os
+import SwiftTerm
+
+extension NativeTerminalView {
+    private static let inlineLogger = Logger(subsystem: "com.bonk", category: "InlineGhost")
+
+    // MARK: - Ghost Overlay
+
+    func ensureGhostOverlay() -> InlineGhostOverlay {
+        if let ghostOverlay { return ghostOverlay }
+        let overlay = InlineGhostOverlay()
+        overlay.font = font
+        addSubview(overlay, positioned: .above, relativeTo: nil)
+        ghostOverlay = overlay
+        return overlay
+    }
+
+    @MainActor
+    func showGhost(text: String) {
+        Self.inlineLogger.debug("showGhost len=\(text.count, privacy: .public)")
+        guard window?.firstResponder === self else { return }
+        guard !text.isEmpty else {
+            hideGhost(reason: "empty")
+            return
+        }
+        let overlay = ensureGhostOverlay()
+        overlay.font = font
+        overlay.waiting = false
+        // Skip redundant updates — same text re-renders on every stream
+        // chunk and that is what makes the ghost look like it is jittering.
+        if overlay.text == text { return }
+        overlay.text = text
+        overlay.isHidden = false
+        positionGhostOverlay()
+    }
+
+    @MainActor
+    func hideGhost(reason: String) {
+        Self.inlineLogger.debug("hideGhost reason=\(reason, privacy: .public)")
+        ghostOverlay?.isHidden = true
+        ghostOverlay?.text = ""
+        ghostOverlay?.waiting = false
+    }
+
+    /// Show the "thinking" dots while the model request is in flight.
+    @MainActor
+    func showWaiting() {
+        guard window?.firstResponder === self else { return }
+        let overlay = ensureGhostOverlay()
+        overlay.font = font
+        overlay.text = ""
+        overlay.waiting = true
+        overlay.isHidden = false
+        positionGhostOverlay()
+    }
+
+    /// Place the ghost text right after the terminal cursor.
+    func positionGhostOverlay() {
+        guard let overlay = ghostOverlay,
+              !overlay.text.isEmpty || overlay.waiting
+        else { return }
+        let cell = Self.cellSize(for: font, backingScale: window?.backingScaleFactor ?? 2)
+        let (cursorX, cursorY) = terminal.getCursorLocation()
+        let yDisp = terminal.getTopVisibleRow()
+
+        // Same bottom-of-buffer gate as requestCompletion: at the bottom the
+        // cursor row equals the screen row; otherwise skip (off-screen).
+        let atBottom = scrollPosition >= 1.0 || yDisp == 0
+        let isFocused = window?.isKeyWindow == true && window?.firstResponder === self
+        guard atBottom, isFocused, cursorY >= 0, cursorY < terminal.rows else {
+            let position = self.scrollPosition
+            let posLog = "hideGhost reason=offscreen pos=\(position) yDisp=\(yDisp)"
+            Self.inlineLogger.debug("\(posLog, privacy: .public)")
+            overlay.isHidden = true
+            return
+        }
+        overlay.isHidden = false
+
+        let originX = CGFloat(cursorX) * cell.width
+        let available = max(0, bounds.width - originX)
+        // Keep the frame width fixed to the remaining line space: the text
+        // grows inside it while streaming, so the overlay never re-measures
+        // per delta (which caused visible jitter).
+        let width = available
+        overlay.frame = NSRect(
+            x: originX,
+            y: bounds.height - CGFloat(cursorY + 1) * cell.height,
+            width: width,
+            height: cell.height
+        )
+    }
+}

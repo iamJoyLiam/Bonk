@@ -79,7 +79,6 @@ enum LKey: String, CaseIterable {
 
     // AI
     case aiAssistant = "ai_assistant"
-    case aiChatSidebar = "ai_chat_sidebar"
     case terminalAssistant = "terminal_assistant"
     case aiThinking = "ai_thinking"
     case aiPaste = "ai_paste"
@@ -94,6 +93,9 @@ enum LKey: String, CaseIterable {
     case aiDismissWithEsc = "ai_dismiss_with_esc"
     case hostAutoFillClear = "host_auto_fill_clear"
     case aiDirectSubmit = "ai_direct_submit"
+    case rightClickPaste = "right_click_paste"
+    case rightClickPasteMenuModifier = "right_click_paste_menu_modifier"
+    case rightClickPasteDesc = "right_click_paste_desc"
     case aiStopped = "ai_stopped"
 
     // AI — Sidebar
@@ -103,6 +105,9 @@ enum LKey: String, CaseIterable {
     case aiCurrentSession = "ai_current_session"
     case aiConfirmConnect = "ai_confirm_connect"
     case aiDirectConnectDisabled = "ai_direct_connect_disabled"
+    case aiInlineModel = "ai_inline_model"
+    case aiFollowMainProvider = "ai_follow_main_provider"
+    case aiInlineModelDesc = "ai_inline_model_desc"
     case goToSettings = "go_to_settings"
     case enableAIHint = "enable_ai_hint"
     case describeTask = "describe_task"
@@ -311,13 +316,13 @@ enum LKey: String, CaseIterable {
     case actionSplitVertical = "action_split_vertical"
     case actionSFTPBrowser = "action_sftp_browser"
     case actionAIAssistant = "action_ai_assistant"
-    case actionAIChatSidebar = "action_ai_chat_sidebar"
 
     // Command History
     case commandHistory = "command_history"
     case noCommands = "no_commands"
     case rerunCommand = "rerun_command"
     case clearHistory = "clear_history"
+    case clearHistoryConfirm = "clear_history_confirm"
     case saveToSnippets = "save_to_snippets"
     case copy
 
