@@ -14,6 +14,9 @@ extension NSToolbarItem.Identifier {
     // Fixed buttons (immovable)
     static let addHost = NSToolbarItem.Identifier("com.bonk.toolbar.addHost")
     static let toggleSidebar = NSToolbarItem.Identifier("com.bonk.toolbar.toggleSidebar")
+    static let serverCPU = NSToolbarItem.Identifier("com.bonk.toolbar.serverCPU")
+    static let serverMemory = NSToolbarItem.Identifier("com.bonk.toolbar.serverMemory")
+    static let serverDisk = NSToolbarItem.Identifier("com.bonk.toolbar.serverDisk")
     static let ai = NSToolbarItem.Identifier("com.bonk.toolbar.ai")
     static let snippets = NSToolbarItem.Identifier("com.bonk.toolbar.snippets")
 
@@ -33,6 +36,10 @@ extension NSToolbarItem.Identifier {
 final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
     private let coordinator: ToolbarCoordinator
     private var broadcastItem: NSToolbarItem?
+    /// Keep every controller alive: toolbar customization recreates items, and
+    /// AppKit may keep displaying an earlier instance after the panel closes.
+    /// Releasing an active controller leaves a dead target and a frozen ring.
+    private var ringItemControllers: [ServerResourceRingItemController] = []
 
     init(coordinator: ToolbarCoordinator) {
         self.coordinator = coordinator
@@ -41,14 +48,12 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
     // MARK: - Default Items
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.addHost,                          // 分隔符左侧：添加主机
-         .toggleSidebar,                    // 分隔符左侧：折叠边栏
-         .sidebarTrackingSeparator,         // 关键：对齐侧边栏分割线
-         .broadcast, .serialPort, .portForward,   // 分隔符右侧：可自由拖拽
-         .flexibleSpace,
-         .keyGenerator, .workspaces,
-         .flexibleSpace,
-         .sshImport, .sftp,
+        [.addHost,
+         .toggleSidebar,
+         .sidebarTrackingSeparator,
+         .serverCPU, .serverMemory, .serverDisk,   // 服务器资源：球形百分比
+         .space,
+         .broadcast, .sftp, .workspaces,    // 常用：广播、SFTP、工作区
          .flexibleSpace,
          .ai, .snippets]
     }
@@ -57,9 +62,10 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [.addHost, .toggleSidebar,
-         .broadcast, .serialPort, .portForward,
-         .keyGenerator, .workspaces,
-         .sshImport, .sftp,
+         .serverCPU, .serverMemory, .serverDisk,
+         .broadcast, .sftp, .workspaces,
+         .serialPort, .portForward,         // 不常用：保留在自定义中
+         .keyGenerator, .sshImport,
          .ai, .snippets,
          .space, .flexibleSpace]
     }
@@ -97,6 +103,15 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
                     #selector(NSSplitViewController.toggleSidebar(_:)), with: nil
                 )
             }
+
+        case .serverCPU:
+            return makeServerRingItem(id: itemIdentifier, kind: .cpu, label: coordinator.i18n.t(.cpu))
+
+        case .serverMemory:
+            return makeServerRingItem(id: itemIdentifier, kind: .memory, label: coordinator.i18n.t(.memory))
+
+        case .serverDisk:
+            return makeServerRingItem(id: itemIdentifier, kind: .disk, label: coordinator.i18n.t(.disk))
 
         case .broadcast:
             let item = makeItem(
@@ -246,6 +261,24 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
         item.action = #selector(ToolbarItemTarget.invokeAction)
 
         return item
+    }
+
+    private func makeServerRingItem(
+        id: NSToolbarItem.Identifier,
+        kind: ServerResourceKind,
+        label: String
+    ) -> NSToolbarItem {
+        let controller = ServerResourceRingItemController(
+            id: id,
+            kind: kind,
+            label: label,
+            i18n: coordinator.i18n,
+            onShowDetails: { [weak self] in
+                self?.coordinator.workspace.toggleRightPanel(.serverInfo)
+            }
+        )
+        ringItemControllers.append(controller)
+        return controller.item
     }
 }
 

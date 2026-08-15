@@ -139,6 +139,8 @@ enum LKey: String, CaseIterable {
     case about
     case ok
     case serverInfo = "server_info", sftpBrowser = "sftp_browser"
+    case serverResourceDetail = "server_resource_detail"
+    case refreshNow = "refresh_now"
     case connectionError = "connection_error", unknownError = "unknown_error"
 
     // AddHostSheet
@@ -181,7 +183,9 @@ enum LKey: String, CaseIterable {
     case systemInfo = "system_info"
     case os
     case kernel, arch, hostname, shell, uptime, cpu
-    case resources, memory, disk, loadAvg = "load_avg"
+    case resources, memory, disk, swap, network, loadAvg = "load_avg"
+    case diskIO = "disk_io", cpuTemp = "cpu_temp"
+    case topProcesses = "top_processes", listenPorts = "listen_ports"
     case serverIP = "server_ip", fetching
 
     /// File operations

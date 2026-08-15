@@ -55,6 +55,7 @@ struct ContentView: View {
                 sessionManager.setModelContext(modelContext)
                 AIProviderStore.shared.setModelContext(modelContext)
                 sessionManager.broadcastManager = workspace.broadcastManager
+                ServerResourceMonitor.shared.start(sessionManager: sessionManager)
                 TerminalViewCache.shared.configureMemoryPressure {
                     sessionManager.activeTabID
                 }

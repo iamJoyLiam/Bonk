@@ -11,6 +11,7 @@
 //
 
 import Combine
+import os
 import SwiftUI
 
 @MainActor
@@ -37,14 +38,16 @@ final class TerminalThemeManager: ObservableObject {
 
     #if os(macOS)
         private var appearanceObservation: NSKeyValueObservation?
+        private var systemAppearanceObserver: NSObjectProtocol?
         private var wakeObserver: NSObjectProtocol?
         private var activeObserver: NSObjectProtocol?
-        private var lastAppearance: NSAppearance?
+        private var lastIsDark: Bool?
 
         /// Start observing system appearance changes for "system" theme.
         func startAppearanceObservation() {
             guard appearanceObservation == nil else { return }
-            lastAppearance = NSApp.effectiveAppearance
+            let currentAppearance = NSApp.effectiveAppearance
+            lastIsDark = currentAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
                 guard let self else { return }
                 Task { @MainActor in
@@ -52,8 +55,20 @@ final class TerminalThemeManager: ObservableObject {
                     self.handleAppearanceChange(currentAppearance)
                 }
             }
-            // KVO on effectiveAppearance can miss changes across sleep/wake —
-            // re-check when the machine wakes or the app becomes active.
+            // KVO on effectiveAppearance is unreliable for system-driven
+            // appearance switches — observe the system-wide theme change
+            // notification posted by the Appearance preference pane.
+            systemAppearanceObserver = DistributedNotificationCenter.default().addObserver(
+                forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.handleAppearanceChange(NSApp.effectiveAppearance)
+                }
+            }
+            // Re-check when the machine wakes or the app becomes active as a
+            // belt-and-suspenders fallback for missed notifications.
             wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
                 forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
             ) { [weak self] _ in
@@ -74,6 +89,9 @@ final class TerminalThemeManager: ObservableObject {
         func stopAppearanceObservation() {
             appearanceObservation?.invalidate()
             appearanceObservation = nil
+            if let systemAppearanceObserver {
+                DistributedNotificationCenter.default().removeObserver(systemAppearanceObserver)
+            }
             if let wakeObserver {
                 NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
             }
@@ -82,13 +100,18 @@ final class TerminalThemeManager: ObservableObject {
             }
             wakeObserver = nil
             activeObserver = nil
-            lastAppearance = nil
+            systemAppearanceObserver = nil
+            lastIsDark = nil
         }
 
         private func handleAppearanceChange(_ newAppearance: NSAppearance) {
             guard activeThemeID == "system" else { return }
-            guard lastAppearance != newAppearance else { return }
-            lastAppearance = newAppearance
+            let isDark = newAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            guard lastIsDark != isDark else { return }
+            lastIsDark = isDark
+            Log.ui.info("System appearance changed to \(isDark ? "dark" : "light"), updating terminal theme")
+            // Refresh SwiftUI chrome as well as the terminal views themselves.
+            objectWillChange.send()
             notifyChange()
         }
     #endif

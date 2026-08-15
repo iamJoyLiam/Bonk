@@ -17,6 +17,7 @@ final class WorkspaceManager {
         case none
         case ai
         case snippetsHistory
+        case serverInfo
 
         var id: String {
             rawValue

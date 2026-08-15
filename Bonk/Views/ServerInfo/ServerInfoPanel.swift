@@ -10,22 +10,22 @@ import SwiftUI
 struct ServerInfoPanel: View {
     @Environment(I18n.self) var i18n
     let tab: TerminalTab?
-    let onDisconnect: () -> Void
-    let onReconnect: () -> Void
+    let onClose: () -> Void
 
     var body: some View {
         if let tab {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    connectionSection(tab)
-                    Divider()
-                    systemSection(tab)
-                    Divider()
-                    resourceSection(tab)
-                    Divider()
-                    actionsSection(tab)
+            VStack(spacing: 0) {
+                header
+                Divider()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        systemSection(tab)
+                        Divider()
+                        resourceSection(tab)
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(16)
             }
         } else {
             ContentUnavailableView(
@@ -36,53 +36,37 @@ struct ServerInfoPanel: View {
         }
     }
 
-    // MARK: - Connection
-
-    private func connectionSection(_ tab: TerminalTab) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(i18n.t(.connection), systemImage: "bolt.fill")
+    private var header: some View {
+        HStack {
+            Circle()
+                .fill(statusColor(activeState))
+                .frame(width: 8, height: 8)
+            Text(displayName)
                 .font(.headline)
-
-            infoRow(i18n.t(.status)) {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(statusColor(tab.session?.connectionState ?? .disconnected))
-                        .frame(width: 8, height: 8)
-                    Text(statusText(tab.session?.connectionState ?? .disconnected))
-                }
+                .lineLimit(1)
+            if let ip = tab?.session?.serverInfo?.serverIP {
+                Text(ip)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
             }
-
-            infoRow(i18n.t(.host)) {
-                Text("\(tab.hostItem.host):\(tab.hostItem.port)")
-                    .font(.body.monospaced())
+            Spacer()
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .semibold))
             }
-
-            infoRow(i18n.t(.username)) {
-                Text(tab.hostItem.username)
-                    .font(.body.monospaced())
-            }
-
-            if let connectedAt = tab.session?.connectedAt {
-                infoRow(i18n.t(.connected)) {
-                    Text(connectedAt, style: .relative)
-                }
-            }
-
-            if let serverIP = tab.session?.serverInfo?.serverIP {
-                infoRow(i18n.t(.serverIP)) {
-                    Text(serverIP).font(.body.monospaced())
-                }
-            }
-
-            if let error = tab.session?.errorMessage {
-                infoRow(i18n.t(.error)) {
-                    Text(error)
-                        .foregroundStyle(.red)
-                        .font(.caption)
-                        .lineLimit(3)
-                }
-            }
+            .buttonStyle(.borderless)
+            .help(i18n.t(.close))
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+    }
+
+    private var activeState: SSHConnectionState {
+        tab?.session?.connectionState ?? .disconnected
+    }
+
+    private var displayName: String {
+        tab?.session?.serverInfo?.hostname ?? tab?.hostItem.host ?? i18n.t(.serverInfo)
     }
 
     // MARK: - System Info
@@ -104,18 +88,15 @@ struct ServerInfoPanel: View {
                 if let arch = info.architecture {
                     infoRow(i18n.t(.arch)) { Text(arch) }
                 }
-                if let hostname = info.hostname {
-                    infoRow(i18n.t(.hostname)) {
-                        Text(hostname).font(.callout.monospaced())
-                    }
-                }
                 if let shell = info.shell {
                     infoRow(i18n.t(.shell)) {
                         Text(shell).font(.callout.monospaced())
                     }
                 }
-                if let uptime = info.uptime {
-                    infoRow(i18n.t(.uptime)) { Text(uptime) }
+                if let seconds = info.uptimeSeconds {
+                    infoRow(i18n.t(.uptime)) {
+                        Text(formatUptime(seconds)).font(.callout.monospaced())
+                    }
                 }
                 if let cpu = info.cpuModel {
                     infoRow(i18n.t(.cpu)) {
@@ -172,38 +153,53 @@ struct ServerInfoPanel: View {
                         Text(load).font(.callout.monospaced())
                     }
                 }
-            }
-        }
-    }
 
-    // MARK: - Actions
-
-    private func actionsSection(_ tab: TerminalTab) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(i18n.t(.actions), systemImage: "bolt.circle")
-                .font(.headline)
-
-            switch tab.session?.connectionState ?? .disconnected {
-            case .connected:
-                Button { onDisconnect() } label: {
-                    Label(i18n.t(.disconnect), systemImage: "bolt.slash")
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                if let swapUsed = info.swapUsedBytes,
+                   let swapTotal = info.swapTotalBytes,
+                   swapTotal > 0
+                {
+                    infoRow(i18n.t(.swap)) {
+                        Text("\(formatBytes(swapUsed))/\(formatBytes(swapTotal))")
+                            .font(.callout.monospaced())
+                    }
                 }
-                .buttonStyle(.bordered)
 
-            case .disconnected:
-                Button { onReconnect() } label: {
-                    Label(i18n.t(.connect), systemImage: "bolt.fill")
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                if let rx = info.networkRXRateBps, let tx = info.networkTXRateBps {
+                    infoRow(i18n.t(.network)) {
+                        Text("↓ \(formatRate(rx))  ↑ \(formatRate(tx))")
+                            .font(.callout.monospaced())
+                    }
                 }
-                .buttonStyle(.borderedProminent)
 
-            case .connecting, .reconnecting:
-                Button(role: .destructive) { onDisconnect() } label: {
-                    Label(i18n.t(.cancel), systemImage: "xmark.circle")
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                if let read = info.diskReadRateBps, let write = info.diskWriteRateBps {
+                    infoRow(i18n.t(.diskIO)) {
+                        Text("R \(formatRate(read))  W \(formatRate(write))")
+                            .font(.callout.monospaced())
+                    }
                 }
-                .buttonStyle(.bordered)
+
+                if let temp = info.cpuTempCelsius {
+                    infoRow(i18n.t(.cpuTemp)) {
+                        Text("\(Int(temp.rounded()))°C").font(.callout.monospaced())
+                    }
+                }
+
+                if let procs = info.topProcesses, !procs.isEmpty {
+                    infoRow(i18n.t(.topProcesses)) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(parseProcesses(procs), id: \.self) { proc in
+                                Text(proc).font(.caption.monospaced())
+                            }
+                        }
+                    }
+                }
+
+                if let ports = info.listenPorts, !ports.isEmpty {
+                    infoRow(i18n.t(.listenPorts)) {
+                        Text(ports.trimmingCharacters(in: CharacterSet(charactersIn: ",")))
+                            .font(.caption.monospaced())
+                    }
+                }
             }
         }
     }
@@ -211,15 +207,48 @@ struct ServerInfoPanel: View {
     // MARK: - Helpers
 
     private func infoRow(_ label: String, @ViewBuilder value: () -> some View) -> some View {
-        HStack(alignment: .top) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(width: 72, alignment: .trailing)
-            value()
-                .font(.callout)
-            Spacer()
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12) {
+            GridRow {
+                Text(label)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .gridColumnAlignment(.trailing)
+                value()
+                    .font(.callout)
+                    .gridColumnAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
+    }
+
+    private func formatUptime(_ seconds: UInt64) -> String {
+        let days = seconds / 86_400
+        let hours = (seconds % 86_400) / 3_600
+        let minutes = (seconds % 3_600) / 60
+        if days > 0 {
+            return "\(days)d \(hours)h"
+        }
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        }
+        return "\(minutes)m"
+    }
+
+    private func formatBytes(_ bytes: UInt64) -> String {
+        if bytes >= 1_073_741_824 {
+            return String(format: "%.1fG", Double(bytes) / 1_073_741_824)
+        }
+        return "\(bytes / 1_048_576)M"
+    }
+
+    private func formatRate(_ bytesPerSecond: Double) -> String {
+        if bytesPerSecond >= 1_000_000 {
+            return String(format: "%.1f MB/s", bytesPerSecond / 1_000_000)
+        }
+        if bytesPerSecond >= 1_000 {
+            return String(format: "%.0f KB/s", bytesPerSecond / 1_000)
+        }
+        return String(format: "%.0f B/s", bytesPerSecond)
     }
 
     private func statusColor(_ state: SSHConnectionState) -> Color {
@@ -230,13 +259,11 @@ struct ServerInfoPanel: View {
         }
     }
 
-    private func statusText(_ state: SSHConnectionState) -> String {
-        switch state {
-        case .disconnected: return i18n.t(.disconnected)
-        case .connecting: return i18n.t(.connectingTo)
-        case .connected: return i18n.t(.connected)
-        case let .reconnecting(attempt, maxAttempts):
-            return String(format: i18n.t(.reconnecting), attempt, maxAttempts)
+    private func parseProcesses(_ raw: String) -> [String] {
+        raw.split(separator: ";").map { entry in
+            let parts = entry.split(separator: "|", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { return String(entry) }
+            return "\(parts[0])% \(parts[1])"
         }
     }
 }

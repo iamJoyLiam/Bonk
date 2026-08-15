@@ -305,20 +305,6 @@ final class SessionManager {
         }
 
         tab.hostItem.lastConnectedAt = Date()
-
-        session.serverInfoTask?.cancel()
-        session.serverInfoTask = Task { [weak session] in
-            if let info = await ServerInfoFetcher.fetch(using: service) {
-                await MainActor.run { session?.serverInfo = info }
-            }
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(120))
-                guard !Task.isCancelled else { break }
-                if let info = await ServerInfoFetcher.fetch(using: service) {
-                    await MainActor.run { session?.serverInfo = info }
-                }
-            }
-        }
     }
 
     private func parseCWD(from title: String, username: String) -> String? {

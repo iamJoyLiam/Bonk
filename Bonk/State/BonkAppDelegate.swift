@@ -78,7 +78,9 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate {
         let toolbar = NSToolbar(identifier: "com.bonk.mainWindowToolbar")
         toolbar.delegate = toolbarDelegate
         toolbar.allowsUserCustomization = true
-        toolbar.autosavesConfiguration = true
+        // Fixed layout: the stats capsule and reordered defaults must win over
+        // stale autosaved configurations from earlier builds.
+        toolbar.autosavesConfiguration = false
         toolbar.displayMode = .iconOnly
         self.toolbar = toolbar
         window.toolbar = toolbar

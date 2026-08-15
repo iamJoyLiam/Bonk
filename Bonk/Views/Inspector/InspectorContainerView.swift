@@ -23,6 +23,13 @@ struct InspectorContainerView: View {
                 aiPanel
             case .snippetsHistory:
                 snippetsHistoryPanel
+            case .serverInfo:
+                ServerInfoPanel(
+                    tab: sessionManager.activeTab,
+                    onClose: {
+                        workspace.toggleRightPanel(.serverInfo)
+                    }
+                )
             }
         }
     }
