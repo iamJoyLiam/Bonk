@@ -180,14 +180,14 @@ import SwiftTerm
                     // Esc — dismiss only.
                     completionDebounceTask?.cancel()
                     MainActor.assumeIsolated {
-                        completionService.dismiss()
+                        completionService.dismiss(rejected: true)
                         hideGhost(reason: "esc")
                     }
                     return nil
                 }
                 // Any other key — dismiss and forward normally.
                 MainActor.assumeIsolated {
-                    completionService.dismiss()
+                    completionService.dismiss(rejected: true)
                     hideGhost(reason: "other-key")
                 }
             }

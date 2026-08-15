@@ -33,11 +33,13 @@ import SwiftUI
         /// Lazily gathers terminal context for inline AI completion.
         private var completionContext: @MainActor () -> InlineCompletionContext {
             { [weak tab] in
-                InlineCompletionContext(
+                let output = tab?.session?.ptySession?.recentOutput(maxLines: 40) ?? ""
+                return InlineCompletionContext(
                     inputBuffer: tab?.session?.inputBuffer ?? "",
                     currentDirectory: tab?.currentDirectory,
                     recentCommands: GlobalCommandHistory.shared.commands.suffix(50).map(\.command),
-                    recentOutput: tab?.session?.ptySession?.recentOutput(maxLines: 40) ?? ""
+                    recentOutput: output,
+                    knownWords: InlineCompletionService.extractKnownWords(from: output)
                 )
             }
         }

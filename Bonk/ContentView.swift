@@ -54,6 +54,7 @@ struct ContentView: View {
                 AIDataMigration.migrateIfNeeded(context: modelContext)
                 sessionManager.setModelContext(modelContext)
                 AIProviderStore.shared.setModelContext(modelContext)
+                InlineCompletionService.shared.attachModelContext(modelContext)
                 sessionManager.broadcastManager = workspace.broadcastManager
                 ServerResourceMonitor.shared.start(sessionManager: sessionManager)
                 TerminalViewCache.shared.configureMemoryPressure {
@@ -65,7 +66,7 @@ struct ContentView: View {
                 toolbarCoordinator.i18n = i18n
                 toolbarCoordinator.modelContext = modelContext
                 // Setup Quake terminal - create ModelContainer with same schema/config
-                let schema = Schema([HostItem.self, UserPreferences.self, Credential.self, HostGroup.self, AIConversationRecord.self, AIMessageRecord.self, AIProviderRecord.self, Snippet.self, PortForward.self, JumpHost.self])
+                let schema = Schema([HostItem.self, UserPreferences.self, Credential.self, HostGroup.self, AIConversationRecord.self, AIMessageRecord.self, AIProviderRecord.self, Snippet.self, PortForward.self, JumpHost.self, InlineSuggestionRecord.self])
                 #if DEBUG
                     let config = ModelConfiguration("Bonk-Dev", schema: schema, isStoredInMemoryOnly: false)
                 #else

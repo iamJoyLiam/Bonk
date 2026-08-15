@@ -10,6 +10,7 @@
 import Foundation
 import Observation
 import os.log
+import SwiftData
 
 /// Snapshot of terminal state used as context for a completion request.
 /// Fetched lazily at request time, so it always reflects the current line.
@@ -19,6 +20,9 @@ struct InlineCompletionContext {
     var currentDirectory: String?
     var recentCommands: [String]
     var recentOutput: String
+    /// Tool-agnostic identifiers extracted from recent output (container
+    /// names, file names, branches, pods, ...) — no tool-specific parsing.
+    var knownWords: [String]
 }
 
 /// Owns the inline completion request lifecycle. @MainActor: the only caller
@@ -36,6 +40,17 @@ final class InlineCompletionService {
     private let defaults: UserDefaults
     private var currentTask: Task<Void, Never>?
     private var requestGeneration = 0
+    /// Recent successful suggestions keyed by "provider|typed", so repeating
+    /// the same prefix shows instantly without a model round-trip.
+    private var suggestionCache: [String: String] = [:]
+    private static let suggestionCacheLimit = 200
+    private var modelContext: ModelContext?
+    private var persistentCache: [String: InlineSuggestionRecord] = [:]
+    private static let persistentCacheLimit = 500
+    /// Key of the suggestion currently on screen, for accept/reject feedback.
+    private var activeKey: String?
+    /// Suffixes rejected in this session — never re-suggest them.
+    private var rejectedSuggestions: Set<String> = []
 
     private static let logger = Logger(subsystem: "com.bonk", category: "InlineCompletion")
 
@@ -58,6 +73,20 @@ final class InlineCompletionService {
 
     var isEnabled: Bool {
         defaults.bool(forKey: "ai_enabled") && defaults.bool(forKey: "ai_inline_suggestions")
+    }
+
+    /// Attach the app's SwiftData context so habit suggestions persist.
+    func attachModelContext(_ context: ModelContext) {
+        modelContext = context
+        loadPersistentCache()
+    }
+
+    private func loadPersistentCache() {
+        guard let modelContext else { return }
+        let descriptor = FetchDescriptor<InlineSuggestionRecord>()
+        guard let records = try? modelContext.fetch(descriptor) else { return }
+        persistentCache = Dictionary(uniqueKeysWithValues: records.map { ($0.key, $0) })
+        trimPersistentCache()
     }
 
     var debounceMilliseconds: Int {
@@ -102,15 +131,48 @@ final class InlineCompletionService {
 
         guard isEnabled else { return }
         guard let (provider, apiKey) = resolveProvider() else { return }
-        let typed = context.inputBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawTyped = context.inputBuffer
+        let typed = rawTyped.trimmingCharacters(in: .whitespacesAndNewlines)
         guard typed.count >= 2 else { return }
+        let needsLeadingSpace = rawTyped.last?.isWhitespace == false
+
+        // Deterministic local completion: if the tail token is a prefix of a
+        // name the user just saw in the output, complete it immediately — no
+        // model round-trip, no confidence gamble.
+        if includeTerminalOutput,
+           let lastToken = typed.split(whereSeparator: { $0.isWhitespace }).last,
+           let match = context.knownWords
+               .filter({ $0.lowercased().hasPrefix(lastToken.lowercased()) && $0.count > lastToken.count })
+               .sorted(by: { $0.count < $1.count })
+               .first
+        {
+            let suffix = String(match.dropFirst(lastToken.count))
+            suggestion = suffix
+            activeKey = "\(context.currentDirectory ?? "")|\(provider.id.uuidString)|\(typed)"
+            onSuggestion?(suffix)
+            return
+        }
+
+        // Instant repeat: serve the cached suffix from the last identical
+        // prefix (same provider) and skip the model entirely.
+        let cwd = context.currentDirectory ?? ""
+        let cacheKey = "\(cwd)|\(provider.id.uuidString)|\(typed)"
+        if let cached = suggestionCache[cacheKey] ?? persistentCache[cacheKey]?.suffix {
+            guard !isRejected(cacheKey: cacheKey, suffix: cached) else { return }
+            let display = needsLeadingSpace ? " " + cached : cached
+            suggestion = display
+            activeKey = cacheKey
+            onSuggestion?(display)
+            return
+        }
 
         isRequesting = true
         let prompt = Self.buildPrompt(
             context: context,
             includeOutput: includeTerminalOutput,
             includeHistory: includeCommandHistory,
-            includeEnv: includeEnvironmentInfo
+            includeEnv: includeEnvironmentInfo,
+            approvedExamples: approvedExamples(for: cwd)
         )
 
         // Instant local fallback — history is the fastest, most accurate
@@ -119,8 +181,10 @@ final class InlineCompletionService {
         if includeCommandHistory, !context.recentCommands.isEmpty {
             let local = Self.localSuggestion(history: context.recentCommands, typed: typed)
             if !local.isEmpty {
-                suggestion = local
-                onSuggestion?(local)
+                let display = needsLeadingSpace ? " " + local : local
+                suggestion = display
+                activeKey = cacheKey
+                onSuggestion?(display)
             }
         }
 
@@ -128,7 +192,9 @@ final class InlineCompletionService {
             guard let self else { return }
             await self.streamModelSuggestion(
                 provider: provider, apiKey: apiKey,
-                prompt: prompt, typed: typed, generation: generation, onSuggestion: onSuggestion
+                prompt: prompt, typed: typed, generation: generation,
+                cacheKey: cacheKey, needsLeadingSpace: needsLeadingSpace,
+                onSuggestion: onSuggestion
             )
         }
     }
@@ -143,6 +209,8 @@ final class InlineCompletionService {
         prompt: String,
         typed: String,
         generation: Int,
+        cacheKey: String,
+        needsLeadingSpace: Bool,
         onSuggestion: (@MainActor @Sendable (String) -> Void)?
     ) async {
         defer { isRequesting = false }
@@ -158,24 +226,35 @@ final class InlineCompletionService {
                     // Show the ghost as soon as the first tokens arrive —
                     // waiting for the full stream makes slow providers feel
                     // broken. `suggestion` updates so Tab works mid-stream.
-                    let candidate = Self.normalize(
+                    var candidate = Self.normalize(
                         Self.suggestionSuffix(from: buffer.append(delta), typed: typed)
                     )
+                    if needsLeadingSpace, !candidate.isEmpty, !candidate.hasPrefix(" ") {
+                        candidate = " " + candidate
+                    }
                     guard !candidate.isEmpty,
                           candidate.count <= Self.maxSuggestionChars
                     else { return }
                     Task { @MainActor [weak self] in
-                        guard self?.requestGeneration == generation else { return }
-                        self?.suggestion = candidate
+                        guard let self, self.requestGeneration == generation else { return }
+                        guard !self.isRejected(cacheKey: cacheKey, suffix: candidate) else { return }
+                        self.suggestion = candidate
+                        self.activeKey = cacheKey
                         onSuggestion?(candidate)
                     }
                 }
             }
             guard !Task.isCancelled else { return }
             guard generation == requestGeneration else { return }
-            let suffix = Self.normalize(Self.suggestionSuffix(from: response, typed: typed))
-            if !suffix.isEmpty {
+            let rawSuffix = Self.normalize(Self.suggestionSuffix(from: response, typed: typed))
+            let suffix = needsLeadingSpace && !rawSuffix.isEmpty && !rawSuffix.hasPrefix(" ")
+                ? " " + rawSuffix
+                : rawSuffix
+            if !rawSuffix.isEmpty {
+                guard !isRejected(cacheKey: cacheKey, suffix: rawSuffix) else { return }
                 suggestion = suffix
+                activeKey = cacheKey
+                rememberSuggestion(rawSuffix, for: cacheKey)
                 onSuggestion?(suffix)
             }
         } catch is CancellationError {
@@ -195,6 +274,33 @@ final class InlineCompletionService {
         }
     }
 
+    private func rememberSuggestion(_ suffix: String, for key: String) {
+        suggestionCache[key] = suffix
+        if suggestionCache.count > Self.suggestionCacheLimit {
+            suggestionCache.removeAll()
+        }
+        if let existing = persistentCache[key] {
+            existing.suffix = suffix
+            existing.lastUsedAt = Date()
+        } else if let modelContext {
+            let record = InlineSuggestionRecord(key: key, suffix: suffix)
+            modelContext.insert(record)
+            persistentCache[key] = record
+        }
+        trimPersistentCache()
+        try? modelContext?.save()
+    }
+
+    private func trimPersistentCache() {
+        guard persistentCache.count > Self.persistentCacheLimit else { return }
+        let sorted = persistentCache.values.sorted { $0.lastUsedAt < $1.lastUsedAt }
+        let overflow = sorted.prefix(persistentCache.count - Self.persistentCacheLimit)
+        for record in overflow {
+            persistentCache.removeValue(forKey: record.key)
+            modelContext?.delete(record)
+        }
+    }
+
     /// Instant history-based suggestion. Returns the suffix to append after
     /// `typed`, or empty when nothing matches. Most recent command wins.
     nonisolated static func localSuggestion(history: [String], typed: String) -> String {
@@ -203,11 +309,21 @@ final class InlineCompletionService {
 
         for cmd in history.reversed() {
             let candidate = cmd.trimmingCharacters(in: .whitespaces)
-            guard candidate.count > typed.count, candidate.hasPrefix(typed) else { continue }
-            let suffix = String(candidate.dropFirst(typed.count))
-                .trimmingCharacters(in: .whitespaces)
-            guard !suffix.isEmpty, suffix.count <= maxSuggestionChars else { continue }
-            return suffix
+            guard candidate.count > typed.count else { continue }
+
+            // Exact prefix first, then case-insensitive substring (mid-word
+            // matches still complete the rest of the command).
+            let suffix: String
+            if candidate.hasPrefix(typed) {
+                suffix = String(candidate.dropFirst(typed.count))
+            } else if let range = candidate.range(of: typed, options: .caseInsensitive) {
+                suffix = String(candidate[range.upperBound...])
+            } else {
+                continue
+            }
+            let trimmed = suffix.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty, trimmed.count <= maxSuggestionChars else { continue }
+            return trimmed
         }
         return ""
     }
@@ -217,7 +333,19 @@ final class InlineCompletionService {
     nonisolated static func suggestionSuffix(from raw: String, typed: String) -> String {
         let firstLine = raw.split(whereSeparator: \.isNewline).first.map(String.init) ?? raw
         let text = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
-        let suffix = text.hasPrefix(typed) ? String(text.dropFirst(typed.count)) : text
+        // Models often echo part of the typed command. Strip the longest
+        // overlap between the end of `typed` and the start of the response,
+        // so "docker log" + "logs -f" → "s -f" instead of "logs -f".
+        var overlap = 0
+        let maxOverlap = min(typed.count, text.count)
+        if maxOverlap > 0 {
+            for length in stride(from: maxOverlap, through: 1, by: -1)
+            where text.hasPrefix(typed.suffix(length)) {
+                overlap = length
+                break
+            }
+        }
+        let suffix = overlap > 0 ? String(text.dropFirst(overlap)) : text
         return suffix.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -243,18 +371,51 @@ final class InlineCompletionService {
     /// Consume and clear the suggestion (Tab). Returns the text to send.
     func accept() -> String {
         let result = suggestion
+        if let key = activeKey, let record = persistentCache[key] {
+            record.acceptCount += 1
+            record.lastUsedAt = Date()
+            try? modelContext?.save()
+        }
         suggestion = ""
+        activeKey = nil
         currentTask?.cancel()
         isRequesting = false
         return result
     }
 
     /// Cancel any request and clear the suggestion (Esc / any other input).
-    func dismiss() {
+    func dismiss(rejected: Bool = false) {
+        if rejected, let key = activeKey, !suggestion.isEmpty {
+            if let record = persistentCache[key] {
+                record.rejectCount += 1
+                try? modelContext?.save()
+            }
+            rejectedSuggestions.insert(key + "|" + suggestion)
+        }
         currentTask?.cancel()
         currentTask = nil
         suggestion = ""
+        activeKey = nil
         isRequesting = false
+    }
+
+    private func isRejected(cacheKey: String, suffix: String) -> Bool {
+        rejectedSuggestions.contains(cacheKey + "|" + suffix)
+    }
+
+    /// Few-shot examples from completions the user actually accepted, most
+    /// approved first — cheap retrieval without a vector index.
+    private func approvedExamples(for cwd: String) -> [String] {
+        let prefix = cwd + "|"
+        return persistentCache.values
+            .filter { $0.acceptCount > 0 && $0.key.hasPrefix(prefix) }
+            .sorted { $0.acceptCount > $1.acceptCount }
+            .prefix(5)
+            .map { record in
+                let rest = record.key.dropFirst(prefix.count)
+                let typed = rest.split(separator: "|", maxSplits: 1).last.map(String.init) ?? String(rest)
+                return "\(typed) → \(record.suffix)"
+            }
     }
 
     // MARK: - Provider
@@ -283,7 +444,8 @@ final class InlineCompletionService {
         context: InlineCompletionContext,
         includeOutput: Bool,
         includeHistory: Bool,
-        includeEnv: Bool
+        includeEnv: Bool,
+        approvedExamples: [String] = []
     ) -> String {
         var parts: [String] = [
             """
@@ -298,6 +460,8 @@ final class InlineCompletionService {
             - Do NOT repeat anything the user already typed. Do NOT include a shell prompt.
             - If the command is already complete or you are not confident, output nothing.
             - Suggest real flags, file names, and arguments for the user's shell.
+            - When the user is typing an identifier or name, prefer values from
+              "Likely identifiers/names from recent output" when present.
             """,
         ]
 
@@ -311,15 +475,65 @@ final class InlineCompletionService {
             let history = context.recentCommands.suffix(3).joined(separator: "; ")
             contextLines.append("- Recent commands: \(history)")
         }
+        if !approvedExamples.isEmpty {
+            contextLines.append(
+                "- User-approved completions (prefix → suffix):\n"
+                    + approvedExamples.joined(separator: "\n")
+            )
+        }
         if includeOutput, !context.recentOutput.isEmpty {
-            let output = String(context.recentOutput.suffix(300))
+            let output = stripANSI(String(context.recentOutput.suffix(200)))
             contextLines.append("- Recent terminal output:\n\(output)")
+        }
+        if includeOutput, !context.knownWords.isEmpty {
+            let words = context.knownWords.prefix(30).joined(separator: ", ")
+            contextLines.append("- Likely identifiers/names from recent output: \(words)")
         }
         if !contextLines.isEmpty {
             parts.append("Context:\n" + contextLines.joined(separator: "\n"))
         }
 
         return parts.joined(separator: "\n\n")
+    }
+
+    /// Generic word extraction from terminal output: keeps word-like tokens
+    /// that could be names (letters + numbers/path chars), drops flags, pure
+    /// numbers and common noise. Works for docker, ls, git, kubectl, systemctl…
+    nonisolated static func extractKnownWords(from output: String, limit: Int = 30) -> [String] {
+        let cleaned = stripANSI(output)
+        let tokens = cleaned.split { ch in
+            !(ch.isLetter || ch.isNumber || "._/-".contains(ch))
+        }
+
+        var seen = Set<String>()
+        var result: [String] = []
+        for token in tokens {
+            let word = String(token)
+            guard word.count >= 2, word.count <= 40,
+                  word.rangeOfCharacter(from: .letters) != nil,
+                  !word.hasPrefix("-"),
+                  !noiseWords.contains(word.lowercased()),
+                  seen.insert(word.lowercased()).inserted
+            else { continue }
+            result.append(word)
+            if result.count >= limit { break }
+        }
+        return result
+    }
+
+    private nonisolated static let noiseWords: Set<String> = [
+        "usage", "command", "name", "names", "total", "type", "mode", "size",
+        "flags", "true", "false", "root", "docker", "ps", "logs", "run", "exec",
+        "error", "info", "help", "status", "up", "down", "created", "ports",
+    ]
+
+    /// Remove CSI/OSC escapes so prompt tokens are not wasted on color codes.
+    nonisolated private static func stripANSI(_ text: String) -> String {
+        guard let regex = try? NSRegularExpression(
+            pattern: #"\x1B(?:\[[0-9;?]*[a-zA-Z]|\][^\x07\x1B]*(?:\x07|\x1B\\))"#
+        ) else { return text }
+        let range = NSRange(location: 0, length: (text as NSString).length)
+        return regex.stringByReplacingMatches(in: text, range: range, withTemplate: "")
     }
 
     // MARK: - Output Normalization
