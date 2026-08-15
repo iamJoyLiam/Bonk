@@ -188,11 +188,9 @@ final class ServerResourceRingItemController {
         withObservationTracking {
             _ = ServerResourceMonitor.shared.snapshot
         } onChange: { [weak self] in
-            MainActor.assumeIsolated {
+            Task { @MainActor [weak self] in
                 self?.observeResourceState()
-                Task { @MainActor [weak self] in
-                    self?.control.refresh(snapshot: ServerResourceMonitor.shared.snapshot)
-                }
+                self?.control.refresh(snapshot: ServerResourceMonitor.shared.snapshot)
             }
         }
     }
@@ -212,14 +210,14 @@ final class ServerResourceRingItemController {
             onShowDetails: onShowDetails
         )
         let hosting = NSHostingView(rootView: detail)
-        hosting.frame = NSRect(x: 0, y: 0, width: 320, height: 360)
+        hosting.frame = NSRect(x: 0, y: 0, width: 340, height: 360)
         let viewController = NSViewController()
         viewController.view = hosting
 
         let popover = NSPopover()
         popover.behavior = .transient
         popover.contentViewController = viewController
-        popover.contentSize = NSSize(width: 320, height: 360)
+        popover.contentSize = NSSize(width: 340, height: 360)
         popover.show(relativeTo: control.bounds, of: control, preferredEdge: .maxY)
         self.popover = popover
     }

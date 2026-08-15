@@ -35,7 +35,7 @@ extension NSToolbarItem.Identifier {
 @MainActor
 final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
     private let coordinator: ToolbarCoordinator
-    private var broadcastItem: NSToolbarItem?
+    private var broadcastObserving = false
     /// Keep every controller alive: toolbar customization recreates items, and
     /// AppKit may keep displaying an earlier instance after the panel closes.
     /// Releasing an active controller leaves a dead target and a frozen ring.
@@ -114,16 +114,30 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
             return makeServerRingItem(id: itemIdentifier, kind: .disk, label: coordinator.i18n.t(.disk))
 
         case .broadcast:
-            let item = makeItem(
-                id: itemIdentifier,
-                label: coordinator.i18n.t(.broadcastPanes),
-                icon: "antenna.radiowaves.left.and.right"
-            ) { [weak self] in
+            let label = coordinator.i18n.t(.broadcastPanes)
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = label
+            item.paletteLabel = label
+            item.toolTip = label
+            item.image = NSImage(systemSymbolName: "antenna.radiowaves.left.and.right", accessibilityDescription: label)
+
+            let target = BroadcastToolbarItemTarget(
+                label: label,
+                isEnabled: { [weak self] in
+                    self?.coordinator.workspace.broadcastManager.isEnabled ?? false
+                },
+                action: { [weak self, weak item] in
                 self?.coordinator.workspace.toggleBroadcast()
-                self?.refreshBroadcastItemState()
+                    item?.toolbar?.validateVisibleItems()
+                }
+            )
+            objc_setAssociatedObject(item, "broadcastTarget", target, .OBJC_ASSOCIATION_RETAIN)
+            item.target = target
+            item.action = #selector(BroadcastToolbarItemTarget.invoke)
+            if !broadcastObserving {
+                broadcastObserving = true
+                observeBroadcastState()
             }
-            broadcastItem = item
-            observeBroadcastState()
             return item
 
         case .serialPort:
@@ -205,39 +219,18 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
 
     // MARK: - Helper
 
-    /// Broadcast on/off state is reflected on the toolbar icon (orange when
-    /// enabled), matching the previous SwiftUI toolbar behavior.
-    private func refreshBroadcastItemState() {
-        guard let broadcastItem else { return }
-        let enabled = coordinator.workspace.broadcastManager.isEnabled
-        let symbol = NSImage(
-            systemSymbolName: "antenna.radiowaves.left.and.right",
-            accessibilityDescription: coordinator.i18n.t(.broadcastPanes)
-        )
-        if enabled {
-            broadcastItem.image = symbol?.withSymbolConfiguration(
-                NSImage.SymbolConfiguration(paletteColors: [.systemOrange])
-            )
-        } else {
-            broadcastItem.image = symbol
-        }
-        // NSToolbar can cache the rendered item; force a revalidation so the
-        // state change is visible immediately.
-        broadcastItem.toolbar?.validateVisibleItems()
-    }
-
     /// Keep the icon in sync even if broadcast is toggled outside this item.
+    /// Validation runs on every visible item, so whichever instance AppKit is
+    /// displaying updates itself.
     private func observeBroadcastState() {
         withObservationTracking {
             _ = coordinator.workspace.broadcastManager.isEnabled
         } onChange: { [weak self] in
-            MainActor.assumeIsolated {
+            Task { @MainActor [weak self] in
                 // withObservationTracking fires before the write is visible,
                 // so defer the read to the next runloop turn.
                 self?.observeBroadcastState()
-                Task { @MainActor [weak self] in
-                    self?.refreshBroadcastItemState()
-                }
+                NSApp.keyWindow?.toolbar?.validateVisibleItems()
             }
         }
     }
@@ -292,5 +285,45 @@ private final class ToolbarItemTarget: NSObject {
     }
     @objc @MainActor func invokeAction() {
         action()
+    }
+}
+
+/// Broadcast item target: updates its own icon during NSToolbar validation.
+@MainActor
+private final class BroadcastToolbarItemTarget: NSObject, NSToolbarItemValidation {
+    private let label: String
+    private let isEnabled: @MainActor () -> Bool
+    private let action: @MainActor () -> Void
+
+    init(
+        label: String,
+        isEnabled: @escaping @MainActor () -> Bool,
+        action: @escaping @MainActor () -> Void
+    ) {
+        self.label = label
+        self.isEnabled = isEnabled
+        self.action = action
+        super.init()
+    }
+
+    @objc @MainActor func invoke() {
+        action()
+    }
+
+    nonisolated func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        MainActor.assumeIsolated {
+            let symbol = NSImage(
+                systemSymbolName: "antenna.radiowaves.left.and.right",
+                accessibilityDescription: label
+            )
+            if isEnabled() {
+                item.image = symbol?.withSymbolConfiguration(
+                    NSImage.SymbolConfiguration(paletteColors: [.systemOrange])
+                )
+            } else {
+                item.image = symbol
+            }
+        }
+        return true
     }
 }

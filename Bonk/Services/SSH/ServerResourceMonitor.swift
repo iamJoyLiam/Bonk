@@ -75,6 +75,13 @@ final class ServerResourceMonitor {
         }
         lastPollKey = key
 
+        // New tab/connection → old counters are meaningless; drop them so the
+        // first sample never computes a rate across two different hosts.
+        if keyChanged {
+            lastNetworkSample = nil
+            lastDiskSample = nil
+        }
+
         guard let tab,
               let session = tab.session,
               session.isConnected,
@@ -84,12 +91,15 @@ final class ServerResourceMonitor {
             return
         }
 
+        let startedFetch = Date()
         if let info = await ServerInfoFetcher.fetch(using: service) {
             let withRates = applyingRates(to: info)
             session.serverInfo = withRates
             snapshot = ServerResourceSnapshot(tabID: tab.id, info: withRates)
-            lastFetchDate = Date()
         }
+        // Record the attempt time even on failure, otherwise a dead
+        // connection retries the exec channel every loop tick (1s storm).
+        lastFetchDate = startedFetch
     }
 
     /// Turn cumulative interface/disk counters into per-second rates.

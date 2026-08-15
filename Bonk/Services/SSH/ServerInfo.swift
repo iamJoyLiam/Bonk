@@ -123,12 +123,18 @@ enum ServerInfoFetcher {
             + "END {print \"disk_read_bytes=\" r*512; print \"disk_write_bytes=\" w*512}' /proc/diskstats; fi",
         // Top processes by CPU ("12.3|bash;")
         "if command -v ps >/dev/null 2>&1; then "
+            + "if [ \"$(uname -s)\" = \"Linux\" ]; then "
             + "echo top_procs=$(ps -eo pcpu,comm --sort=-pcpu 2>/dev/null "
-            + "| awk 'NR>1 && NR<=4 {printf \"%s|%s;\", $1, $2}'); fi",
+            + "| awk 'NR>1 && NR<=4 {printf \"%s|%s;\", $1, $2}'); "
+            + "else echo top_procs=$(ps -A -o pcpu,comm -r 2>/dev/null "
+            + "| awk 'NR>1 && NR<=4 {printf \"%s|%s;\", $1, $2}'); fi; fi",
         // Listening TCP ports (top 8)
         "if command -v ss >/dev/null 2>&1; then "
             + "echo listen_ports=$(ss -tlnH 2>/dev/null | awk '{split($4,a,\":\"); print a[length(a)]}' "
             + "| sort -n | uniq | head -8 | tr '\\n' ','); "
+            + "elif [ \"$(uname -s)\" = \"Darwin\" ]; then "
+            + "echo listen_ports=$(netstat -an 2>/dev/null | awk '/LISTEN/ && $4 ~ /\\./ "
+            + "{n=split($4,a,\".\"); print a[n]}' | sort -n | uniq | head -8 | tr '\\n' ','); "
             + "elif command -v netstat >/dev/null 2>&1; then "
             + "echo listen_ports=$(netstat -tln 2>/dev/null | awk 'NR>2 {split($4,a,\":\"); print a[length(a)]}' "
             + "| sort -n | uniq | head -8 | tr '\\n' ','); fi",

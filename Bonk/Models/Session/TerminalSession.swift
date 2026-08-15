@@ -18,7 +18,6 @@ final class TerminalSession {
     /// Accumulated input buffer for command history recording.
     var inputBuffer: String = ""
     var stateObservationTask: Task<Void, Never>?
-    var serverInfoTask: Task<Void, Never>?
     /// Whether this session owns the SSH service (and should disconnect it on teardown).
     /// false when created via unsplitPane (shares SSH connection with another tab).
     var ownsSSHService = true
@@ -34,9 +33,7 @@ final class TerminalSession {
     /// Tear down all connection resources.
     func disconnect() {
         stateObservationTask?.cancel()
-        serverInfoTask?.cancel()
         stateObservationTask = nil
-        serverInfoTask = nil
         sftpService = nil
         ptySession?.close()
         ptySession = nil
