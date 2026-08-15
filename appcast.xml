@@ -6,6 +6,37 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.14</title>
+            <pubDate>Fri, 15 Aug 2026 04:00:00 +0000</pubDate>
+            <sparkle:version>20261014</sparkle:version>
+            <sparkle:shortVersionString>2026.1.14</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- 内联 AI 补全全面升级：通用名字抽取（容器名/文件名/pod/服务名）、确定性本地补全
+- 空格与粘字修复：模型回显半词不再拼接
+- 反馈闭环：Tab 接受 / Esc 拒绝持久化学习，按目录提供 few-shot 样例
+- vim / less / man 全屏模式跳过补全，不再卡顿
+- Esc 取消待触发请求，旧请求晚到不覆盖新建议
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.14/Bonk-2026.1.14-arm64.dmg"
+                length="13921717"
+                type="application/octet-stream"
+                sparkle:edSignature="mgkagQWpmZ72hSyC/mSB1RKiDjVEhulF02lhxO7eoZdJcKT5O8C3bHxgf4NRbpumQM9VS6xQddviTeFmAdLUDg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.14/Bonk-2026.1.14-x86_64.dmg"
+                length="14876737"
+                type="application/octet-stream"
+                sparkle:edSignature="oBVnPw70L3tdl5LGUxMX2RC+syxGLKs4DGvTxZYu44/u4brTx7XFkvAwifX3D4uUlzht6Ca5O/gs/SIkWI93Dg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.13</title>
             <pubDate>Fri, 15 Aug 2026 02:00:00 +0000</pubDate>
             <sparkle:version>20261013</sparkle:version>
