@@ -6,6 +6,37 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.13</title>
+            <pubDate>Fri, 15 Aug 2026 02:00:00 +0000</pubDate>
+            <sparkle:version>20261013</sparkle:version>
+            <sparkle:shortVersionString>2026.1.13</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- 工具栏服务器资源监控：CPU / 内存 / 磁盘圆形百分比实时显示，点击查看详情
+- 资源详情：交换分区、网络速率、磁盘 IO、CPU 温度、TOP 进程、监听端口
+- 服务器信息侧边栏重构：状态 + 主机 + IP 合并头部，移除冗余连接区块
+- 系统外观自动切换修复：新增系统级外观变更监听，框架与终端同步刷新
+- 工具栏布局重排：常用项默认展示，串口 / 端口转发 / 密钥生成 / SSH 导入移入自定义
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.13/Bonk-2026.1.13-arm64.dmg"
+                length="13897230"
+                type="application/octet-stream"
+                sparkle:edSignature="Ar51pmu0qPtSGknK847BlARA+A8wvTHFtgtPPRmYYCjxhBxsg+hWE24CYwZnPoMb6XpO5e9amnO24I6Yu5FxDw=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.13/Bonk-2026.1.13-x86_64.dmg"
+                length="14842425"
+                type="application/octet-stream"
+                sparkle:edSignature="ZhN7StpVfZJ03zqX17Pfm7aGuXRBDXcG3AK0m3HODCBglcpqM/X7fEPabx58d0tGZDjJTG78umk1zjzsonavBA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.12</title>
             <pubDate>Fri, 14 Aug 2026 22:00:00 +0000</pubDate>
             <sparkle:version>20261012</sparkle:version>
