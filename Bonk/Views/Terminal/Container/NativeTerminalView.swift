@@ -151,6 +151,7 @@ import SwiftTerm
             // never arm a new request, or the ghost would render over the
             // command's output.
             if keyCode == 36 || keyCode == 76 {
+                completionDebounceTask?.cancel()
                 MainActor.assumeIsolated {
                     completionService.dismiss()
                     hideGhost(reason: "enter")
@@ -177,6 +178,7 @@ import SwiftTerm
                 }
                 if keyCode == 53 {
                     // Esc — dismiss only.
+                    completionDebounceTask?.cancel()
                     MainActor.assumeIsolated {
                         completionService.dismiss()
                         hideGhost(reason: "esc")
@@ -243,6 +245,7 @@ import SwiftTerm
             modifiers: NSEvent.ModifierFlags,
             characters: String?
         ) -> Bool {
+            guard keyCode != 53 else { return false } // Esc is never typing
             guard modifiers.isDisjoint(with: [.command, .control]) else { return false }
             if keyCode == 51 || keyCode == 117 { return true }
             return !(characters?.isEmpty ?? true)
@@ -263,6 +266,7 @@ import SwiftTerm
         @MainActor
         private func requestCompletion() {
             guard completionService.isEnabled,
+                  !terminal.isCurrentBufferAlternate, // vim / less / man: no completion
                   let contextProvider = completionContextProvider else { return }
 
             let (cursorX, cursorY) = terminal.getCursorLocation()
@@ -272,7 +276,7 @@ import SwiftTerm
             // At the bottom of the buffer (yDisp == yBase) the cursor row from
             // getCursorLocation() equals the screen row. scrollPosition hits 1.0
             // only when scrolled to the end; yDisp == 0 covers buffers smaller
-            // than the viewport. Alternate screens (vim, less) never satisfy this.
+            // than the viewport.
             let atBottom = scrollPosition >= 1.0 || yDisp == 0
             // Prefer OSC 133 prompt marks when the shell emits them (semantic
             // prompt integration); fall back to the bottom-of-buffer heuristic

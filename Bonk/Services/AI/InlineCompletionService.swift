@@ -35,6 +35,7 @@ final class InlineCompletionService {
     private let providerStore: AIProviderStore
     private let defaults: UserDefaults
     private var currentTask: Task<Void, Never>?
+    private var requestGeneration = 0
 
     private static let logger = Logger(subsystem: "com.bonk", category: "InlineCompletion")
 
@@ -94,6 +95,8 @@ final class InlineCompletionService {
         onSuggestion: (@MainActor @Sendable (String) -> Void)? = nil
     ) {
         currentTask?.cancel()
+        requestGeneration += 1
+        let generation = requestGeneration
         suggestion = ""
         lastError = nil
 
@@ -125,7 +128,7 @@ final class InlineCompletionService {
             guard let self else { return }
             await self.streamModelSuggestion(
                 provider: provider, apiKey: apiKey,
-                prompt: prompt, typed: typed, onSuggestion: onSuggestion
+                prompt: prompt, typed: typed, generation: generation, onSuggestion: onSuggestion
             )
         }
     }
@@ -139,6 +142,7 @@ final class InlineCompletionService {
         apiKey: String,
         prompt: String,
         typed: String,
+        generation: Int,
         onSuggestion: (@MainActor @Sendable (String) -> Void)?
     ) async {
         defer { isRequesting = false }
@@ -154,18 +158,22 @@ final class InlineCompletionService {
                     // Show the ghost as soon as the first tokens arrive —
                     // waiting for the full stream makes slow providers feel
                     // broken. `suggestion` updates so Tab works mid-stream.
-                    let candidate = Self.suggestionSuffix(from: buffer.append(delta), typed: typed)
+                    let candidate = Self.normalize(
+                        Self.suggestionSuffix(from: buffer.append(delta), typed: typed)
+                    )
                     guard !candidate.isEmpty,
                           candidate.count <= Self.maxSuggestionChars
                     else { return }
                     Task { @MainActor [weak self] in
+                        guard self?.requestGeneration == generation else { return }
                         self?.suggestion = candidate
                         onSuggestion?(candidate)
                     }
                 }
             }
             guard !Task.isCancelled else { return }
-            let suffix = Self.suggestionSuffix(from: response, typed: typed)
+            guard generation == requestGeneration else { return }
+            let suffix = Self.normalize(Self.suggestionSuffix(from: response, typed: typed))
             if !suffix.isEmpty {
                 suggestion = suffix
                 onSuggestion?(suffix)
@@ -318,7 +326,7 @@ final class InlineCompletionService {
 
     /// Clean a model response into a single-line suggestion.
     /// Pure function so it is unit-testable.
-    static func normalize(_ raw: String) -> String {
+    nonisolated static func normalize(_ raw: String) -> String {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return "" }
 
