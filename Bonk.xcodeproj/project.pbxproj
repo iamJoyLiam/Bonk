@@ -8,12 +8,12 @@
 
 /* Begin PBXBuildFile section */
 		AE000009AAAA000000000009 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = AE000008AAAA000000000008 /* MarkdownUI */; };
+		AE000013AAAA000000000013 /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = AE000010AAAA000000000010 /* NIOSSH */; };
 		AE08640C2FD2A52D00C9EC5F /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = AE000006AAAA000000000006 /* Sparkle */; };
 		AE17758C302EF163006C4F34 /* OpenAI in Frameworks */ = {isa = PBXBuildFile; productRef = AE00000AAAAA00000000000A /* OpenAI */; };
 		AE17758D302EF163006C4F34 /* SwiftAnthropic in Frameworks */ = {isa = PBXBuildFile; productRef = AE00000CAAAA00000000000C /* SwiftAnthropic */; };
 		AEF73C8A2FC47AEE00F14E56 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = AE000002AAAA000000000002 /* Citadel */; };
 		AEF73C8B2FC47AEE00F14E57 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = AE000004AAAA000000000004 /* SwiftTerm */; };
-		AE000013AAAA000000000013 /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = AE000010AAAA000000000010 /* NIOSSH */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -25,7 +25,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
-				Vendor/swift-nio-ssh,
+				"Vendor/swift-nio-ssh",
 			);
 			target = AEF360DC2FC35EB700D936FC /* Bonk */;
 		};
@@ -177,7 +177,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 20261014;
+				CURRENT_PROJECT_VERSION = 20261015;
 				DEVELOPMENT_TEAM = 3R8JTKWB7F;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -199,7 +199,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 2026.1.14;
+				MARKETING_VERSION = 2026.1.15;
 				PRODUCT_BUNDLE_IDENTIFIER = JoyLiam.Bonk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -222,7 +222,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 20261014;
+				CURRENT_PROJECT_VERSION = 20261015;
 				DEVELOPMENT_TEAM = 3R8JTKWB7F;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -244,7 +244,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 2026.1.14;
+				MARKETING_VERSION = 2026.1.15;
 				PRODUCT_BUNDLE_IDENTIFIER = JoyLiam.Bonk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -400,6 +400,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		AE00000EAAAA00000000000E /* XCLocalSwiftPackageReference "Bonk/Vendor/swift-nio-ssh" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "Bonk/Vendor/swift-nio-ssh";
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		AE000001AAAA000000000001 /* XCRemoteSwiftPackageReference "Citadel" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -451,13 +458,6 @@
 		};
 /* End XCRemoteSwiftPackageReference section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		AE00000EAAAA00000000000E /* XCLocalSwiftPackageReference "swift-nio-ssh" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Bonk/Vendor/swift-nio-ssh;
-		};
-/* End XCLocalSwiftPackageReference section */
-
 /* Begin XCSwiftPackageProductDependency section */
 		AE000002AAAA000000000002 /* Citadel */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -491,7 +491,7 @@
 		};
 		AE000010AAAA000000000010 /* NIOSSH */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = AE00000EAAAA00000000000E /* XCRemoteSwiftPackageReference "swift-nio-ssh" */;
+			package = AE00000EAAAA00000000000E /* XCLocalSwiftPackageReference "Bonk/Vendor/swift-nio-ssh" */;
 			productName = NIOSSH;
 		};
 /* End XCSwiftPackageProductDependency section */

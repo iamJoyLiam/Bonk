@@ -139,8 +139,15 @@ struct HostListView: View {
             }
         }
         .sheet(item: $editingHost) { host in
-            NavigationStack {
-                AddHostSheet(existingHost: host, defaultPort: defaultPort) { _ in }
+            if host.isSerial == true {
+                NavigationStack {
+                    SerialPortEditSheet(host: host)
+                        .environment(i18n)
+                }
+            } else {
+                NavigationStack {
+                    AddHostSheet(existingHost: host, defaultPort: defaultPort) { _ in }
+                }
             }
         }
         .alert(i18n.t(.delete), isPresented: deleteHostAlertBinding) {
@@ -189,7 +196,7 @@ struct HostListView: View {
             if let tab {
                 sessionManager.selectTab(tab.id)
             } else {
-                sessionManager.openTab(for: host)
+                sessionManager.openHost(host)
             }
         } label: {
             HStack(spacing: 10) {
@@ -200,14 +207,22 @@ struct HostListView: View {
                         .frame(width: 3, height: 16)
                 }
 
-                statusDot(state)
+                if host.isSerial == true {
+                    Image(systemName: "cable.connector")
+                        .font(.system(size: 12))
+                        .foregroundStyle(stateColor(state))
+                } else {
+                    statusDot(state)
+                }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(host.name)
                         .font(.body)
                         .lineLimit(1)
 
-                    Text("\(host.username)@\(host.host):\(host.port)")
+                    Text(host.isSerial == true
+                        ? "\(i18n.t(.serialPort)) · \(host.host)"
+                        : "\(host.username)@\(host.host):\(host.port)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -234,7 +249,7 @@ struct HostListView: View {
                 if let tab {
                     sessionManager.selectTab(tab.id)
                 } else {
-                    sessionManager.openTab(for: host)
+                    sessionManager.openHost(host)
                 }
             } label: {
                 Label(i18n.t(.connect), systemImage: "bolt.fill")
@@ -260,6 +275,31 @@ struct HostListView: View {
 
             Divider()
 
+            Menu {
+                Button {
+                    host.groupRef = nil
+                } label: {
+                    if host.groupRef == nil {
+                        Label(i18n.t(.unGrouped), systemImage: "checkmark")
+                    } else {
+                        Text(i18n.t(.unGrouped))
+                    }
+                }
+                ForEach(hostGroups) { group in
+                    Button {
+                        host.groupRef = group
+                    } label: {
+                        if host.groupRef?.id == group.id {
+                            Label(group.name, systemImage: "checkmark")
+                        } else {
+                            Text(group.name)
+                        }
+                    }
+                }
+            } label: {
+                Label(i18n.t(.moveToGroup), systemImage: "folder")
+            }
+
             Button {
                 editingHost = host
             } label: {
@@ -274,15 +314,17 @@ struct HostListView: View {
         }
     }
 
-    @ViewBuilder
     private func statusDot(_ state: SSHConnectionState) -> some View {
-        let color: Color = switch state {
+        Circle()
+            .fill(stateColor(state))
+            .frame(width: 8, height: 8)
+    }
+
+    private func stateColor(_ state: SSHConnectionState) -> Color {
+        switch state {
         case .connected: .green
         case .connecting, .reconnecting: .yellow
         case .disconnected: .gray
         }
-        Circle()
-            .fill(color)
-            .frame(width: 8, height: 8)
     }
 }

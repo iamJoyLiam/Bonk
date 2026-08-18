@@ -5,10 +5,68 @@
 //  Serial port connection service using IOKit.
 //
 
+import Darwin
 import Foundation
 import IOKit
 import IOKit.serial
 import os.log
+
+extension Notification.Name {
+    static let serialPortsChanged = Notification.Name("com.bonk.serialPortsChanged")
+}
+
+/// A detected serial device with a friendly display name.
+struct SerialPortDevice: Identifiable, Hashable {
+    let path: String
+    let deviceName: String
+    let productName: String?
+    let kind: SerialPortKind
+
+    var id: String {
+        path
+    }
+
+    /// Short, human-readable name shown in the port picker.
+    var displayName: String {
+        if let productName, !productName.isEmpty, productName != deviceName {
+            return "\(deviceName) · \(productName)"
+        }
+        return deviceName
+    }
+}
+
+enum SerialPortKind: String, Hashable {
+    case usb
+    case bluetooth
+    case other
+    case internalConsole
+
+    var sortOrder: Int {
+        switch self {
+        case .usb:
+            0
+        case .bluetooth:
+            1
+        case .other:
+            2
+        case .internalConsole:
+            3
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .usb:
+            "cable.connector"
+        case .bluetooth:
+            "wave.3.right.circle"
+        case .other:
+            "externaldrive"
+        case .internalConsole:
+            "terminal"
+        }
+    }
+}
 
 /// Serial port connection service.
 @Observable @MainActor
@@ -17,141 +75,221 @@ final class SerialPortService {
 
     private let logger = Logger(subsystem: "com.bonk", category: "SerialPort")
 
-    var isConnected = false
-    var lastError: String?
-    var receivedData = Data()
+    private var notificationPort: OpaquePointer?
+    private var matchedIterator: io_iterator_t = 0
+    private var removedIterator: io_iterator_t = 0
+    private var isMonitoring = false
 
-    private var fileDescriptor: Int32 = -1
-    private var readThread: Thread?
-    private var onDataReceived: ((Data) -> Void)?
+    /// IOSSIOSPEED request codes from `IOKit/serial/ioss.h` — Swift cannot
+    /// import these macros. The 8-byte variant matches `speed_t` on LP64;
+    /// the 4-byte variant is what pyserial/serial2 ship for compatibility.
+    private static let iossIOSpeed64Request: UInt = 0x8008_5402
+    private static let iossIOSpeed32Request: UInt = 0x8004_5402
 
     private init() {}
 
-    // MARK: - Public API
+    // MARK: - Port Scanning
 
-    /// Scan for available serial ports.
-    func scanPorts() -> [String] {
-        var ports: [String] = []
+    /// Scan for available serial ports. Prefers call-out (`/dev/cu.*`) nodes,
+    /// which are the correct device nodes for outgoing terminal connections.
+    func scanPorts() -> [SerialPortDevice] {
+        var devices: [SerialPortDevice] = []
+        var usedNames = Set<String>()
+        var iterator: io_iterator_t = 0
 
-        // Check common serial port paths
-        let commonPaths = [
-            "/dev/tty.usbserial",
-            "/dev/tty.usbmodem",
-            "/dev/tty.SLAB_USBtoUART",
-            "/dev/tty.wchusbserial",
-            "/dev/tty.URT0",
-            "/dev/tty.URT1",
-        ]
+        guard IOServiceGetMatchingServices(
+            kIOMainPortDefault,
+            IOServiceMatching("IOSerialBSDClient"),
+            &iterator
+        ) == KERN_SUCCESS else {
+            return devices
+        }
+        defer { IOObjectRelease(iterator) }
 
-        for path in commonPaths where FileManager.default.fileExists(atPath: path) {
-            ports.append(path)
+        while true {
+            let service = IOIteratorNext(iterator)
+            if service == 0 { break }
+            defer { IOObjectRelease(service) }
+
+            let callout = ioProperty(service, key: kIOCalloutDeviceKey) as? String
+            let dialin = ioProperty(service, key: kIODialinDeviceKey) as? String
+            guard let path = callout ?? dialin, !path.isEmpty else { continue }
+
+            let name = (ioProperty(service, key: kIOTTYDeviceKey) as? String)
+                ?? URL(fileURLWithPath: path).lastPathComponent
+            guard usedNames.insert(name).inserted else { continue }
+
+            let productName = usbProductName(for: service)
+            let kind = classify(name, hasUSBProduct: productName != nil)
+            // Apple's internal debug console is not a user-facing serial port.
+            guard kind != .internalConsole else { continue }
+
+            devices.append(SerialPortDevice(
+                path: path,
+                deviceName: name,
+                productName: productName,
+                kind: kind
+            ))
         }
 
-        // Also check /dev/tty.* pattern
-        if let enumerator = FileManager.default.enumerator(atPath: "/dev") {
-            while let file = enumerator.nextObject() as? String {
-                if file.hasPrefix("tty.") {
-                    let fullPath = "/dev/\(file)"
-                    if !ports.contains(fullPath) {
-                        ports.append(fullPath)
-                    }
-                }
+        return devices.sorted {
+            if $0.kind != $1.kind {
+                return $0.kind.sortOrder < $1.kind.sortOrder
             }
+            return $0.deviceName.localizedCaseInsensitiveCompare($1.deviceName) == .orderedAscending
         }
-
-        return ports.sorted()
     }
 
-    /// Connect to a serial port.
-    func connect(config: SerialPortConfig) async throws {
-        guard !isConnected else {
-            throw SerialPortError.alreadyConnected
-        }
+    // MARK: - Hot Plug Monitoring
 
+    /// Start watching for serial devices being plugged in or removed.
+    /// Posts `.serialPortsChanged` on the main thread when the device set changes.
+    func startMonitoring() {
+        guard !isMonitoring else { return }
+        guard let port = IONotificationPortCreate(kIOMainPortDefault) else { return }
+
+        isMonitoring = true
+        notificationPort = port
+        let runLoopSource = IONotificationPortGetRunLoopSource(port).takeUnretainedValue()
+        CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .defaultMode)
+
+        let matchedMatching = IOServiceMatching("IOSerialBSDClient")
+        IOServiceAddMatchingNotification(
+            port,
+            kIOMatchedNotification,
+            matchedMatching,
+            serialPortsChangedCallback,
+            nil,
+            &matchedIterator
+        )
+        drain(matchedIterator)
+
+        let removedMatching = IOServiceMatching("IOSerialBSDClient")
+        IOServiceAddMatchingNotification(
+            port,
+            kIOTerminatedNotification,
+            removedMatching,
+            serialPortsChangedCallback,
+            nil,
+            &removedIterator
+        )
+        drain(removedIterator)
+    }
+
+    /// Stop watching for serial device changes.
+    func stopMonitoring() {
+        guard isMonitoring else { return }
+        isMonitoring = false
+
+        if matchedIterator != 0 {
+            IOObjectRelease(matchedIterator)
+            matchedIterator = 0
+        }
+        if removedIterator != 0 {
+            IOObjectRelease(removedIterator)
+            removedIterator = 0
+        }
+        if let port = notificationPort {
+            IONotificationPortDestroy(port)
+            notificationPort = nil
+        }
+    }
+
+    // MARK: - Connection
+
+    /// Open and configure a serial port, returning a PTY session that owns
+    /// the file descriptor.
+    func openSession(config: SerialPortConfig, onDisconnect: (@Sendable () -> Void)? = nil) throws -> PTYSession {
         let path = config.path
         guard FileManager.default.fileExists(atPath: path) else {
             throw SerialPortError.portNotFound(path)
         }
 
-        // Open the serial port
-        fileDescriptor = open(path, O_RDWR | O_NOCTTY | O_NONBLOCK)
+        let fileDescriptor = open(path, O_RDWR | O_NOCTTY | O_NONBLOCK)
         guard fileDescriptor >= 0 else {
-            throw SerialPortError.openFailed(path)
+            throw SerialPortError.openFailed(path, String(cString: strerror(errno)))
         }
 
-        // Configure the port
         do {
-            try configurePort(config: config)
+            try configurePort(fileDescriptor, config: config)
         } catch {
             close(fileDescriptor)
-            fileDescriptor = -1
             throw error
         }
 
-        // Start reading
-        startReading()
-
-        isConnected = true
-        lastError = nil
-        logger.info("Connected to serial port: \(path)")
-    }
-
-    /// Disconnect from the serial port.
-    func disconnect() {
-        guard isConnected else { return }
-
-        stopReading()
-
-        if fileDescriptor >= 0 {
-            close(fileDescriptor)
-            fileDescriptor = -1
-        }
-
-        isConnected = false
-        logger.info("Disconnected from serial port")
-    }
-
-    /// Send data to the serial port.
-    func send(_ data: Data) throws {
-        guard isConnected else {
-            throw SerialPortError.notConnected
-        }
-        guard !data.isEmpty else { return }
-
-        let bytesWritten = data.withUnsafeBytes { buffer in
-            write(fileDescriptor, buffer.baseAddress!, buffer.count)
-        }
-
-        guard bytesWritten >= 0 else {
-            throw SerialPortError.writeFailed
-        }
-    }
-
-    /// Send string to the serial port.
-    func send(_ string: String) throws {
-        guard let data = string.data(using: .utf8) else {
-            throw SerialPortError.invalidData
-        }
-        try send(data)
-    }
-
-    /// Set callback for received data.
-    func onData(_ callback: @escaping (Data) -> Void) {
-        onDataReceived = callback
+        let session = PTYSession()
+        session.onUnexpectedClose = onDisconnect
+        session.startSerial(fileDescriptor: fileDescriptor)
+        logger.info("Opened serial port: \(path, privacy: .public)")
+        return session
     }
 
     // MARK: - Private
 
-    private func configurePort(config: SerialPortConfig) throws {
-        var tty = termios()
+    private func ioProperty(_ service: io_service_t, key: String) -> CFTypeRef? {
+        guard let property = IORegistryEntryCreateCFProperty(
+            service,
+            key as CFString,
+            kCFAllocatorDefault,
+            0
+        ) else { return nil }
+        return property.takeRetainedValue()
+    }
 
+    /// Look up the USB product/vendor name by walking up the IOKit registry
+    /// from the serial device to its USB parent.
+    private func usbProductName(for service: io_service_t) -> String? {
+        let product = IORegistryEntrySearchCFProperty(
+            service,
+            kIOServicePlane,
+            "USB Product Name" as CFString,
+            kCFAllocatorDefault,
+            IOOptionBits(kIORegistryIterateRecursively)
+        ) as? String
+        if let product, !product.isEmpty { return product }
+
+        let vendor = IORegistryEntrySearchCFProperty(
+            service,
+            kIOServicePlane,
+            "USB Vendor Name" as CFString,
+            kCFAllocatorDefault,
+            IOOptionBits(kIORegistryIterateRecursively)
+        ) as? String
+        return vendor.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    private func classify(_ deviceName: String, hasUSBProduct: Bool) -> SerialPortKind {
+        let lower = deviceName.lowercased()
+        if lower.contains("bluetooth") { return .bluetooth }
+        if lower.contains("debug-console") || lower.contains("usbdebug") {
+            return .internalConsole
+        }
+        if hasUSBProduct
+            || lower.hasPrefix("usbserial")
+            || lower.hasPrefix("usbmodem")
+            || lower.hasPrefix("usb")
+        {
+            return .usb
+        }
+        return .other
+    }
+
+    private func drain(_ iterator: io_iterator_t) {
+        var service = IOIteratorNext(iterator)
+        while service != 0 {
+            IOObjectRelease(service)
+            service = IOIteratorNext(iterator)
+        }
+    }
+
+    private func configurePort(_ fileDescriptor: Int32, config: SerialPortConfig) throws {
+        var tty = termios()
         guard tcgetattr(fileDescriptor, &tty) == 0 else {
-            throw SerialPortError.configureFailed
+            throw SerialPortError.configureFailed(String(cString: strerror(errno)))
         }
 
-        let baudRate = speed_t(config.baudRate)
-        cfsetispeed(&tty, baudRate)
-        cfsetospeed(&tty, baudRate)
+        tty.c_cflag &= ~UInt(CSIZE | PARENB | CSTOPB | CRTSCTS)
+        tty.c_cflag |= UInt(CLOCAL | CREAD)
 
         setDataBits(config.dataBits, tty: &tty)
         setStopBits(config.stopBits, tty: &tty)
@@ -162,8 +300,42 @@ final class SerialPortService {
         tty.c_oflag &= ~UInt(OPOST | ONLCR | OCRNL | ONOCR | ONLRET)
         tty.c_lflag &= ~UInt(ICANON | ECHO | ECHOE | ISIG | IEXTEN)
 
+        let baud = config.baudRate > 230_400
+            ? speed_t(B38400)
+            : baudRateConstant(config.baudRate)
+        guard cfsetispeed(&tty, baud) == 0, cfsetospeed(&tty, baud) == 0 else {
+            throw SerialPortError.configureFailed(String(cString: strerror(errno)))
+        }
+
         guard tcsetattr(fileDescriptor, TCSANOW, &tty) == 0 else {
-            throw SerialPortError.configureFailed
+            throw SerialPortError.configureFailed(String(cString: strerror(errno)))
+        }
+
+        // Drop stale input buffered by the driver before the session starts.
+        tcflush(fileDescriptor, TCIOFLUSH)
+
+        // macOS has no B460800/B921600 constants — IOSSIOSPEED sets them directly.
+        if config.baudRate > 230_400 {
+            try setCustomBaudRate(fileDescriptor, baudRate: config.baudRate)
+        }
+    }
+
+    private func setCustomBaudRate(_ fileDescriptor: Int32, baudRate: Int) throws {
+        // The 8-byte variant is the canonical IOSSIOSPEED; the 4-byte variant
+        // covers drivers/kernels that only accept the legacy request code.
+        // Accept either, then report both errno values if both fail.
+        var speed64 = speed_t(baudRate)
+        if ioctl(fileDescriptor, Self.iossIOSpeed64Request, &speed64) == 0 {
+            return
+        }
+        let firstError = String(cString: strerror(errno))
+
+        var speed32 = UInt32(baudRate)
+        guard ioctl(fileDescriptor, Self.iossIOSpeed32Request, &speed32) == 0 else {
+            let secondError = String(cString: strerror(errno))
+            throw SerialPortError.configureFailed(
+                "Cannot set \(baudRate) baud (IOSSIOSPEED: \(firstError) / \(secondError))"
+            )
         }
     }
 
@@ -211,75 +383,52 @@ final class SerialPortService {
         }
     }
 
-    private func startReading() {
-        readThread = Thread { [weak self] in
-            self?.readLoop()
+    private func baudRateConstant(_ rate: Int) -> speed_t {
+        switch rate {
+        case 1200: speed_t(B1200)
+        case 2400: speed_t(B2400)
+        case 4800: speed_t(B4800)
+        case 9600: speed_t(B9600)
+        case 19200: speed_t(B19200)
+        case 38400: speed_t(B38400)
+        case 57600: speed_t(B57600)
+        case 115_200: speed_t(B115200)
+        case 230_400: speed_t(B230400)
+        default: speed_t(B9600)
         }
-        readThread?.name = "SerialPortRead"
-        readThread?.qualityOfService = .userInitiated
-        readThread?.start()
     }
+}
 
-    private func stopReading() {
-        readThread?.cancel()
-        readThread = nil
+/// IOKit callback for matched/terminated serial devices.
+private func serialPortsChangedCallback(_: UnsafeMutableRawPointer?, _ iterator: io_iterator_t) {
+    var service = IOIteratorNext(iterator)
+    while service != 0 {
+        IOObjectRelease(service)
+        service = IOIteratorNext(iterator)
     }
-
-    private func readLoop() {
-        let bufferSize = 1024
-        var buffer = [UInt8](repeating: 0, count: bufferSize)
-
-        while !Thread.current.isCancelled {
-            let bytesRead = read(fileDescriptor, &buffer, bufferSize)
-
-            if bytesRead > 0 {
-                let data = Data(buffer[0 ..< bytesRead])
-                DispatchQueue.main.async { [weak self] in
-                    self?.receivedData.append(data)
-                    self?.onDataReceived?(data)
-                }
-            } else if bytesRead < 0 {
-                if errno != EAGAIN, errno != EWOULDBLOCK {
-                    DispatchQueue.main.async { [weak self] in
-                        self?.disconnect()
-                        self?.lastError = "Read error: \(String(cString: strerror(errno)))"
-                    }
-                    break
-                }
-            }
-
-            usleep(1000) // 1ms delay
-        }
+    DispatchQueue.main.async {
+        NotificationCenter.default.post(name: .serialPortsChanged, object: nil)
     }
 }
 
 // MARK: - Errors
 
 enum SerialPortError: LocalizedError {
-    case alreadyConnected
-    case notConnected
     case portNotFound(String)
-    case openFailed(String)
-    case configureFailed
-    case writeFailed
-    case invalidData
+    case openFailed(String, String)
+    case configureFailed(String)
+    case writeFailed(String)
 
     var errorDescription: String? {
         switch self {
-        case .alreadyConnected:
-            "Already connected to a serial port"
-        case .notConnected:
-            "Not connected to a serial port"
         case let .portNotFound(path):
             "Serial port not found: \(path)"
-        case let .openFailed(path):
-            "Failed to open serial port: \(path)"
-        case .configureFailed:
-            "Failed to configure serial port"
-        case .writeFailed:
-            "Failed to write to serial port"
-        case .invalidData:
-            "Invalid data"
+        case let .openFailed(path, reason):
+            "Failed to open serial port \(path): \(reason)"
+        case let .configureFailed(reason):
+            "Failed to configure serial port: \(reason)"
+        case let .writeFailed(reason):
+            "Failed to write to serial port: \(reason)"
         }
     }
 }

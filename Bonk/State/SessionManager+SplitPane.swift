@@ -133,6 +133,9 @@ extension SessionManager {
         // Create a new tab for this pane with the source hostItem
         let newTab = TerminalTab(hostItem: tab.sourceHostItem ?? tab.hostItem)
         newTab.title = paneTitle
+        if let serialConfig = tab.serialConfig {
+            newTab.serialConfig = serialConfig
+        }
 
         // Insert the new tab based on pane position
         let allPaneIDs = tab.layout.root.allPaneIDs
@@ -179,6 +182,24 @@ extension SessionManager {
 
     /// Connect a new pane (open PTY session).
     func connectPane(tab: TerminalTab, pane: PaneState) async {
+        if let serialConfig = tab.serialConfig {
+            do {
+                let ptySession = try SerialPortService.shared.openSession(
+                    config: serialConfig,
+                    onDisconnect: { [weak tab] in
+                        Task { @MainActor in
+                            tab?.session?.connectionState = .disconnected
+                            tab?.session?.errorMessage = "Serial port disconnected"
+                        }
+                    }
+                )
+                pane.ptySession = ptySession
+            } catch {
+                Log.session.error("[SPLIT] Failed to open serial PTY: \(error.localizedDescription)")
+            }
+            return
+        }
+
         guard let service = tab.session?.sshService else { return }
         do {
             let ptySession = try await service.openPTY()
@@ -231,6 +252,9 @@ extension SessionManager {
 
         // Store source hostItem for unsplit
         targetTab.sourceHostItem = sourceTab.hostItem
+        if targetTab.serialConfig == nil {
+            targetTab.serialConfig = sourceTab.serialConfig
+        }
 
         // Set the target pane's title to target tab's hostItem name
         let allPaneIDs = targetTab.layout.root.allPaneIDs

@@ -76,7 +76,7 @@ extension TerminalTabView {
     @ViewBuilder
     private func tabContextMenu(_ tab: TerminalTab) -> some View {
         Button {
-            sessionManager.openTab(for: tab.hostItem)
+            sessionManager.openHost(tab.hostItem)
         } label: {
             Label(i18n.t(.duplicate), systemImage: "plus.square.on.square")
         }

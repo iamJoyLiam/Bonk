@@ -13,6 +13,9 @@ final class TerminalTab: Identifiable {
     /// Source tab hostItem for unsplit (preserves original hostItem after drag-to-split)
     var sourceHostItem: HostItem?
 
+    /// Serial port config when this tab is a serial connection (nil for SSH tabs).
+    var serialConfig: SerialPortConfig?
+
     /// Active connection session (nil when disconnected or never connected).
     var session: TerminalSession?
 

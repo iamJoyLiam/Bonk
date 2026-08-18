@@ -40,6 +40,8 @@ public actor SSHNetworkService {
     private let keepAlive = SSHKeepAlive()
     /// Guard against duplicate handleDisconnect calls (keepalive timeout + onDisconnect).
     private var isHandlingDisconnect = false
+    /// Current reconnection loop, so manual disconnect/reconnect can cancel it.
+    private var reconnectTask: Task<Void, Never>?
 
     /// Network monitor for detecting connectivity changes.
     private let networkMonitor = NWPathMonitor()
@@ -154,7 +156,7 @@ public actor SSHNetworkService {
 
             if config.maxReconnectAttempts > 0 {
                 Log.ssh.info("[CONNECT] Attempting reconnection...")
-                await reconnect()
+                startReconnect()
             } else {
                 throw SSHServiceError.connectionFailed(String(describing: error))
             }
@@ -268,6 +270,8 @@ public actor SSHNetworkService {
         await keepAlive.stop()
 
         stopNetworkMonitor()
+        reconnectTask?.cancel()
+        reconnectTask = nil
 
         activePTYSession?.close()
         activePTYSession = nil
@@ -313,23 +317,26 @@ public actor SSHNetworkService {
 
         // Network is back — attempt immediate reconnection
         guard config != nil else { return }
-        Task {
-            await reconnect()
-        }
+        startReconnect()
     }
 
     // MARK: - Reconnection State Machine
 
+    private func startReconnect() {
+        reconnectTask?.cancel()
+        reconnectTask = Task { await self.reconnect() }
+    }
+
     private func reconnect() async {
         guard let config else { return }
 
-        let maxAttempts = config.maxReconnectAttempts
+        let maxAttempts = max(config.maxReconnectAttempts, 1)
         var attempt = 0
 
-        // Auto-reconnect until the tab is closed, like iTerm2: retry forever
-        // with exponential backoff capped at 30s. Giving up after a few tries
-        // leaves the session dead after overnight idle.
-        while !Task.isCancelled {
+        // Bounded retries with exponential backoff (capped at 30s), then give
+        // up and let the user reconnect manually. Retrying forever is what
+        // produced hundreds of reconnect attempts against an unreachable host.
+        while attempt < maxAttempts, !Task.isCancelled {
             connectionState = .reconnecting(attempt: attempt + 1, maxAttempts: maxAttempts)
             stateContinuation.yield(.reconnecting(attempt: attempt + 1, maxAttempts: maxAttempts))
 
@@ -382,6 +389,12 @@ public actor SSHNetworkService {
                 attempt += 1
             }
         }
+
+        if !Task.isCancelled {
+            connectionState = .disconnected
+            stateContinuation.yield(.disconnected)
+            Log.ssh.error("Reconnect exhausted after \(maxAttempts) attempts")
+        }
     }
 
     // MARK: - Disconnect Monitor
@@ -411,7 +424,7 @@ public actor SSHNetworkService {
             return
         }
 
-        await reconnect()
+        startReconnect()
     }
 
     // MARK: - Host Key Verification (TOFU)

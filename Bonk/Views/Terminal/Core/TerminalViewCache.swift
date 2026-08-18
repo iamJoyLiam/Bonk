@@ -139,6 +139,27 @@ final class TerminalViewCache {
         }
     }
 
+    /// Replace the cached output stream with a fresh stream from a new PTY
+    /// session (after reconnect) and reset the terminal so the new session
+    /// starts clean. Without this the view keeps feeding from the closed old
+    /// session and never renders the new one.
+    func rebindOutputStream(for paneID: UUID, to session: PTYSession) {
+        guard let cached = cache[paneID] else { return }
+
+        if let coordinator = cached.coordinator as? ContainerTerminalCoordinator {
+            coordinator.feedTask?.cancel()
+            coordinator.feedTask = nil
+        }
+        cached.outputStream = nil
+        cached.onBytesProcessed = nil
+
+        let result = session.makeOutputStream()
+        connectOutputStream(result.stream, onBytesProcessed: result.onBytesProcessed, to: paneID)
+
+        // Full reset — the old scrollback belongs to the dead session.
+        cached.view.terminal.resetToInitialState()
+    }
+
     /// Evict all cached views except those belonging to the active tab (used on memory pressure).
     func evictAllExceptActive(activeTabID: UUID?) {
         guard let activeTabID else { return }

@@ -125,8 +125,16 @@ struct ContentView: View {
                 }
             }
             .sheet(isPresented: workspaceBindable.isSerialPortPresented) {
-                SerialPortView(isPresented: workspaceBindable.isSerialPortPresented, onConnect: { _ in })
-                    .environment(i18n)
+                SerialPortView(isPresented: workspaceBindable.isSerialPortPresented) { config in
+                    sessionManager.openSerialTab(config: config)
+                }
+                .environment(i18n)
+            }
+            .sheet(item: $sessionManager.pendingSerialSave) { config in
+                NavigationStack {
+                    SerialPortSaveSheet(config: config)
+                        .environment(i18n)
+                }
             }
             .sheet(isPresented: workspaceBindable.isPortForwardingPresented) {
                 PortForwardView(

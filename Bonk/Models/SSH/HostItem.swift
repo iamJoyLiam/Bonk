@@ -24,6 +24,10 @@ final class HostItem {
     /// Sort order within group (used by drag-to-reorder).
     var sortOrder: Int = 0
     var isFavorite: Bool = false
+    /// True when this entry is a serial port host (nil = SSH host).
+    var isSerial: Bool?
+    /// Baud rate for serial hosts; ignored for SSH hosts.
+    var serialBaudRate: Int?
 
     @Relationship(deleteRule: .nullify)
     var groupRef: HostGroup?
@@ -96,7 +100,9 @@ final class HostItem {
         certificatePEM: String? = nil,
         secureEnclaveKeyTag: String? = nil,
         groupRef: HostGroup? = nil,
-        credentialRef: Credential? = nil
+        credentialRef: Credential? = nil,
+        isSerial: Bool? = nil,
+        serialBaudRate: Int? = nil
     ) {
         id = UUID()
         self.name = name
@@ -107,6 +113,8 @@ final class HostItem {
         createdAt = Date()
         self.groupRef = groupRef
         self.credentialRef = credentialRef
+        self.isSerial = isSerial
+        self.serialBaudRate = serialBaudRate
 
         if let passwordValue = password { storePassword(passwordValue) }
         if let pem = privateKeyPEM { storePrivateKey(pem) }

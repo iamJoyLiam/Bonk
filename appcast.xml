@@ -6,6 +6,39 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.15</title>
+            <pubDate>Tue, 18 Aug 2026 01:30:00 +0000</pubDate>
+            <sparkle:version>20261015</sparkle:version>
+            <sparkle:shortVersionString>2026.1.15</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- 串口功能完整可用：正确扫描 macOS /dev/cu.* 端口，USB 串口优先显示，过滤 Apple 内部调试口，热插拔自动刷新
+- 串口面板显示友好设备名 + USB 产品名，不再是一串难认的完整路径
+- 支持 460800 / 921600 高波特率（IOSSIOSPEED 双兼容码）
+- 串口连接成功后自动弹出保存窗口：命名 + 分组，保存到左侧边栏
+- 侧边栏串口项：独立串口图标、支持分组移动、专用编辑窗口（名称 / 端口路径 / 波特率 / 分组）
+- 重连修复：不再无限重试（最多 3 次后停止，可手动重连）；重连成功后终端自动重置并重新绑定输出流，恢复正常输入输出；连接瞬间输入不再丢失
+- 串口标签右键"在新标签打开"不再误走 SSH
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.15/Bonk-2026.1.15-arm64.dmg"
+                length="13990809"
+                type="application/octet-stream"
+                sparkle:edSignature="sI3wIqkLhrMORVu9v3/R3CfYtyXFSVP523IqA6uAjp914cZvyXdWKjruNRO0iNUwwK+NxFHW4sT8KJIvPP/aCg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.15/Bonk-2026.1.15-x86_64.dmg"
+                length="14895808"
+                type="application/octet-stream"
+                sparkle:edSignature="WZvVb1AuyCJt15NS+jh3UU9HnKeeXuYUh6VTuA0FTaawitN5DbR1wSctjHVC2+04JvqYKDnQqBpVaJiMtZb/Cg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.14</title>
             <pubDate>Fri, 15 Aug 2026 04:00:00 +0000</pubDate>
             <sparkle:version>20261014</sparkle:version>

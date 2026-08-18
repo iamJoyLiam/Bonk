@@ -14,6 +14,9 @@ final class SessionManager {
 
     var lastError: String?
     var showError = false
+    /// Serial connection that just succeeded and is waiting for the user to
+    /// decide whether to save it to the sidebar.
+    var pendingSerialSave: SerialPortConfig?
     /// Currently dragging tab ID (memory state for drag-and-drop).
     var draggingTabID: UUID?
     /// Target tab ID when dragging over a tab (for showing indicator).
@@ -54,6 +57,39 @@ final class SessionManager {
         tab.session = session
 
         Task { await connectTab(tab) }
+    }
+
+    /// Open a host, dispatching to serial or SSH based on host type.
+    func openHost(_ host: HostItem) {
+        if host.isSerial == true {
+            openSerialTab(config: SerialPortConfig(
+                name: host.name,
+                path: host.host,
+                baudRate: host.serialBaudRate ?? 115_200
+            ))
+        } else {
+            openTab(for: host)
+        }
+    }
+
+    /// Open a serial port connection in a new terminal tab.
+    func openSerialTab(config: SerialPortConfig) {
+        let displayName = config.name.isEmpty ? config.path : config.name
+        let host = HostItem(
+            name: displayName,
+            host: config.path,
+            port: 0,
+            username: "serial"
+        )
+        let tab = TerminalTab(hostItem: host)
+        tab.title = displayName
+        tab.serialConfig = config
+        tabs.append(tab)
+        activeTabID = tab.id
+        tab.session = sessionStore.session(for: tab)
+        syncBroadcastTargets()
+
+        Task { await connectSerialTab(tab, promptSave: true) }
     }
 
     func selectTab(_ id: UUID) {
@@ -158,7 +194,11 @@ final class SessionManager {
     func reconnectTab(_ id: UUID) async {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
         await disconnectTab(id)
-        await connectTab(tab)
+        if tab.serialConfig != nil {
+            await connectSerialTab(tab)
+        } else {
+            await connectTab(tab)
+        }
     }
 
     // MARK: - Input
@@ -307,6 +347,32 @@ final class SessionManager {
         tab.hostItem.lastConnectedAt = Date()
     }
 
+    /// Attach per-session observers to a PTY session (used after reconnect).
+    private func attachPTYSessionObservers(_ ptySession: PTYSession, to tab: TerminalTab) {
+        ptySession.osc7Detector.onCWDChange = { [weak tab] cwd in
+            Task { @MainActor in
+                tab?.currentDirectory = cwd
+            }
+        }
+    }
+
+    /// Sync the real terminal dimensions to the PTY session after the view has
+    /// laid out, overriding the 80x24 default.
+    private func syncPTYSize(for paneID: UUID?, ptySession: PTYSession) {
+        guard let paneID else { return }
+        Task { @MainActor [weak ptySession] in
+            // Wait for one RunLoop cycle to ensure SwiftTerm has calculated real dimensions
+            try? await Task.sleep(for: .milliseconds(100))
+            guard let ptySession else { return }
+            guard let cached = TerminalViewCache.shared.retrieve(paneID) else { return }
+            let cols = cached.view.terminal.cols
+            let rows = cached.view.terminal.rows
+            guard cols > 0, rows > 0 else { return }
+            Log.session.info("[PTY] Post-setup sync: \(cols)x\(rows)")
+            try? await ptySession.resize(cols: cols, rows: rows)
+        }
+    }
+
     private func parseCWD(from title: String, username: String) -> String? {
         // Pattern: "user@host:/absolute/path" or "user@host:~/path"
         if let colonRange = title.range(of: ": ") {
@@ -346,10 +412,24 @@ final class SessionManager {
                             firstPane.ptySession?.close()
                             firstPane.ptySession = newPTY
                             session.ptySession = newPTY
+                            // Rebind the terminal to the fresh session and reset
+                            // it — the old output stream is already dead, which
+                            // otherwise leaves a frozen, unresponsive terminal.
+                            // Single-pane views cache by tab.id, split panes by
+                            // pane.id — cover both.
+                            TerminalViewCache.shared.rebindOutputStream(for: tab.id, to: newPTY)
+                            TerminalViewCache.shared.rebindOutputStream(for: firstPane.id, to: newPTY)
+                            syncPTYSize(for: firstPane.id, ptySession: newPTY)
                         }
+                        attachPTYSessionObservers(newPTY, to: tab)
                         session.connectedAt = Date()
                         session.errorMessage = nil
                         session.connectionState = .connected
+                        NotificationCenter.default.post(
+                            name: .terminalPTYSessionReady,
+                            object: nil,
+                            userInfo: ["tabID": tab.id]
+                        )
                     } else if tab.layout.root.paneState?.ptySession != nil {
                         // Initial connect: PTY already attached by connectTab.
                         session.connectionState = .connected
@@ -366,6 +446,61 @@ final class SessionManager {
                     break
                 }
             }
+        }
+    }
+
+    // MARK: - Serial Connection
+
+    private func connectSerialTab(_ tab: TerminalTab, promptSave: Bool = false) async {
+        guard let config = tab.serialConfig else { return }
+        guard !sessionStore.isConnecting(tab.id) else { return }
+        sessionStore.markConnecting(tab.id)
+        defer { sessionStore.markConnected(tab.id) }
+
+        let session = sessionStore.session(for: tab)
+        tab.session = session
+        session.connectionState = .connecting
+        session.errorMessage = nil
+
+        do {
+            let ptySession = try SerialPortService.shared.openSession(
+                config: config,
+                onDisconnect: { [weak session] in
+                    Task { @MainActor in
+                        guard let session else { return }
+                        session.connectionState = .disconnected
+                        session.errorMessage = "Serial port disconnected"
+                    }
+                }
+            )
+
+            guard tabs.contains(where: { $0.id == tab.id }) else {
+                ptySession.close()
+                return
+            }
+
+            if let firstPane = tab.layout.root.paneState {
+                firstPane.ptySession = ptySession
+            }
+            session.ptySession = ptySession
+            session.connectionState = .connected
+            session.connectedAt = Date()
+            NotificationCenter.default.post(
+                name: .terminalPTYSessionReady,
+                object: nil,
+                userInfo: ["tabID": tab.id]
+            )
+            Log.session.info("[SERIAL] Connected to \(config.path)")
+            if promptSave {
+                pendingSerialSave = config
+            }
+        } catch {
+            guard tabs.contains(where: { $0.id == tab.id }) else { return }
+            session.connectionState = .disconnected
+            session.errorMessage = error.localizedDescription
+            lastError = error.localizedDescription
+            showError = true
+            Log.session.error("[SERIAL] Connect failed: \(error.localizedDescription)")
         }
     }
 }

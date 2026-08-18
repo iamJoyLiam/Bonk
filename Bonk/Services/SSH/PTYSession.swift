@@ -4,6 +4,7 @@
 //
 
 @preconcurrency import Citadel
+import Darwin
 import Foundation
 import NIOConcurrencyHelpers
 import NIOCore
@@ -43,6 +44,14 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
     private let writerBox = NIOLockedValueBox<TTYStdinWriter?>(nil)
     private let readerTaskBox = NIOLockedValueBox<Task<Void, Never>?>(nil)
+    /// Serial port file descriptor. -1 when the session is not backed by a serial port.
+    private let serialFDBox = NIOLockedValueBox<Int32>(-1)
+    /// Bytes typed while the SSH channel is still opening (first connect or
+    /// reconnect). Flushed in order once the writer becomes available, so
+    /// input right after a reconnect is never silently dropped.
+    private let pendingInputBox = NIOLockedValueBox<[ByteBuffer]>([])
+    private let onUnexpectedCloseBox = NIOLockedValueBox<(@Sendable () -> Void)?>(nil)
+    private static let maxPendingInputBytes = 64 * 1024
 
     /// OSC 7 CWD detector — intercepts escape sequences to track directory changes.
     let osc7Detector = PTYOSC7Detector()
@@ -57,6 +66,12 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// Pending PTY size — caches resize requests when SSH channel is not yet ready.
     /// Prevents window-change packets from being silently dropped during connection setup.
     private let pendingSize = NIOLockedValueBox<(cols: Int, rows: Int)?>(nil)
+
+    /// Called when a serial session ends unexpectedly (unplug / read error).
+    public var onUnexpectedClose: (@Sendable () -> Void)? {
+        get { onUnexpectedCloseBox.withLockedValue { $0 } }
+        set { onUnexpectedCloseBox.withLockedValue { $0 = newValue } }
+    }
 
     init() {
         var endCont: AsyncStream<Void>.Continuation!
@@ -191,6 +206,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
                     // Propagate writer to instance property (sendInput/resize read from here)
                     self.writerBox.withLockedValue { $0 = outbound }
+                    self.flushPendingInput(to: outbound)
 
                     // Flush any pending resize that was queued before channel was ready
                     if let size = self.pendingSize.withLockedValue({ $0 }) {
@@ -239,14 +255,67 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
     /// Write keyboard input to the remote shell's stdin.
     public func sendInput(_ bytes: ArraySlice<UInt8>) async throws {
-        guard let writer = writerBox.withLockedValue({ $0 }) else { return }
+        if let writer = writerBox.withLockedValue({ $0 }) {
+            var buffer = ByteBuffer()
+            buffer.writeBytes(bytes)
+            try await writer.write(buffer)
+            return
+        }
+
+        let fileDescriptor = serialFDBox.withLockedValue { $0 }
+        guard fileDescriptor >= 0 else {
+            // SSH channel not ready yet — queue instead of dropping.
+            queuePendingInput(bytes)
+            return
+        }
+
+        let data = Data(bytes)
+        var offset = 0
+        while offset < data.count {
+            let written = data.withUnsafeBytes { (rawBuffer: UnsafeRawBufferPointer) -> Int in
+                guard let base = rawBuffer.baseAddress else { return 0 }
+                return write(fileDescriptor, base.advanced(by: offset), data.count - offset)
+            }
+            if written < 0 {
+                if errno == EINTR { continue }
+                if errno == EAGAIN || errno == EWOULDBLOCK {
+                    try await Task.sleep(for: .milliseconds(5))
+                    continue
+                }
+                throw SerialPortError.writeFailed(String(cString: strerror(errno)))
+            }
+            offset += written
+        }
+    }
+
+    private func queuePendingInput(_ bytes: ArraySlice<UInt8>) {
         var buffer = ByteBuffer()
         buffer.writeBytes(bytes)
-        try await writer.write(buffer)
+        pendingInputBox.withLockedValue { pending in
+            let existingBytes = pending.reduce(0) { $0 + $1.readableBytes }
+            guard existingBytes + buffer.readableBytes <= Self.maxPendingInputBytes else { return }
+            pending.append(buffer)
+        }
+    }
+
+    private func flushPendingInput(to writer: TTYStdinWriter) {
+        let queued = pendingInputBox.withLockedValue { pending -> [ByteBuffer] in
+            let buffers = pending
+            pending.removeAll()
+            return buffers
+        }
+        guard !queued.isEmpty else { return }
+        Task {
+            for buffer in queued {
+                try? await writer.write(buffer)
+            }
+        }
     }
 
     /// Resize the PTY terminal dimensions.
     public func resize(cols: Int, rows: Int) async throws {
+        guard serialFDBox.withLockedValue({ $0 }) < 0 else { return }
+
         // Guard against garbage values (e.g., 131072x1 from un-laid-out views)
         let safeCols = max(1, min(cols, Self.maxCols))
         let safeRows = max(1, min(rows, Self.maxRows))
@@ -266,6 +335,8 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// Query the terminal's current working directory by sending `pwd` and parsing output.
     /// Returns nil if timeout or not at a shell prompt.
     public func getCWD() async -> String? {
+        guard serialFDBox.withLockedValue({ $0 }) < 0 else { return nil }
+
         guard let writer = writerBox.withLockedValue({ $0 }) else { return nil }
 
         // Wrappers to satisfy @Sendable requirements across isolation boundaries.
@@ -350,9 +421,99 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     public func close() {
         readerTaskBox.withLockedValue { $0?.cancel(); $0 = nil }
         writerBox.withLockedValue { $0 = nil }
+        let fileDescriptor = serialFDBox.withLockedValue { current in
+            let value = current
+            current = -1
+            return value
+        }
+        if fileDescriptor >= 0 { Darwin.close(fileDescriptor) }
+        pendingInputBox.withLockedValue { $0.removeAll() }
         _ = outputObservers.withLock { $0.removeAll() }
         liveContinuations.withLock { $0 }.values.forEach { $0.finish() }
         sessionEndContinuation.finish()
+    }
+
+    // MARK: - Serial Port Mode
+
+    /// Start reading from a serial port file descriptor.
+    /// The session owns the descriptor and closes it on disconnect.
+    func startSerial(fileDescriptor: Int32) {
+        serialFDBox.withLockedValue { $0 = fileDescriptor }
+
+        let task = Task.detached(priority: .userInitiated) { [weak self] in
+            let bufferSize = 4096
+            var buffer = [UInt8](repeating: 0, count: bufferSize)
+
+            while !Task.isCancelled {
+                // Wait for readable data in 100 ms slices so cancellation and
+                // disconnect stay responsive while the port stays non-blocking.
+                var pollDescriptor = pollfd(
+                    fd: fileDescriptor,
+                    events: Int16(POLLIN),
+                    revents: 0
+                )
+                let pollResult = poll(&pollDescriptor, 1, 100)
+                if pollResult < 0 {
+                    if errno == EINTR { continue }
+                    break
+                }
+                if pollResult == 0 { continue }
+                if pollDescriptor.revents & Int16(POLLHUP | POLLERR) != 0 {
+                    break
+                }
+                guard pollDescriptor.revents & Int16(POLLIN) != 0 else { continue }
+
+                let bytesRead = read(fileDescriptor, &buffer, bufferSize)
+                if bytesRead > 0 {
+                    self?.yieldSerialOutput(Data(buffer[0 ..< bytesRead]))
+                } else if bytesRead < 0 {
+                    if errno != EINTR { break }
+                } else {
+                    break // EOF
+                }
+            }
+
+            self?.finishSerial(fileDescriptor: fileDescriptor)
+        }
+        readerTaskBox.withLockedValue { $0 = task }
+    }
+
+    private func yieldSerialOutput(_ data: Data) {
+        for chunk in Self.chunkData(data) {
+            yieldOutput(String(bytes: chunk, encoding: .utf8) ?? "")
+        }
+    }
+
+    private func finishSerial(fileDescriptor: Int32) {
+        let ownedFD: Int32 = serialFDBox.withLockedValue { current in
+            guard current == fileDescriptor else { return -1 }
+            current = -1
+            return fileDescriptor
+        }
+        if ownedFD >= 0 { Darwin.close(ownedFD) }
+
+        liveContinuations.withLock { $0 }.values.forEach { $0.finish() }
+        onUnexpectedCloseBox.withLockedValue { $0 }?()
+    }
+
+    /// Split Data into UTF-8-safe chunks so escape sequences are not truncated.
+    private static func chunkData(_ data: Data) -> [Data] {
+        guard data.count > maxChunkBytes else { return [data] }
+
+        var chunks: [Data] = []
+        var offset = 0
+        while offset < data.count {
+            var end = min(offset + maxChunkBytes, data.count)
+            if end < data.count {
+                while end > offset, data[end] & 0xC0 == 0x80 {
+                    end -= 1
+                }
+            }
+            if end <= offset { end = min(offset + maxChunkBytes, data.count) }
+            chunks.append(data.subdata(in: offset ..< end))
+            offset = end
+        }
+        return chunks
     }
 
     // MARK: - Zmodem Support

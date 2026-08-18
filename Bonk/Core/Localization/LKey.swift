@@ -259,6 +259,10 @@ enum LKey: String, CaseIterable {
     case serialPort = "serial_port"
     case scanPorts = "scan_ports"
     case selectPort = "select_port"
+    case saveSerialPort = "save_serial_port"
+    case editSerialPort = "edit_serial_port"
+    case portPath = "port_path"
+    case moveToGroup = "move_to_group"
     case scanning
     case baudRate = "baud_rate"
     case dataBits = "data_bits"

@@ -12,7 +12,7 @@ struct SerialPortView: View {
     let onConnect: (SerialPortConfig) -> Void
 
     @State private var config = SerialPortConfig()
-    @State private var availablePorts: [String] = []
+    @State private var availablePorts: [SerialPortDevice] = []
     @State private var isScanning = false
     @State private var serialPortService = SerialPortService.shared
     @State private var showError = false
@@ -46,8 +46,19 @@ struct SerialPortView: View {
                 Section(i18n.t(.port)) {
                     Picker(i18n.t(.port), selection: $config.path) {
                         Text(i18n.t(.selectPort)).tag("")
-                        ForEach(availablePorts, id: \.self) { port in
-                            Text(port).tag(port)
+                        ForEach(availablePorts) { device in
+                            HStack(spacing: 6) {
+                                Image(systemName: device.kind.iconName)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(device.displayName)
+                                    Text(device.path)
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            .tag(device.path)
                         }
                     }
 
@@ -115,19 +126,20 @@ struct SerialPortView: View {
         }
         .frame(width: 450, height: 500)
         .onAppear {
+            SerialPortService.shared.startMonitoring()
+            scanPorts()
+        }
+        .onDisappear {
+            SerialPortService.shared.stopMonitoring()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .serialPortsChanged)) { _ in
             scanPorts()
         }
     }
 
     private func scanPorts() {
         isScanning = true
-        // 使用 SerialPortService 扫描真实端口
-        DispatchQueue.global(qos: .userInitiated).async {
-            let ports = serialPortService.scanPorts()
-            DispatchQueue.main.async {
-                availablePorts = ports
-                isScanning = false
-            }
-        }
+        availablePorts = serialPortService.scanPorts()
+        isScanning = false
     }
 }
