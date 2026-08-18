@@ -19,6 +19,8 @@ final class JumpHost {
     var credentialID: UUID?
     @Relationship(deleteRule: .nullify)
     var credentialRef: Credential?
+    @Relationship(inverse: \HostItem.jumpHostRef)
+    var targetHosts: [HostItem]
     var sortOrder: Int
     var createdAt: Date
 
@@ -35,6 +37,7 @@ final class JumpHost {
         self.port = port
         self.username = username
         self.authType = authType
+        targetHosts = []
         sortOrder = 0
         createdAt = Date()
     }
@@ -42,5 +45,23 @@ final class JumpHost {
     /// Display string for the jump host.
     var displayString: String {
         "\(username)@\(host):\(port)"
+    }
+
+    func resolveAuthMethod() -> SSHAuthMethod? {
+        guard let credentialRef,
+              let secret = credentialRef.loadSecret(),
+              !secret.isEmpty
+        else {
+            return nil
+        }
+
+        switch credentialRef.type {
+        case .password:
+            return .password(secret)
+        case .privateKey:
+            return .privateKey(pemString: secret)
+        case .apiKey:
+            return nil
+        }
     }
 }

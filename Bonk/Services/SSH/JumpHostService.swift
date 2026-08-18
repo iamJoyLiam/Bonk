@@ -31,6 +31,7 @@ final class JumpHostService {
         let service = SSHNetworkService(hostKeyStore: PersistentHostKeyStore())
         do {
             try await service.connect(config: config)
+            _ = try await service.executeCommand("true")
             await service.disconnect()
             return true
         } catch {
@@ -43,16 +44,21 @@ final class JumpHostService {
         jumpHost: JumpHost,
         targetHost: String,
         targetPort: Int,
-        jumpCredential _: SSHAuthMethod,
-        targetCredential: SSHAuthMethod
+        jumpCredential: SSHAuthMethod,
+        targetCredential: SSHAuthMethod,
+        targetUsername: String? = nil
     ) -> SSHConnectionConfig {
-        // In a real implementation, this would create a tunnel config
-        // For now, return a direct connection config
         SSHConnectionConfig(
             host: targetHost,
             port: UInt16(targetPort),
-            username: jumpHost.username,
+            username: targetUsername ?? jumpHost.username,
             authMethod: targetCredential,
+            jumpHost: SSHJumpHostConfig(
+                host: jumpHost.host,
+                port: UInt16(jumpHost.port),
+                username: jumpHost.username,
+                authMethod: jumpCredential
+            ),
             maxReconnectAttempts: 3,
             baseReconnectDelay: .seconds(1)
         )

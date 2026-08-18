@@ -134,7 +134,7 @@ struct PortForwardView: View {
                 await portForwardService.stop(config: rule)
             } else {
                 do {
-                    try await portForwardService.start(config: rule)
+                    try await portForwardService.start(config: rule, using: sshService)
                 } catch {
                     Log.ssh.error("Port forward error: \(error.localizedDescription)")
                 }

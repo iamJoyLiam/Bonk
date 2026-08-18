@@ -25,7 +25,6 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
-				"Vendor/swift-nio-ssh",
 			);
 			target = AEF360DC2FC35EB700D936FC /* Bonk */;
 		};
@@ -134,6 +133,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				AE000001AAAA000000000001 /* XCRemoteSwiftPackageReference "Citadel" */,
+				AE00000EAAAA00000000000E /* XCRemoteSwiftPackageReference "swift-nio-ssh" */,
 				AE000003AAAA000000000003 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 				AE000005AAAA000000000005 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				AE000007AAAA000000000007 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
@@ -400,13 +400,6 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		AE00000EAAAA00000000000E /* XCLocalSwiftPackageReference "Bonk/Vendor/swift-nio-ssh" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = "Bonk/Vendor/swift-nio-ssh";
-		};
-/* End XCLocalSwiftPackageReference section */
-
 /* Begin XCRemoteSwiftPackageReference section */
 		AE000001AAAA000000000001 /* XCRemoteSwiftPackageReference "Citadel" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -414,6 +407,14 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 0.12.0;
+			};
+		};
+		AE00000EAAAA00000000000E /* XCRemoteSwiftPackageReference "swift-nio-ssh" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Wellz26/swift-nio-ssh.git";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.3.4;
 			};
 		};
 		AE000003AAAA000000000003 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
@@ -491,7 +492,7 @@
 		};
 		AE000010AAAA000000000010 /* NIOSSH */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = AE00000EAAAA00000000000E /* XCLocalSwiftPackageReference "Bonk/Vendor/swift-nio-ssh" */;
+			package = AE00000EAAAA00000000000E /* XCRemoteSwiftPackageReference "swift-nio-ssh" */;
 			productName = NIOSSH;
 		};
 /* End XCSwiftPackageProductDependency section */

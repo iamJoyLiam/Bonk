@@ -28,6 +28,8 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
     /// Live output continuations — yields new data to all active feed tasks.
     private let liveContinuations = OSAllocatedUnfairLock<[UUID: AsyncStream<String>.Continuation]>(uncheckedState: [:])
+    /// Raw output consumers used by process-backed command adapters.
+    private let rawLiveContinuations = OSAllocatedUnfairLock<[UUID: AsyncStream<String>.Continuation]>(uncheckedState: [:])
 
     /// Per-consumer pending byte tracking for backpressure control.
     /// Prevents slow consumers from accumulating unbounded buffered data.
@@ -46,6 +48,13 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     private let readerTaskBox = NIOLockedValueBox<Task<Void, Never>?>(nil)
     /// Serial port file descriptor. -1 when the session is not backed by a serial port.
     private let serialFDBox = NIOLockedValueBox<Int32>(-1)
+    /// Whether the fd is owned by this session (serial) or by an external
+    /// transport such as the OpenSSH subprocess (process mode).
+    private let ownsFDBox = OSAllocatedUnfairLock<Bool>(uncheckedState: true)
+    /// Process mode enables PTY resize over the same fd; serial mode ignores resize.
+    private let processModeBox = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
+    /// Optional raw process hook, called before UI output transformation.
+    private let processOutputHandlerBox = NIOLockedValueBox<(@Sendable (Data) -> Void)?>(nil)
     /// Bytes typed while the SSH channel is still opening (first connect or
     /// reconnect). Flushed in order once the writer becomes available, so
     /// input right after a reconnect is never silently dropped.
@@ -121,6 +130,19 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         return (stream, onBytesProcessed)
     }
 
+    /// Create raw output stream for non-terminal consumers.
+    ///
+    /// No replay or UI colorization. Used by OpenSSH command/SFTP adapters.
+    func makeRawOutputStream() -> AsyncStream<String> {
+        let consumerID = UUID()
+        return AsyncStream<String>(bufferingPolicy: .bufferingNewest(256)) { continuation in
+            self.rawLiveContinuations.withLock { $0[consumerID] = continuation }
+            continuation.onTermination = { [weak self] _ in
+                self?.rawLiveContinuations.withLock { _ = $0.removeValue(forKey: consumerID) }
+            }
+        }
+    }
+
     /// Yield output to all consumers (buffer + live streams).
     private func yieldOutput(_ text: String) {
         // text is already chunked to safe size by chunkByteBuffer()
@@ -177,6 +199,11 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             }
             pendingBytes.withLock { $0[id, default: 0] += chunkSize }
             cont.yield(displayText)
+        }
+
+        let rawConsumers = rawLiveContinuations.withLock { $0 }
+        for continuation in rawConsumers.values {
+            continuation.yield(text)
         }
     }
 
@@ -314,12 +341,23 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
     /// Resize the PTY terminal dimensions.
     public func resize(cols: Int, rows: Int) async throws {
-        guard serialFDBox.withLockedValue({ $0 }) < 0 else { return }
+        let fileDescriptor = serialFDBox.withLockedValue { $0 }
+        let isProcess = processModeBox.withLock { $0 }
 
         // Guard against garbage values (e.g., 131072x1 from un-laid-out views)
         let safeCols = max(1, min(cols, Self.maxCols))
         let safeRows = max(1, min(rows, Self.maxRows))
         guard safeCols > 1, safeRows > 1 else { return }
+
+        if fileDescriptor >= 0, isProcess {
+            var size = winsize()
+            size.ws_col = UInt16(safeCols)
+            size.ws_row = UInt16(safeRows)
+            _ = Darwin.ioctl(fileDescriptor, UInt(TIOCSWINSZ), &size)
+            return
+        }
+
+        guard fileDescriptor < 0 else { return }
 
         guard let writer = writerBox.withLockedValue({ $0 }) else {
             // SSH channel not ready — queue resize for later, never discard
@@ -426,10 +464,14 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             current = -1
             return value
         }
-        if fileDescriptor >= 0 { Darwin.close(fileDescriptor) }
+        if fileDescriptor >= 0, ownsFDBox.withLock({ $0 }) {
+            Darwin.close(fileDescriptor)
+        }
         pendingInputBox.withLockedValue { $0.removeAll() }
         _ = outputObservers.withLock { $0.removeAll() }
         liveContinuations.withLock { $0 }.values.forEach { $0.finish() }
+        rawLiveContinuations.withLock { $0 }.values.forEach { $0.finish() }
+        processOutputHandlerBox.withLockedValue { $0 = nil }
         sessionEndContinuation.finish()
     }
 
@@ -439,7 +481,27 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// The session owns the descriptor and closes it on disconnect.
     func startSerial(fileDescriptor: Int32) {
         serialFDBox.withLockedValue { $0 = fileDescriptor }
+        ownsFDBox.withLock { $0 = true }
+        processModeBox.withLock { $0 = false }
+        startReading(fileDescriptor: fileDescriptor)
+    }
 
+    /// Start reading from an OpenSSH subprocess PTY fd.
+    /// The external transport owns the descriptor; this session only reads/writes it.
+    func startProcess(
+        fileDescriptor: Int32,
+        onExit: @escaping @Sendable () -> Void,
+        onOutput: (@Sendable (Data) -> Void)? = nil
+    ) {
+        serialFDBox.withLockedValue { $0 = fileDescriptor }
+        ownsFDBox.withLock { $0 = false }
+        processModeBox.withLock { $0 = true }
+        processOutputHandlerBox.withLockedValue { $0 = onOutput }
+        onUnexpectedClose = onExit
+        startReading(fileDescriptor: fileDescriptor)
+    }
+
+    private func startReading(fileDescriptor: Int32) {
         let task = Task.detached(priority: .userInitiated) { [weak self] in
             let bufferSize = 4096
             var buffer = [UInt8](repeating: 0, count: bufferSize)
@@ -479,6 +541,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     }
 
     private func yieldSerialOutput(_ data: Data) {
+        processOutputHandlerBox.withLockedValue { $0 }?(data)
         for chunk in Self.chunkData(data) {
             yieldOutput(String(bytes: chunk, encoding: .utf8) ?? "")
         }
@@ -486,13 +549,15 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
     private func finishSerial(fileDescriptor: Int32) {
         let ownedFD: Int32 = serialFDBox.withLockedValue { current in
-            guard current == fileDescriptor else { return -1 }
+            let value = current
             current = -1
-            return fileDescriptor
+            guard value == fileDescriptor else { return -1 }
+            return ownsFDBox.withLock({ $0 }) ? value : -1
         }
         if ownedFD >= 0 { Darwin.close(ownedFD) }
 
         liveContinuations.withLock { $0 }.values.forEach { $0.finish() }
+        rawLiveContinuations.withLock { $0 }.values.forEach { $0.finish() }
         onUnexpectedCloseBox.withLockedValue { $0 }?()
     }
 

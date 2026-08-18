@@ -35,8 +35,16 @@ public actor SSHNetworkService {
     }
 
     private var client: SSHClient?
+    /// Separate native Citadel connection used only by legacy SFTP flow when
+    /// the terminal transport is system OpenSSH.
+    private var sftpNativeClient: SSHClient?
     private var config: SSHConnectionConfig?
     private var activePTYSession: PTYSession?
+    #if os(macOS)
+        /// System OpenSSH transport for macOS terminal/exec/forwarding auth.
+        private var openSSHBackend: OpenSSHBackend?
+    #endif
+    private var usesOpenSSHTransport = false
     private let keepAlive = SSHKeepAlive()
     /// Guard against duplicate handleDisconnect calls (keepalive timeout + onDisconnect).
     private var isHandlingDisconnect = false
@@ -80,12 +88,16 @@ public actor SSHNetworkService {
     /// Enable auto-reconnection after initial connection succeeds.
     public func enableReconnection(attempts: Int = 3) {
         guard var config else { return }
+        // OpenSSH owns interactive auth; automatic reconnect would reopen
+        // password/MFA prompts behind the user's terminal.
+        let resolvedAttempts = usesOpenSSHTransport ? 0 : attempts
         config = SSHConnectionConfig(
             host: config.host,
             port: config.port,
             username: config.username,
             authMethod: config.authMethod,
-            maxReconnectAttempts: attempts,
+            jumpHost: config.jumpHost,
+            maxReconnectAttempts: resolvedAttempts,
             baseReconnectDelay: config.baseReconnectDelay
         )
         self.config = config
@@ -104,11 +116,30 @@ public actor SSHNetworkService {
         }
 
         self.config = config
+        usesOpenSSHTransport = false
+        try? await sftpNativeClient?.close()
+        sftpNativeClient = nil
+        #if os(macOS)
+            openSSHBackend?.close()
+            openSSHBackend = nil
+        #endif
         connectionState = .connecting
         stateContinuation.yield(.connecting)
         Log.ssh.info("[CONNECT] State set to .connecting")
 
         do {
+            #if os(macOS)
+                if shouldUseOpenSSH(config.authMethod) {
+                    let backend = try OpenSSHBackend(config: config)
+                    openSSHBackend = backend
+                    usesOpenSSHTransport = true
+                    connectionState = .connected
+                    stateContinuation.yield(.connected)
+                    Log.ssh.info("[CONNECT] Using system OpenSSH transport")
+                    return
+                }
+            #endif
+
             Log.ssh.info("[CONNECT] Calling establishConnection with \(Self.connectionTimeoutSeconds)s timeout...")
 
             // Wrap with timeout to prevent hanging on unreachable hosts
@@ -132,7 +163,10 @@ public actor SSHNetworkService {
             Log.ssh.info("[CONNECT] keepAlive started, connection complete")
         } catch {
             Log.ssh.error("[CONNECT] Connection failed: \(error.localizedDescription)")
+
             client = nil
+            try? await sftpNativeClient?.close()
+            sftpNativeClient = nil
             connectionState = .disconnected
             stateContinuation.yield(.disconnected)
 
@@ -165,6 +199,18 @@ public actor SSHNetworkService {
 
     /// Shared SSH connection logic used by both connect() and reconnect().
     private func establishConnection(config: SSHConnectionConfig) async throws {
+        let sshClient = try await makeNativeClient(config: config)
+        client = sshClient
+        connectionState = .connected
+        stateContinuation.yield(.connected)
+        Log.ssh.info("[ESTABLISH] State set to .connected, starting disconnect monitor")
+        startMonitoringDisconnect(sshClient)
+    }
+
+    /// Build and verify one native Citadel client without changing primary
+    /// terminal connection state. Used to keep existing SFTP behavior stable
+    /// while macOS terminal sessions use OpenSSH.
+    private func makeNativeClient(config: SSHConnectionConfig) async throws -> SSHClient {
         Log.ssh.info("[ESTABLISH] Mapping auth method...")
         let citadelAuth = try mapAuthMethod(config.authMethod, username: config.username)
         Log.ssh.info("[ESTABLISH] Auth method mapped, setting up host key validator...")
@@ -181,32 +227,13 @@ public actor SSHNetworkService {
         }
 
         Log.ssh.info("[ESTABLISH] Calling SSHClient.connect to \(config.host):\(config.port)...")
-        // RFC 8332 host-key algorithms (rsa-sha2-256/512) for bastions with
-        // RSA host keys. Idempotent; safe to call on every connection.
-        RSASHA2Support.register()
-        var algorithms = SSHAlgorithms.all
-        algorithms.keyExchangeAlgorithms = .add([
-            DiffieHellmanGroupExchangeSha256.self,
-            DiffieHellmanGroupExchangeSha1.self,
-            DiffieHellmanFixedGroup<DiffieHellmanGroup1SHA1Parameters>.self,
-            DiffieHellmanFixedGroup<DiffieHellmanGroup16SHA512Parameters>.self,
-            DiffieHellmanFixedGroup<DiffieHellmanGroup18SHA512Parameters>.self,
-        ])
-        algorithms.transportProtectionSchemes = .add([
-            AES192CTRTransportProtection.self,
-            AES256CTRTransportProtection.self,
-        ])
         let sshClient = try await SSHClient.connect(
             host: config.host,
             port: Int(config.port),
             authenticationMethod: citadelAuth,
             hostKeyValidator: .custom(validator),
             reconnect: .never,
-            // Citadel's default algorithm set is empty (only swift-nio-ssh
-            // bundled KEX: curve25519/ecdh). Bastions often only offer
-            // diffie-hellman-group14-sha1/sha256 and RSA host keys, which
-            // Citadel ships but doesn't enable by default.
-            algorithms: algorithms
+            algorithms: .all
         )
         Log.ssh.info("[ESTABLISH] SSHClient.connect returned successfully")
 
@@ -224,12 +251,7 @@ public actor SSHNetworkService {
             throw error
         }
         Log.ssh.info("[ESTABLISH] Host key verified")
-
-        client = sshClient
-        connectionState = .connected
-        stateContinuation.yield(.connected)
-        Log.ssh.info("[ESTABLISH] State set to .connected, starting disconnect monitor")
-        startMonitoringDisconnect(sshClient)
+        return sshClient
     }
 
     // MARK: - Exec
@@ -237,6 +259,14 @@ public actor SSHNetworkService {
     /// Execute a command via a separate SSH exec channel (no PTY).
     /// Returns clean stdout with no ANSI codes, no prompt, no echo.
     public func executeCommand(_ command: String) async throws -> String {
+        #if os(macOS)
+            if usesOpenSSHTransport, let openSSHBackend {
+                return try await openSSHBackend.executeCommand(command)
+            }
+        #endif
+        guard !usesOpenSSHTransport else {
+            throw SSHServiceError.connectionFailed("OpenSSH transport is unavailable on this platform.")
+        }
         guard let client else { throw SSHServiceError.notConnected }
         let response = try await client.executeCommand(command)
         return String(buffer: response).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -244,8 +274,24 @@ public actor SSHNetworkService {
 
     // MARK: - SFTP
 
-    /// Open an SFTP client over the existing SSH connection.
+    /// Open the existing Citadel SFTP flow. On macOS OpenSSH terminal
+    /// sessions, create a private native connection for SFTP only.
     public func openSFTPClient() async throws -> SFTPClient {
+        #if os(macOS)
+            if usesOpenSSHTransport {
+                guard let config else { throw SSHServiceError.notConnected }
+                try? await sftpNativeClient?.close()
+                let nativeClient = try await makeNativeClient(config: config)
+                do {
+                    let sftp = try await nativeClient.openSFTP()
+                    sftpNativeClient = nativeClient
+                    return sftp
+                } catch {
+                    try? await nativeClient.close()
+                    throw error
+                }
+            }
+        #endif
         guard let client else { throw SSHServiceError.notConnected }
         return try await client.openSFTP()
     }
@@ -257,6 +303,21 @@ public actor SSHNetworkService {
         rows: Int = 24,
         termType: String = "xterm-256color"
     ) async throws -> PTYSession {
+        #if os(macOS)
+            if usesOpenSSHTransport, let openSSHBackend {
+                let session = try openSSHBackend.openPTY(
+                    cols: cols,
+                    rows: rows,
+                    termType: termType
+                ) { [weak self] in
+                    Task { await self?.handleDisconnect() }
+                }
+                lastPTYConfig = PTYConfig(cols: cols, rows: rows, termType: termType)
+                activePTYSession = session
+                return session
+            }
+        #endif
+
         guard let client else { throw SSHServiceError.notConnected }
 
         lastPTYConfig = PTYConfig(cols: cols, rows: rows, termType: termType)
@@ -284,6 +345,14 @@ public actor SSHNetworkService {
         activePTYSession?.close()
         activePTYSession = nil
 
+        #if os(macOS)
+            openSSHBackend?.close()
+            openSSHBackend = nil
+        #endif
+        usesOpenSSHTransport = false
+
+        try? await sftpNativeClient?.close()
+        sftpNativeClient = nil
         try? await client?.close()
         client = nil
 
@@ -337,6 +406,12 @@ public actor SSHNetworkService {
 
     private func reconnect() async {
         guard let config else { return }
+        guard !usesOpenSSHTransport else {
+            connectionState = .disconnected
+            stateContinuation.yield(.disconnected)
+            Log.ssh.warning("Skipping automatic reconnect for OpenSSH transport")
+            return
+        }
 
         let maxAttempts = max(config.maxReconnectAttempts, 1)
         var attempt = 0
@@ -399,6 +474,7 @@ public actor SSHNetworkService {
         }
 
         if !Task.isCancelled {
+            usesOpenSSHTransport = false
             connectionState = .disconnected
             stateContinuation.yield(.disconnected)
             Log.ssh.error("Reconnect exhausted after \(maxAttempts) attempts")
@@ -426,6 +502,15 @@ public actor SSHNetworkService {
         activePTYSession = nil
         client = nil
 
+        if usesOpenSSHTransport {
+            // OpenSSH PTY owns interactive auth. Child exit means session end;
+            // never replace a password prompt with a reconnect spinner.
+            usesOpenSSHTransport = false
+            connectionState = .disconnected
+            stateContinuation.yield(.disconnected)
+            return
+        }
+
         guard config.maxReconnectAttempts > 0 else {
             connectionState = .disconnected
             stateContinuation.yield(.disconnected)
@@ -434,6 +519,21 @@ public actor SSHNetworkService {
 
         startReconnect()
     }
+
+    #if os(macOS)
+        /// Start an OpenSSH-backed port forward for this connected target.
+        func startPortForward(
+            _ forward: SSHPortForwardConfiguration,
+            onExit: @escaping @Sendable () -> Void
+        ) async throws -> OpenSSHForwardHandle {
+            guard usesOpenSSHTransport, let openSSHBackend else {
+                throw SSHServiceError.connectionFailed(
+                    "OpenSSH port forwarding requires an OpenSSH-backed connection."
+                )
+            }
+            return try openSSHBackend.startPortForward(config: forward, onExit: onExit)
+        }
+    #endif
 
     // MARK: - Host Key Verification (TOFU)
 
@@ -508,6 +608,17 @@ public actor SSHNetworkService {
             ))
         }
     }
+
+    #if os(macOS)
+        private func shouldUseOpenSSH(_ method: SSHAuthMethod) -> Bool {
+            switch method {
+            case .secureEnclaveKey:
+                return false
+            case .password, .privateKey, .certificate:
+                return true
+            }
+        }
+    #endif
 
     private nonisolated func decodePEM(_ pem: String) throws -> Data {
         let base64 = pem

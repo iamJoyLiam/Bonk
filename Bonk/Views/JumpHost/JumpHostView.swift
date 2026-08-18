@@ -155,11 +155,14 @@ struct JumpHostEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     let host: JumpHost?
     let modelContext: ModelContext
+    @Query(sort: \Credential.createdAt, order: .reverse)
+    private var credentials: [Credential]
 
     @State private var name = ""
     @State private var hostname = ""
     @State private var port = "22"
     @State private var username = ""
+    @State private var selectedCredential: Credential?
 
     var body: some View {
         NavigationStack {
@@ -176,6 +179,16 @@ struct JumpHostEditSheet: View {
 
                 Section(i18n.t(.username)) {
                     TextField(i18n.t(.username), text: $username)
+                }
+
+                Section(i18n.t(.authentication)) {
+                    Picker(i18n.t(.credential), selection: $selectedCredential) {
+                        Text(i18n.t(.none)).tag(Credential?.none)
+                        ForEach(credentials.filter { $0.type == .password || $0.type == .privateKey }) { credential in
+                            Label(credential.name, systemImage: credential.type.symbolName)
+                                .tag(Credential?.some(credential))
+                        }
+                    }
                 }
             }
             .formStyle(.grouped)
@@ -198,6 +211,7 @@ struct JumpHostEditSheet: View {
                     hostname = host.host
                     port = "\(host.port)"
                     username = host.username
+                    selectedCredential = host.credentialRef
                 }
             }
         }
@@ -212,6 +226,7 @@ struct JumpHostEditSheet: View {
             host.host = hostname
             host.port = portInt
             host.username = username
+            host.credentialRef = selectedCredential
         } else {
             let newHost = JumpHost(
                 name: name,
@@ -219,6 +234,7 @@ struct JumpHostEditSheet: View {
                 port: portInt,
                 username: username
             )
+            newHost.credentialRef = selectedCredential
             modelContext.insert(newHost)
         }
     }

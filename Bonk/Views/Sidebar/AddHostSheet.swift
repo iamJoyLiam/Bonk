@@ -11,6 +11,8 @@ struct AddHostSheet: View {
     private var vaultCredentials: [Credential]
     @Query(sort: \HostGroup.sortOrder)
     private var hostGroups: [HostGroup]
+    @Query(sort: \JumpHost.sortOrder)
+    private var jumpHosts: [JumpHost]
 
     let existingHost: HostItem?
     let defaultPort: Int
@@ -32,10 +34,8 @@ struct AddHostSheet: View {
     @State private var group = ""
     @State private var showPassword = false
     @State private var selectedCredential: Credential?
-    @State private var jumpHostHostname = ""
-    @State private var jumpHostPort = "22"
-    @State private var jumpHostUsername = ""
     @State private var showJumpHost = false
+    @State private var selectedJumpHost: JumpHost?
 
     /// Detected key algorithm (Citadel 0.11+) for the pasted private key.
     private var detectedPrivateKeyType: String? {
@@ -327,13 +327,18 @@ struct AddHostSheet: View {
             Section {
                 Toggle(i18n.t(.jumpHostAdvanced), isOn: $showJumpHost)
                 if showJumpHost {
-                    TextField(i18n.t(.jumpHostHostname), text: $jumpHostHostname)
-                        .textContentType(.URL)
-                        .autocorrectionDisabled()
-                    TextField(i18n.t(.port), text: $jumpHostPort)
-                        .font(.system(size: 13, design: .monospaced))
-                    TextField(i18n.t(.username), text: $jumpHostUsername)
-                        .autocorrectionDisabled()
+                    Picker(i18n.t(.jumpHosts), selection: $selectedJumpHost) {
+                        Text(i18n.t(.none)).tag(JumpHost?.none)
+                        ForEach(jumpHosts) { jumpHost in
+                            Text(jumpHost.displayString).tag(JumpHost?.some(jumpHost))
+                        }
+                    }
+                    .disabled(jumpHosts.isEmpty)
+                    if jumpHosts.isEmpty {
+                        Text(i18n.t(.noJumpHosts))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
@@ -374,8 +379,14 @@ struct AddHostSheet: View {
             port = String(defaultPort)
             // Pre-fill with initial host if provided
             if let initialHost {
-                name = initialHost
-                host = initialHost
+                let parsed = SSHHostParser.parse(initialHost)
+                let displayHost = parsed.host.isEmpty ? initialHost : parsed.host
+                name = displayHost
+                host = displayHost
+                username = parsed.username ?? ""
+                if let parsedPort = parsed.port {
+                    port = String(parsedPort)
+                }
             }
             return
         }
@@ -391,14 +402,20 @@ struct AddHostSheet: View {
         secureEnclaveKeyTagInput = existing.loadSecureEnclaveKeyTag() ?? ""
         group = existing.groupRef?.name ?? ""
         selectedCredential = existing.credentialRef
+        selectedJumpHost = existing.jumpHostRef
+        showJumpHost = existing.jumpHostRef != nil
     }
 
     private func save() {
         let portNum = Int(port) ?? defaultPort
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         let hostInput = host.trimmingCharacters(in: .whitespaces)
-        let trimmedHost = hostInput.isEmpty ? trimmedName : hostInput
-        let trimmedUser = username.trimmingCharacters(in: .whitespaces)
+        let parsedHost = SSHHostParser.parse(hostInput.isEmpty ? trimmedName : hostInput)
+        let trimmedHost = parsedHost.host.isEmpty ? (hostInput.isEmpty ? trimmedName : hostInput) : parsedHost.host
+        let trimmedUser = username.trimmingCharacters(in: .whitespaces).isEmpty
+            ? (parsedHost.username ?? "")
+            : username.trimmingCharacters(in: .whitespaces)
+        let effectivePort = parsedHost.port ?? portNum
         let trimmedGroup = group.isEmpty
             ? nil
             : group.trimmingCharacters(in: .whitespaces)
@@ -412,10 +429,11 @@ struct AddHostSheet: View {
         if let existing = existingHost {
             existing.name = trimmedName
             existing.host = trimmedHost
-            existing.port = portNum
+            existing.port = effectivePort
             existing.username = trimmedUser
             existing.authType = authType
             existing.credentialRef = selectedCredential
+            existing.jumpHostRef = showJumpHost ? selectedJumpHost : nil
             existing.groupRef = groupRef
             existing.deleteCredentials()
             if !usingVault {
@@ -438,7 +456,7 @@ struct AddHostSheet: View {
             let item = HostItem(
                 name: trimmedName,
                 host: trimmedHost,
-                port: portNum,
+                port: effectivePort,
                 username: trimmedUser,
                 authType: authType,
                 password: usingVault ? nil : (authType == .password ? password : nil),
@@ -446,7 +464,8 @@ struct AddHostSheet: View {
                 certificatePEM: usingVault ? nil : (authType == .certificate ? certificatePEM : nil),
                 secureEnclaveKeyTag: usingVault ? nil : (authType == .secureEnclave ? secureEnclaveKeyTag : nil),
                 groupRef: groupRef,
-                credentialRef: selectedCredential
+                credentialRef: selectedCredential,
+                jumpHostRef: showJumpHost ? selectedJumpHost : nil
             )
             onSave(item)
         }

@@ -6,6 +6,25 @@
 import XCTest
 @testable import Bonk
 
+#if os(macOS)
+private final class TestDataSink: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [Data] = []
+
+    func append(_ value: Data) {
+        lock.lock()
+        values.append(value)
+        lock.unlock()
+    }
+
+    var data: [Data] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
+    }
+}
+#endif
+
 final class SSHModelsTests: XCTestCase {
 
     func testConnectedState() {
@@ -39,4 +58,51 @@ final class SSHModelsTests: XCTestCase {
         XCTAssertEqual(config.port, 22)
         XCTAssertEqual(config.maxReconnectAttempts, 5)
     }
+
+    #if os(macOS)
+        func testOpenSSHResponderUsesHostScopedPassword() {
+            let sink = TestDataSink()
+            let responder = OpenSSHAuthPromptResponder(
+                credentials: [
+                    OpenSSHPasswordCredential(
+                        username: "xuhaibo",
+                        host: "jmp.allinmd.cn",
+                        password: "secret"
+                    ),
+                ],
+                allowInteractivePrompt: false,
+                allowUnscopedPassword: false,
+                write: sink.append
+            )
+
+            responder.observe(
+                Data("xuhaibo@jmp.allinmd.cn's password: ".utf8)
+            )
+
+            XCTAssertEqual(
+                sink.data.compactMap { String(data: $0, encoding: .utf8) },
+                ["secret\n"]
+            )
+        }
+
+        func testOpenSSHResponderDoesNotSendTargetPasswordToUnscopedJumpPrompt() {
+            let sink = TestDataSink()
+            let responder = OpenSSHAuthPromptResponder(
+                credentials: [
+                    OpenSSHPasswordCredential(
+                        username: "target",
+                        host: "target.internal",
+                        password: "target-secret"
+                    ),
+                ],
+                allowInteractivePrompt: false,
+                allowUnscopedPassword: false,
+                write: sink.append
+            )
+
+            responder.observe(Data("Password: ".utf8))
+
+            XCTAssertTrue(sink.data.isEmpty)
+        }
+    #endif
 }

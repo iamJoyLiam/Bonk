@@ -75,12 +75,20 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Toolbar
 
     private func installToolbar(on window: NSWindow) {
+        // Older builds shipped a stale autosaved toolbar layout (before the
+        // server-resource items existed). Clear it once, then let AppKit
+        // persist user customizations from now on.
+        if !UserDefaults.standard.bool(forKey: "toolbar_config_migrated_v2") {
+            UserDefaults.standard.removeObject(
+                forKey: "NSToolbar Configuration com.bonk.mainWindowToolbar"
+            )
+            UserDefaults.standard.set(true, forKey: "toolbar_config_migrated_v2")
+        }
+
         let toolbar = NSToolbar(identifier: "com.bonk.mainWindowToolbar")
         toolbar.delegate = toolbarDelegate
         toolbar.allowsUserCustomization = true
-        // Fixed layout: the stats capsule and reordered defaults must win over
-        // stale autosaved configurations from earlier builds.
-        toolbar.autosavesConfiguration = false
+        toolbar.autosavesConfiguration = true
         toolbar.displayMode = .iconOnly
         self.toolbar = toolbar
         window.toolbar = toolbar

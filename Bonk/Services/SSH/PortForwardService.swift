@@ -29,6 +29,10 @@ final class PortForwardService {
 
     /// Active port forwardings — stores the running Task and its config.
     private var activeTasks: [UUID: (task: Task<Void, Never>, config: PortForward)] = [:]
+    #if os(macOS)
+        /// OpenSSH process handles for macOS network transports.
+        private var openSSHHandles: [UUID: OpenSSHForwardHandle] = [:]
+    #endif
 
     /// Whether any forwarding is active.
     var isActive: Bool {
@@ -48,10 +52,45 @@ final class PortForwardService {
     }
 
     /// Start a port forwarding.
-    func start(config: PortForward) async throws {
+    func start(
+        config: PortForward,
+        using sshService: SSHNetworkService? = nil
+    ) async throws {
         guard activeTasks[config.id] == nil else {
             throw PortForwardError.alreadyRunning
         }
+
+        #if os(macOS)
+            if let sshService {
+                let forward = SSHPortForwardConfiguration(
+                    type: {
+                        switch config.type {
+                        case .local: .local
+                        case .remote: .remote
+                        case .dynamic: .dynamic
+                        }
+                    }(),
+                    localHost: config.localHost,
+                    localPort: config.localPort,
+                    remoteHost: config.remoteHost,
+                    remotePort: config.remotePort
+                )
+                let handle = try await sshService.startPortForward(forward, onExit: {})
+                let task = Task {
+                    await handle.waitUntilExit()
+                    await MainActor.run {
+                        config.isActive = false
+                        self.activeTasks.removeValue(forKey: config.id)
+                        self.openSSHHandles.removeValue(forKey: config.id)
+                    }
+                }
+                activeTasks[config.id] = (task: task, config: config)
+                openSSHHandles[config.id] = handle
+                config.isActive = true
+                logger.info("Started OpenSSH port forwarding: \(config.displayDescription)")
+                return
+            }
+        #endif
 
         guard let client = sshClient else {
             throw PortForwardError.serviceUnavailable
@@ -88,6 +127,9 @@ final class PortForwardService {
         guard let entry = activeTasks[config.id] else { return }
         entry.task.cancel()
         activeTasks.removeValue(forKey: config.id)
+        #if os(macOS)
+            openSSHHandles.removeValue(forKey: config.id)?.close()
+        #endif
         config.isActive = false
         logger.info("Stopped port forwarding: \(config.displayDescription)")
     }
@@ -99,6 +141,10 @@ final class PortForwardService {
             entry.config.isActive = false
         }
         activeTasks.removeAll()
+        #if os(macOS)
+            openSSHHandles.values.forEach { $0.close() }
+            openSSHHandles.removeAll()
+        #endif
     }
 
     /// Get the status of a port forwarding.

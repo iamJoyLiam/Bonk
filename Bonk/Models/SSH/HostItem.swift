@@ -33,6 +33,8 @@ final class HostItem {
     var groupRef: HostGroup?
     @Relationship(deleteRule: .nullify)
     var credentialRef: Credential?
+    @Relationship(deleteRule: .nullify)
+    var jumpHostRef: JumpHost?
 
     var authType: AuthType {
         get { AuthType(rawValue: authTypeRaw) ?? .password }
@@ -101,6 +103,7 @@ final class HostItem {
         secureEnclaveKeyTag: String? = nil,
         groupRef: HostGroup? = nil,
         credentialRef: Credential? = nil,
+        jumpHostRef: JumpHost? = nil,
         isSerial: Bool? = nil,
         serialBaudRate: Int? = nil
     ) {
@@ -113,6 +116,7 @@ final class HostItem {
         createdAt = Date()
         self.groupRef = groupRef
         self.credentialRef = credentialRef
+        self.jumpHostRef = jumpHostRef
         self.isSerial = isSerial
         self.serialBaudRate = serialBaudRate
 

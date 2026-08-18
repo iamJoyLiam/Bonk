@@ -14,6 +14,8 @@ public struct SSHConnectionConfig: Sendable, Hashable {
     public let port: UInt16
     public let username: String
     public let authMethod: SSHAuthMethod
+    /// Optional OpenSSH ProxyJump target.
+    public let jumpHost: SSHJumpHostConfig?
     public let maxReconnectAttempts: Int
     public let baseReconnectDelay: Duration
 
@@ -22,6 +24,7 @@ public struct SSHConnectionConfig: Sendable, Hashable {
         port: UInt16 = 22,
         username: String,
         authMethod: SSHAuthMethod,
+        jumpHost: SSHJumpHostConfig? = nil,
         maxReconnectAttempts: Int = 5,
         baseReconnectDelay: Duration = .seconds(1)
     ) {
@@ -29,8 +32,60 @@ public struct SSHConnectionConfig: Sendable, Hashable {
         self.port = port
         self.username = username
         self.authMethod = authMethod
+        self.jumpHost = jumpHost
         self.maxReconnectAttempts = maxReconnectAttempts
         self.baseReconnectDelay = baseReconnectDelay
+    }
+}
+
+/// Jump host parameters consumed by OpenSSH `ProxyJump`.
+///
+/// Kept separate from the SwiftData `JumpHost` model so connection services
+/// can also use ephemeral jump settings (for example imported SSH config).
+public struct SSHJumpHostConfig: Sendable, Hashable {
+    public let host: String
+    public let port: UInt16
+    public let username: String
+    public let authMethod: SSHAuthMethod?
+
+    public init(
+        host: String,
+        port: UInt16 = 22,
+        username: String,
+        authMethod: SSHAuthMethod? = nil
+    ) {
+        self.host = host
+        self.port = port
+        self.username = username
+        self.authMethod = authMethod
+    }
+}
+
+public enum SSHPortForwardType: Sendable, Hashable {
+    case local
+    case remote
+    case dynamic
+}
+
+public struct SSHPortForwardConfiguration: Sendable, Hashable {
+    public let type: SSHPortForwardType
+    public let localHost: String
+    public let localPort: Int
+    public let remoteHost: String
+    public let remotePort: Int
+
+    public init(
+        type: SSHPortForwardType,
+        localHost: String,
+        localPort: Int,
+        remoteHost: String,
+        remotePort: Int
+    ) {
+        self.type = type
+        self.localHost = localHost
+        self.localPort = localPort
+        self.remoteHost = remoteHost
+        self.remotePort = remotePort
     }
 }
 
