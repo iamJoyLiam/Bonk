@@ -60,6 +60,25 @@ struct SFTPBrowserView: View {
                 } else {
                     fileList(service)
                 }
+            } else if tab.session?.isSFTPConnecting == true {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = tab.session?.sftpErrorMessage {
+                VStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.title)
+                        .foregroundStyle(.yellow)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button(i18n.t(.retry)) {
+                        Task { await connectSFTP() }
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding()
             } else {
                 VStack(spacing: 12) {
                     Image(systemName: "folder.badge.questionmark")
@@ -93,8 +112,7 @@ struct SFTPBrowserView: View {
             Button(i18n.t(.cancel), role: .cancel) { newFolderName = "" }
         }
         .task(id: tab.id) {
-            try? await Task.sleep(for: .milliseconds(200))
-            if tab.session?.connectionState.isConnected == true, tab.session?.sftpService == nil {
+            if tab.session?.sshService != nil, tab.session?.sftpService == nil {
                 await connectSFTP()
             }
         }
@@ -290,20 +308,16 @@ struct SFTPBrowserView: View {
     // MARK: - Actions
 
     private func connectSFTP() async {
-        guard let sshService = await tab.session?.sshService else {
+        guard let session = tab.session, session.sshService != nil else {
             Log.sftp.warning("Cannot connect SFTP: no SSH service for tab \(tab.title)")
             return
         }
         Log.sftp.info("Connecting SFTP for tab \(tab.title)...")
-        let sftp = SFTPService()
-        do {
-            try await sftp.connect(using: sshService)
-            tab.session?.sftpService = sftp
+        if await session.ensureSFTP() != nil {
             Log.sftp.info("SFTP connected for tab \(tab.title)")
-        } catch {
-            Log.sftp.error("SFTP connection failed for tab \(tab.title): \(error.localizedDescription)")
-            sftp.errorMessage = error.localizedDescription
-            tab.session?.sftpService = sftp
+        } else {
+            let message = session.sftpErrorMessage ?? "unknown error"
+            Log.sftp.error("SFTP connection failed for tab \(tab.title): \(message)")
         }
     }
 }

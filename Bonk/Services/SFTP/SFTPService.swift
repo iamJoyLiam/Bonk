@@ -25,14 +25,31 @@ final class SFTPService {
 
     /// Open SFTP subsystem over the existing SSH connection.
     func connect(using sshService: SSHNetworkService) async throws {
+        if let sftpClient, sftpClient.isActive {
+            if entries.isEmpty {
+                try await listDirectory()
+            }
+            return
+        }
+        sftpClient = nil
+
         Log.sftp.info("Opening SFTP session...")
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
         let client = try await sshService.openSFTPClient()
-        self.sftpClient = client
-        self.currentPath = try await client.getRealPath(atPath: ".")
-        Log.sftp.info("SFTP connected, initial path: \(self.currentPath)")
-        // Brief delay to ensure SFTP session is fully initialized
-        try? await Task.sleep(for: .milliseconds(200))
-        try await listDirectory()
+        do {
+            let path = try await client.getRealPath(atPath: ".")
+            sftpClient = client
+            currentPath = path
+            Log.sftp.info("SFTP connected, initial path: \(self.currentPath)")
+            try await listDirectory()
+        } catch {
+            try? await client.close()
+            sftpClient = nil
+            throw error
+        }
     }
 
     /// List files in the current directory.

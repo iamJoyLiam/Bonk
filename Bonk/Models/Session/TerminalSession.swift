@@ -10,6 +10,8 @@ final class TerminalSession {
     var sshService: SSHNetworkService?
     var ptySession: PTYSession?
     var sftpService: SFTPService?
+    private var sftpConnectionTask: Task<SFTPService, Error>?
+    var sftpErrorMessage: String?
     var outputStream: AsyncStream<String>?
     var connectedAt: Date?
     var errorMessage: String?
@@ -26,15 +28,56 @@ final class TerminalSession {
         connectionState.isConnected
     }
 
+    var isSFTPConnecting: Bool {
+        sftpConnectionTask != nil
+    }
+
     init(tabID: UUID) {
         self.tabID = tabID
+    }
+
+    /// Return the existing SFTP service, or coalesce concurrent connection
+    /// requests into one native SFTP handshake.
+    func ensureSFTP() async -> SFTPService? {
+        if let sftpService {
+            return sftpService
+        }
+
+        if let sftpConnectionTask {
+            return try? await sftpConnectionTask.value
+        }
+
+        guard let sshService else { return nil }
+
+        sftpErrorMessage = nil
+        let task = Task { @MainActor in
+            let service = SFTPService()
+            try await service.connect(using: sshService)
+            return service
+        }
+        sftpConnectionTask = task
+
+        defer { sftpConnectionTask = nil }
+
+        do {
+            let service = try await task.value
+            sftpService = service
+            sftpErrorMessage = nil
+            return service
+        } catch {
+            sftpErrorMessage = error.localizedDescription
+            return nil
+        }
     }
 
     /// Tear down all connection resources.
     func disconnect() {
         stateObservationTask?.cancel()
         stateObservationTask = nil
+        sftpConnectionTask?.cancel()
+        sftpConnectionTask = nil
         sftpService = nil
+        sftpErrorMessage = nil
         ptySession?.close()
         ptySession = nil
         // Only disconnect SSH service if this session owns it

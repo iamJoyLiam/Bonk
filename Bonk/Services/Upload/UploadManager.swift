@@ -143,16 +143,14 @@ final class UploadManager {
 
     /// Ensure SFTP service is connected for the given tab.
     func ensureSFTP(for tab: TerminalTab, i18n: I18n) async -> SFTPService? {
-        if let existing = tab.session?.sftpService { return existing }
-        guard let sshService = tab.session?.sshService else { return nil }
-
-        let sftp = SFTPService()
-        do {
-            try await sftp.connect(using: sshService)
-            tab.session?.sftpService = sftp
+        guard let session = tab.session, session.sshService != nil else { return nil }
+        if let sftp = await session.ensureSFTP() {
             return sftp
-        } catch {
-            showMessage(i18n.tr(.sftpConnectFailed, args: error.localizedDescription), i18n: i18n)
+        } else {
+            let message = session.sftpErrorMessage.map {
+                i18n.tr(.sftpConnectFailed, args: $0)
+            } ?? i18n.t(.sftpConnectFailed)
+            showMessage(message, i18n: i18n)
             return nil
         }
     }

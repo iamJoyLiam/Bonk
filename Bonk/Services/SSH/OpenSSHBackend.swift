@@ -226,6 +226,9 @@ final class OpenSSHBackend: @unchecked Sendable {
             "-o", "NumberOfPasswordPrompts=2",
             "-o", "ConnectTimeout=10",
         ]
+        // Keep modern host-key algorithms first, but retain compatibility with
+        // legacy JumpServer/OpenSSH servers that advertise only ssh-rsa.
+        args += legacyRSACompatibilityArguments()
         args += authenticationArguments(for: config.authMethod)
 
         if let proxyCommand = jumpProxyCommand() {
@@ -251,6 +254,16 @@ final class OpenSSHBackend: @unchecked Sendable {
             args += ["-o", "CertificateFile=\(targetCertificateFile.path)"]
         }
         return args
+    }
+
+    /// `+ssh-rsa` appends legacy RSA/SHA-1 instead of replacing modern
+    /// algorithms. Modern servers still negotiate stronger algorithms first;
+    /// old servers get a compatible fallback.
+    private func legacyRSACompatibilityArguments() -> [String] {
+        [
+            "-o", "HostKeyAlgorithms=+ssh-rsa",
+            "-o", "PubkeyAcceptedAlgorithms=+ssh-rsa",
+        ]
     }
 
     private func makeAuthResponder(
@@ -424,6 +437,7 @@ final class OpenSSHBackend: @unchecked Sendable {
             "-o", "ConnectTimeout=10",
             "-p", String(jumpHost.port),
         ]
+        args += legacyRSACompatibilityArguments()
         args += authenticationArguments(for: jumpHost.authMethod)
         if let jumpIdentityFile {
             args += ["-i", jumpIdentityFile.path]

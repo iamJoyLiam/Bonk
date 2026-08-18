@@ -280,7 +280,15 @@ public actor SSHNetworkService {
         #if os(macOS)
             if usesOpenSSHTransport {
                 guard let config else { throw SSHServiceError.notConnected }
-                try? await sftpNativeClient?.close()
+                if let existingClient = sftpNativeClient, existingClient.isConnected {
+                    do {
+                        return try await existingClient.openSFTP()
+                    } catch {
+                        try? await existingClient.close()
+                        sftpNativeClient = nil
+                    }
+                }
+
                 let nativeClient = try await makeNativeClient(config: config)
                 do {
                     let sftp = try await nativeClient.openSFTP()

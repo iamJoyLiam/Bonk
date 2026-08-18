@@ -12,6 +12,7 @@ struct ContentView: View {
         @State private var quakeController = QuakeController()
         @State private var showTerminalSearch = false
         @State private var sftpWindow: NSWindow?
+        @State private var sftpWindowDelegate: SFTPWindowDelegate?
         @Environment(WorkspaceManager.self) private var workspace
         @Bindable var sessionManager: SessionManager
         @Bindable var toolbarCoordinator: ToolbarCoordinator
@@ -107,10 +108,14 @@ struct ContentView: View {
             .clipped()
             // SFTP independent window
             .onChange(of: workspace.isSFTPWindowOpen) { _, isOpen in
-                if isOpen { openSFTPWindow() }
+                if isOpen {
+                    openSFTPWindow()
+                } else {
+                    closeSFTPWindow()
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .toggleSFTP)) { _ in
-                toggleSFTPWindow()
+                workspace.toggleSFTPWindow()
             }
             .onReceive(NotificationCenter.default.publisher(for: .terminalNewTab)) { _ in
                 handleNewTabShortcut()
@@ -168,35 +173,56 @@ struct ContentView: View {
 
     private func toggleSFTPWindow() {
         #if os(macOS)
-            if let window = sftpWindow, window.isVisible {
-                window.close()
-            } else {
-                openSFTPWindow()
-            }
+            workspace.toggleSFTPWindow()
         #endif
     }
 
     private func openSFTPWindow() {
         #if os(macOS)
+            if let window = sftpWindow, window.isVisible {
+                window.makeKeyAndOrderFront(nil)
+                return
+            }
+
+            let contentSize = NSSize(width: 1000, height: 650)
+            let minimumContentSize = NSSize(width: 800, height: 500)
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 1000, height: 650),
+                contentRect: NSRect(origin: .zero, size: contentSize),
                 styleMask: [.titled, .closable, .resizable, .miniaturizable],
                 backing: .buffered,
                 defer: false
             )
+            window.contentMinSize = minimumContentSize
             window.title = i18n.t(.sftpBrowser)
             window.isReleasedWhenClosed = false
-            window.contentView = NSHostingView(
+            let hostingView = NSHostingView(
                 rootView: SFTPWindowView(sessionManager: sessionManager)
                     .environment(i18n)
                     .environment(workspace)
                     .modelContext(modelContext)
             )
+            hostingView.autoresizingMask = [.width, .height]
+            window.contentView = hostingView
+            window.setContentSize(contentSize)
             window.center()
             window.makeKeyAndOrderFront(nil)
-            let delegate = SFTPWindowDelegate { sftpWindow = nil }
+            let delegate = SFTPWindowDelegate {
+                sftpWindow = nil
+                sftpWindowDelegate = nil
+                workspace.isSFTPWindowOpen = false
+            }
+            sftpWindowDelegate = delegate
             window.delegate = delegate
             sftpWindow = window
+        #endif
+    }
+
+    private func closeSFTPWindow() {
+        #if os(macOS)
+            guard let window = sftpWindow else { return }
+            window.close()
+            sftpWindow = nil
+            sftpWindowDelegate = nil
         #endif
     }
 

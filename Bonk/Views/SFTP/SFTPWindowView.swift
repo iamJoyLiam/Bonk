@@ -27,7 +27,7 @@ struct SFTPWindowView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let tab = sessionManager.activeTab, let sftp = tab.session?.sftpService {
+            if let tab = sessionManager.activeTab, tab.session?.sshService != nil {
                 // Dual pane: local (left) + remote (right)
                 HSplitView {
                     // Left: Local files
@@ -42,7 +42,7 @@ struct SFTPWindowView: View {
                 }
 
                 // Bottom: Transfer progress
-                if !sftp.transfers.isEmpty {
+                if let sftp = tab.session?.sftpService, !sftp.transfers.isEmpty {
                     Divider()
                     transferPanel(sftp: sftp)
                 }
@@ -85,9 +85,6 @@ struct SFTPWindowView: View {
                 ?? (NSHomeDirectory() as NSString).appendingPathComponent("Downloads")
             localPath = defaultPath
             loadLocalFiles()
-            if let tab = sessionManager.activeTab, tab.session?.sftpService == nil {
-                Task { _ = await ensureSFTP(for: tab) }
-            }
         }
     }
 
@@ -300,16 +297,4 @@ struct SFTPWindowView: View {
         }
     }
 
-    private func ensureSFTP(for tab: TerminalTab) async -> SFTPService? {
-        if let existing = tab.session?.sftpService { return existing }
-        guard let sshService = tab.session?.sshService else { return nil }
-        let sftp = SFTPService()
-        do {
-            try await sftp.connect(using: sshService)
-            tab.session?.sftpService = sftp
-            return sftp
-        } catch {
-            return nil
-        }
-    }
 }

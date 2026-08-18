@@ -373,9 +373,17 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// Query the terminal's current working directory by sending `pwd` and parsing output.
     /// Returns nil if timeout or not at a shell prompt.
     public func getCWD() async -> String? {
-        guard serialFDBox.withLockedValue({ $0 }) < 0 else { return nil }
+        let fileDescriptor = serialFDBox.withLockedValue { $0 }
+        let isProcess = processModeBox.withLock { $0 }
+        let hasNativeWriter = writerBox.withLockedValue { $0 != nil }
 
-        guard let writer = writerBox.withLockedValue({ $0 }) else { return nil }
+        // Citadel PTYs have no file descriptor and write through TTYStdinWriter.
+        // OpenSSH PTYs use the process-owned master fd. Both need cwd probing.
+        if isProcess {
+            guard fileDescriptor >= 0 else { return nil }
+        } else {
+            guard fileDescriptor < 0, hasNativeWriter else { return nil }
+        }
 
         // Wrappers to satisfy @Sendable requirements across isolation boundaries.
         final class SendableContinuation: @unchecked Sendable {
@@ -426,12 +434,11 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                 // Small delay before sending pwd to ensure previous output is processed
                 try? await Task.sleep(for: .milliseconds(100))
 
-                var buf = ByteBuffer()
-                buf.writeString("pwd\n")
-                try? await writer.write(buf)
-
-                // Mark pwd as sent
+                // Mark before writing so a fast PTY response cannot race past
+                // the observer between write completion and this assignment.
                 pwdSent.withLock { $0 = true }
+                let input = Array("pwd\n".utf8)[...]
+                try? await self.sendInput(input)
             }
 
             Task {
