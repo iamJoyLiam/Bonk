@@ -356,7 +356,18 @@ struct SSHKeyExchangeStateMachine {
     ) throws -> EventLoopFuture<SSHMultiMessage?> {
         switch self.role {
         case .client:
-            guard message.hostKey.keyPrefix.elementsEqual(negotiated.negotiatedHostKeyAlgorithm.utf8) else {
+            // RSA host keys use the "ssh-rsa" wire identifier for all of
+            // rsa-sha2-256, rsa-sha2-512, and the legacy ssh-rsa (SHA-1)
+            // algorithm, so accept any negotiated RSA variant.
+            let isExpectedHostKey: Bool
+            if case .custom(let key) = message.hostKey.backingKey, key is RSASHA2PublicKeyBase {
+                isExpectedHostKey = ["ssh-rsa", "rsa-sha2-256", "rsa-sha2-512"].contains {
+                    negotiated.negotiatedHostKeyAlgorithm == Substring($0)
+                }
+            } else {
+                isExpectedHostKey = message.hostKey.keyPrefix.elementsEqual(negotiated.negotiatedHostKeyAlgorithm.utf8)
+            }
+            guard isExpectedHostKey else {
                 throw NIOSSHError.invalidHostKeyForKeyExchange(
                     expected: negotiated.negotiatedHostKeyAlgorithm,
                     got: message.hostKey.keyPrefix

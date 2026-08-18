@@ -10,6 +10,9 @@ final class AIProviderRecord {
     var typeRaw: String
     var model: String
     var endpoint: String
+    /// Optional additive fields — safe for SwiftData migration.
+    var protocolRaw: String?
+    var extraHeadersJSON: String?
     var maxOutputTokens: Int?
     var telemetryEnabled: Bool
     var isActive: Bool
@@ -39,12 +42,38 @@ final class AIProviderRecord {
         KeychainHelper.get(for: keychainAccount) != nil
     }
 
+    var protocolType: AIProviderProtocol {
+        get {
+            let stored = AIProviderProtocol(rawValue: protocolRaw ?? "")
+                ?? type.defaultProtocolType
+            return type.supportsResponses ? stored : .chatCompletions
+        }
+        set { protocolRaw = newValue.rawValue }
+    }
+
+    var extraHeaders: [String: String] {
+        get {
+            guard let extraHeadersJSON,
+                  let data = extraHeadersJSON.data(using: .utf8),
+                  let headers = try? JSONDecoder().decode([String: String].self, from: data)
+            else { return [:] }
+            return headers
+        }
+        set {
+            extraHeadersJSON = newValue.isEmpty
+                ? nil
+                : (try? JSONEncoder().encode(newValue)).flatMap { String(data: $0, encoding: .utf8) }
+        }
+    }
+
     init(
         id: UUID = UUID(),
         name: String = "",
         type: AIProviderType = .claude,
         model: String = "",
         endpoint: String = "",
+        protocolType: AIProviderProtocol? = nil,
+        extraHeaders: [String: String] = [:],
         apiKey: String = "",
         maxOutputTokens: Int? = nil,
         telemetryEnabled: Bool = false,
@@ -55,6 +84,11 @@ final class AIProviderRecord {
         typeRaw = type.rawValue
         self.model = model
         self.endpoint = endpoint.isEmpty ? type.defaultEndpoint : endpoint
+        let resolvedProtocol = protocolType ?? type.defaultProtocolType
+        self.protocolRaw = (type.supportsResponses ? resolvedProtocol : .chatCompletions).rawValue
+        self.extraHeadersJSON = extraHeaders.isEmpty
+            ? nil
+            : (try? JSONEncoder().encode(extraHeaders)).flatMap { String(data: $0, encoding: .utf8) }
         self.maxOutputTokens = maxOutputTokens
         self.telemetryEnabled = telemetryEnabled
         self.isActive = isActive

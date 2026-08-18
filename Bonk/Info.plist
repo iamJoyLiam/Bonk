@@ -16,5 +16,10 @@
 	<string>https://raw.githubusercontent.com/iamJoyLiam/Bonk/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>SKVEWyTvrOSxJ4wqTUhSh2hVuuCGfLdq6T+rv4a0YWc=</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

@@ -85,18 +85,19 @@ final class AgentEngine {
 
         // swiftlint:disable:next line_length
         Self.logger.info("\(label, privacy: .public): provider=\(provider.name, privacy: .public) model=\(provider.model, privacy: .public)")
+        let llmProvider = LLMProviderFactory.provider(for: provider, apiKey: apiKey)
 
         let maxRetries = 2
         for attempt in 0 ... maxRetries {
             do {
                 let response: String = if mode == .agent {
                     try await executeNonStreaming(
-                        provider: provider, apiKey: apiKey,
+                        provider: llmProvider,
                         systemPrompt: systemPrompt, userPrompt: input
                     )
                 } else {
                     try await executeStreaming(
-                        provider: provider, apiKey: apiKey,
+                        provider: llmProvider,
                         systemPrompt: systemPrompt, userPrompt: input
                     )
                 }
@@ -143,23 +144,34 @@ final class AgentEngine {
     // MARK: - Streaming Execution (Ask/Edit)
 
     private func executeStreaming(
-        provider: AIProviderConfig,
-        apiKey: String,
+        provider: any LLMProvider,
         systemPrompt: String,
         userPrompt: String
     ) async throws -> String {
         var lastUIUpdate = Date.distantPast
-        return try await AIProviderNetworking.streamRequest(
-            provider: provider, apiKey: apiKey,
-            systemPrompt: systemPrompt, userPrompt: userPrompt
-        ) { [weak self] delta in
-            guard let self else { return }
-            let now = Date()
-            if now.timeIntervalSince(lastUIUpdate) > 0.1 {
-                streamingResponse += delta
-                lastUIUpdate = now
+        var result = ""
+        let messages: [LLMMessage] = [
+            .system(systemPrompt),
+            .user(userPrompt),
+        ]
+        for try await event in provider.stream(
+            messages: messages,
+            maxTokens: nil,
+            disableReasoning: false
+        ) {
+            switch event {
+            case let .textDelta(delta):
+                result += delta
+                let now = Date()
+                if now.timeIntervalSince(lastUIUpdate) > 0.1 {
+                    streamingResponse += delta
+                    lastUIUpdate = now
+                }
+            case .reasoning, .toolCall, .completed:
+                break
             }
         }
+        return result
     }
 
     // MARK: - Non-Streaming Execution (Agent)
@@ -170,10 +182,27 @@ final class AgentEngine {
         systemPrompt: String,
         userPrompt: String
     ) async throws -> String {
-        try await AIProviderNetworking.nonStreamRequest(
-            provider: provider, apiKey: apiKey,
-            systemPrompt: systemPrompt, userPrompt: userPrompt
+        try await executeNonStreaming(
+            provider: LLMProviderFactory.provider(for: provider, apiKey: apiKey),
+            systemPrompt: systemPrompt,
+            userPrompt: userPrompt
         )
+    }
+
+    private func executeNonStreaming(
+        provider: any LLMProvider,
+        systemPrompt: String,
+        userPrompt: String
+    ) async throws -> String {
+        let response = try await provider.chat(
+            messages: [
+                .system(systemPrompt),
+                .user(userPrompt),
+            ],
+            maxTokens: nil,
+            disableReasoning: false
+        )
+        return response.text
     }
 
     // MARK: - Agent Mode (Plan → Approve → Execute)

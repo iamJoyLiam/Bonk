@@ -53,6 +53,12 @@ public class RSASHA2Signature512: RSASHA2SignatureBase {
     public override class var signaturePrefix: String { "rsa-sha2-512" }
 }
 
+/// Legacy `ssh-rsa` signature (RSA + SHA-1). Only offered as a last resort
+/// for old bastions that do not implement RFC 8332.
+public class RSASHA1Signature: RSASHA2SignatureBase {
+    public override class var signaturePrefix: String { "ssh-rsa" }
+}
+
 /// Public key verifying RSA signatures with the digest chosen by the
 /// signature's algorithm identifier (ssh-rsa / rsa-sha2-256 / rsa-sha2-512).
 open class RSASHA2PublicKeyBase: NIOSSHPublicKeyProtocol {
@@ -135,6 +141,12 @@ public class RSASHA2PublicKey512: RSASHA2PublicKeyBase {
     public override class var publicKeyPrefix: String { "rsa-sha2-512" }
 }
 
+/// Legacy `ssh-rsa` host key. Verification is handled by the base class,
+/// which picks SHA-1 when the signature prefix is `ssh-rsa`.
+public class RSASHA1PublicKey: RSASHA2PublicKeyBase {
+    public override class var publicKeyPrefix: String { "ssh-rsa" }
+}
+
 /// Registers the RFC 8332 algorithms. Idempotent; call once at startup.
 public enum RSASHA2Support {
     private static let registeredOnce: Void = {
@@ -148,6 +160,12 @@ public enum RSASHA2Support {
         NIOSSHAlgorithms.register(
             publicKey: RSASHA2PublicKey512.self,
             signature: RSASHA2Signature512.self
+        )
+        // Legacy fallback for bastions offering only ssh-rsa (RSA + SHA-1).
+        // Registered last so stronger algorithms are preferred when available.
+        NIOSSHAlgorithms.register(
+            publicKey: RSASHA1PublicKey.self,
+            signature: RSASHA1Signature.self
         )
     }()
 

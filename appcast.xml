@@ -6,6 +6,39 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.16</title>
+            <pubDate>Tue, 18 Aug 2026 03:30:00 +0000</pubDate>
+            <sparkle:version>20261016</sparkle:version>
+            <sparkle:shortVersionString>2026.1.16</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- AI Provider 标准化：统一 LLM Provider Layer，Agent Runtime 不再感知具体供应商
+- OpenAI 固定使用 Responses API，默认模型更新至 GPT-5.6 Terra
+- 第三方 OpenAI 兼容供应商支持 Chat Completions / Responses 协议切换（Kimi、Ollama 仅 Chat，开关自动隐藏）
+- 自定义供应商：名称 / Base URL / API Key / 模型 / 协议 / Extra Headers，支持无 Key 本地代理测试
+- 默认模型更新：Claude Sonnet 5、GPT-5.6 Terra、Qwen3.8-Max、Kimi K3、Gemini 3.5 Flash
+- 堡垒机 SSH 兼容：新增 Diffie-Hellman Fixed Group、GEX-SHA1、AES-CTR，修复 NIOSSHError.keyExchangeNegotiationFailure
+- 允许局域网 HTTP 访问，LiteLLM / 本地 AI 代理可直接使用
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.16/Bonk-2026.1.16-arm64.dmg"
+                length="14095772"
+                type="application/octet-stream"
+                sparkle:edSignature="1ooaAAQTA8m8qmSJPw3agty4VegvEx1v3xcM5HzyxIwLUKSfeeF8JHEYy83WWaBhU+kINGCXL/pI6NKIrqDXDQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.16/Bonk-2026.1.16-x86_64.dmg"
+                length="14993400"
+                type="application/octet-stream"
+                sparkle:edSignature="wkxT06Mac5kMqZjB9Vri0oA3nRSdWi9jHOqDoe6o37zm8C50KTcjjuhyFUCW7CF1YusBwF0y7bGbIBFmOjL8CA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.15</title>
             <pubDate>Tue, 18 Aug 2026 01:30:00 +0000</pubDate>
             <sparkle:version>20261015</sparkle:version>

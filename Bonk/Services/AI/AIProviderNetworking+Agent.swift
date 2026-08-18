@@ -31,8 +31,13 @@ extension AIProviderNetworking {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 60
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if !apiKey.isEmpty {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
         request.setValue("application/json", forHTTPHeaderField: "content-type")
+        for (key, value) in provider.extraHeaders where !value.isEmpty {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -63,13 +68,9 @@ extension AIProviderNetworking {
                       let name = function["name"] as? String
                 else { continue }
                 let argsString = function["arguments"] as? String ?? ""
-                let args = (try? JSONSerialization.jsonObject(with: Data(argsString.utf8)))
-                    as? [String: Any] ?? [:]
-                calls.append(
-                    AgentToolCall(id: id, name: name, arguments: args, argumentsJSON: argsString)
-                )
+                calls.append(LLMToolCall(id: id, name: name, argumentsJSON: argsString))
             }
         }
-        return AgentChatTurn(content: content, toolCalls: calls)
+        return LLMResponse(text: content ?? "", toolCalls: calls)
     }
 }

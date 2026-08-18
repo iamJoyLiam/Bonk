@@ -4,8 +4,7 @@ import SwiftData
 /// Bundle of long-lived state for one tool-loop run. Keeps helper signatures
 /// small instead of threading five parameters through every call.
 private struct AgentToolContext {
-    let provider: AIProviderConfig
-    let apiKey: String
+    let llmProvider: any LLMProvider
     let sshService: SSHNetworkService
     let hostName: String?
     let conversation: AIConversationRecord?
@@ -26,16 +25,17 @@ extension AgentEngine {
         context: ModelContext?
     ) async {
         guard let (provider, apiKey) = resolveProvider() else { return }
+        let llmProvider = LLMProviderFactory.provider(for: provider, apiKey: apiKey)
         let toolContext = AgentToolContext(
-            provider: provider, apiKey: apiKey,
+            llmProvider: llmProvider,
             sshService: sshService, hostName: hostName,
             conversation: conversation, context: context
         )
 
         let systemPrompt = CustomInstructions.buildSystemPrompt(base: AgentPrompts.toolSystemPrompt)
-        var messages: [[String: Any]] = [
-            ["role": "system", "content": systemPrompt],
-            ["role": "user", "content": input],
+        var messages: [LLMMessage] = [
+            .system(systemPrompt),
+            .user(input),
         ]
 
         for iteration in 0 ..< Self.maxAgentIterations {
@@ -61,13 +61,14 @@ extension AgentEngine {
         iteration: Int,
         input: String,
         toolContext: AgentToolContext,
-        messages: [[String: Any]]
-    ) async -> (messages: [[String: Any]], finished: Bool) {
+        messages: [LLMMessage]
+    ) async -> (messages: [LLMMessage], finished: Bool) {
         let turn: AgentChatTurn
         do {
-            turn = try await AIProviderNetworking.agentChat(
-                provider: toolContext.provider, apiKey: toolContext.apiKey,
-                messages: messages, tools: AgentTools.definitions
+            turn = try await toolContext.llmProvider.toolCall(
+                messages: messages,
+                tools: AgentTools.definitions,
+                maxTokens: nil
             )
         } catch {
             if iteration == 0 {
@@ -108,17 +109,11 @@ extension AgentEngine {
         }
 
         var nextMessages = messages
-        nextMessages.append([
-            "role": "assistant",
-            "content": turn.content ?? "",
-            "tool_calls": turn.toolCalls.map { call in
-                [
-                    "id": call.id,
-                    "type": "function",
-                    "function": ["name": call.name, "arguments": call.argumentsJSON],
-                ]
-            },
-        ])
+        nextMessages.append(LLMMessage(
+            role: .assistant,
+            content: turn.text,
+            toolCalls: turn.toolCalls
+        ))
         nextMessages.append(contentsOf: await executeToolCalls(
             turn.toolCalls, toolContext: toolContext
         ))
@@ -130,8 +125,8 @@ extension AgentEngine {
     private func executeToolCalls(
         _ calls: [AgentToolCall],
         toolContext: AgentToolContext
-    ) async -> [[String: Any]] {
-        var results: [[String: Any]] = []
+    ) async -> [LLMMessage] {
+        var results: [LLMMessage] = []
         for call in calls {
             let outcome: String
             if call.name == AgentTools.runCommandName,
@@ -143,7 +138,11 @@ extension AgentEngine {
             } else {
                 outcome = "Error: unknown tool or missing command argument."
             }
-            results.append(["role": "tool", "tool_call_id": call.id, "content": outcome])
+            results.append(LLMMessage(
+                role: .tool,
+                content: outcome,
+                toolCallID: call.id
+            ))
         }
         return results
     }

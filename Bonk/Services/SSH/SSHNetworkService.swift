@@ -187,6 +187,14 @@ public actor SSHNetworkService {
         var algorithms = SSHAlgorithms.all
         algorithms.keyExchangeAlgorithms = .add([
             DiffieHellmanGroupExchangeSha256.self,
+            DiffieHellmanGroupExchangeSha1.self,
+            DiffieHellmanFixedGroup<DiffieHellmanGroup1SHA1Parameters>.self,
+            DiffieHellmanFixedGroup<DiffieHellmanGroup16SHA512Parameters>.self,
+            DiffieHellmanFixedGroup<DiffieHellmanGroup18SHA512Parameters>.self,
+        ])
+        algorithms.transportProtectionSchemes = .add([
+            AES192CTRTransportProtection.self,
+            AES256CTRTransportProtection.self,
         ])
         let sshClient = try await SSHClient.connect(
             host: config.host,

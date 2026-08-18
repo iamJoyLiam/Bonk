@@ -16,8 +16,11 @@ extension AgentEngine {
     ) async {
         appendAgentMessage(.user, content: input, conversation: conversation, context: context)
 
-        let provider = resolveProvider()?.0
-        if provider?.type.supportsToolCalls == true {
+        let useToolLoop = resolveProvider().map { resolved in
+            LLMProviderFactory.provider(for: resolved.0, apiKey: resolved.1)
+                .capability.supportsToolCalls
+        } ?? false
+        if useToolLoop {
             await runAgentToolLoop(
                 input: input, sshService: sshService, hostName: hostName,
                 conversation: conversation, context: context

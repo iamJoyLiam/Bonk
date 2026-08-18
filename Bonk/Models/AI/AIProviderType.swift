@@ -55,14 +55,14 @@ enum AIProviderType: String, CaseIterable, Identifiable, Codable {
 
     var defaultModel: String {
         switch self {
-        case .claude: "claude-sonnet-4-20250514"
-        case .openAI: "gpt-4o"
-        case .openRouter: "anthropic/claude-sonnet-4-20250514"
+        case .claude: "claude-sonnet-5"
+        case .openAI: "gpt-5.6-terra"
+        case .openRouter: "anthropic/claude-sonnet-5"
         case .openCode: ""
         case .deepSeek: "deepseek-v4-flash"
-        case .qwen: "qwen-plus"
-        case .kimi: "kimi-k2"
-        case .gemini: "gemini-2.5-flash"
+        case .qwen: "qwen3.8-max"
+        case .kimi: "kimi-k3"
+        case .gemini: "gemini-3.5-flash"
         case .ollama: "llama3"
         case .custom: ""
         }
@@ -75,15 +75,35 @@ enum AIProviderType: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    /// Providers that speak the OpenAI `tools` protocol (function calling).
-    /// Agent mode uses a real tool loop on these; the rest keep the legacy
-    /// plan → approve → execute flow.
-    var supportsToolCalls: Bool {
+    /// Whether the provider has a working `/v1/responses` implementation.
+    /// Used to decide where the protocol switch is shown and to guard old
+    /// saved configs that selected Responses on a provider that never
+    /// supported it.
+    var supportsResponses: Bool {
         switch self {
-        case .openAI, .openRouter, .openCode, .deepSeek, .qwen, .kimi, .custom:
-            true
-        case .claude, .gemini, .ollama:
-            false
+        case .claude, .gemini, .kimi, .ollama: false
+        default: true
         }
     }
+
+    /// OpenAI's own endpoint is Responses-first today, so new OpenAI configs
+    /// default there and the protocol picker is hidden (Chat Completions is
+    /// still supported, but no longer the recommended default). Third-party
+    /// OpenAI-compatible providers stay on Chat Completions unless the server
+    /// explicitly implements `/v1/responses`.
+    var defaultProtocolType: AIProviderProtocol {
+        switch self {
+        case .openAI: .responses
+        default: .chatCompletions
+        }
+    }
+
+    /// Which configs expose the Chat Completions / Responses API switch.
+    /// OpenAI is Responses-first by design; Claude/Gemini don't speak either
+    /// protocol, and Kimi/Ollama only implement Chat Completions, so no
+    /// switch there either.
+    var allowsProtocolSelection: Bool {
+        supportsResponses && self != .openAI
+    }
+
 }

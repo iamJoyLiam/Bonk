@@ -215,14 +215,21 @@ final class InlineCompletionService {
     ) async {
         defer { isRequesting = false }
         let buffer = RawSuggestionBuffer()
+        let llm = LLMProviderFactory.provider(for: provider, apiKey: apiKey)
         do {
             let response = try await Self.runWithTimeout {
-                try await AIProviderNetworking.streamRequest(
-                    provider: provider, apiKey: apiKey,
-                    systemPrompt: prompt, userPrompt: typed,
+                var result = ""
+                for try await event in llm.stream(
+                    messages: [
+                        .system(prompt),
+                        .user(typed),
+                    ],
                     maxTokens: Self.maxSuggestionTokens,
                     disableReasoning: true
-                ) { [weak self] delta in
+                ) {
+                    guard case let .textDelta(delta) = event else { continue }
+                    result += delta
+
                     // Show the ghost as soon as the first tokens arrive —
                     // waiting for the full stream makes slow providers feel
                     // broken. `suggestion` updates so Tab works mid-stream.
@@ -234,15 +241,17 @@ final class InlineCompletionService {
                     }
                     guard !candidate.isEmpty,
                           candidate.count <= Self.maxSuggestionChars
-                    else { return }
+                    else { continue }
+                    let displayCandidate = candidate
                     Task { @MainActor [weak self] in
                         guard let self, self.requestGeneration == generation else { return }
-                        guard !self.isRejected(cacheKey: cacheKey, suffix: candidate) else { return }
-                        self.suggestion = candidate
+                        guard !self.isRejected(cacheKey: cacheKey, suffix: displayCandidate) else { return }
+                        self.suggestion = displayCandidate
                         self.activeKey = cacheKey
-                        onSuggestion?(candidate)
+                        onSuggestion?(displayCandidate)
                     }
                 }
+                return result
             }
             guard !Task.isCancelled else { return }
             guard generation == requestGeneration else { return }

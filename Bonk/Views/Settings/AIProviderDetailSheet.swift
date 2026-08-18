@@ -18,10 +18,17 @@ struct AIProviderDetailSheet: View {
     @State var modelFetchError: String?
     @State var modelFetchTask: Task<Void, Never>?
     @State var showModelRequiredAlert = false
+    @State var headerFields: [HeaderField] = []
 
     enum TestResult: Equatable {
         case success
         case failure(String)
+    }
+
+    struct HeaderField: Identifiable, Equatable {
+        let id = UUID()
+        var key: String
+        var value: String
     }
 
     init(
@@ -35,6 +42,9 @@ struct AIProviderDetailSheet: View {
         _apiKeyInput = State(initialValue: provider.apiKey)
         // Seed fetchedModels with current model so Picker doesn't default to "Other"
         _fetchedModels = State(initialValue: provider.model.isEmpty ? [] : [provider.model])
+        _headerFields = State(initialValue: provider.extraHeaders.map {
+            HeaderField(key: $0.key, value: $0.value)
+        })
         self.isNew = isNew
         self.onSave = onSave
         self.onDelete = onDelete
@@ -46,8 +56,10 @@ struct AIProviderDetailSheet: View {
             Form {
                 authSection
                 connectionSection
+                if draft.type.allowsProtocolSelection { protocolSection }
                 modelSection
                 advancedSection
+                if draft.type == .custom { extraHeadersSection }
                 if onDelete != nil, !isNew { deleteSection }
             }
             .formStyle(.grouped)
@@ -60,6 +72,7 @@ struct AIProviderDetailSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(i18n.t(.save)) {
+                        syncHeadersToDraft()
                         if draft.type == .custom, draft.model.trimmingCharacters(in: .whitespaces).isEmpty {
                             showModelRequiredAlert = true
                         } else {
@@ -73,6 +86,9 @@ struct AIProviderDetailSheet: View {
                 if draft.type == .ollama || (draft.type.needsAPIKey && !draft.apiKey.isEmpty) {
                     fetchModels()
                 }
+            }
+            .onChange(of: headerFields) { _, _ in
+                syncHeadersToDraft()
             }
             .onDisappear { cancelTasks() }
         }
@@ -117,7 +133,11 @@ struct AIProviderDetailSheet: View {
                         Text(i18n.t(.testConnection))
                     }
                 }
-                .disabled(isTesting || apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(
+                    isTesting
+                        || (draft.type != .custom
+                            && apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                )
             }
 
             if case .success = testResult {
@@ -140,6 +160,26 @@ struct AIProviderDetailSheet: View {
             }
             TextField(i18n.t(.endpoint), text: $draft.endpoint)
                 .onChange(of: draft.endpoint) { _, _ in testResult = nil; scheduleFetchModels() }
+        }
+    }
+
+    // MARK: - Protocol Section
+
+    private var protocolSection: some View {
+        Section(i18n.t(.apiProtocol)) {
+            Picker(i18n.t(.apiProtocol), selection: $draft.protocolType) {
+                ForEach(AIProviderProtocol.allCases) { protocolType in
+                    Text(protocolType.displayName).tag(protocolType)
+                }
+            }
+            .pickerStyle(.menu)
+            .onChange(of: draft.protocolType) { _, _ in
+                testResult = nil
+            }
+
+            Text(i18n.t(.apiProtocolHint))
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -201,6 +241,46 @@ struct AIProviderDetailSheet: View {
                     .frame(width: 100).multilineTextAlignment(.trailing)
             }
         }
+    }
+
+    // MARK: - Extra Headers (custom OpenAI-compatible providers)
+
+    private var extraHeadersSection: some View {
+        Section(i18n.t(.extraHeaders)) {
+            ForEach($headerFields) { $field in
+                HStack(spacing: 8) {
+                    TextField(i18n.t(.headerName), text: $field.key)
+                        .frame(width: 140)
+                    TextField(i18n.t(.headerValue), text: $field.value)
+                    Button(role: .destructive) {
+                        removeHeader(field.id)
+                    } label: {
+                        Image(systemName: "minus.circle")
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Button {
+                headerFields.append(HeaderField(key: "", value: ""))
+            } label: {
+                Label(i18n.t(.addHeader), systemImage: "plus")
+            }
+            .buttonStyle(.borderless)
+        }
+    }
+
+    private func removeHeader(_ id: UUID) {
+        headerFields.removeAll { $0.id == id }
+    }
+
+    func syncHeadersToDraft() {
+        let pairs = headerFields.compactMap { field -> (String, String)? in
+            let key = field.key.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !key.isEmpty else { return nil }
+            return (key, field.value)
+        }
+        draft.extraHeaders = Dictionary(uniqueKeysWithValues: pairs)
     }
 
     private var maxOutputTokensBinding: Binding<String> {

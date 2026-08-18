@@ -39,12 +39,15 @@ extension AIProviderNetworking {
         // SDK appends `/chat/completions`; mimic the legacy `baseEndpoint + /v1` layout.
         let basePath = url.path.isEmpty ? "/v1" : url.path + "/v1"
         return OpenAI(configuration: .init(
-            token: provider.type.needsAPIKey ? apiKey : nil,
+            // Empty token must stay nil — the SDK otherwise sends
+            // `Authorization: Bearer `, which proxies like litellm reject.
+            token: provider.type.needsAPIKey && !apiKey.isEmpty ? apiKey : nil,
             host: host,
             port: port,
             scheme: scheme,
             basePath: basePath,
-            timeoutInterval: 60
+            timeoutInterval: 60,
+            customHeaders: provider.extraHeaders
         ))
     }
 

@@ -131,6 +131,14 @@ enum LKey: String, CaseIterable {
     case advanced, apiKeyRequired = "api_key_required"
     case fetchingModels = "fetching_models", reload
     case connectionTestFailed = "connection_test_failed"
+    case apiProtocol = "api_protocol"
+    case apiProtocolHint = "api_protocol_hint"
+    case chatCompletions = "chat_completions"
+    case responsesAPI = "responses_api"
+    case extraHeaders = "extra_headers"
+    case headerName = "header_name"
+    case headerValue = "header_value"
+    case addHeader = "add_header"
 
     /// General extras
     case custom, notConfigured = "not_configured"

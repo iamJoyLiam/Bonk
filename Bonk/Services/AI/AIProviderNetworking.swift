@@ -6,7 +6,12 @@ enum AIProviderNetworking {
 
     // MARK: - Build API Request
 
-    static func makeRequest(url: URL, apiKey: String, type: AIProviderType) -> URLRequest {
+    static func makeRequest(
+        url: URL,
+        apiKey: String,
+        type: AIProviderType,
+        extraHeaders: [String: String] = [:]
+    ) -> URLRequest {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         if type == .claude {
@@ -15,23 +20,34 @@ enum AIProviderNetworking {
             request.setValue(anthropicVersion, forHTTPHeaderField: "anthropic-version")
         } else if type == .gemini {
             request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
-        } else if type.needsAPIKey {
+        } else if type.needsAPIKey, !apiKey.isEmpty {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        for (key, value) in extraHeaders where !value.isEmpty {
+            request.setValue(value, forHTTPHeaderField: key)
         }
         return request
     }
 
     // MARK: - Endpoint Normalization
 
-    /// Strip trailing `/v1` (or `/v1/`) from an endpoint to avoid double path segments.
-    /// Users often enter `https://api.example.com/v1` as the endpoint, but the code
-    /// appends `/v1/models` or `/v1/chat/completions`, producing `/v1/v1/...`.
+    /// Normalize a provider endpoint to its base URL so appending
+    /// `/v1/...` never produces double path segments. Strips trailing slashes,
+    /// a trailing `/v1`, and pasted full chat-completions URLs like
+    /// `http://host:4000/v1/chat/completions`.
     static func baseEndpoint(_ endpoint: String) -> String {
         var result = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         while result.hasSuffix("/") {
             result = String(result.dropLast())
         }
-        if result.hasSuffix("/v1") { result = String(result.dropLast(3)) }
+        for suffix in ["/v1/responses", "/responses", "/v1/chat/completions", "/chat/completions", "/v1"] {
+            if result.hasSuffix(suffix) {
+                result = String(result.dropLast(suffix.count))
+            }
+        }
+        while result.hasSuffix("/") {
+            result = String(result.dropLast())
+        }
         return result
     }
 
@@ -181,6 +197,9 @@ enum AIProviderNetworking {
         request.httpMethod = "POST"
         request.timeoutInterval = stream ? 60 : 30
         headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        for (key, value) in provider.extraHeaders where !value.isEmpty {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
     }

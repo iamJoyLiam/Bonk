@@ -95,6 +95,10 @@ final class AIProviderStore {
                 record.typeRaw = provider.type.rawValue
                 record.model = provider.model
                 record.endpoint = provider.endpoint
+                record.protocolRaw = provider.protocolType.rawValue
+                record.extraHeadersJSON = provider.extraHeaders.isEmpty
+                    ? nil
+                    : (try? JSONEncoder().encode(provider.extraHeaders)).flatMap { String(data: $0, encoding: .utf8) }
                 record.maxOutputTokens = provider.maxOutputTokens
                 record.telemetryEnabled = provider.telemetryEnabled
                 try context.save()
@@ -143,17 +147,12 @@ final class AIProviderStore {
     // MARK: - Model Fetching
 
     func fetchModels(for provider: AIProviderConfig) {
-        guard let url = AIProviderNetworking.modelsURL(
-            endpoint: provider.endpoint, type: provider.type
-        ) else { return }
         Task {
             do {
-                let request = AIProviderNetworking.makeRequest(
-                    url: url, apiKey: provider.apiKey, type: provider.type
+                let llm = LLMProviderFactory.provider(
+                    for: provider, apiKey: provider.apiKey
                 )
-                let models = try await AIProviderNetworking.fetchModels(
-                    request: request, type: provider.type
-                )
+                let models = try await llm.listModels()
                 cachedModels[provider.id] = models
             } catch {
                 Self.logger.error("Failed to fetch models for \(provider.name): \(error.localizedDescription)")
@@ -178,6 +177,8 @@ extension AIProviderConfig {
             type: record.type,
             model: record.model,
             endpoint: record.endpoint,
+            protocolType: record.protocolType,
+            extraHeaders: record.extraHeaders,
             apiKey: record.apiKey,
             maxOutputTokens: record.maxOutputTokens,
             telemetryEnabled: record.telemetryEnabled
@@ -191,6 +192,8 @@ extension AIProviderConfig {
             type: type,
             model: model,
             endpoint: endpoint,
+            protocolType: protocolType,
+            extraHeaders: extraHeaders,
             apiKey: apiKey,
             maxOutputTokens: maxOutputTokens,
             telemetryEnabled: telemetryEnabled,
