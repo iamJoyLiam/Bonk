@@ -330,7 +330,8 @@ public actor SSHNetworkService {
     public func openPTY(
         cols: Int = 80,
         rows: Int = 24,
-        termType: String = "xterm-256color"
+        termType: String = "xterm-256color",
+        onError: (@Sendable (String) -> Void)? = nil
     ) async throws -> PTYSession {
         #if os(macOS)
             if usesOpenSSHTransport, let openSSHBackend {
@@ -341,6 +342,10 @@ public actor SSHNetworkService {
                     termType: termType
                 ) { [weak self] in
                     Task { await self?.handleDisconnect() }
+                } onError: { message in
+                    Task { @MainActor in
+                        onError?(message)
+                    }
                 }
                 lastPTYConfig = PTYConfig(cols: cols, rows: rows, termType: termType)
                 activePTYSession = session
@@ -616,7 +621,7 @@ public actor SSHNetworkService {
                     + "Detected key is not Ed25519 (raw \(raw.count) bytes)."
             )
 
-        case let .certificate(privateKeyPEM, certificatePEM):
+        case let .certificate(privateKeyPEM, _):
             let raw = try decodePEM(privateKeyPEM)
 
             if let edKey = try? Curve25519.Signing.PrivateKey(rawRepresentation: raw) {

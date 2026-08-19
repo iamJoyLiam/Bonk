@@ -30,6 +30,11 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         CrashReporter.install()
+        // Reclaim PTYs held by orphaned bonk-ssh mux processes from a
+        // previous crashed/killed session (no live connections exist yet).
+        #if os(macOS)
+            OpenSSHBackend.cleanupOrphanedMuxes()
+        #endif
         applyTheme()
 
         let i18n = I18n.shared
@@ -121,13 +126,15 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate {
     /// bridge, or a stale autosave), put ours back on the next runloop turn.
     private func startToolbarKeepAlive(on window: NSWindow) {
         toolbarObservation = window.observe(\.toolbar, options: [.new]) { [weak self] window, change in
-            guard let self,
-                  let current = change.newValue as? NSToolbar,
-                  current !== self.toolbar
-            else { return }
-            Log.ui.warning("Window toolbar was replaced (delegate=\(String(describing: current.delegate.map { String(describing: type(of: $0)) }), privacy: .public)); restoring ours")
-            DispatchQueue.main.async { [weak self] in
-                guard let self, let window = self.mainWindow, window.toolbar !== self.toolbar else { return }
+            // KVO fires on the main thread; observe() annotates the closure
+            // as @Sendable so hop back explicitly.
+            Task { @MainActor [weak self] in
+                guard let self,
+                      let current = change.newValue as? NSToolbar,
+                      current !== self.toolbar
+                else { return }
+                Log.ui.warning("Window toolbar was replaced (delegate=\(String(describing: current.delegate.map { String(describing: type(of: $0)) }), privacy: .public)); restoring ours")
+                guard let window = self.mainWindow, window.toolbar !== self.toolbar else { return }
                 window.toolbar = self.toolbar
                 window.toolbar?.validateVisibleItems()
             }

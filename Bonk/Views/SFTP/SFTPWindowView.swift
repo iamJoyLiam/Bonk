@@ -291,7 +291,9 @@ struct SFTPWindowView: View {
     private func performUpload(_ url: URL) async {
         guard let sftp = sessionManager.activeTab?.session?.sftpService else { return }
         do {
-            try await sftp.upload(url)
+            // upload returns a lazy AsyncThrowingStream — it must be consumed
+            // for the transfer to start (and its progress to be reported).
+            for try await _ in sftp.upload(url) {}
         } catch {
             sftp.errorMessage = error.localizedDescription
         }

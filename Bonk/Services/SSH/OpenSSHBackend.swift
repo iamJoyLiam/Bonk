@@ -10,6 +10,7 @@
 import Darwin
 import Crypto
 import Foundation
+import os.log
 
 /// OpenSSH-backed network transport.
 ///
@@ -35,9 +36,33 @@ final class OpenSSHBackend: @unchecked Sendable {
 
     init(config: SSHConnectionConfig) throws {
         self.config = config
-        controlPath = "/tmp/bonk-ssh-\(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(20))"
+        // A STABLE per-host ControlPath is what makes ControlMaster reusable
+        // and reclaimable. A random path per connection created a brand-new
+        // mux every time and orphaned mux processes (holding PTYs) whenever
+        // a client exited abnormally — eventually exhausting the PTY limit.
+        let safeUser = config.username.replacingOccurrences(of: "/", with: "_")
+        let safeHost = config.host.replacingOccurrences(of: "/", with: "_")
+        controlPath = "/tmp/bonk-ssh-\(safeUser)-\(safeHost)-\(config.port).sock"
         knownHostsPath = try Self.prepareKnownHostsPath()
         try prepareIdentityFiles()
+    }
+
+    /// Kill leftover `bonk-ssh` mux processes and stale control sockets.
+    /// Called once at app launch, when no live connections exist. A mux that
+    /// survives a crashed/killed client holds its PTY open forever, so this
+    /// reclaims those PTYs for future sessions.
+    static func cleanupOrphanedMuxes() {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = [
+            "-c",
+            "pkill -f 'bonk-ssh-.*\\.sock' 2>/dev/null; "
+                + "rm -f /tmp/bonk-ssh-*.sock 2>/dev/null",
+        ]
+        task.standardOutput = Pipe()
+        task.standardError = Pipe()
+        try? task.run()
+        task.waitUntilExit()
     }
 
     /// Open an interactive terminal.
@@ -45,7 +70,8 @@ final class OpenSSHBackend: @unchecked Sendable {
         cols: Int,
         rows: Int,
         termType: String,
-        onExit: @escaping @Sendable () -> Void
+        onExit: @escaping @Sendable () -> Void,
+        onError: (@Sendable (String) -> Void)? = nil
     ) throws -> PTYSession {
         let arguments = sshArguments(
             pty: true,
@@ -73,10 +99,28 @@ final class OpenSSHBackend: @unchecked Sendable {
         session.inputTap = { [weak responder] bytes in
             responder?.observeInput(bytes)
         }
+        // Ring buffer of the raw PTY output, so the tail survives even when
+        // the UI feed has consumed it (recentOutput only covers pre-feed
+        // buffering).
+        let ptyTail = OSAllocatedUnfairLock<String>(initialState: "")
         session.startProcess(
             fileDescriptor: process.masterFD,
-            onExit: onExit,
-            onOutput: responder.observe
+            onExit: {
+                let tail = ptyTail.withLock { String($0.suffix(4096)) }
+                if let message = Self.extractConnectionError(from: tail) {
+                    Log.ssh.error("[PTY] Session failed: \(message)")
+                    onError?(message)
+                } else if !tail.isEmpty {
+                    Log.ssh.error("[PTY] Session exited. Raw tail:\n\(tail)")
+                }
+                onExit()
+            },
+            onOutput: { data in
+                responder.observe(data)
+                ptyTail.withLock {
+                    $0.append(String(data: data, encoding: .utf8) ?? "")
+                }
+            }
         )
         return session
     }
@@ -112,18 +156,28 @@ final class OpenSSHBackend: @unchecked Sendable {
         session.close()
 
         guard status == 0 else {
+            let detail = Self.cleanCommandOutput(output)
             throw SSHServiceError.connectionFailed(
-                "OpenSSH command exited with status \(status)."
+                detail.isEmpty
+                    ? "OpenSSH command exited with status \(status)."
+                    : detail
             )
         }
         return Self.cleanCommandOutput(output)
     }
 
-    /// Execute one batch against the system OpenSSH SFTP client.
+    /// Execute commands against the system OpenSSH SFTP client.
     ///
     /// The SFTP process uses the same ControlPath and auth responder as the
     /// terminal process. This avoids a second native SSH connection and keeps
     /// password / keyboard-interactive authentication behavior consistent.
+    ///
+    /// Runs in INTERACTIVE mode (not `-b` batch): batch mode suppresses the
+    /// progress meter entirely (verified empirically — `sftp -b` emits zero
+    /// progress output even on a PTY), which made transfer progress bars
+    /// never move. Interactive mode on the PTY emits `\r`-separated progress
+    /// lines that OpenSSHSFTPClient's ProgressParser consumes. Commands are
+    /// executed one at a time; each waits for the next `sftp>` prompt.
     func runSFTP(
         commands: [String],
         onOutput: (@Sendable (Data) -> Void)? = nil,
@@ -154,12 +208,35 @@ final class OpenSSHBackend: @unchecked Sendable {
         )
 
         do {
-            var batch = commands.map { "@\($0)" }
-            batch.append("@quit")
-            try process.write(Data((batch.joined(separator: "\n") + "\n").utf8))
-
             var output = ""
-            for await chunk in rawStream {
+            var streamIterator = rawStream.makeAsyncIterator()
+
+            for command in commands {
+                try process.write(Data((command + "\n").utf8))
+
+                // Read until the next `sftp>` prompt appears. Progress lines
+                // (`\r`-rewritten) arrive before the prompt and are forwarded
+                // via onOutput as they stream in.
+                var chunkBuffer = ""
+                while true {
+                    guard let chunk = await streamIterator.next() else { break }
+                    chunkBuffer.append(chunk)
+                    output.append(chunk)
+                    if Self.sftpPromptAppeared(in: chunkBuffer) { break }
+                    if chunkBuffer.count > 128 * 1024 { break }
+                }
+
+                // Interactive mode keeps going after a failed command, so
+                // detect failures per-command instead of via exit status.
+                let cleaned = Self.cleanCommandOutput(chunkBuffer)
+                if Self.sftpOutputContainsError(cleaned) {
+                    throw SSHServiceError.connectionFailed(cleaned)
+                }
+            }
+
+            // Leave cleanly and drain the rest.
+            try? process.write(Data("quit\n".utf8))
+            while let chunk = await streamIterator.next() {
                 output.append(chunk)
             }
 
@@ -182,6 +259,27 @@ final class OpenSSHBackend: @unchecked Sendable {
             process.close()
             throw error
         }
+    }
+
+    /// Whether the accumulated PTY output shows the sftp prompt at its end.
+    private static func sftpPromptAppeared(in text: String) -> Bool {
+        let stripped = text.replacingOccurrences(
+            of: #"\u001B\[[0-?]*[ -/]*[@-~]"#,
+            with: "",
+            options: .regularExpression
+        )
+        return stripped.hasSuffix("sftp> ") || stripped.hasSuffix("sftp>")
+    }
+
+    /// Failure keywords for per-command error detection in interactive mode.
+    private static func sftpOutputContainsError(_ text: String) -> Bool {
+        let patterns: [String] = [
+            "couldn't", "permission denied", "denied", "no such file",
+            "not found", "failure", "lost connection", "connection closed",
+            "is a directory", "can't open", "unable to",
+        ]
+        let lower = text.lowercased()
+        return patterns.contains { lower.contains($0) }
     }
 
     func makeSFTPClient() -> OpenSSHSFTPClient {
@@ -271,13 +369,17 @@ final class OpenSSHBackend: @unchecked Sendable {
         process?.close()
         closeControlMaster()
 
-        for file in [targetIdentityFile, targetCertificateFile, jumpIdentityFile, jumpCertificateFile].compactMap(\.self) {
+        for file in ([targetIdentityFile, targetCertificateFile, jumpIdentityFile, jumpCertificateFile] as [URL?]).compactMap(\.self) {
             try? FileManager.default.removeItem(at: file)
+        }
+        if let askpass = jumpAskpassPath {
+            try? FileManager.default.removeItem(atPath: askpass)
         }
         targetIdentityFile = nil
         targetCertificateFile = nil
         jumpIdentityFile = nil
         jumpCertificateFile = nil
+        jumpAskpassPath = nil
     }
 
     // MARK: - Command construction
@@ -305,8 +407,6 @@ final class OpenSSHBackend: @unchecked Sendable {
     private func sftpArguments() -> [String] {
         var args = commonOpenSSHArguments(
             additionalOptions: [
-                "-N", // Re-enable progress meter disabled implicitly by -b.
-                "-b", "-",
                 "-B", "131072",
                 "-R", "128",
             ]
@@ -549,7 +649,39 @@ final class OpenSSHBackend: @unchecked Sendable {
         }
 
         args += ["-W", "%h:%p", "\(jumpHost.username)@\(jumpHost.host)"]
-        return args.map(Self.shellQuote).joined(separator: " ")
+
+        var command = args.map(Self.shellQuote).joined(separator: " ")
+
+        // The ProxyCommand ssh has no TTY and its stdin/stdout are consumed
+        // by the -W tunnel, so an interactive password prompt can never be
+        // answered. Force SSH_ASKPASS so OpenSSH reads the jump password
+        // from a throwaway script instead. The env prefix MUST be the
+        // explicit `env VAR=...` form: OpenSSH's ProxyCommand shell (zsh on
+        // macOS) mis-parses a bare `VAR=... cmd` prefix and tries to exec
+        // the assignment as a program.
+        if let jumpPassword = password(from: jumpHost.authMethod) {
+            let askpassPath = writeAskPassScript(jumpPassword)
+            jumpAskpassPath = askpassPath
+            command = "env SSH_ASKPASS=\(Self.shellQuote(askpassPath)) SSH_ASKPASS_REQUIRE=force " + command
+        }
+
+        Log.ssh.info("[JUMP] ProxyCommand: \(command)")
+        return command
+    }
+
+    /// Writes a 0700 script that echoes the jump password once. OpenSSH
+    /// invokes it via SSH_ASKPASS; the file is removed when the connection
+    /// closes.
+    /// Passphrase-protected keys are not supported via ProxyCommand.
+    private var jumpAskpassPath: String?
+
+    private func writeAskPassScript(_ password: String) -> String {
+        let path = "/tmp/bonk-ssh-askpass-\(UUID().uuidString)"
+        let escaped = password.replacingOccurrences(of: "'", with: "'\\''")
+        let script = "#!/bin/sh\nprintf '%s\\n' '\(escaped)'\n"
+        try? Data(script.utf8).write(to: URL(fileURLWithPath: path), options: [.atomic])
+        _ = chmod(path, mode_t(0o700))
+        return path
     }
 
     private static func shellQuote(_ value: String) -> String {
@@ -612,6 +744,57 @@ final class OpenSSHBackend: @unchecked Sendable {
             .replacingOccurrences(of: "\u{1B}\\[[0-9;?]*[ -/]*[@-~]", with: "", options: .regularExpression)
             .replacingOccurrences(of: "\r", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Extract a user-facing connection error from OpenSSH's PTY output.
+    /// Returns nil when the output looks like a normal session end, so a
+    /// successful disconnect never surfaces a spurious error.
+    private static func extractConnectionError(from output: String) -> String? {
+        let lower = output.lowercased()
+        guard lower.contains("denied")
+            || lower.contains("refused")
+            || lower.contains("timed out")
+            || lower.contains("prohibited")
+            || lower.contains("no route")
+            || lower.contains("unreachable")
+            || lower.contains("closed")
+            || lower.contains("host key")
+            || lower.contains("negotiate")
+            || lower.contains("authentication")
+            || lower.contains("exchange_identification")
+            || lower.contains("no such file")
+            || lower.contains("not found")
+            || lower.contains("could not resolve")
+            || lower.contains("failed to allocate")
+            || lower.contains("connection reset")
+            || lower.contains("lost connection")
+            || lower.contains("kex_exchange")
+        else {
+            return nil
+        }
+
+        for rawLine in output.components(separatedBy: .newlines) {
+            let line = rawLine
+                .replacingOccurrences(of: "\u{1B}\\[[0-9;?]*[ -/]*[@-~]", with: "", options: .regularExpression)
+                .replacingOccurrences(of: "\r", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty else { continue }
+            let l = line.lowercased()
+            let keywords = [
+                "permission denied", "denied", "refused", "timed out",
+                "administratively prohibited", "no route to host", "unreachable",
+                "connection closed", "closed by remote", "host key verification failed",
+                "unable to negotiate", "too many authentication failures",
+                "ssh_exchange_identification", "no supported authentication methods",
+                "connection reset", "lost connection", "could not resolve hostname",
+                "failed to allocate pty", "kex_exchange_identification",
+                "no such file", "not found",
+            ]
+            if keywords.contains(where: { l.contains($0) }) {
+                return line
+            }
+        }
+        return nil
     }
 }
 

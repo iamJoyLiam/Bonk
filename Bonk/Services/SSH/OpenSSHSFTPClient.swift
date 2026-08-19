@@ -178,7 +178,7 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
 
     private func register(_ process: OpenSSHProcessTransport?, for operationID: UUID) {
         guard let process else {
-            operationState.withLock { $0.activeProcesses.removeValue(forKey: operationID) }
+            _ = operationState.withLock { $0.activeProcesses.removeValue(forKey: operationID) }
             return
         }
 

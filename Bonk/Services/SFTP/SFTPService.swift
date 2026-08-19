@@ -582,7 +582,7 @@ final class SFTPService {
                     let chunkOffset = offset
                     offset += UInt64(chunkData.count)
                     pending += 1
-                    var buffer = ByteBuffer(data: chunkData)
+                    let buffer = ByteBuffer(data: chunkData)
                     group.addTask {
                         try await file.write(buffer, at: chunkOffset)
                         return chunkData.count

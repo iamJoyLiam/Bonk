@@ -297,7 +297,7 @@ final class SessionManager {
 
     private func resolveConnectionConfig(for tab: TerminalTab, session: TerminalSession) -> SSHConnectionConfig? {
         let hostItem = tab.hostItem
-        guard let modelContext else {
+        guard modelContext != nil else {
             session.connectionState = .disconnected
             session.errorMessage = I18n.shared.t(.noModelContext)
             return nil
@@ -319,7 +319,13 @@ final class SessionManager {
         service: SSHNetworkService
     ) async throws {
         Log.session.info("[PTY] Opening PTY session...")
-        let ptySession = try await service.openPTY()
+        let ptySession = try await service.openPTY(
+            onError: { [weak session] message in
+                Task { @MainActor in
+                    session?.errorMessage = message
+                }
+            }
+        )
         Log.session.info("[PTY] PTY session opened successfully")
 
         guard tabs.contains(where: { $0.id == tab.id }) else {

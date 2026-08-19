@@ -254,7 +254,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                         }
                     }
 
-                    let readTask = Task {
+                    _ = Task {
                         do {
                             for try await data in inbound {
                                 if Task.isCancelled { break }
@@ -277,7 +277,6 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                     }
 
                     for await _ in endStream {}
-                    _ = readTask
                 }
             } catch {
                 self.liveContinuations.withLock { $0 }.values.forEach { $0.finish() }
@@ -485,7 +484,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             Darwin.close(fileDescriptor)
         }
         pendingInputBox.withLockedValue { $0.removeAll() }
-        _ = outputObservers.withLock { $0.removeAll() }
+        outputObservers.withLock { $0.removeAll() }
         liveContinuations.withLock { $0 }.values.forEach { $0.finish() }
         rawLiveContinuations.withLock { $0 }.values.forEach { $0.finish() }
         processOutputHandlerBox.withLockedValue { $0 = nil }

@@ -3,8 +3,10 @@
 //  Bonk
 //
 
+import Citadel
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Jump host management panel.
 struct JumpHostView: View {
@@ -130,19 +132,30 @@ struct JumpHostView: View {
     }
 
     private func testConnection(_ host: JumpHost) {
+        guard let authMethod = host.resolveAuthMethod() else {
+            testResult = false
+            return
+        }
         testingHostID = host.id
         testResult = nil
 
         Task {
-            // 使用密码认证进行测试
-            let credential = SSHAuthMethod.password("test")
-            let result = try? await jumpHostService.testConnection(
-                jumpHost: host,
-                credential: credential
-            )
-            await MainActor.run {
-                testResult = result
-                testingHostID = nil
+            do {
+                try await jumpHostService.testConnection(
+                    host: host.host,
+                    port: host.port,
+                    username: host.username,
+                    authMethod: authMethod
+                )
+                await MainActor.run {
+                    testResult = true
+                    testingHostID = nil
+                }
+            } catch {
+                await MainActor.run {
+                    testResult = false
+                    testingHostID = nil
+                }
             }
         }
     }
@@ -166,27 +179,73 @@ struct JumpHostEditSheet: View {
     @State private var password = ""
     @State private var privateKeyPEM = ""
     @State private var showPassword = false
+    @State private var useFilePickerForKey = false
     @State private var selectedCredential: Credential?
+    @State private var testing = false
+    @State private var testResult: Bool?
+    @State private var testMessage = ""
+    @State private var privateKeyFileURL: URL?
 
     enum JumpAuthStyle: String, CaseIterable {
         case password, privateKey, credential
     }
 
+    var jumpHostService = JumpHostService.shared
+
+    private var detectedPrivateKeyType: String? {
+        let trimmed = privateKeyPEM.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return (try? SSHKeyDetection.detectPrivateKeyType(from: trimmed))?.description
+    }
+
+    private var canTest: Bool {
+        !hostname.trimmingCharacters(in: .whitespaces).isEmpty
+            && (Int(port) ?? 0) > 0
+            && resolvedUsername != nil
+    }
+
+    /// Username for the jump host: the typed one, or the credential's when a
+    /// vault credential is selected (so selecting a credential never forces
+    /// re-typing the user).
+    private var resolvedUsername: String? {
+        let typed = username.trimmingCharacters(in: .whitespaces)
+        if !typed.isEmpty { return typed }
+        if authStyle == .credential,
+           let credUser = selectedCredential?.username,
+           !credUser.isEmpty
+        {
+            return credUser
+        }
+        return nil
+    }
+
     var body: some View {
         NavigationStack {
             Form {
-                Section(i18n.t(.name)) {
-                    TextField(i18n.t(.name), text: $name)
-                }
-
-                Section(i18n.t(.host)) {
-                    TextField(i18n.t(.hostname), text: $hostname)
+                Section(i18n.t(.hostInformation)) {
+                    TextField(i18n.t(.displayName), text: $name)
+                    TextField(
+                        i18n.t(.hostnameOrIp),
+                        text: $hostname,
+                        prompt: Text(name.isEmpty ? "" : name)
+                    )
+                    .onChange(of: hostname) { _, newValue in
+                        // Parse "user@host:port" shorthand as the user types.
+                        let parsed = SSHHostParser.parse(newValue)
+                        if let parsedUser = parsed.username,
+                           !parsedUser.isEmpty,
+                           username.isEmpty
+                        {
+                            username = parsedUser
+                        }
+                        if let parsedPort = parsed.port {
+                            port = String(parsedPort)
+                        }
+                    }
                     TextField(i18n.t(.port), text: $port)
                         .font(.system(size: 13, design: .monospaced))
-                }
-
-                Section(i18n.t(.username)) {
                     TextField(i18n.t(.username), text: $username)
+                        .autocorrectionDisabled()
                 }
 
                 Section(i18n.t(.authentication)) {
@@ -213,16 +272,76 @@ struct JumpHostEditSheet: View {
                             .foregroundStyle(.secondary)
                         }
                     case .privateKey:
-                        TextEditor(text: $privateKeyPEM)
-                            .font(.system(.caption, design: .monospaced))
-                            .frame(minHeight: 120)
+                        HStack {
+                            Text(i18n.t(.privateKey))
+                                .font(.headline)
+                            Spacer()
+                            Button(useFilePickerForKey ? i18n.t(.pasteManually) : i18n.t(.selectFile)) {
+                                useFilePickerForKey.toggle()
+                            }
+                            .font(.caption)
+                        }
+
+                        if useFilePickerForKey {
+                            filePickerField(
+                                url: $privateKeyFileURL,
+                                content: $privateKeyPEM,
+                                placeholder: i18n.t(.selectPrivateKeyFile)
+                            )
+                        } else {
+                            Text(i18n.t(.pastePemKey))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            TextEditor(text: $privateKeyPEM)
+                                .font(.system(.caption, design: .monospaced))
+                                .frame(minHeight: 120)
+                            if let type = detectedPrivateKeyType {
+                                Text(i18n.tr(.detectedKeyType, args: type))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     case .credential:
                         Picker(i18n.t(.credential), selection: $selectedCredential) {
-                            Text(i18n.t(.none)).tag(Credential?.none)
+                            Text(i18n.t(.custom)).tag(Credential?.none)
                             ForEach(credentials.filter { $0.type == .password || $0.type == .privateKey }) { credential in
                                 Label(credential.name, systemImage: credential.type.symbolName)
                                     .tag(Credential?.some(credential))
                             }
+                        }
+                        .onChange(of: selectedCredential) { _, newCred in
+                            // Bring the credential's username along — the user
+                            // should never have to type it twice.
+                            if let newCred, let credUser = newCred.username,
+                               !credUser.isEmpty, username.isEmpty
+                            {
+                                username = credUser
+                            }
+                        }
+                    }
+                }
+
+                Section(i18n.t(.connection)) {
+                    HStack {
+                        Button {
+                            testConnection()
+                        } label: {
+                            if testing {
+                                ProgressView().controlSize(.small)
+                                Text(i18n.t(.testConnection))
+                            } else {
+                                Label(i18n.t(.testConnection), systemImage: "network")
+                            }
+                        }
+                        .disabled(!canTest || testing || !canBuildAuth)
+                        .buttonStyle(.bordered)
+
+                        if let testResult, !testing {
+                            Image(systemName: testResult ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .foregroundStyle(testResult ? .green : .red)
+                            Text(testMessage)
+                                .font(.caption)
+                                .foregroundStyle(testResult ? .green : .red)
                         }
                     }
                 }
@@ -238,7 +357,7 @@ struct JumpHostEditSheet: View {
                         save()
                         dismiss()
                     }
-                    .disabled(name.isEmpty || hostname.isEmpty || username.isEmpty)
+                    .disabled(name.isEmpty || hostname.isEmpty || resolvedUsername == nil)
                 }
             }
             .onAppear {
@@ -272,17 +391,135 @@ struct JumpHostEditSheet: View {
                 }
             }
         }
-        .frame(width: 480, height: 420)
+        .frame(width: 480, height: 480)
+    }
+
+    private var canBuildAuth: Bool {
+        switch authStyle {
+        case .password: !password.isEmpty
+        case .privateKey: !privateKeyPEM.isEmpty
+        case .credential: selectedCredential != nil
+        }
+    }
+
+    private func buildAuthMethod() -> SSHAuthMethod? {
+        switch authStyle {
+        case .password: return SSHAuthMethod.password(password)
+        case .privateKey: return SSHAuthMethod.privateKey(pemString: privateKeyPEM)
+        case .credential:
+            guard let selectedCredential,
+                  let secret = selectedCredential.loadSecret(),
+                  !secret.isEmpty
+            else { return nil }
+            switch selectedCredential.type {
+            case .password: return .password(secret)
+            case .privateKey: return .privateKey(pemString: secret)
+            case .apiKey: return nil
+            }
+        }
+    }
+
+    private func testConnection() {
+        guard let authMethod = buildAuthMethod(),
+              let effectiveUsername = resolvedUsername
+        else { return }
+        let portInt = Int(port) ?? 22
+
+        testing = true
+        testResult = nil
+        testMessage = ""
+        Task {
+            do {
+                try await jumpHostService.testConnection(
+                    host: hostname.trimmingCharacters(in: .whitespaces),
+                    port: portInt,
+                    username: effectiveUsername,
+                    authMethod: authMethod
+                )
+                await MainActor.run {
+                    testing = false
+                    testResult = true
+                    testMessage = i18n.t(.connectionSuccessful)
+                }
+            } catch {
+                await MainActor.run {
+                    testing = false
+                    testResult = false
+                    testMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    // MARK: - File Picker Field
+
+    @ViewBuilder
+    private func filePickerField(
+        url: Binding<URL?>,
+        content: Binding<String>,
+        placeholder: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let fileURL = url.wrappedValue {
+                HStack {
+                    Image(systemName: "doc.fill")
+                        .foregroundStyle(.blue)
+                    Text(fileURL.lastPathComponent)
+                        .font(.caption)
+                        .lineLimit(1)
+                    Spacer()
+                    Button {
+                        url.wrappedValue = nil
+                        content.wrappedValue = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(8)
+                .background(.quaternary.opacity(0.5))
+                .cornerRadius(6)
+            } else {
+                Button {
+                    let panel = NSOpenPanel()
+                    panel.allowsMultipleSelection = false
+                    panel.canChooseDirectories = false
+                    panel.canChooseFiles = true
+                    panel.allowedContentTypes = [.item]
+
+                    if panel.runModal() == .OK, let selectedURL = panel.url {
+                        url.wrappedValue = selectedURL
+                        if let data = try? Data(contentsOf: selectedURL),
+                           let text = String(data: data, encoding: .utf8)
+                        {
+                            content.wrappedValue = text
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: "folder")
+                        Text(placeholder)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(8)
+                    .background(.quaternary.opacity(0.5))
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private func save() {
         let portInt = Int(port) ?? 22
+        let effectiveUsername = resolvedUsername ?? username
 
         if let host {
             host.name = name
             host.host = hostname
             host.port = portInt
-            host.username = username
+            host.username = effectiveUsername
             host.deleteInlineCredentials()
             host.credentialRef = nil
             switch authStyle {
@@ -301,7 +538,7 @@ struct JumpHostEditSheet: View {
                 name: name,
                 host: hostname,
                 port: portInt,
-                username: username
+                username: effectiveUsername
             )
             newHost.credentialRef = selectedCredential
             switch authStyle {

@@ -15,14 +15,25 @@ final class JumpHostService {
 
     private let logger = Logger(subsystem: "com.bonk", category: "JumpHost")
 
-    /// Test connection to a jump host.
-    func testConnection(jumpHost: JumpHost, credential: SSHAuthMethod) async throws -> Bool {
+    /// Test connection to a jump host using plain values — deliberately does
+    /// NOT take a JumpHost model object, so testing never creates or persists
+    /// a SwiftData record.
+    ///
+    /// Throws on failure so the caller can surface the real SSH error
+    /// (bad credentials, unreachable host, forwarding disabled, etc.)
+    /// instead of a generic "connection failed".
+    func testConnection(
+        host: String,
+        port: Int,
+        username: String,
+        authMethod: SSHAuthMethod
+    ) async throws {
         // Create SSH connection config for the jump host
         let config = SSHConnectionConfig(
-            host: jumpHost.host,
-            port: UInt16(jumpHost.port),
-            username: jumpHost.username,
-            authMethod: credential,
+            host: host,
+            port: UInt16(port),
+            username: username,
+            authMethod: authMethod,
             maxReconnectAttempts: 0,
             baseReconnectDelay: .seconds(1)
         )
@@ -33,9 +44,9 @@ final class JumpHostService {
             try await service.connect(config: config)
             _ = try await service.executeCommand("true")
             await service.disconnect()
-            return true
         } catch {
-            return false
+            await service.disconnect()
+            throw error
         }
     }
 

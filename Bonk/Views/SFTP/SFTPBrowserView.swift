@@ -162,7 +162,10 @@ struct SFTPBrowserView: View {
                                     onUpload(url)
                                 } else {
                                     Task {
-                                        do { try await sftpService?.upload(url) } catch {
+                                        do {
+                                            let stream = sftpService?.upload(url) ?? AsyncThrowingStream(Double.self) { $0.finish() }
+                                        for try await _ in stream {}
+                                        } catch {
                                             sftpService?.errorMessage = error.localizedDescription
                                         }
                                     }
@@ -294,7 +297,9 @@ struct SFTPBrowserView: View {
                         if let onUpload {
                             onUpload(url)
                         } else {
-                            do { try await service.upload(url) } catch {
+                            do {
+                                for try await _ in service.upload(url) {}
+                            } catch {
                                 service.errorMessage = error.localizedDescription
                             }
                         }
