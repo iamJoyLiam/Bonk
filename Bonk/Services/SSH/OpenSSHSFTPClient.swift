@@ -213,7 +213,11 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
         guard mode.count >= 10, "-dlcbps".contains(mode.first ?? " ") else { return nil }
 
         let rawName = String(fields[8])
-        let name = rawName.components(separatedBy: " -> ").first ?? rawName
+        let baseName = rawName.components(separatedBy: " -> ").first ?? rawName
+        // OpenSSH sftp-server octal-escapes non-ASCII filename bytes in the
+        // longname it returns (e.g. \344\270\213 for 不). Decode them back
+        // into UTF-8 or the listing shows raw escape codes.
+        let name = unescapeOctal(baseName)
         guard !name.isEmpty, name != ".", name != ".." else { return nil }
 
         let isDirectory = mode.first == "d"
@@ -266,6 +270,28 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
             ? "\(month) \(day) \(timeOrYear) \(year)"
             : "\(month) \(day) \(timeOrYear)"
         return formatter.date(from: value)
+    }
+
+    /// Decode `\NNN` octal escapes (OpenSSH sftp-server longname format)
+    /// back into raw bytes. Non-escape text passes through untouched.
+    private func unescapeOctal(_ name: String) -> String {
+        var bytes: [UInt8] = []
+        var index = name.startIndex
+        while index < name.endIndex {
+            let char = name[index]
+            if char == "\\",
+               let end = name.index(index, offsetBy: 4, limitedBy: name.endIndex),
+               let value = UInt8(name[name.index(after: index) ..< end], radix: 8)
+            {
+                bytes.append(value)
+                index = end
+            } else {
+                let next = name.index(after: index)
+                bytes.append(contentsOf: name[index ..< next].utf8)
+                index = next
+            }
+        }
+        return String(bytes: bytes, encoding: .utf8) ?? name
     }
 
     private func quote(_ value: String) -> String {
