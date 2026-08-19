@@ -10,6 +10,7 @@ struct MarkdownTextView: View {
     var body: some View {
         MarkdownUI.Markdown(content, baseURL: nil)
             .markdownTheme(.bonk(onRun: onRun))
+            .textSelection(.enabled)
     }
 }
 
@@ -77,13 +78,17 @@ extension MarkdownUI.Theme {
             .padding(.vertical, 4)
         }
 
-        // Tables — card background, readable header.
+        // Tables — card background, readable header. Horizontally scrollable
+        // so wide AI summaries (disk layout, resource stats) never get
+        // squeezed into "…" in a narrow sidebar.
         theme.table = BlockStyle<BlockConfiguration> { configuration in
-            configuration.label
-                .padding(8)
-                .background(Color(nsColor: .controlColor).opacity(0.35))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .padding(.vertical, 4)
+            ScrollView(.horizontal, showsIndicators: false) {
+                configuration.label
+                    .padding(8)
+                    .background(Color(nsColor: .controlColor).opacity(0.35))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .padding(.vertical, 4)
         }
 
         return theme
@@ -110,10 +115,14 @@ struct CodeBlockView: View {
         VStack(alignment: .trailing, spacing: 0) {
             // Header bar
             HStack(spacing: 6) {
-                if let lang = language {
-                    Text(lang)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.tertiary)
+                if let lang = language, !lang.isEmpty {
+                    Text(lang.lowercased())
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.accentColor.opacity(0.12))
+                        .clipShape(Capsule())
                 }
                 Spacer()
                 Button {
@@ -133,13 +142,7 @@ struct CodeBlockView: View {
             .background(Color(nsColor: .controlColor).opacity(0.5))
 
             // Code content
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(code)
-                    .font(.system(size: 12, design: .monospaced))
-                    .textSelection(.enabled)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            HighlightedCodeLines(code: code)
         }
         .background(Color(nsColor: .controlColor).opacity(0.25))
         .clipShape(RoundedRectangle(cornerRadius: 6))

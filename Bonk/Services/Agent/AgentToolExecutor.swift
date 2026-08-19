@@ -93,7 +93,9 @@ extension AgentEngine {
             return (messages, true)
         }
 
-        if let content = turn.content, !content.isEmpty {
+        if let content = turn.content,
+               !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
             appendAgentMessage(
                 .assistant, content: content,
                 conversation: toolContext.conversation, context: toolContext.context

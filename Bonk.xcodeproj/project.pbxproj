@@ -409,14 +409,6 @@
 				minimumVersion = 0.12.0;
 			};
 		};
-		AE00000EAAAA00000000000E /* XCRemoteSwiftPackageReference "swift-nio-ssh" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/Wellz26/swift-nio-ssh.git";
-			requirement = {
-				kind = upToNextMinorVersion;
-				minimumVersion = 0.3.4;
-			};
-		};
 		AE000003AAAA000000000003 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm.git";
@@ -455,6 +447,14 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 0.5.1;
+			};
+		};
+		AE00000EAAAA00000000000E /* XCRemoteSwiftPackageReference "swift-nio-ssh" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Wellz26/swift-nio-ssh.git";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.3.4;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

@@ -60,14 +60,7 @@ struct InteractiveCodeBlock: View {
             .background(Color(nsColor: .controlColor).opacity(0.5))
 
             // Code content
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(code)
-                    .font(.system(size: 12, design: .monospaced))
-                    .textSelection(.enabled)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .background(Color(nsColor: .textBackgroundColor))
+            HighlightedCodeLines(code: code)
         }
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(

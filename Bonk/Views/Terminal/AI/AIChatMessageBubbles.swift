@@ -177,10 +177,12 @@ extension AIChatSidebarView {
                             .foregroundStyle(.tertiary)
                     }
                 }
-                MarkdownTextView(
-                    content: msg.content,
-                    onRun: { code in sessionManager.sendTextToActiveTab(code) }
-                )
+                if !msg.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    MarkdownTextView(
+                        content: msg.content,
+                        onRun: { code in sessionManager.sendTextToActiveTab(code) }
+                    )
+                }
                 if let command = msg.command, !command.isEmpty {
                     agentCommandBlock(command)
                 }
@@ -195,55 +197,93 @@ extension AIChatSidebarView {
     private func agentCommandOutputContent(_ msg: AgentMessage) -> some View {
         Group {
             avatar("terminal")
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 0) {
+                // Header: command + status icon + duration
                 HStack(spacing: 6) {
-                    if let status = msg.status {
-                        Image(systemName: status.icon)
-                            .font(.system(size: 10))
-                            .foregroundStyle(status.color)
-                    }
                     if let command = msg.command, !command.isEmpty {
-                        Text(command)
+                        Text("$ \(command)")
                             .font(.system(size: 11, design: .monospaced))
                             .lineLimit(1)
+                            .truncationMode(.middle)
                     } else {
                         Text(i18n.t(.output))
                             .font(.system(size: 11, weight: .semibold))
                     }
+                    Spacer()
+                    if let status = msg.status {
+                        Image(systemName: status.icon)
+                            .font(.system(size: 9))
+                            .foregroundStyle(status.color)
+                    }
                     if let duration = msg.duration {
                         Text(String(format: "%.1fs", duration))
-                            .font(.system(size: 10))
+                            .font(.system(size: 10, design: .monospaced))
                             .foregroundStyle(.tertiary)
                     }
-                    Spacer()
                 }
                 .foregroundStyle(.secondary)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    Text(msg.content)
-                        .font(.system(size: 11, design: .monospaced))
-                        .textSelection(.enabled)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color(nsColor: .controlColor).opacity(0.5))
+
+                // Output body
+                if !msg.content.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        Text(msg.content)
+                            .font(.system(size: 11, design: .monospaced))
+                            .textSelection(.enabled)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .background(Color(nsColor: .textBackgroundColor))
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color(nsColor: .controlColor).opacity(0.8))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+            )
         }
     }
 
     private func agentSystemContent(_ msg: AgentMessage) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "info.circle")
-                .font(.system(size: 11))
-            Text(msg.content)
-                .font(.system(size: 12))
+        Group {
+            if msg.content.hasPrefix("Running:") {
+                // In-flight command notice: compact blue bar, command in mono.
+                let command = msg.content
+                    .dropFirst("Running:".count)
+                    .trimmingCharacters(in: .whitespaces)
+                HStack(spacing: 6) {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(.blue)
+                    Text("$ \(command)")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                    Spacer()
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .frame(maxWidth: .infinity)
+                .background(Color.blue.opacity(0.07))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            } else {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 11))
+                    Text(msg.content)
+                        .font(.system(size: 12))
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity)
+                .background(Color.orange.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
         }
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity)
-        .background(Color.orange.opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func agentCommandBlock(_ command: String) -> some View {
