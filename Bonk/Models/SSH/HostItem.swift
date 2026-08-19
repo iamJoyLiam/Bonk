@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 import SwiftData
 
 /// Authentication method for SSH connections.
@@ -130,6 +131,28 @@ final class HostItem {
         KeychainHelper.delete(for: KeychainHelper.passwordKey(for: id))
         KeychainHelper.delete(for: KeychainHelper.privateKeyKey(for: id))
         KeychainHelper.delete(for: KeychainHelper.certificateKey(for: id))
+    }
+
+    /// Refresh the saved password after the user typed a working one into
+    /// the terminal. Updates the vault credential when one is bound,
+    /// otherwise the host-embedded Keychain entry.
+    ///
+    /// Private-key credentials are never overwritten — the password is saved
+    /// to the host's own password entry instead, so it survives without
+    /// destroying the key material.
+    func updateSavedPassword(_ newPassword: String) {
+        guard !newPassword.isEmpty else { return }
+        if let cred = credentialRef, cred.type == .password {
+            cred.storeSecret(newPassword)
+            Log.session.info("[CRED] Updated vault credential \(cred.name, privacy: .public) password")
+        } else {
+            KeychainHelper.set(newPassword, for: KeychainHelper.passwordKey(for: id))
+            if let cred = credentialRef, cred.type == .privateKey {
+                Log.session.warning("[CRED] Saved typed password to host entry (vault credential \(cred.name, privacy: .public) is private-key type, left untouched)")
+            } else {
+                Log.session.info("[CRED] Updated host-embedded password for \(self.host, privacy: .public)")
+            }
+        }
     }
 
     /// Resolve the effective username.

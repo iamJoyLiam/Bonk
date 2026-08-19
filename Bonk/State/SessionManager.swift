@@ -149,6 +149,16 @@ final class SessionManager {
         session.sshService = service
         observeStateChanges(for: tab, session: session, service: service)
 
+        // When the stored password was wrong and the user types a working
+        // one into the terminal, refresh the saved credential so the next
+        // connect succeeds automatically.
+        await service.setManualPasswordHandler { [weak tab] password in
+            Task { @MainActor in
+                tab?.hostItem.updateSavedPassword(password)
+                Log.session.info("[CONNECT] Manual password accepted; saved credential updated")
+            }
+        }
+
         do {
             try await service.connect(config: config)
 

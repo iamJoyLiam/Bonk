@@ -6,6 +6,36 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.20</title>
+            <pubDate>Wed, 19 Aug 2026 16:30:00 +0000</pubDate>
+            <sparkle:version>20261020</sparkle:version>
+            <sparkle:shortVersionString>2026.1.20</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- 移除 SSH 认证弹窗：密码与 MFA 提示只在终端内输入，不再弹窗打断
+- 凭证管理：密码与私钥改为独立输入字段，切换类型不再串内容；密码支持小眼睛显示/隐藏；编辑私钥凭证有覆盖确认与警示
+- 跳板主机接入设置页：新增"跳板主机"标签页，支持直接填写密码/私钥或引用凭证库
+- 修复手动输入密码后的回存逻辑：任何凭证类型都会正确保存到主机密码条目，不再跳过或误存
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.20/Bonk-2026.1.20-arm64.dmg"
+                length="13373253"
+                type="application/octet-stream"
+                sparkle:edSignature="fvNoNjQ+2J0dlZbm1FL5HytjntrLQS0Zg3H/z26z81J5UL2UPjVCL66ZGL5ZoAvzv4urDVuMztcp23Mdb8HqCg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.20/Bonk-2026.1.20-x86_64.dmg"
+                length="15213885"
+                type="application/octet-stream"
+                sparkle:edSignature="ezSXr5cD2j44+0WTtzQcrjEr83g/8b+LgzIoFVppdD0R/olIGdQxkVtViAjcqNayUcip8DeI11tdVMZCjnfiDw=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.19</title>
             <pubDate>Wed, 19 Aug 2026 14:00:00 +0000</pubDate>
             <sparkle:version>20261019</sparkle:version>

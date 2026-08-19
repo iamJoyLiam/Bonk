@@ -62,6 +62,14 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     private let onUnexpectedCloseBox = NIOLockedValueBox<(@Sendable () -> Void)?>(nil)
     private static let maxPendingInputBytes = 64 * 1024
 
+    /// Optional tap on bytes typed into the PTY (used to capture manual
+    /// password entry during SSH auth). Observes only; never modifies input.
+    private let inputTapBox = NIOLockedValueBox<(@Sendable (ArraySlice<UInt8>) -> Void)?>(nil)
+    public var inputTap: (@Sendable (ArraySlice<UInt8>) -> Void)? {
+        get { inputTapBox.withLockedValue { $0 } }
+        set { inputTapBox.withLockedValue { $0 = newValue } }
+    }
+
     /// OSC 7 CWD detector — intercepts escape sequences to track directory changes.
     let osc7Detector = PTYOSC7Detector()
 
@@ -282,6 +290,8 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
     /// Write keyboard input to the remote shell's stdin.
     public func sendInput(_ bytes: ArraySlice<UInt8>) async throws {
+        inputTapBox.withLockedValue { $0 }?(bytes)
+
         if let writer = writerBox.withLockedValue({ $0 }) {
             var buffer = ByteBuffer()
             buffer.writeBytes(bytes)

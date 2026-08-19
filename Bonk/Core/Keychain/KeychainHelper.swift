@@ -152,4 +152,12 @@ enum KeychainHelper {
     static func secureEnclaveKey(for hostID: UUID) -> String {
         "host_\(hostID.uuidString)_secureenclave"
     }
+
+    static func jumpPasswordKey(for jumpID: UUID) -> String {
+        "jump_\(jumpID.uuidString)_password"
+    }
+
+    static func jumpPrivateKeyKey(for jumpID: UUID) -> String {
+        "jump_\(jumpID.uuidString)_privatekey"
+    }
 }

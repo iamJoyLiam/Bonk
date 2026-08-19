@@ -29,6 +29,10 @@ final class OpenSSHBackend: @unchecked Sendable {
     private var jumpIdentityFile: URL?
     private var jumpCertificateFile: URL?
 
+    /// Called with a password the user typed manually into the terminal once
+    /// the server accepted it (stored credential was wrong or missing).
+    var onManualPasswordVerified: (@Sendable (String) -> Void)?
+
     init(config: SSHConnectionConfig) throws {
         self.config = config
         controlPath = "/tmp/bonk-ssh-\(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(20))"
@@ -57,12 +61,18 @@ final class OpenSSHBackend: @unchecked Sendable {
         )
         let session = PTYSession()
         let responder = makeAuthResponder(process: process, allowInteractivePrompt: false)
+        responder.onManualPasswordVerified = { [weak self] password in
+            self?.onManualPasswordVerified?(password)
+        }
 
         lock.lock()
         activeProcess = process
         activePTYSession = session
         lock.unlock()
 
+        session.inputTap = { [weak responder] bytes in
+            responder?.observeInput(bytes)
+        }
         session.startProcess(
             fileDescriptor: process.masterFD,
             onExit: onExit,
@@ -355,8 +365,15 @@ final class OpenSSHBackend: @unchecked Sendable {
         process: OpenSSHProcessTransport,
         allowInteractivePrompt: Bool
     ) -> OpenSSHAuthPromptResponder {
-        OpenSSHAuthPromptResponder(
+        var authUserHosts: [String] = []
+        if let jumpHost = config.jumpHost {
+            authUserHosts.append("\(jumpHost.username)@\(jumpHost.host)")
+        }
+        authUserHosts.append("\(config.username)@\(config.host)")
+
+        return OpenSSHAuthPromptResponder(
             credentials: authCredentials(),
+            authUserHosts: authUserHosts,
             allowInteractivePrompt: allowInteractivePrompt,
             allowUnscopedPassword: allowInteractivePrompt && config.jumpHost == nil,
             write: { [weak self, weak process] data in

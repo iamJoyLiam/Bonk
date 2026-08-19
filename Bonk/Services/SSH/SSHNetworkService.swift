@@ -40,6 +40,15 @@ public actor SSHNetworkService {
     private var sftpNativeClient: SSHClient?
     private var config: SSHConnectionConfig?
     private var activePTYSession: PTYSession?
+    /// Called with a manually typed password the server accepted, so the
+    /// saved credential can be refreshed.
+    private var onManualPasswordVerified: (@Sendable (String) -> Void)?
+
+    /// Actor-safe way to install the manual-password handler (this type is
+    /// an actor, so callers cannot assign properties directly).
+    public func setManualPasswordHandler(_ handler: (@Sendable (String) -> Void)?) {
+        onManualPasswordVerified = handler
+    }
     #if os(macOS)
         /// System OpenSSH transport for macOS terminal/exec/forwarding auth.
         private var openSSHBackend: OpenSSHBackend?
@@ -325,6 +334,7 @@ public actor SSHNetworkService {
     ) async throws -> PTYSession {
         #if os(macOS)
             if usesOpenSSHTransport, let openSSHBackend {
+                openSSHBackend.onManualPasswordVerified = onManualPasswordVerified
                 let session = try openSSHBackend.openPTY(
                     cols: cols,
                     rows: rows,

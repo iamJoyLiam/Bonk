@@ -47,20 +47,68 @@ final class JumpHost {
         "\(username)@\(host):\(port)"
     }
 
-    func resolveAuthMethod() -> SSHAuthMethod? {
-        guard let credentialRef,
-              let secret = credentialRef.loadSecret(),
-              !secret.isEmpty
-        else {
-            return nil
-        }
+    // MARK: - Inline Keychain credentials
+    //
+    // A jump host can authenticate with a password or private key stored
+    // directly (per-jump-host Keychain entries), or by referencing a vault
+    // credential. `authType` records which one is in use: "password",
+    // "privateKey" or "credential" (vault reference, default).
 
-        switch credentialRef.type {
-        case .password:
-            return .password(secret)
-        case .privateKey:
-            return .privateKey(pemString: secret)
-        case .apiKey:
+    func loadPassword() -> String? {
+        KeychainHelper.get(for: KeychainHelper.jumpPasswordKey(for: id))
+    }
+
+    func storePassword(_ password: String) {
+        guard !password.isEmpty else { return }
+        KeychainHelper.set(password, for: KeychainHelper.jumpPasswordKey(for: id))
+    }
+
+    func loadPrivateKey() -> String? {
+        KeychainHelper.get(for: KeychainHelper.jumpPrivateKeyKey(for: id))
+    }
+
+    func storePrivateKey(_ pem: String) {
+        guard !pem.isEmpty else { return }
+        KeychainHelper.set(pem, for: KeychainHelper.jumpPrivateKeyKey(for: id))
+    }
+
+    func deleteInlineCredentials() {
+        KeychainHelper.delete(for: KeychainHelper.jumpPasswordKey(for: id))
+        KeychainHelper.delete(for: KeychainHelper.jumpPrivateKeyKey(for: id))
+    }
+
+    func resolveAuthMethod() -> SSHAuthMethod? {
+        switch authType {
+        case "password":
+            if let secret = loadPassword(), !secret.isEmpty {
+                return .password(secret)
+            }
+            // Legacy data: the old editor stored authType="password" (the
+            // init default) but authenticated via credentialRef. Fall back
+            // to the vault credential instead of dropping auth entirely.
+            fallthrough
+        case "privateKey":
+            if let pem = loadPrivateKey(), !pem.isEmpty {
+                return .privateKey(pemString: pem)
+            }
+            fallthrough
+        case "credential":
+            guard let credentialRef,
+                  let secret = credentialRef.loadSecret(),
+                  !secret.isEmpty
+            else {
+                return nil
+            }
+
+            switch credentialRef.type {
+            case .password:
+                return .password(secret)
+            case .privateKey:
+                return .privateKey(pemString: secret)
+            case .apiKey:
+                return nil
+            }
+        default:
             return nil
         }
     }

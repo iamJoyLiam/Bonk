@@ -30,6 +30,10 @@ struct SettingsView: View {
                 .tabItem { Label(i18n.t(.groups), systemImage: "folder") }
                 .tag("groups")
 
+            JumpHostView(isPresented: .constant(true))
+                .tabItem { Label(i18n.t(.jumpHosts), systemImage: "arrow.triangle.swap") }
+                .tag("jump_hosts")
+
             QuakeSettingsView(quakeController: quakeController)
                 .tabItem { Label(i18n.t(.quakeTerminal), systemImage: "arrow.down.to.line") }
                 .tag("quake")

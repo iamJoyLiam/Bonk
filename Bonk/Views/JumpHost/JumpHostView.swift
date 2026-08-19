@@ -162,7 +162,15 @@ struct JumpHostEditSheet: View {
     @State private var hostname = ""
     @State private var port = "22"
     @State private var username = ""
+    @State private var authStyle: JumpAuthStyle = .credential
+    @State private var password = ""
+    @State private var privateKeyPEM = ""
+    @State private var showPassword = false
     @State private var selectedCredential: Credential?
+
+    enum JumpAuthStyle: String, CaseIterable {
+        case password, privateKey, credential
+    }
 
     var body: some View {
         NavigationStack {
@@ -182,11 +190,39 @@ struct JumpHostEditSheet: View {
                 }
 
                 Section(i18n.t(.authentication)) {
-                    Picker(i18n.t(.credential), selection: $selectedCredential) {
-                        Text(i18n.t(.none)).tag(Credential?.none)
-                        ForEach(credentials.filter { $0.type == .password || $0.type == .privateKey }) { credential in
-                            Label(credential.name, systemImage: credential.type.symbolName)
-                                .tag(Credential?.some(credential))
+                    Picker(i18n.t(.authentication), selection: $authStyle) {
+                        Text(i18n.t(.password)).tag(JumpAuthStyle.password)
+                        Text(i18n.t(.privateKey)).tag(JumpAuthStyle.privateKey)
+                        Text(i18n.t(.credential)).tag(JumpAuthStyle.credential)
+                    }
+                    .pickerStyle(.segmented)
+
+                    switch authStyle {
+                    case .password:
+                        HStack(spacing: 6) {
+                            if showPassword {
+                                TextField(i18n.t(.password), text: $password)
+                            } else {
+                                SecureField(i18n.t(.password), text: $password)
+                            }
+                            Button { showPassword.toggle() } label: {
+                                Image(systemName: showPassword ? "eye.slash" : "eye")
+                                    .font(.system(size: 12))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                        }
+                    case .privateKey:
+                        TextEditor(text: $privateKeyPEM)
+                            .font(.system(.caption, design: .monospaced))
+                            .frame(minHeight: 120)
+                    case .credential:
+                        Picker(i18n.t(.credential), selection: $selectedCredential) {
+                            Text(i18n.t(.none)).tag(Credential?.none)
+                            ForEach(credentials.filter { $0.type == .password || $0.type == .privateKey }) { credential in
+                                Label(credential.name, systemImage: credential.type.symbolName)
+                                    .tag(Credential?.some(credential))
+                            }
                         }
                     }
                 }
@@ -211,11 +247,32 @@ struct JumpHostEditSheet: View {
                     hostname = host.host
                     port = "\(host.port)"
                     username = host.username
-                    selectedCredential = host.credentialRef
+                    // Legacy data saved by the old editor kept authType at
+                    // the "password" default while authenticating via a vault
+                    // credential — surface that as the credential style.
+                    if host.authType == "password",
+                       host.loadPassword() == nil,
+                       host.credentialRef != nil
+                    {
+                        authStyle = .credential
+                        selectedCredential = host.credentialRef
+                    } else {
+                        switch host.authType {
+                        case "password":
+                            authStyle = .password
+                            password = host.loadPassword() ?? ""
+                        case "privateKey":
+                            authStyle = .privateKey
+                            privateKeyPEM = host.loadPrivateKey() ?? ""
+                        default:
+                            authStyle = .credential
+                        }
+                        selectedCredential = host.credentialRef
+                    }
                 }
             }
         }
-        .frame(width: 480, height: 360)
+        .frame(width: 480, height: 420)
     }
 
     private func save() {
@@ -226,7 +283,19 @@ struct JumpHostEditSheet: View {
             host.host = hostname
             host.port = portInt
             host.username = username
-            host.credentialRef = selectedCredential
+            host.deleteInlineCredentials()
+            host.credentialRef = nil
+            switch authStyle {
+            case .password:
+                host.authType = "password"
+                host.storePassword(password)
+            case .privateKey:
+                host.authType = "privateKey"
+                host.storePrivateKey(privateKeyPEM)
+            case .credential:
+                host.authType = "credential"
+                host.credentialRef = selectedCredential
+            }
         } else {
             let newHost = JumpHost(
                 name: name,
@@ -235,6 +304,17 @@ struct JumpHostEditSheet: View {
                 username: username
             )
             newHost.credentialRef = selectedCredential
+            switch authStyle {
+            case .password:
+                newHost.authType = "password"
+                newHost.storePassword(password)
+            case .privateKey:
+                newHost.authType = "privateKey"
+                newHost.storePrivateKey(privateKeyPEM)
+            case .credential:
+                newHost.authType = "credential"
+                newHost.credentialRef = selectedCredential
+            }
             modelContext.insert(newHost)
         }
     }

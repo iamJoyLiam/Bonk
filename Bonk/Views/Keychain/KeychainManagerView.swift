@@ -14,8 +14,10 @@ struct KeychainManagerView: View {
     @State private var editName = ""
     @State private var editType: CredentialType = .password
     @State private var editUsername = ""
-    @State private var editSecret = ""
+    @State private var editPassword = ""
+    @State private var editPrivateKey = ""
     @State private var editNotes = ""
+    @State private var showPassword = false
     @State private var pendingDelete: Credential?
 
     private var isEditing: Bool {
@@ -23,7 +25,8 @@ struct KeychainManagerView: View {
     }
 
     private var canSave: Bool {
-        !editName.trimmingCharacters(in: .whitespaces).isEmpty && !editSecret.isEmpty
+        let secretFilled = editType == .password ? !editPassword.isEmpty : !editPrivateKey.isEmpty
+        return !editName.trimmingCharacters(in: .whitespaces).isEmpty && secretFilled
     }
 
     var body: some View {
@@ -55,6 +58,24 @@ struct KeychainManagerView: View {
             }
             Button(i18n.t(.cancel), role: .cancel) { pendingDelete = nil }
         }
+        .alert(
+            "Overwrite private key?",
+            isPresented: privateKeyOverwriteBinding
+        ) {
+            Button("Overwrite", role: .destructive) {
+                if let cred = pendingPrivateKeyOverwrite {
+                    performSave(cred.name)
+                }
+                pendingPrivateKeyOverwrite = nil
+            }
+            Button(i18n.t(.cancel), role: .cancel) { pendingPrivateKeyOverwrite = nil }
+        } message: {
+            Text("This replaces the stored private key. Use the password type instead if you only want to store a password.")
+        }
+    }
+
+    private var privateKeyOverwriteBinding: Binding<Bool> {
+        Binding(get: { pendingPrivateKeyOverwrite != nil }, set: { if !$0 { pendingPrivateKeyOverwrite = nil } })
     }
 
     private var deleteAlertBinding: Binding<Bool> {
@@ -125,9 +146,27 @@ struct KeychainManagerView: View {
             }
             Section(editType == .privateKey ? i18n.t(.privateKey) : i18n.t(.password)) {
                 if editType == .privateKey {
-                    TextEditor(text: $editSecret).font(.system(.caption, design: .monospaced)).frame(minHeight: 120)
+                    TextEditor(text: $editPrivateKey).font(.system(.caption, design: .monospaced)).frame(minHeight: 120)
+                    Label("Private key PEM content — overwriting replaces the key used for authentication", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
                 } else {
-                    SecureField(i18n.t(.password), text: $editSecret)
+                    HStack(spacing: 6) {
+                        if showPassword {
+                            TextField(i18n.t(.password), text: $editPassword)
+                        } else {
+                            SecureField(i18n.t(.password), text: $editPassword)
+                        }
+                        Button {
+                            showPassword.toggle()
+                        } label: {
+                            Image(systemName: showPassword ? "eye.slash" : "eye")
+                                .font(.system(size: 12))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help(i18n.t(.password))
+                    }
                 }
             }
             Section(i18n.t(.notes)) {
@@ -147,13 +186,17 @@ struct KeychainManagerView: View {
     // MARK: - Actions
 
     private func beginAdd() {
-        editName = ""; editType = .password; editUsername = ""; editSecret = ""; editNotes = ""
+        editName = ""; editType = .password; editUsername = ""
+        editPassword = ""; editPrivateKey = ""; editNotes = ""
         isAdding = true
     }
 
     private func beginEdit(_ cred: Credential) {
         editName = cred.name; editType = cred.type
-        editUsername = cred.username ?? ""; editSecret = cred.loadSecret() ?? ""; editNotes = cred.notes ?? ""
+        editUsername = cred.username ?? ""
+        editPassword = cred.type == .password ? cred.loadSecret() ?? "" : ""
+        editPrivateKey = cred.type == .privateKey ? cred.loadSecret() ?? "" : ""
+        editNotes = cred.notes ?? ""
         editing = cred
     }
 
@@ -163,11 +206,24 @@ struct KeychainManagerView: View {
 
     private func save() {
         let trimmed = editName.trimmingCharacters(in: .whitespaces)
+        if let existing = editing, existing.type == .privateKey, editType == .privateKey {
+            // Overwriting an existing private key silently destroys the key
+            // material — require an explicit confirm.
+            pendingPrivateKeyOverwrite = existing
+            return
+        }
+        performSave(trimmed)
+    }
+
+    @State private var pendingPrivateKeyOverwrite: Credential?
+
+    private func performSave(_ trimmed: String) {
+        let secret = editType == .password ? editPassword : editPrivateKey
         if let existing = editing {
             existing.name = trimmed; existing.type = editType
             existing.username = editType == .password ? editUsername : nil
             existing.notes = editNotes.isEmpty ? nil : editNotes
-            existing.storeSecret(editSecret)
+            existing.storeSecret(secret)
         } else {
             let cred = Credential(
                 name: trimmed, type: editType,
@@ -175,7 +231,7 @@ struct KeychainManagerView: View {
                 notes: editNotes.isEmpty ? nil : editNotes
             )
             modelContext.insert(cred)
-            cred.storeSecret(editSecret)
+            cred.storeSecret(secret)
         }
         try? modelContext.save(); cancel()
     }

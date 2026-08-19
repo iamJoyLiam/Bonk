@@ -8,6 +8,7 @@
 #if os(macOS)
 
 import Foundation
+import os.log
 
 /// Responds to authentication prompts emitted by an OpenSSH PTY.
 ///
@@ -24,22 +25,49 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
     private let lock = NSLock()
     private var promptBuffer = ""
     private var credentials: [OpenSSHPasswordCredential]
-    private var interactivePromptInFlight = false
-    private let allowInteractivePrompt: Bool
     /// Generic `Password:` prompts are ambiguous when a ProxyCommand is
     /// active. Only use them for single-hop commands that explicitly allow
     /// automatic password submission.
     private let allowUnscopedPassword: Bool
     private let write: @Sendable (Data) -> Void
 
+    // MARK: - Manual password capture
+    //
+    // When no saved credential matches (e.g. the stored password was wrong),
+    // the prompt stays visible and the user types the password into the
+    // terminal. Those keystrokes flow through PTYSession.sendInput and are
+    // tapped here; once the server accepts the password (observed as the
+    // next output chunk not being a re-prompt), the new password is offered
+    // back so the app can update the saved credential.
+    //
+    // Capture is deliberately scoped: it only activates for the host-auth
+    // prompt (one that contains `user@host`, e.g. "root@1.2.3.4's
+    // password:"). Prompts like "[sudo] password for root:" or
+    // "New password:" never contain a host, so sudo/passwd/mysql passwords
+    // can never be mistaken for SSH credentials. A timeout closes the
+    // capture window even if the user never types.
+
+    private var awaitingManualPassword = false
+    private var manualPasswordBuffer = ""
+    private var pendingPassword: String?
+    private var captureExpiresAt = Date.distantPast
+    private static let captureTimeout: TimeInterval = 30
+
+    /// Called with a manually typed password once the server has accepted it.
+    var onManualPasswordVerified: (@Sendable (String) -> Void)?
+
+    /// `user@host` values that identify this connection's own auth prompts.
+    private let authUserHosts: [String]
+
     init(
         credentials: [OpenSSHPasswordCredential],
+        authUserHosts: [String],
         allowInteractivePrompt: Bool,
         allowUnscopedPassword: Bool,
         write: @escaping @Sendable (Data) -> Void
     ) {
         self.credentials = credentials.filter { !$0.password.isEmpty }
-        self.allowInteractivePrompt = allowInteractivePrompt
+        self.authUserHosts = authUserHosts
         self.allowUnscopedPassword = allowUnscopedPassword
         self.write = write
     }
@@ -53,19 +81,88 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
         let suffix = String(normalized.suffix(256))
         lock.unlock()
 
+        // A manually typed password is pending: the next output decides
+        // whether the server accepted it. A re-prompt or "Permission denied"
+        // in THIS chunk means it failed — discard the capture and wait for
+        // the next try. (Judged against the fresh chunk, not the cumulative
+        // suffix, which may still contain an earlier denial.)
+        if let pending = pendingPassword {
+            let fresh = Self.stripANSI(text)
+            if containsPermissionDenied(fresh)
+                || fresh.range(
+                    of: #"(?i)(password|passphrase)\s*:\s*$"#,
+                    options: .regularExpression
+                ) != nil
+            {
+                pendingPassword = nil
+                awaitingManualPassword = true
+            } else {
+                pendingPassword = nil
+                awaitingManualPassword = false
+                os_log("Manual password accepted, offering for save", type: .info)
+                onManualPasswordVerified?(pending)
+            }
+        }
+
         if matchesPasswordPrompt(suffix) {
             if respondPasswordIfAvailable(for: suffix) {
                 return
             }
 
-            if allowInteractivePrompt {
-                requestInteractivePrompt(label: "Password", echo: false)
+            // No saved credential left — the prompt stays visible and the
+            // user types the password into the terminal. Keystrokes are
+            // captured for the credential-update flow, but only for host-auth
+            // prompts (containing `user@host`); sudo/passwd/mysql prompts
+            // never contain a host, so they can never be mistaken.
+            if promptContainsAuthHost(suffix) {
+                awaitingManualPassword = true
+                manualPasswordBuffer = ""
+                captureExpiresAt = Date().addingTimeInterval(Self.captureTimeout)
             }
             return
         }
+    }
 
-        guard allowInteractivePrompt, matchesInteractivePrompt(suffix) else { return }
-        requestInteractivePrompt(label: Self.promptLabel(from: suffix), echo: false)
+    /// Tap bytes the user types into the terminal. Only captured while a
+    /// manual password prompt is awaiting input (no-echo, so the password
+    /// never appears on screen).
+    func observeInput(_ bytes: ArraySlice<UInt8>) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard awaitingManualPassword else { return }
+        guard Date() < captureExpiresAt else {
+            awaitingManualPassword = false
+            manualPasswordBuffer = ""
+            return
+        }
+
+        let data = Data(bytes)
+        if data.contains(0x0A) || data.contains(0x0D) {
+            // Enter — submit whatever was captured.
+            if !manualPasswordBuffer.isEmpty {
+                pendingPassword = manualPasswordBuffer
+                manualPasswordBuffer = ""
+            }
+            awaitingManualPassword = false
+        } else if data.contains(0x7F) || data.contains(0x08) {
+            // Backspace in the captured buffer.
+            manualPasswordBuffer = String(manualPasswordBuffer.dropLast())
+        } else if let text = String(data: data, encoding: .utf8) {
+            manualPasswordBuffer += text
+        }
+    }
+
+    private func containsPermissionDenied(_ text: String) -> Bool {
+        text.range(of: #"(?i)permission denied"#, options: .regularExpression) != nil
+    }
+
+    /// Whether the prompt is this connection's own auth prompt — it must
+    /// contain a known `user@host` so sudo/passwd/mysql prompts (which
+    /// never include a host) cannot open the capture window.
+    private func promptContainsAuthHost(_ text: String) -> Bool {
+        guard !authUserHosts.isEmpty else { return false }
+        let lower = text.lowercased()
+        return authUserHosts.contains { lower.contains($0.lowercased()) }
     }
 
     @discardableResult
@@ -90,59 +187,11 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
         return true
     }
 
-    private func requestInteractivePrompt(label: String, echo: Bool) {
-        lock.lock()
-        guard !interactivePromptInFlight else {
-            lock.unlock()
-            return
-        }
-        interactivePromptInFlight = true
-        promptBuffer = ""
-        lock.unlock()
-
-        Task {
-            defer { self.finishInteractivePrompt() }
-
-            do {
-                let responses = try await SSHKeyboardInteractivePromptController.promptText(
-                    name: "SSH authentication required",
-                    instruction: "Enter verification information.",
-                    prompts: [(label: label, echo: echo)]
-                )
-                guard let response = responses.first else { return }
-                self.write(Data((response + "\n").utf8))
-            } catch {
-                // Closing/cancelling prompt is handled by the child process.
-            }
-        }
-    }
-
-    private func finishInteractivePrompt() {
-        lock.lock()
-        interactivePromptInFlight = false
-        lock.unlock()
-    }
-
     private func matchesPasswordPrompt(_ text: String) -> Bool {
         text.range(
             of: #"(?i)(password|passphrase)\s*:\s*$"#,
             options: .regularExpression
         ) != nil
-    }
-
-    private func matchesInteractivePrompt(_ text: String) -> Bool {
-        text.range(
-            of: #"(?i)(\bmfa\b|verification|one[- ]?time|otp|passcode|token|authenticator|code).{0,80}:\s*$"#,
-            options: .regularExpression
-        ) != nil
-    }
-
-    private static func promptLabel(from text: String) -> String {
-        let line = text
-            .components(separatedBy: .newlines)
-            .last(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return line?.isEmpty == false ? line! : "Verification code"
     }
 
     private static func stripANSI(_ text: String) -> String {
