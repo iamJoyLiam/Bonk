@@ -6,6 +6,33 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.19</title>
+            <pubDate>Wed, 19 Aug 2026 14:00:00 +0000</pubDate>
+            <sparkle:version>20261019</sparkle:version>
+            <sparkle:shortVersionString>2026.1.19</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- 修复 SFTP 目录中中文文件名显示为乱码（\\344\\270\\213 等八进制转义）的问题
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.19/Bonk-2026.1.19-arm64.dmg"
+                length="14209819"
+                type="application/octet-stream"
+                sparkle:edSignature="u1mnNIQcpfup2kwQMAjjUhSLgcwLIaMgJL2R3WduKX63BFUGj+JdAuNydEdyd51wWbde2ow7hfWdMhpKP931Dg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.19/Bonk-2026.1.19-x86_64.dmg"
+                length="15144509"
+                type="application/octet-stream"
+                sparkle:edSignature="N+43A4/4C7BLP8OY8EZk+BUXahg9pAiPE0bMC13psz2GRgUByNp+wvSYwKPg23Jj3ei2BnPzy8JmDQhACTgmCA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.18</title>
             <pubDate>Wed, 19 Aug 2026 13:00:00 +0000</pubDate>
             <sparkle:version>20261018</sparkle:version>
