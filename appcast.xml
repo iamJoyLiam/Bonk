@@ -6,6 +6,37 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.18</title>
+            <pubDate>Wed, 19 Aug 2026 13:00:00 +0000</pubDate>
+            <sparkle:version>20261018</sparkle:version>
+            <sparkle:shortVersionString>2026.1.18</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- Agent 输出全面改版：命令执行块化渲染（Codex 风格），代码块带行号、语言徽章与 Shell 语法高亮
+- Agent 终端镜像：命令/输出/状态分块显示，超长输出按行截断，远程 ANSI 清理
+- 修复 fdisk -l / parted --list 等只读磁盘命令被误判为危险需要确认的问题
+- AI 输出支持选中复制；宽表格在窄侧边栏可横向滚动，不再被截断
+- 修复窗口大小记忆：重启后恢复上次窗口尺寸与位置（v2，真正生效）
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.18/Bonk-2026.1.18-arm64.dmg"
+                length="14209163"
+                type="application/octet-stream"
+                sparkle:edSignature="iO//aSGFQ3kfr1tXLFkzBVvQCsiocaTHbvP3aGQzzYdNosByfA+gDca442Sawxdvrm0Nasq1/g16HUhqCPeeCA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.18/Bonk-2026.1.18-x86_64.dmg"
+                length="15140540"
+                type="application/octet-stream"
+                sparkle:edSignature="nxOjGF2p8QF8PdrH0QD+hIQJN28Rpjs5d5pKpGMGpWY12NidMFxw//jxn0kqjaa5eMfim8t6sazeNloCoqcnAg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.17</title>
             <pubDate>Wed, 19 Aug 2026 02:00:00 +0000</pubDate>
             <sparkle:version>20261017</sparkle:version>
