@@ -36,6 +36,10 @@ enum CommandSafety {
         // Blocked
         if isBlocked(trimmed) { return .blocked }
 
+        // Read-only listings are safe even for normally risky tools
+        // (e.g. `fdisk -l`, `parted -l`, bare `mount`).
+        if isReadOnlyListing(cmd, trimmed) { return .safe }
+
         // sudo → delegate to subcommand
         if cmd == "sudo" { return classifySudo(parts) }
 
@@ -59,6 +63,23 @@ enum CommandSafety {
     }
 
     // MARK: - Blocked
+
+    /// Read-only invocations of normally risky tools. They list or inspect
+    /// state without modifying anything, so they should run without prompts.
+    private static func isReadOnlyListing(_ cmd: String, _ full: String) -> Bool {
+        let lower = full.lowercased()
+        switch cmd {
+        case "fdisk", "parted", "sfdisk":
+            return lower.contains(" -l") || lower.contains("--list")
+                || lower.contains("--print")
+        case "mount":
+            return !lower.contains(" -") // bare `mount` just lists mounts
+        case "blkid", "findmnt", "lsblk":
+            return true
+        default:
+            return false
+        }
+    }
 
     private static func isBlocked(_ command: String) -> Bool {
         let blocked = [
