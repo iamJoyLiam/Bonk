@@ -64,7 +64,13 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate {
             modelContainer: BonkApp.sharedModelContainer
         )
         window.contentViewController = splitVC
-        window.center()
+        // Only center on the very first launch (no saved frame yet). Calling
+        // center() before the first display would override the frame that
+        // AppKit is about to restore from the autosave name, so every launch
+        // would fall back to the default size.
+        if UserDefaults.standard.string(forKey: "NSWindow Frame BonkMainWindow") == nil {
+            window.center()
+        }
         window.makeKeyAndOrderFront(nil)
         mainWindow = window
 
