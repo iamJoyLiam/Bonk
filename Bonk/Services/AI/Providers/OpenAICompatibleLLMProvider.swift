@@ -7,14 +7,21 @@ import Foundation
 final class OpenAICompatibleLLMProvider: LLMProvider, @unchecked Sendable {
     let providerID: UUID
     let providerName: String
-    let capability = LLMProviderCapability(supportsStreaming: true, supportsToolCalls: true)
+    let capability: LLMProviderCapability
 
     private let config: AIProviderConfig
     private let apiKey: String
 
-    init(config: AIProviderConfig, apiKey: String) {
+    init(
+        config: AIProviderConfig,
+        apiKey: String,
+        capability: LLMProviderCapability? = nil
+    ) {
         providerID = config.id
         providerName = config.displayName
+        self.capability = capability ?? LLMProviderCapability(
+            supportsStreaming: true, supportsToolCalls: true
+        )
         self.config = config
         self.apiKey = apiKey
     }
@@ -169,7 +176,9 @@ final class OpenAICompatibleLLMProvider: LLMProvider, @unchecked Sendable {
         }
 
         if disableReasoning,
-           let reasoningPayload = AIProviderNetworking.reasoningDisablePayload(for: config.type)
+           let reasoningPayload = AIProviderNetworking.reasoningDisablePayload(
+               for: capability
+           )
         {
             body.merge(reasoningPayload) { $1 }
         }

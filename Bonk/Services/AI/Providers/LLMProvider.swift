@@ -110,12 +110,9 @@ struct LLMToolDefinition: Equatable, Sendable {
     }
 }
 
-/// What a provider can do. Agent Runtime uses this to decide between the
-/// real tool loop and the legacy plan flow.
-struct LLMProviderCapability: Equatable, Sendable {
-    let supportsStreaming: Bool
-    let supportsToolCalls: Bool
-}
+/// Backward-compatible name used by Agent Runtime. Capability is now model
+/// scoped and resolved by AIProviderCapabilityResolver.
+typealias LLMProviderCapability = ModelCapability
 
 /// Standard LLM provider abstraction. Business code talks to this protocol;
 /// each adapter owns SDK/HTTP/SSE specifics.

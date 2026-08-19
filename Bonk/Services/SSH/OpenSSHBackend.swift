@@ -14,9 +14,8 @@ import Foundation
 /// OpenSSH-backed network transport.
 ///
 /// One backend owns one target configuration and one short-lived control
-/// socket. Terminal, exec, and forwarding commands share that socket, so MFA
-/// is normally completed once per target session. SFTP remains on native
-/// Citadel path for compatibility.
+/// socket. Terminal, exec, forwarding, and SFTP commands share that socket,
+/// so MFA is normally completed once per target session.
 final class OpenSSHBackend: @unchecked Sendable {
     let config: SSHConnectionConfig
 
@@ -108,6 +107,75 @@ final class OpenSSHBackend: @unchecked Sendable {
             )
         }
         return Self.cleanCommandOutput(output)
+    }
+
+    /// Execute one batch against the system OpenSSH SFTP client.
+    ///
+    /// The SFTP process uses the same ControlPath and auth responder as the
+    /// terminal process. This avoids a second native SSH connection and keeps
+    /// password / keyboard-interactive authentication behavior consistent.
+    func runSFTP(
+        commands: [String],
+        onOutput: (@Sendable (Data) -> Void)? = nil,
+        registerProcess: (@Sendable (OpenSSHProcessTransport?) -> Void)? = nil
+    ) async throws -> String {
+        guard !commands.isEmpty else {
+            throw SSHServiceError.connectionFailed("OpenSSH SFTP command list is empty.")
+        }
+
+        let process = try OpenSSHProcessTransport.spawn(
+            executable: "/usr/bin/sftp",
+            arguments: sftpArguments(),
+            cols: 160,
+            rows: 50,
+            termType: "xterm-256color"
+        )
+        let session = PTYSession()
+        let rawStream = session.makeRawOutputStream()
+        let responder = makeAuthResponder(process: process, allowInteractivePrompt: true)
+        registerProcess?(process)
+        session.startProcess(
+            fileDescriptor: process.masterFD,
+            onExit: {},
+            onOutput: { data in
+                responder.observe(data)
+                onOutput?(data)
+            }
+        )
+
+        do {
+            var batch = commands.map { "@\($0)" }
+            batch.append("@quit")
+            try process.write(Data((batch.joined(separator: "\n") + "\n").utf8))
+
+            var output = ""
+            for await chunk in rawStream {
+                output.append(chunk)
+            }
+
+            let status = await process.waitForExit()
+            session.close()
+            registerProcess?(nil)
+
+            guard status == 0 else {
+                let detail = Self.cleanCommandOutput(output)
+                throw SSHServiceError.connectionFailed(
+                    detail.isEmpty
+                        ? "OpenSSH SFTP exited with status \(status)."
+                        : detail
+                )
+            }
+            return Self.cleanCommandOutput(output)
+        } catch {
+            registerProcess?(nil)
+            session.close()
+            process.close()
+            throw error
+        }
+    }
+
+    func makeSFTPClient() -> OpenSSHSFTPClient {
+        OpenSSHSFTPClient(backend: self)
     }
 
     /// Start OpenSSH `-N` forwarding process.
@@ -216,7 +284,29 @@ final class OpenSSHBackend: @unchecked Sendable {
             args += ["-o", "RequestTTY=no"]
         }
 
-        args += [
+        args += commonOpenSSHArguments(additionalOptions: additionalOptions)
+        args += ["-p", String(config.port), "\(config.username)@\(config.host)"]
+        if let command {
+            args.append(command)
+        }
+        return args
+    }
+
+    private func sftpArguments() -> [String] {
+        var args = commonOpenSSHArguments(
+            additionalOptions: [
+                "-N", // Re-enable progress meter disabled implicitly by -b.
+                "-b", "-",
+                "-B", "131072",
+                "-R", "128",
+            ]
+        )
+        args += ["-P", String(config.port), "\(config.username)@\(config.host)"]
+        return args
+    }
+
+    private func commonOpenSSHArguments(additionalOptions: [String]) -> [String] {
+        var args: [String] = [
             "-o", "ControlMaster=auto",
             "-o", "ControlPersist=300",
             "-o", "ControlPath=\(controlPath)",
@@ -237,11 +327,6 @@ final class OpenSSHBackend: @unchecked Sendable {
 
         args += identityArguments()
         args += additionalOptions
-
-        args += ["-p", String(config.port), "\(config.username)@\(config.host)"]
-        if let command {
-            args.append(command)
-        }
         return args
     }
 
@@ -266,7 +351,7 @@ final class OpenSSHBackend: @unchecked Sendable {
         ]
     }
 
-    private func makeAuthResponder(
+    func makeAuthResponder(
         process: OpenSSHProcessTransport,
         allowInteractivePrompt: Bool
     ) -> OpenSSHAuthPromptResponder {

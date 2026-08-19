@@ -50,7 +50,7 @@ final class AgentEngine {
             return nil
         }
         let key = provider.apiKey
-        guard !key.isEmpty else {
+        guard !provider.type.needsAPIKey || !key.isEmpty else {
             lastError = String(format: L.t(.apiKeyNotSet), provider.name)
             return nil
         }
@@ -70,6 +70,8 @@ final class AgentEngine {
     ) async -> String? {
         isProcessing = true
         streamingResponse = ""
+        lastError = nil
+        currentExplanation = nil
         defer { isProcessing = false }
 
         guard let (provider, apiKey) = resolveProvider() else {
@@ -85,10 +87,17 @@ final class AgentEngine {
 
         // swiftlint:disable:next line_length
         Self.logger.info("\(label, privacy: .public): provider=\(provider.name, privacy: .public) model=\(provider.model, privacy: .public)")
-        let llmProvider = LLMProviderFactory.provider(for: provider, apiKey: apiKey)
+        let llmProvider = LLMProviderFactory.provider(
+            for: provider, apiKey: apiKey, workload: .chat
+        )
 
         let maxRetries = 2
         for attempt in 0 ... maxRetries {
+            // A failed stream may have emitted partial text before ending.
+            // Do not concatenate that partial result into the next attempt.
+            if attempt > 0 {
+                streamingResponse = ""
+            }
             do {
                 let response: String = if mode == .agent {
                     try await executeNonStreaming(
@@ -104,9 +113,10 @@ final class AgentEngine {
 
                 let sanitized = sanitizer.sanitize(response)
 
-                if sanitized.isEmpty {
+                if sanitized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     // swiftlint:disable:next line_length
                     Self.logger.warning("\(label, privacy: .public): empty response from \(provider.name, privacy: .public)")
+                    throw AIError.emptyResponse
                 }
 
                 currentExplanation = sanitized
@@ -157,7 +167,10 @@ final class AgentEngine {
         for try await event in provider.stream(
             messages: messages,
             maxTokens: nil,
-            disableReasoning: false
+            // Ask/Edit expects a direct command/explanation. Reasoning models
+            // otherwise may spend the whole small output budget on hidden
+            // reasoning and return no visible content.
+            disableReasoning: true
         ) {
             switch event {
             case let .textDelta(delta):
@@ -183,7 +196,9 @@ final class AgentEngine {
         userPrompt: String
     ) async throws -> String {
         try await executeNonStreaming(
-            provider: LLMProviderFactory.provider(for: provider, apiKey: apiKey),
+            provider: LLMProviderFactory.provider(
+                for: provider, apiKey: apiKey, workload: .chat
+            ),
             systemPrompt: systemPrompt,
             userPrompt: userPrompt
         )

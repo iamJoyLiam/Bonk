@@ -12,6 +12,7 @@ final class AIProviderRecord {
     var endpoint: String
     /// Optional additive fields — safe for SwiftData migration.
     var protocolRaw: String?
+    var capabilityOverrideJSON: String?
     var extraHeadersJSON: String?
     var maxOutputTokens: Int?
     var telemetryEnabled: Bool
@@ -51,6 +52,21 @@ final class AIProviderRecord {
         set { protocolRaw = newValue.rawValue }
     }
 
+    var capabilityOverride: ModelCapabilityOverride? {
+        get {
+            guard let capabilityOverrideJSON,
+                  let data = capabilityOverrideJSON.data(using: .utf8)
+            else { return nil }
+            return try? JSONDecoder().decode(ModelCapabilityOverride.self, from: data)
+        }
+        set {
+            capabilityOverrideJSON = newValue.flatMap { override in
+                guard let data = try? JSONEncoder().encode(override) else { return nil }
+                return String(data: data, encoding: .utf8)
+            }
+        }
+    }
+
     var extraHeaders: [String: String] {
         get {
             guard let extraHeadersJSON,
@@ -73,6 +89,7 @@ final class AIProviderRecord {
         model: String = "",
         endpoint: String = "",
         protocolType: AIProviderProtocol? = nil,
+        capabilityOverride: ModelCapabilityOverride? = nil,
         extraHeaders: [String: String] = [:],
         apiKey: String = "",
         maxOutputTokens: Int? = nil,
@@ -86,6 +103,10 @@ final class AIProviderRecord {
         self.endpoint = endpoint.isEmpty ? type.defaultEndpoint : endpoint
         let resolvedProtocol = protocolType ?? type.defaultProtocolType
         self.protocolRaw = (type.supportsResponses ? resolvedProtocol : .chatCompletions).rawValue
+        self.capabilityOverrideJSON = capabilityOverride.flatMap { override in
+            guard let data = try? JSONEncoder().encode(override) else { return nil }
+            return String(data: data, encoding: .utf8)
+        }
         self.extraHeadersJSON = extraHeaders.isEmpty
             ? nil
             : (try? JSONEncoder().encode(extraHeaders)).flatMap { String(data: $0, encoding: .utf8) }

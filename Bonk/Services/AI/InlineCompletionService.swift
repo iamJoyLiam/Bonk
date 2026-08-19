@@ -17,9 +17,13 @@ import SwiftData
 struct InlineCompletionContext {
     /// Pure user-typed text (no prompt prefix), from the session input buffer.
     var inputBuffer: String
+    /// Stable host/session scope. Prevents suggestions leaking across hosts.
+    var hostKey: String? = nil
     var currentDirectory: String?
+    var shell: String? = nil
     var recentCommands: [String]
     var recentOutput: String
+    var lastExitCode: Int? = nil
     /// Tool-agnostic identifiers extracted from recent output (container
     /// names, file names, branches, pods, ...) — no tool-specific parsing.
     var knownWords: [String]
@@ -47,6 +51,7 @@ final class InlineCompletionService {
     private var modelContext: ModelContext?
     private var persistentCache: [String: InlineSuggestionRecord] = [:]
     private static let persistentCacheLimit = 500
+    private static let persistentCacheTTL: TimeInterval = 7 * 24 * 60 * 60
     /// Key of the suggestion currently on screen, for accept/reject feedback.
     private var activeKey: String?
     /// Suffixes rejected in this session — never re-suggest them.
@@ -85,8 +90,14 @@ final class InlineCompletionService {
         guard let modelContext else { return }
         let descriptor = FetchDescriptor<InlineSuggestionRecord>()
         guard let records = try? modelContext.fetch(descriptor) else { return }
-        persistentCache = Dictionary(uniqueKeysWithValues: records.map { ($0.key, $0) })
+        let cutoff = Date().addingTimeInterval(-Self.persistentCacheTTL)
+        let active = records.filter { $0.lastUsedAt >= cutoff }
+        for record in records where record.lastUsedAt < cutoff {
+            modelContext.delete(record)
+        }
+        persistentCache = Dictionary(uniqueKeysWithValues: active.map { ($0.key, $0) })
         trimPersistentCache()
+        try? modelContext.save()
     }
 
     var debounceMilliseconds: Int {
@@ -134,11 +145,11 @@ final class InlineCompletionService {
         let rawTyped = context.inputBuffer
         let typed = rawTyped.trimmingCharacters(in: .whitespacesAndNewlines)
         guard typed.count >= 2 else { return }
-        let needsLeadingSpace = rawTyped.last?.isWhitespace == false
+        let cacheKey = Self.cacheKey(provider: provider, context: context, typed: typed)
 
         // Deterministic local completion: if the tail token is a prefix of a
-        // name the user just saw in the output, complete it immediately — no
-        // model round-trip, no confidence gamble.
+        // name the user just saw in the output, show it immediately while the
+        // model still gets a chance to replace it with a better continuation.
         if includeTerminalOutput,
            let lastToken = typed.split(whereSeparator: { $0.isWhitespace }).last,
            let match = context.knownWords
@@ -147,19 +158,16 @@ final class InlineCompletionService {
                .first
         {
             let suffix = String(match.dropFirst(lastToken.count))
-            suggestion = suffix
-            activeKey = "\(context.currentDirectory ?? "")|\(provider.id.uuidString)|\(typed)"
-            onSuggestion?(suffix)
-            return
+            let display = Self.displaySuffix(suffix, typed: typed)
+            suggestion = display
+            activeKey = cacheKey
+            onSuggestion?(display)
         }
 
-        // Instant repeat: serve the cached suffix from the last identical
-        // prefix (same provider) and skip the model entirely.
-        let cwd = context.currentDirectory ?? ""
-        let cacheKey = "\(cwd)|\(provider.id.uuidString)|\(typed)"
+        // Instant repeat: serve cached suffix from same host/model/context.
         if let cached = suggestionCache[cacheKey] ?? persistentCache[cacheKey]?.suffix {
             guard !isRejected(cacheKey: cacheKey, suffix: cached) else { return }
-            let display = needsLeadingSpace ? " " + cached : cached
+            let display = Self.displaySuffix(cached, typed: typed)
             suggestion = display
             activeKey = cacheKey
             onSuggestion?(display)
@@ -172,7 +180,7 @@ final class InlineCompletionService {
             includeOutput: includeTerminalOutput,
             includeHistory: includeCommandHistory,
             includeEnv: includeEnvironmentInfo,
-            approvedExamples: approvedExamples(for: cwd)
+            approvedExamples: approvedExamples(for: context.hostKey ?? "")
         )
 
         // Instant local fallback — history is the fastest, most accurate
@@ -181,7 +189,7 @@ final class InlineCompletionService {
         if includeCommandHistory, !context.recentCommands.isEmpty {
             let local = Self.localSuggestion(history: context.recentCommands, typed: typed)
             if !local.isEmpty {
-                let display = needsLeadingSpace ? " " + local : local
+                let display = Self.displaySuffix(local, typed: typed)
                 suggestion = display
                 activeKey = cacheKey
                 onSuggestion?(display)
@@ -193,7 +201,7 @@ final class InlineCompletionService {
             await self.streamModelSuggestion(
                 provider: provider, apiKey: apiKey,
                 prompt: prompt, typed: typed, generation: generation,
-                cacheKey: cacheKey, needsLeadingSpace: needsLeadingSpace,
+                cacheKey: cacheKey,
                 onSuggestion: onSuggestion
             )
         }
@@ -210,12 +218,13 @@ final class InlineCompletionService {
         typed: String,
         generation: Int,
         cacheKey: String,
-        needsLeadingSpace: Bool,
         onSuggestion: (@MainActor @Sendable (String) -> Void)?
     ) async {
         defer { isRequesting = false }
         let buffer = RawSuggestionBuffer()
-        let llm = LLMProviderFactory.provider(for: provider, apiKey: apiKey)
+        let llm = LLMProviderFactory.provider(
+            for: provider, apiKey: apiKey, workload: .inlineCompletion
+        )
         do {
             let response = try await Self.runWithTimeout {
                 var result = ""
@@ -233,12 +242,10 @@ final class InlineCompletionService {
                     // Show the ghost as soon as the first tokens arrive —
                     // waiting for the full stream makes slow providers feel
                     // broken. `suggestion` updates so Tab works mid-stream.
-                    var candidate = Self.normalize(
-                        Self.suggestionSuffix(from: buffer.append(delta), typed: typed)
+                    let candidate = Self.displaySuffix(
+                        Self.suggestionSuffix(from: buffer.append(delta), typed: typed),
+                        typed: typed
                     )
-                    if needsLeadingSpace, !candidate.isEmpty, !candidate.hasPrefix(" ") {
-                        candidate = " " + candidate
-                    }
                     guard !candidate.isEmpty,
                           candidate.count <= Self.maxSuggestionChars
                     else { continue }
@@ -255,15 +262,15 @@ final class InlineCompletionService {
             }
             guard !Task.isCancelled else { return }
             guard generation == requestGeneration else { return }
-            let rawSuffix = Self.normalize(Self.suggestionSuffix(from: response, typed: typed))
-            let suffix = needsLeadingSpace && !rawSuffix.isEmpty && !rawSuffix.hasPrefix(" ")
-                ? " " + rawSuffix
-                : rawSuffix
-            if !rawSuffix.isEmpty {
-                guard !isRejected(cacheKey: cacheKey, suffix: rawSuffix) else { return }
+            let suffix = Self.displaySuffix(
+                Self.suggestionSuffix(from: response, typed: typed),
+                typed: typed
+            )
+            if !suffix.isEmpty {
+                guard !isRejected(cacheKey: cacheKey, suffix: suffix) else { return }
                 suggestion = suffix
                 activeKey = cacheKey
-                rememberSuggestion(rawSuffix, for: cacheKey)
+                rememberSuggestion(suffix, for: cacheKey)
                 onSuggestion?(suffix)
             }
         } catch is CancellationError {
@@ -320,19 +327,12 @@ final class InlineCompletionService {
             let candidate = cmd.trimmingCharacters(in: .whitespaces)
             guard candidate.count > typed.count else { continue }
 
-            // Exact prefix first, then case-insensitive substring (mid-word
-            // matches still complete the rest of the command).
-            let suffix: String
-            if candidate.hasPrefix(typed) {
-                suffix = String(candidate.dropFirst(typed.count))
-            } else if let range = candidate.range(of: typed, options: .caseInsensitive) {
-                suffix = String(candidate[range.upperBound...])
-            } else {
-                continue
-            }
-            let trimmed = suffix.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty, trimmed.count <= maxSuggestionChars else { continue }
-            return trimmed
+            guard candidate.lowercased().hasPrefix(typed.lowercased()) else { continue }
+            let suffix = String(candidate.dropFirst(typed.count))
+            let normalized = preserveLeadingSeparator(suffix)
+            let core = normalized.trimmingCharacters(in: .whitespaces)
+            guard !core.isEmpty, core.count <= maxSuggestionChars else { continue }
+            return normalized
         }
         return ""
     }
@@ -341,7 +341,7 @@ final class InlineCompletionService {
     /// echo the full command) and keep it to a single line for ghost display.
     nonisolated static func suggestionSuffix(from raw: String, typed: String) -> String {
         let firstLine = raw.split(whereSeparator: \.isNewline).first.map(String.init) ?? raw
-        let text = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = firstLine.trimmingCharacters(in: .newlines)
         // Models often echo part of the typed command. Strip the longest
         // overlap between the end of `typed` and the start of the response,
         // so "docker log" + "logs -f" → "s -f" instead of "logs -f".
@@ -355,7 +355,89 @@ final class InlineCompletionService {
             }
         }
         let suffix = overlap > 0 ? String(text.dropFirst(overlap)) : text
-        return suffix.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Self.preserveLeadingSeparator(suffix)
+    }
+
+    /// Turn model/local output into exact text to append after cursor.
+    /// Leading separator survives; token-boundary fallback handles models
+    /// that omit it.
+    nonisolated static func displaySuffix(_ raw: String, typed: String) -> String {
+        let suffix = preserveLeadingSeparator(raw)
+        guard !suffix.isEmpty else { return "" }
+
+        let hasExplicitSeparator = suffix.first?.isWhitespace == true
+        let core = suffix.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !core.isEmpty else { return "" }
+
+        if hasExplicitSeparator || typed.last?.isWhitespace == true {
+            return hasExplicitSeparator ? " " + core : core
+        }
+
+        if shouldInsertTokenSeparator(typed: typed, suffix: core) {
+            return " " + core
+        }
+        return core
+    }
+
+    /// Stable cache key. Includes model route and terminal scope/context so
+    /// stale suggestions do not cross hosts or model changes.
+    nonisolated static func cacheKey(
+        provider: AIProviderConfig,
+        context: InlineCompletionContext,
+        typed: String
+    ) -> String {
+        [
+            "v2",
+            provider.id.uuidString,
+            AIProviderNetworking.baseEndpoint(provider.endpoint),
+            provider.model,
+            provider.protocolType.rawValue,
+            context.hostKey ?? "",
+            context.currentDirectory ?? "",
+            context.shell ?? "",
+            typed,
+            context.lastExitCode.map(String.init) ?? "",
+            context.recentCommands.suffix(5).joined(separator: "\u{1F}"),
+            String(context.recentOutput.suffix(160)),
+        ]
+        .map { $0.replacingOccurrences(of: Self.cacheSeparator, with: " ") }
+        .joined(separator: Self.cacheSeparator)
+    }
+
+    private nonisolated static let cacheSeparator = "\u{1E}"
+
+    private nonisolated static func preserveLeadingSeparator(_ raw: String) -> String {
+        var text = raw.trimmingCharacters(in: .newlines)
+        while text.last?.isWhitespace == true {
+            text.removeLast()
+        }
+        let hasLeadingSeparator = text.first?.isWhitespace == true
+        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return "" }
+        return hasLeadingSeparator ? " " + text : text
+    }
+
+    private nonisolated static func shouldInsertTokenSeparator(
+        typed: String,
+        suffix: String
+    ) -> Bool {
+        guard typed.last?.isWhitespace == false else { return false }
+        guard let first = suffix.first,
+              first.isLetter || first.isNumber || first == "-" || first == "/" || first == "$"
+        else { return false }
+
+        // Current token continuation: `docker p` + `s`, `git st` + `atus`.
+        let tokens = typed.split(whereSeparator: { $0.isWhitespace })
+        guard tokens.count == 1 else { return false }
+
+        // Shell assignment/expansion/path continuation must not gain a space.
+        if let last = typed.last, "=/:.$~\\".contains(last) {
+            return false
+        }
+        if typed.contains("=") {
+            return false
+        }
+        return true
     }
 
     /// Runs the request but gives up after `requestTimeout` so a slow provider
@@ -414,15 +496,18 @@ final class InlineCompletionService {
 
     /// Few-shot examples from completions the user actually accepted, most
     /// approved first — cheap retrieval without a vector index.
-    private func approvedExamples(for cwd: String) -> [String] {
-        let prefix = cwd + "|"
+    private func approvedExamples(for hostKey: String) -> [String] {
         return persistentCache.values
-            .filter { $0.acceptCount > 0 && $0.key.hasPrefix(prefix) }
+            .filter {
+                guard $0.acceptCount > 0 else { return false }
+                let fields = $0.key.components(separatedBy: Self.cacheSeparator)
+                return fields.count > 8 && fields[5] == hostKey
+            }
             .sorted { $0.acceptCount > $1.acceptCount }
             .prefix(5)
             .map { record in
-                let rest = record.key.dropFirst(prefix.count)
-                let typed = rest.split(separator: "|", maxSplits: 1).last.map(String.init) ?? String(rest)
+                let fields = record.key.components(separatedBy: Self.cacheSeparator)
+                let typed = fields.count > 8 ? fields[8] : ""
                 return "\(typed) → \(record.suffix)"
             }
     }
@@ -439,9 +524,14 @@ final class InlineCompletionService {
         } else {
             provider = providerStore.activeProvider
         }
-        guard let provider else { return nil }
+        guard var provider else { return nil }
+        if let inlineModel = defaults.string(forKey: "ai_inline_model"),
+           !inlineModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            provider.model = inlineModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         let key = provider.apiKey
-        guard !key.isEmpty else { return nil }
+        guard !provider.type.needsAPIKey || !key.isEmpty else { return nil }
         return (provider, key)
     }
 
@@ -466,6 +556,8 @@ final class InlineCompletionService {
             - Output ONLY the text that should be appended after the cursor.
             - No explanation, no markdown, no code fences, no quotes, no bullet points.
             - Output a single line, no trailing newline, no trailing space.
+            - Include one leading ASCII space when starting a new shell token.
+            - Include no leading space when finishing the current token.
             - Do NOT repeat anything the user already typed. Do NOT include a shell prompt.
             - If the command is already complete or you are not confident, output nothing.
             - Suggest real flags, file names, and arguments for the user's shell.
@@ -478,10 +570,16 @@ final class InlineCompletionService {
         if includeEnv, let cwd = context.currentDirectory, !cwd.isEmpty {
             contextLines.append("- Working directory: \(cwd)")
         }
+        if let shell = context.shell, !shell.isEmpty {
+            contextLines.append("- Shell: \(shell)")
+        }
+        if let exitCode = context.lastExitCode {
+            contextLines.append("- Last command exit code: \(exitCode)")
+        }
         if includeHistory, !context.recentCommands.isEmpty {
             // Keep the context tiny — big prompts slow the TTFT on reasoning
             // models and defeat the whole point of inline completion.
-            let history = context.recentCommands.suffix(3).joined(separator: "; ")
+            let history = context.recentCommands.suffix(5).joined(separator: "; ")
             contextLines.append("- Recent commands: \(history)")
         }
         if !approvedExamples.isEmpty {
@@ -491,7 +589,7 @@ final class InlineCompletionService {
             )
         }
         if includeOutput, !context.recentOutput.isEmpty {
-            let output = stripANSI(String(context.recentOutput.suffix(200)))
+            let output = stripANSI(String(context.recentOutput.suffix(600)))
             contextLines.append("- Recent terminal output:\n\(output)")
         }
         if includeOutput, !context.knownWords.isEmpty {

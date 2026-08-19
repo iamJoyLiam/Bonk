@@ -274,8 +274,10 @@ public actor SSHNetworkService {
 
     // MARK: - SFTP
 
-    /// Open the existing Citadel SFTP flow. On macOS OpenSSH terminal
-    /// sessions, create a private native connection for SFTP only.
+    /// Open the existing native SFTP flow.
+    ///
+    /// macOS OpenSSH sessions use `openOpenSSHSFTPClient()` instead, so this
+    /// Citadel path remains for Secure Enclave and non-OpenSSH transports.
     public func openSFTPClient() async throws -> SFTPClient {
         #if os(macOS)
             if usesOpenSSHTransport {
@@ -303,6 +305,16 @@ public actor SSHNetworkService {
         guard let client else { throw SSHServiceError.notConnected }
         return try await client.openSFTP()
     }
+
+    #if os(macOS)
+        /// Return the OpenSSH-backed SFTP client for macOS OpenSSH sessions.
+        /// Returns nil when the active transport is native Citadel.
+        func openOpenSSHSFTPClient() throws -> OpenSSHSFTPClient? {
+            guard usesOpenSSHTransport else { return nil }
+            guard let openSSHBackend else { throw SSHServiceError.notConnected }
+            return openSSHBackend.makeSFTPClient()
+        }
+    #endif
 
     // MARK: - PTY
 

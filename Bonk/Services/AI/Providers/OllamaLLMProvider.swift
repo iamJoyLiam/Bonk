@@ -6,14 +6,21 @@ import Foundation
 final class OllamaLLMProvider: LLMProvider, @unchecked Sendable {
     let providerID: UUID
     let providerName: String
-    let capability = LLMProviderCapability(supportsStreaming: true, supportsToolCalls: false)
+    let capability: LLMProviderCapability
 
     private let config: AIProviderConfig
     private let apiKey: String
 
-    init(config: AIProviderConfig, apiKey: String) {
+    init(
+        config: AIProviderConfig,
+        apiKey: String,
+        capability: LLMProviderCapability? = nil
+    ) {
         providerID = config.id
         providerName = config.displayName
+        self.capability = capability ?? LLMProviderCapability(
+            supportsStreaming: true, supportsToolCalls: false
+        )
         self.config = config
         self.apiKey = apiKey
     }

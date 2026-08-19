@@ -144,7 +144,7 @@ final class InlineCompletionTests: XCTestCase {
         let history = ["cd /tmp", "docker ps", "docker run -d nginx"]
         XCTAssertEqual(
             InlineCompletionService.localSuggestion(history: history, typed: "docker"),
-            "run -d nginx"
+            " run -d nginx"
         )
     }
 
@@ -152,7 +152,7 @@ final class InlineCompletionTests: XCTestCase {
         let history = ["docker run -d --name web nginx", "ls -la"]
         XCTAssertEqual(
             InlineCompletionService.localSuggestion(history: history, typed: "docker run"),
-            "-d --name web nginx"
+            " -d --name web nginx"
         )
     }
 
@@ -160,7 +160,7 @@ final class InlineCompletionTests: XCTestCase {
         let history = ["docker run -d nginx", "cd /tmp", "docker ps"]
         XCTAssertEqual(
             InlineCompletionService.localSuggestion(history: history, typed: "docker"),
-            "ps"
+            " ps"
         )
     }
 
@@ -168,7 +168,7 @@ final class InlineCompletionTests: XCTestCase {
         let history = ["docker", "docker ps", "cd /tmp"]
         XCTAssertEqual(
             InlineCompletionService.localSuggestion(history: history, typed: "docker"),
-            "ps"
+            " ps"
         )
     }
 
@@ -190,5 +190,117 @@ final class InlineCompletionTests: XCTestCase {
             InlineCompletionService.localSuggestion(history: [long], typed: "a"),
             ""
         )
+    }
+
+    func testLocalSuggestionPreservesTokenSeparatorForAppend() {
+        let suffix = InlineCompletionService.localSuggestion(
+            history: ["docker run -d nginx"],
+            typed: "docker run"
+        )
+        XCTAssertEqual(
+            InlineCompletionService.displaySuffix(suffix, typed: "docker run"),
+            " -d nginx"
+        )
+    }
+
+    // MARK: - Shell token boundary
+
+    func testDisplaySuffixAddsSpaceOnlyAtNewTokenBoundary() {
+        XCTAssertEqual(
+            InlineCompletionService.displaySuffix("ps", typed: "docker"),
+            " ps"
+        )
+        XCTAssertEqual(
+            InlineCompletionService.displaySuffix("s", typed: "docker p"),
+            "s"
+        )
+        XCTAssertEqual(
+            InlineCompletionService.displaySuffix("atus", typed: "git st"),
+            "atus"
+        )
+        XCTAssertEqual(
+            InlineCompletionService.displaySuffix("ps", typed: "docker "),
+            "ps"
+        )
+    }
+
+    func testDisplaySuffixPreservesModelLeadingSeparator() {
+        XCTAssertEqual(
+            InlineCompletionService.displaySuffix(" --help", typed: "docker run"),
+            " --help"
+        )
+        XCTAssertEqual(
+            InlineCompletionService.displaySuffix("HOME", typed: "echo $"),
+            "HOME"
+        )
+    }
+
+    func testCacheKeyIncludesModelEndpointHostAndShell() {
+        let id = UUID()
+        let provider = AIProviderConfig(
+            id: id,
+            name: "OpenAI",
+            type: .openAI,
+            model: "gpt-5",
+            endpoint: "https://api.openai.com",
+            protocolType: .chatCompletions,
+            apiKey: ""
+        )
+        let context = InlineCompletionContext(
+            inputBuffer: "docker",
+            hostKey: "host-a",
+            currentDirectory: "/tmp",
+            shell: "/bin/zsh",
+            recentCommands: ["docker ps"],
+            recentOutput: "CONTAINER ID",
+            lastExitCode: 0
+        )
+        let base = InlineCompletionService.cacheKey(
+            provider: provider, context: context, typed: "docker"
+        )
+
+        var changed = context
+        changed.hostKey = "host-b"
+        XCTAssertNotEqual(
+            base,
+            InlineCompletionService.cacheKey(
+                provider: provider, context: changed, typed: "docker"
+            )
+        )
+
+        let changedProvider = AIProviderConfig(
+            id: id,
+            name: "OpenAI",
+            type: .openAI,
+            model: "gpt-5-mini",
+            endpoint: "https://api.openai.com",
+            protocolType: .chatCompletions,
+            apiKey: ""
+        )
+        XCTAssertNotEqual(
+            base,
+            InlineCompletionService.cacheKey(
+                provider: changedProvider, context: context, typed: "docker"
+            )
+        )
+    }
+
+    func testPromptIncludesShellAndExitStatus() {
+        let context = InlineCompletionContext(
+            inputBuffer: "docker",
+            shell: "/bin/zsh",
+            recentCommands: ["docker ps"],
+            recentOutput: "",
+            lastExitCode: 127
+        )
+        let prompt = InlineCompletionService.buildPrompt(
+            context: context,
+            includeOutput: false,
+            includeHistory: true,
+            includeEnv: true
+        )
+        XCTAssertTrue(prompt.contains("Shell: /bin/zsh"))
+        XCTAssertTrue(prompt.contains("Last command exit code: 127"))
+        XCTAssertTrue(prompt.contains("new shell token"))
     }
 }

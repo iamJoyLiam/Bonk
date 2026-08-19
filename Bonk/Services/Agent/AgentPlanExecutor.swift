@@ -17,7 +17,9 @@ extension AgentEngine {
         appendAgentMessage(.user, content: input, conversation: conversation, context: context)
 
         let useToolLoop = resolveProvider().map { resolved in
-            LLMProviderFactory.provider(for: resolved.0, apiKey: resolved.1)
+            LLMProviderFactory.provider(
+                for: resolved.0, apiKey: resolved.1, workload: .agentToolLoop
+            )
                 .capability.supportsToolCalls
         } ?? false
         if useToolLoop {

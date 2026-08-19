@@ -42,6 +42,10 @@ extension AIProviderDetailSheet {
             do {
                 let llm = LLMProviderFactory.provider(for: draft, apiKey: draft.apiKey)
                 let models = try await llm.listModels()
+                await AIProviderCapabilityProbe.refresh(
+                    provider: draft,
+                    apiKey: draft.apiKey
+                )
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     fetchedModels = models

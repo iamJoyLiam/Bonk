@@ -59,8 +59,11 @@ final class InputHandler {
             if let inputBuffer = tab.session?.inputBuffer, !inputBuffer.isEmpty {
                 let trimmed = inputBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty {
-                    // Record to global history (shared across all tabs)
-                    GlobalCommandHistory.shared.commandStarted(trimmed)
+                    let hostKey = tab.hostItem.id.uuidString
+                    // Record to global history with host scope.
+                    GlobalCommandHistory.shared.commandStarted(
+                        trimmed, hostKey: hostKey
+                    )
                     GlobalCommandHistory.shared.commandFinished(exitCode: 0)
                     // Also record to per-session history for backward compatibility
                     tab.session?.commandHistory.commandStarted(trimmed)

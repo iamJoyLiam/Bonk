@@ -96,6 +96,7 @@ final class AIProviderStore {
                 record.model = provider.model
                 record.endpoint = provider.endpoint
                 record.protocolRaw = provider.protocolType.rawValue
+                record.capabilityOverride = provider.capabilityOverride
                 record.extraHeadersJSON = provider.extraHeaders.isEmpty
                     ? nil
                     : (try? JSONEncoder().encode(provider.extraHeaders)).flatMap { String(data: $0, encoding: .utf8) }
@@ -150,9 +151,13 @@ final class AIProviderStore {
         Task {
             do {
                 let llm = LLMProviderFactory.provider(
-                    for: provider, apiKey: provider.apiKey
+                    for: provider, apiKey: provider.apiKey, workload: .chat
                 )
                 let models = try await llm.listModels()
+                await AIProviderCapabilityProbe.refresh(
+                    provider: provider,
+                    apiKey: provider.apiKey
+                )
                 cachedModels[provider.id] = models
             } catch {
                 Self.logger.error("Failed to fetch models for \(provider.name): \(error.localizedDescription)")
@@ -178,6 +183,7 @@ extension AIProviderConfig {
             model: record.model,
             endpoint: record.endpoint,
             protocolType: record.protocolType,
+            capabilityOverride: record.capabilityOverride,
             extraHeaders: record.extraHeaders,
             apiKey: record.apiKey,
             maxOutputTokens: record.maxOutputTokens,
@@ -193,6 +199,7 @@ extension AIProviderConfig {
             model: model,
             endpoint: endpoint,
             protocolType: protocolType,
+            capabilityOverride: capabilityOverride,
             extraHeaders: extraHeaders,
             apiKey: apiKey,
             maxOutputTokens: maxOutputTokens,

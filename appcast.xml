@@ -6,6 +6,38 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.17</title>
+            <pubDate>Wed, 19 Aug 2026 02:00:00 +0000</pubDate>
+            <sparkle:version>20261017</sparkle:version>
+            <sparkle:shortVersionString>2026.1.17</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- SSH 全面切换到系统 OpenSSH：终端 / SFTP / 端口转发 / 命令执行迁移到 /usr/bin/ssh 子进程，替换 Citadel 与 vendored swift-nio-ssh
+- 堡垒机（Jump Host）原生支持，老堡垒机算法兼容性随系统 ssh 自动兜底，不再需要自维护协议栈
+- OpenSSH SFTP 会话稳定性修复，新增 OpenSSHSFTPClient
+- AI 供应商能力探测与智能路由：自动识别供应商协议能力（Responses / Chat Completions）
+- Inline Completion 增强：反馈循环与通用名称提取
+- AI Provider 设置界面增强
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.17/Bonk-2026.1.17-arm64.dmg"
+                length="14181811"
+                type="application/octet-stream"
+                sparkle:edSignature="8Ss8Axz3iHtUQAUbkYqM/BotEX4XYf0rbBCtcYbuvKvEwfwHmUHerRRxXMu6O6gsJGuQvg6pUq+a5+SsLpzICQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.17/Bonk-2026.1.17-x86_64.dmg"
+                length="15170972"
+                type="application/octet-stream"
+                sparkle:edSignature="2W/gSSozWDHDFHIHxXO7FlcpbzJpM1bOZZKut9m1AGYYv3mtvhM1NVU4s+RAcqAlscHwSAk66wIbeT8IEdCICg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.16</title>
             <pubDate>Tue, 18 Aug 2026 03:30:00 +0000</pubDate>
             <sparkle:version>20261016</sparkle:version>

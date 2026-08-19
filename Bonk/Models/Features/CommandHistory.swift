@@ -9,14 +9,17 @@ import Foundation
 struct CommandRecord: Identifiable, Codable {
     let id: UUID
     let command: String
+    /// Stable host scope. Nil keeps backward compatibility with old history.
+    let hostKey: String?
     let startTime: Date
     var endTime: Date?
     var exitCode: Int?
     var output: String?
 
-    init(command: String, startTime: Date = Date()) {
+    init(command: String, hostKey: String? = nil, startTime: Date = Date()) {
         self.id = UUID()
         self.command = command
+        self.hostKey = hostKey
         self.startTime = startTime
     }
 
@@ -63,14 +66,14 @@ final class GlobalCommandHistory {
     // MARK: - Public API
 
     /// Record a command start.
-    func commandStarted(_ command: String) {
+    func commandStarted(_ command: String, hostKey: String? = nil) {
         // Finish any previous command
         if var current = currentCommand {
             current.endTime = Date()
             appendWithDedup(current)
         }
 
-        currentCommand = CommandRecord(command: command)
+        currentCommand = CommandRecord(command: command, hostKey: hostKey)
     }
 
     /// Record a command completion.
@@ -101,8 +104,10 @@ final class GlobalCommandHistory {
 
     /// Append command, removing any older duplicate (same command text).
     private func appendWithDedup(_ record: CommandRecord) {
-        // Remove older entries with same command text
-        commands.removeAll { $0.command == record.command }
+        // Remove older entries with same command text within same host scope.
+        commands.removeAll {
+            $0.command == record.command && $0.hostKey == record.hostKey
+        }
         // Add new entry at the end (most recent)
         commands.append(record)
         // Trim to max

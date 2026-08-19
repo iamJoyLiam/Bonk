@@ -2,9 +2,8 @@
 //  InlineSuggestionRecord.swift
 //  Bonk
 //
-//  Persistent cache for inline completion suggestions, keyed by
-//  "cwd|provider|typed-prefix" so habits survive restarts without growing
-//  the model prompt.
+//  Persistent cache for inline completion suggestions, keyed by a versioned
+//  host/model/endpoint/shell/cwd/context/prefix key.
 //
 
 import Foundation

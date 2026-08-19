@@ -34,11 +34,18 @@ import SwiftUI
         private var completionContext: @MainActor () -> InlineCompletionContext {
             { [weak tab] in
                 let output = tab?.session?.ptySession?.recentOutput(maxLines: 40) ?? ""
+                let hostKey = tab?.hostItem.id.uuidString
+                let history = GlobalCommandHistory.shared.commands.filter {
+                    $0.hostKey == hostKey
+                }
                 return InlineCompletionContext(
                     inputBuffer: tab?.session?.inputBuffer ?? "",
+                    hostKey: hostKey,
                     currentDirectory: tab?.currentDirectory,
-                    recentCommands: GlobalCommandHistory.shared.commands.suffix(50).map(\.command),
+                    shell: tab?.session?.serverInfo?.shell,
+                    recentCommands: history.suffix(50).map(\.command),
                     recentOutput: output,
+                    lastExitCode: history.last?.exitCode,
                     knownWords: InlineCompletionService.extractKnownWords(from: output)
                 )
             }

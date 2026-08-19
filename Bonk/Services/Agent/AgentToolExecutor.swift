@@ -25,7 +25,9 @@ extension AgentEngine {
         context: ModelContext?
     ) async {
         guard let (provider, apiKey) = resolveProvider() else { return }
-        let llmProvider = LLMProviderFactory.provider(for: provider, apiKey: apiKey)
+        let llmProvider = LLMProviderFactory.provider(
+            for: provider, apiKey: apiKey, workload: .agentToolLoop
+        )
         let toolContext = AgentToolContext(
             llmProvider: llmProvider,
             sshService: sshService, hostName: hostName,

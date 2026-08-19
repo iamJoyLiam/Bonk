@@ -9,13 +9,17 @@ struct AIProviderConfig: Identifiable, Hashable, Codable {
     var model: String
     var endpoint: String
     var protocolType: AIProviderProtocol
+    /// Optional model capability override. Persisted additively for unknown
+    /// gateways/models; nil keeps resolver defaults.
+    var capabilityOverride: ModelCapabilityOverride?
     var extraHeaders: [String: String]
     var maxOutputTokens: Int?
     var telemetryEnabled: Bool
 
     /// Exclude apiKey from Codable — stored in Keychain
     enum CodingKeys: String, CodingKey {
-        case id, name, type, model, endpoint, protocolType, extraHeaders, maxOutputTokens, telemetryEnabled
+        case id, name, type, model, endpoint, protocolType, capabilityOverride,
+             extraHeaders, maxOutputTokens, telemetryEnabled
     }
 
     var displayName: String {
@@ -51,6 +55,7 @@ struct AIProviderConfig: Identifiable, Hashable, Codable {
         model: String = "",
         endpoint: String = "",
         protocolType: AIProviderProtocol? = nil,
+        capabilityOverride: ModelCapabilityOverride? = nil,
         extraHeaders: [String: String] = [:],
         apiKey: String = "",
         maxOutputTokens: Int? = nil,
@@ -63,6 +68,7 @@ struct AIProviderConfig: Identifiable, Hashable, Codable {
         self.endpoint = endpoint.isEmpty ? type.defaultEndpoint : endpoint
         let resolvedProtocol = protocolType ?? type.defaultProtocolType
         self.protocolType = type.supportsResponses ? resolvedProtocol : .chatCompletions
+        self.capabilityOverride = capabilityOverride
         self.extraHeaders = extraHeaders
         self.maxOutputTokens = maxOutputTokens
         self.telemetryEnabled = telemetryEnabled
@@ -91,6 +97,9 @@ extension AIProviderConfig {
         let decodedProtocol = try container.decodeIfPresent(AIProviderProtocol.self, forKey: .protocolType)
             ?? type.defaultProtocolType
         protocolType = type.supportsResponses ? decodedProtocol : .chatCompletions
+        capabilityOverride = try container.decodeIfPresent(
+            ModelCapabilityOverride.self, forKey: .capabilityOverride
+        )
         extraHeaders = try container.decodeIfPresent([String: String].self, forKey: .extraHeaders) ?? [:]
         maxOutputTokens = try container.decodeIfPresent(Int.self, forKey: .maxOutputTokens)
         telemetryEnabled = try container.decodeIfPresent(Bool.self, forKey: .telemetryEnabled) ?? false

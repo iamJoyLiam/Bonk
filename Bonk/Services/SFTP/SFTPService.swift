@@ -9,7 +9,7 @@ import NIOCore
 import NIOFoundationCompat
 import os.log
 
-/// High-level SFTP operations wrapping Citadel's SFTPClient.
+/// High-level SFTP operations with OpenSSH and Citadel backends.
 @Observable
 @MainActor
 final class SFTPService {
@@ -20,11 +20,22 @@ final class SFTPService {
     var transfers: [SFTPTransfer] = []
 
     private var sftpClient: SFTPClient?
+    #if os(macOS)
+        private var openSSHSFTPClient: OpenSSHSFTPClient?
+    #endif
 
     init() {}
 
-    /// Open SFTP subsystem over the existing SSH connection.
+    /// Open SFTP over the active SSH transport.
     func connect(using sshService: SSHNetworkService) async throws {
+        #if os(macOS)
+            if let openSSHSFTPClient, openSSHSFTPClient.isActive {
+                if entries.isEmpty {
+                    try await listDirectory()
+                }
+                return
+            }
+        #endif
         if let sftpClient, sftpClient.isActive {
             if entries.isEmpty {
                 try await listDirectory()
@@ -32,11 +43,31 @@ final class SFTPService {
             return
         }
         sftpClient = nil
+        #if os(macOS)
+            openSSHSFTPClient = nil
+        #endif
 
         Log.sftp.info("Opening SFTP session...")
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
+
+        #if os(macOS)
+            if let client = try await sshService.openOpenSSHSFTPClient() {
+                do {
+                    let path = try await client.realPath()
+                    openSSHSFTPClient = client
+                    currentPath = path
+                    Log.sftp.info("OpenSSH SFTP connected, initial path: \(self.currentPath)")
+                    try await listDirectory()
+                    return
+                } catch {
+                    client.close()
+                    openSSHSFTPClient = nil
+                    throw error
+                }
+            }
+        #endif
 
         let client = try await sshService.openSFTPClient()
         do {
@@ -53,14 +84,44 @@ final class SFTPService {
     }
 
     /// List files in the current directory.
-    func listDirectory(_ path: String? = nil) async throws {
+    func listDirectory(_ path: String? = nil, showLoading: Bool = true) async throws {
+        #if os(macOS)
+            if let sftp = openSSHSFTPClient {
+                if showLoading {
+                    self.isLoading = true
+                }
+                self.errorMessage = nil
+                defer {
+                    if showLoading {
+                        self.isLoading = false
+                    }
+                }
+
+                let targetPath = path ?? self.currentPath
+                var result = try await sftp.listDirectory(at: targetPath)
+                result.sort {
+                    if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
+                    return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                }
+                entries = result
+                currentPath = targetPath
+                return
+            }
+        #endif
+
         guard let sftp = sftpClient else {
             Log.sftp.error("listDirectory failed: not connected")
             throw SFTPServiceError.notConnected
         }
-        self.isLoading = true
+        if showLoading {
+            self.isLoading = true
+        }
         self.errorMessage = nil
-        defer { self.isLoading = false }
+        defer {
+            if showLoading {
+                self.isLoading = false
+            }
+        }
 
         let targetPath = path ?? self.currentPath
         let names = try await sftp.listDirectory(atPath: targetPath)
@@ -112,6 +173,15 @@ final class SFTPService {
 
     /// Create a new directory.
     func createDirectory(name: String) async throws {
+        #if os(macOS)
+            if let sftp = openSSHSFTPClient {
+                let newPath = pathJoin(currentPath, name)
+                try await sftp.createDirectory(at: newPath)
+                try await listDirectory()
+                return
+            }
+        #endif
+
         guard let sftp = sftpClient else { throw SFTPServiceError.notConnected }
         let newPath = pathJoin(currentPath, name)
         try await sftp.createDirectory(atPath: newPath)
@@ -120,6 +190,14 @@ final class SFTPService {
 
     /// Delete a file or directory.
     func delete(_ entry: SFTPFileEntry) async throws {
+        #if os(macOS)
+            if let sftp = openSSHSFTPClient {
+                try await sftp.remove(at: entry.path, isDirectory: entry.isDirectory)
+                try await listDirectory()
+                return
+            }
+        #endif
+
         guard let sftp = sftpClient else { throw SFTPServiceError.notConnected }
         if entry.isDirectory {
             try await sftp.rmdir(at: entry.path)
@@ -131,6 +209,18 @@ final class SFTPService {
 
     /// Download a file to local disk.
     func download(_ entry: SFTPFileEntry, to localURL: URL) async throws {
+        #if os(macOS)
+            if let sftp = openSSHSFTPClient {
+                guard !entry.isDirectory else { return }
+                try await downloadWithOpenSSH(
+                    sftp: sftp,
+                    entry: entry,
+                    localURL: localURL
+                )
+                return
+            }
+        #endif
+
         guard let sftp = sftpClient else { throw SFTPServiceError.notConnected }
         guard !entry.isDirectory else { return }
 
@@ -253,6 +343,9 @@ final class SFTPService {
         if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
             transfers[idx].isCancelled = true
         }
+        #if os(macOS)
+            openSSHSFTPClient?.cancel(operationID: transferID)
+        #endif
     }
 
     /// Remove a specific transfer from the list.
@@ -281,6 +374,18 @@ final class SFTPService {
         to remotePath: String?,
         continuation: AsyncThrowingStream<Double, Error>.Continuation
     ) async throws {
+        #if os(macOS)
+            if let sftp = openSSHSFTPClient {
+                try await performOpenSSHUpload(
+                    localURL,
+                    to: remotePath,
+                    sftp: sftp,
+                    continuation: continuation
+                )
+                return
+            }
+        #endif
+
         guard let sftp = sftpClient else { throw SFTPServiceError.notConnected }
 
         let filename = localURL.lastPathComponent
@@ -325,8 +430,124 @@ final class SFTPService {
 
         // Refresh the listing, but don't turn a successful upload into a failure
         // just because the directory refresh errored.
-        try? await listDirectory()
+        try? await listDirectory(showLoading: false)
     }
+
+    #if os(macOS)
+        private func performOpenSSHUpload(
+            _ localURL: URL,
+            to remotePath: String?,
+            sftp: OpenSSHSFTPClient,
+            continuation: AsyncThrowingStream<Double, Error>.Continuation
+        ) async throws {
+            let filename = localURL.lastPathComponent
+            let remote = remotePath ?? pathJoin(currentPath, filename)
+            let fileAttributes = try FileManager.default.attributesOfItem(atPath: localURL.path)
+            let totalBytes = (fileAttributes[.size] as? UInt64) ?? 0
+            let transferID = UUID()
+
+            transfers.append(SFTPTransfer(
+                id: transferID,
+                filename: filename,
+                totalBytes: totalBytes,
+                transferredBytes: 0,
+                isComplete: false,
+                error: nil
+            ))
+            continuation.yield(0)
+
+            do {
+                try await sftp.upload(
+                    localURL,
+                    to: remote,
+                    operationID: transferID,
+                    onProgress: { [weak self] progress in
+                        Task { @MainActor in
+                            guard let self else { return }
+                            let clamped = min(max(progress, 0), 1)
+                            if let idx = self.transfers.firstIndex(where: { $0.id == transferID }) {
+                                self.transfers[idx].transferredBytes = UInt64(
+                                    Double(totalBytes) * clamped
+                                )
+                            }
+                            continuation.yield(clamped)
+                        }
+                    }
+                )
+                if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                    transfers[idx].transferredBytes = totalBytes
+                    transfers[idx].isComplete = true
+                }
+                continuation.yield(1.0)
+            } catch {
+                if let sftpError = error as? SFTPServiceError, sftpError == .transferCancelled {
+                    if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                        transfers[idx].isCancelled = true
+                    }
+                } else {
+                    markTransferError(transferID, error: error)
+                }
+                scheduleTransferRemoval(transferID, after: 5)
+                throw error
+            }
+
+            // Refresh listing, but don't turn a successful upload into a failure
+            // just because the directory refresh errored.
+            try? await listDirectory(showLoading: false)
+        }
+
+        private func downloadWithOpenSSH(
+            sftp: OpenSSHSFTPClient,
+            entry: SFTPFileEntry,
+            localURL: URL
+        ) async throws {
+            let transferID = UUID()
+            transfers.append(SFTPTransfer(
+                id: transferID,
+                filename: entry.name,
+                totalBytes: entry.size,
+                transferredBytes: 0,
+                isComplete: false,
+                error: nil
+            ))
+
+            do {
+                try await sftp.download(
+                    entry.path,
+                    to: localURL,
+                    operationID: transferID,
+                    onProgress: { [weak self] progress in
+                        Task { @MainActor in
+                            guard let self else { return }
+                            let clamped = min(max(progress, 0), 1)
+                            if let idx = self.transfers.firstIndex(where: { $0.id == transferID }) {
+                                self.transfers[idx].transferredBytes = UInt64(
+                                    Double(entry.size) * clamped
+                                )
+                            }
+                        }
+                    }
+                )
+                let attributes = try? FileManager.default.attributesOfItem(atPath: localURL.path)
+                let transferredBytes = (attributes?[.size] as? UInt64) ?? entry.size
+                if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                    transfers[idx].transferredBytes = transferredBytes
+                    transfers[idx].isComplete = true
+                }
+                scheduleTransferRemoval(transferID, after: 3)
+            } catch {
+                if let sftpError = error as? SFTPServiceError, sftpError == .transferCancelled {
+                    if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                        transfers[idx].isCancelled = true
+                    }
+                } else {
+                    markTransferError(transferID, error: error)
+                }
+                scheduleTransferRemoval(transferID, after: 5)
+                throw error
+            }
+        }
+    #endif
 
     /// Write file chunks with pipelined concurrent writes.
     /// SFTP is request/response: a write waits for the server's status reply, so
@@ -393,6 +614,12 @@ final class SFTPService {
     /// Check if a file exists at the given absolute path.
     /// Returns nil when the check itself fails (e.g. network error).
     func fileExists(at path: String) async -> Bool? {
+        #if os(macOS)
+            if let sftp = openSSHSFTPClient {
+                return await sftp.fileExists(at: path)
+            }
+        #endif
+
         guard let sftp = sftpClient else { return nil }
         do {
             // Try to open the file for reading - this is the most reliable way
@@ -410,6 +637,17 @@ final class SFTPService {
 
     /// Refresh the current path from the remote server.
     func refreshCurrentPath() async {
+        #if os(macOS)
+            if let sftp = openSSHSFTPClient {
+                do {
+                    currentPath = try await sftp.realPath()
+                } catch {
+                    Log.sftp.warning("Failed to refresh current path: \(error.localizedDescription)")
+                }
+                return
+            }
+        #endif
+
         guard let sftp = sftpClient else { return }
         do {
             currentPath = try await sftp.getRealPath(atPath: ".")
@@ -420,6 +658,10 @@ final class SFTPService {
 
     /// Close the SFTP session.
     func disconnect() async {
+        #if os(macOS)
+            openSSHSFTPClient?.close()
+            openSSHSFTPClient = nil
+        #endif
         try? await sftpClient?.close()
         sftpClient = nil
         entries = []
@@ -433,11 +675,13 @@ final class SFTPService {
 enum SFTPServiceError: LocalizedError, Equatable {
     case notConnected
     case transferCancelled
+    case operationFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .notConnected: "SFTP session not connected."
         case .transferCancelled: "Transfer cancelled."
+        case let .operationFailed(message): message
         }
     }
 }

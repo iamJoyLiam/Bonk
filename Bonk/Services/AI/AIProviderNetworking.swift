@@ -121,6 +121,9 @@ enum AIProviderNetworking {
         guard !endpoint.isEmpty else { throw AIError.invalidEndpoint }
 
         let maxTokens = maxTokens ?? provider.maxOutputTokens ?? 500
+        let capability = AIProviderCapabilityResolver.resolve(
+            config: provider, workload: .chat
+        ).capability
         let url: URL
         let headers: [String: String]
         let body: [String: Any]
@@ -162,7 +165,7 @@ enum AIProviderNetworking {
             // budget produces a suggestion instead of thinking tokens.
             .merging(
                 disableReasoning
-                    ? (reasoningDisablePayload(for: provider.type) ?? [:])
+                    ? (reasoningDisablePayload(for: capability) ?? [:])
                     : [:]
             ) { $1 }
 
@@ -280,6 +283,7 @@ enum AIProviderNetworking {
                 )
             } catch {
                 // Older Ollama builds lack /v1/chat/completions; use native /api/chat.
+                guard shouldFallbackToLegacy(error) else { throw error }
                 return try await legacyStream(
                     provider: provider, apiKey: apiKey,
                     systemPrompt: systemPrompt, userPrompt: userPrompt,
@@ -317,6 +321,7 @@ enum AIProviderNetworking {
             } catch {
                 // Fall back to the tolerant hand-built parser if the SDK's
                 // strict decode rejects the provider's response shape.
+                guard shouldFallbackToLegacy(error) else { throw error }
                 return try await legacyNonStream(
                     provider: provider, apiKey: apiKey,
                     systemPrompt: systemPrompt, userPrompt: userPrompt,
@@ -331,6 +336,7 @@ enum AIProviderNetworking {
                     maxTokens: maxTokens
                 )
             } catch {
+                guard shouldFallbackToLegacy(error) else { throw error }
                 return try await legacyNonStream(
                     provider: provider, apiKey: apiKey,
                     systemPrompt: systemPrompt, userPrompt: userPrompt,

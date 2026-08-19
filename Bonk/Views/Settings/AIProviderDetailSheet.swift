@@ -59,6 +59,7 @@ struct AIProviderDetailSheet: View {
                 if draft.type.allowsProtocolSelection { protocolSection }
                 modelSection
                 advancedSection
+                if isOpenAICompatible { capabilityOverrideSection }
                 if draft.type == .custom { extraHeadersSection }
                 if onDelete != nil, !isNew { deleteSection }
             }
@@ -241,6 +242,174 @@ struct AIProviderDetailSheet: View {
                     .frame(width: 100).multilineTextAlignment(.trailing)
             }
         }
+    }
+
+    private var isOpenAICompatible: Bool {
+        switch draft.type {
+        case .openAI, .openRouter, .openCode, .deepSeek, .qwen, .kimi, .custom:
+            true
+        case .claude, .gemini, .ollama:
+            false
+        }
+    }
+
+    private enum CapabilityChoice: String, CaseIterable, Identifiable {
+        case automatic
+        case yes
+        case no
+
+        var id: String { rawValue }
+    }
+
+    private enum ReasoningChoice: String, CaseIterable, Identifiable {
+        case automatic
+        case unsupported
+        case optional
+        case required
+
+        var id: String { rawValue }
+    }
+
+    private enum ReasoningStrategyChoice: String, CaseIterable, Identifiable {
+        case automatic
+        case none
+        case deepSeek
+        case enableThinkingFalse
+
+        var id: String { rawValue }
+    }
+
+    private var capabilityOverrideSection: some View {
+        Section(i18n.t(.capabilityOverrides)) {
+            capabilityPicker(
+                title: i18n.t(.supportsChatCompletions),
+                binding: boolCapabilityBinding(\.supportsChatCompletions)
+            )
+            capabilityPicker(
+                title: i18n.t(.supportsResponses),
+                binding: boolCapabilityBinding(\.supportsResponses)
+            )
+            capabilityPicker(
+                title: i18n.t(.supportsToolCalls),
+                binding: boolCapabilityBinding(\.supportsToolCalls)
+            )
+
+            Picker(
+                i18n.t(.reasoningSupport),
+                selection: reasoningSupportBinding
+            ) {
+                Text(i18n.t(.capabilityAuto)).tag(ReasoningChoice.automatic)
+                Text(i18n.t(.reasoningUnsupported)).tag(ReasoningChoice.unsupported)
+                Text(i18n.t(.reasoningOptional)).tag(ReasoningChoice.optional)
+                Text(i18n.t(.reasoningRequired)).tag(ReasoningChoice.required)
+            }
+
+            Picker(
+                i18n.t(.reasoningDisableStrategy),
+                selection: reasoningStrategyBinding
+            ) {
+                Text(i18n.t(.capabilityAuto)).tag(ReasoningStrategyChoice.automatic)
+                Text(i18n.t(.reasoningNone)).tag(ReasoningStrategyChoice.none)
+                Text(i18n.t(.reasoningDeepSeek)).tag(ReasoningStrategyChoice.deepSeek)
+                Text(i18n.t(.reasoningEnableThinkingFalse))
+                    .tag(ReasoningStrategyChoice.enableThinkingFalse)
+            }
+
+            if draft.capabilityOverride != nil {
+                Button(i18n.t(.clearCapabilityOverrides)) {
+                    draft.capabilityOverride = nil
+                }
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func capabilityPicker(
+        title: String,
+        binding: Binding<CapabilityChoice>
+    ) -> some View {
+        Picker(title, selection: binding) {
+            Text(i18n.t(.capabilityAuto)).tag(CapabilityChoice.automatic)
+            Text(i18n.t(.capabilityYes)).tag(CapabilityChoice.yes)
+            Text(i18n.t(.capabilityNo)).tag(CapabilityChoice.no)
+        }
+    }
+
+    private func boolCapabilityBinding(
+        _ keyPath: WritableKeyPath<ModelCapabilityOverride, Bool?>
+    ) -> Binding<CapabilityChoice> {
+        Binding(
+            get: {
+                switch (draft.capabilityOverride ?? ModelCapabilityOverride())[keyPath: keyPath] {
+                case true: .yes
+                case false: .no
+                case nil: .automatic
+                }
+            },
+            set: { choice in
+                updateCapabilityOverride { override in
+                    override[keyPath: keyPath] = switch choice {
+                    case .automatic: nil
+                    case .yes: true
+                    case .no: false
+                    }
+                }
+            }
+        )
+    }
+
+    private var reasoningSupportBinding: Binding<ReasoningChoice> {
+        Binding(
+            get: {
+                switch (draft.capabilityOverride ?? ModelCapabilityOverride()).reasoningSupport {
+                case .unsupported: .unsupported
+                case .optional: .optional
+                case .required: .required
+                case nil: .automatic
+                }
+            },
+            set: { choice in
+                updateCapabilityOverride { override in
+                    override.reasoningSupport = switch choice {
+                    case .automatic: nil
+                    case .unsupported: .unsupported
+                    case .optional: .optional
+                    case .required: .required
+                    }
+                }
+            }
+        )
+    }
+
+    private var reasoningStrategyBinding: Binding<ReasoningStrategyChoice> {
+        Binding(
+            get: {
+                switch (draft.capabilityOverride ?? ModelCapabilityOverride()).reasoningDisableStrategy {
+                case .some(.none): .none
+                case .some(.deepSeekThinkingDisabled): .deepSeek
+                case .some(.enableThinkingFalse): .enableThinkingFalse
+                case nil: .automatic
+                }
+            },
+            set: { choice in
+                updateCapabilityOverride { override in
+                    override.reasoningDisableStrategy = switch choice {
+                    case .automatic: nil
+                    case .none: AIReasoningDisableStrategy.none
+                    case .deepSeek: .deepSeekThinkingDisabled
+                    case .enableThinkingFalse: .enableThinkingFalse
+                    }
+                }
+            }
+        )
+    }
+
+    private func updateCapabilityOverride(
+        _ update: (inout ModelCapabilityOverride) -> Void
+    ) {
+        var override = draft.capabilityOverride ?? ModelCapabilityOverride()
+        update(&override)
+        draft.capabilityOverride = override.isEmpty ? nil : override
     }
 
     // MARK: - Extra Headers (custom OpenAI-compatible providers)

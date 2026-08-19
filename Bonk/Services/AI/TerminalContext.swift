@@ -15,8 +15,12 @@ extension TerminalContext {
     @MainActor
     init(tab: TerminalTab?) {
         currentDirectory = tab?.currentDirectory
-        shell = nil
-        recentCommands = GlobalCommandHistory.shared.commands.suffix(10).map(\.command)
+        shell = tab?.session?.serverInfo?.shell
+        let hostKey = tab?.hostItem.id.uuidString
+        recentCommands = GlobalCommandHistory.shared.commands
+            .filter { $0.hostKey == hostKey }
+            .suffix(10)
+            .map(\.command)
         terminalOutput = tab?.session?.ptySession?.recentOutput(maxLines: 40) ?? ""
     }
 }

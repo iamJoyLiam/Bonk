@@ -23,6 +23,21 @@ extension AIProviderNetworking {
         }
     }
 
+    /// Capability-driven variant. Provider type remains fallback for legacy
+    /// networking paths; new adapters use model route capability.
+    static func reasoningDisablePayload(
+        for capability: ModelCapability
+    ) -> [String: Any]? {
+        switch capability.reasoningDisableStrategy {
+        case .deepSeekThinkingDisabled:
+            ["thinking": ["type": "disabled"]]
+        case .enableThinkingFalse:
+            ["enable_thinking": false]
+        case .none:
+            nil
+        }
+    }
+
     // MARK: - SDK Clients
 
     /// Builds a MacPaw/OpenAI client for any OpenAI-compatible endpoint.
@@ -137,6 +152,21 @@ extension AIProviderNetworking {
     private static func statusCode(in description: String) -> Int? {
         guard let range = description.range(of: #"\d+"#, options: .regularExpression) else { return nil }
         return Int(description[range])
+    }
+
+    /// Legacy fallback is safe only when selected wire path is absent or
+    /// returned an incompatible 200 payload. Auth, rate-limit, server, and
+    /// timeout errors must surface without issuing a second request.
+    static func shouldFallbackToLegacy(_ error: Error) -> Bool {
+        guard let aiError = error as? AIError else { return false }
+        return switch aiError {
+        case .invalidResponse:
+            true
+        case let .apiError(statusCode, _):
+            statusCode == 404 || statusCode == 405
+        case .invalidEndpoint, .emptyResponse, .unsupported:
+            false
+        }
     }
 
     // MARK: - SDK Streaming
@@ -316,11 +346,28 @@ extension AIProviderNetworking {
 
     /// Extract incremental text from a streaming SSE event.
     static func extractDelta(from json: [String: Any]) -> String? {
-        // OpenAI: choices[0].delta.content
+        // OpenAI-compatible: choices[0].delta.content
         if let choices = json["choices"] as? [[String: Any]],
-           let delta = choices.first?["delta"] as? [String: Any],
-           let text = delta["content"] as? String
-        { return text }
+           let first = choices.first
+        {
+            if let delta = first["delta"] as? [String: Any] {
+                if let text = delta["content"] as? String {
+                    return text
+                }
+                // Some providers use OpenAI content-part arrays.
+                if let parts = delta["content"] as? [[String: Any]] {
+                    let text = parts.compactMap { $0["text"] as? String }.joined()
+                    if !text.isEmpty { return text }
+                }
+                // Legacy completions-compatible proxies may put text in delta.
+                if let text = delta["text"] as? String {
+                    return text
+                }
+            }
+            if let text = first["text"] as? String {
+                return text
+            }
+        }
 
         // Claude: type == "content_block_delta"
         if json["type"] as? String == "content_block_delta",
