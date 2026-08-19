@@ -254,7 +254,9 @@ struct ContentView: View {
             scrollSensitivity: preferences.scrollSensitivity ?? 1.0,
             onSend: { data in Task { try? await sessionManager.sendInput(data, to: tab.id) } },
             onResize: { cols, rows in Task { try? await sessionManager.resizePTY(cols: cols, rows: rows, tabID: tab.id) } },
-            onTitleChange: { sessionManager.updateTabTitle($0, tabID: tab.id) },
+            onTitleChange: { title in
+                Task { @MainActor in sessionManager.updateTabTitle(title, tabID: tab.id) }
+            },
             onReconnect: { Task { await sessionManager.reconnectTab(tab.id) } }
         )
         .navigationTitle(tab.title)

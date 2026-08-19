@@ -57,7 +57,7 @@ enum AITerminalMirror {
             let shown = Array(outputLines.prefix(maxOutputLines))
             let omitted = total - shown.count
 
-            var meta = durationText.isEmpty
+            let meta = durationText.isEmpty
                 ? "\(total) 行输出"
                 : "\(durationText) · \(total) 行输出"
             lines.append("\u{1B}[90m\(icon) \(meta)\u{1B}[0m")

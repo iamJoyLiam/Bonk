@@ -115,8 +115,8 @@ struct PaneTerminalView: View {
                     cursorBlink: cursorBlink,
                     copyOnSelect: preferences.copyOnSelect,
                     isActive: isActive,
-                    onSend: { data in sendInput(data) },
-                    onResize: { cols, rows in resizePTY(cols: cols, rows: rows) },
+                    onSend: { data in Task { @MainActor in sendInput(data) } },
+                    onResize: { cols, rows in Task { @MainActor in resizePTY(cols: cols, rows: rows) } },
                     onTitleChange: { _ in },
                     onReconnect: { Task { await sessionManager.reconnectTab(tab.id) } }
                 )
@@ -136,8 +136,8 @@ struct PaneTerminalView: View {
                         cursorBlink: cursorBlink,
                         copyOnSelect: preferences.copyOnSelect,
                         isActive: isActive,
-                        onSend: { data in sendInput(data) },
-                        onResize: { cols, rows in resizePTY(cols: cols, rows: rows) },
+                        onSend: { data in Task { @MainActor in sendInput(data) } },
+                        onResize: { cols, rows in Task { @MainActor in resizePTY(cols: cols, rows: rows) } },
                         onTitleChange: { _ in },
                         onReconnect: { Task { await sessionManager.reconnectTab(tab.id) } }
                     )

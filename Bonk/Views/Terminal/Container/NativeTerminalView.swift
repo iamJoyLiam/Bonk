@@ -39,7 +39,7 @@ import SwiftTerm
         // MARK: - Inline Completion
 
         let completionService = InlineCompletionService.shared
-        private var completionDebounceTask: Task<Void, Never>?
+        private nonisolated(unsafe) var completionDebounceTask: Task<Void, Never>?
         var ghostOverlay: InlineGhostOverlay?
         private nonisolated(unsafe) var resignObserver: NSObjectProtocol?
         nonisolated(unsafe) var rightClickMonitor: Any?
@@ -124,8 +124,8 @@ import SwiftTerm
         /// any other key dismisses and forwards. Typing schedules a debounced request.
         /// Returns nil when the event was consumed, otherwise the event to forward.
         /// Called from the coordinator's keyDown monitor (before SwiftTerm's keyDown).
-        /// `nonisolated(unsafe)`: the monitor always fires on the main thread.
-        nonisolated(unsafe) func processKeyEvent(_ event: NSEvent) -> NSEvent? {
+        /// The monitor always fires on the main thread.
+        nonisolated func processKeyEvent(_ event: NSEvent) -> NSEvent? {
             // Extract everything from the event first — NSEvent is not Sendable,
             // so it must not cross into the MainActor closures below.
             let keyCode = event.keyCode
@@ -136,8 +136,10 @@ import SwiftTerm
             // text field holds focus, and the menu's FocusedValue chain can't
             // swallow them. Event is consumed to avoid double-firing.
             if !ShortcutManager.isRecording,
-               let shortcut = shortcutNotification(for: keyCode, modifiers: modifiers),
-               event.window === window
+               let shortcut = MainActor.assumeIsolated({
+                   shortcutNotification(for: keyCode, modifiers: modifiers)
+               }),
+               event.window === MainActor.assumeIsolated({ window })
             {
                 NotificationCenter.default.post(name: shortcut, object: nil)
                 return nil
@@ -151,19 +153,23 @@ import SwiftTerm
             // never arm a new request, or the ghost would render over the
             // command's output.
             if keyCode == 36 || keyCode == 76 {
-                completionDebounceTask?.cancel()
                 MainActor.assumeIsolated {
+                    completionDebounceTask?.cancel()
                     completionService.dismiss()
                     hideGhost(reason: "enter")
                 }
                 return event
             }
 
-            let shouldSchedule = shouldTriggerCompletion(
-                keyCode: keyCode,
-                modifiers: event.modifierFlags,
-                characters: event.characters
-            )
+            let eventModifiers = event.modifierFlags
+            let eventCharacters = event.characters
+            let shouldSchedule = MainActor.assumeIsolated {
+                shouldTriggerCompletion(
+                    keyCode: keyCode,
+                    modifiers: eventModifiers,
+                    characters: eventCharacters
+                )
+            }
 
             let isFocused = MainActor.assumeIsolated { window?.firstResponder === self }
             guard isFocused else { return event }
@@ -197,8 +203,8 @@ import SwiftTerm
                 // old suggestion doesn't linger while the model thinks.
                 MainActor.assumeIsolated {
                     hideGhost(reason: "new-typing")
+                    scheduleCompletion()
                 }
-                scheduleCompletion()
             }
             return event
         }
@@ -322,7 +328,7 @@ import SwiftTerm
 
         /// Accept the current suggestion: send its text through the normal input
         /// path (history recording and broadcast included), then clear it.
-        private nonisolated(unsafe) func acceptSuggestion() {
+        private nonisolated func acceptSuggestion() {
             MainActor.assumeIsolated {
                 let text = completionService.accept()
                 hideGhost(reason: "accept")

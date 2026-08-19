@@ -131,10 +131,13 @@ class DragDropNSView: NSView {
             // Debounce: cancel previous timer and schedule new one
             debounceTimer?.invalidate()
             debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: false) { [weak self] _ in
-                guard let self else { return }
-                // Only show indicator for tab drag that is not self-drop
-                if isTabDrag, let sourceTabID, sourceTabID != self.currentTabID {
-                    self.onDragStateChange?(true, position)
+                // Timers fire on the main run loop.
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    // Only show indicator for tab drag that is not self-drop
+                    if isTabDrag, let sourceTabID, sourceTabID != self.currentTabID {
+                        self.onDragStateChange?(true, position)
+                    }
                 }
             }
         }

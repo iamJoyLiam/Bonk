@@ -72,7 +72,7 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
 
     // MARK: - Immobile Items (fixed position, cannot be moved)
 
-    func toolbarImmovableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+    func toolbarImmovableItemIdentifiers(_ toolbar: NSToolbar) -> Set<NSToolbarItem.Identifier> {
         [.addHost, .toggleSidebar, .ai, .snippets]
     }
 
@@ -98,7 +98,7 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
                 id: itemIdentifier,
                 label: coordinator.i18n.t(.toggleSidebar),
                 icon: "sidebar.left"
-            ) { [weak self] in
+            ) {
                 NSApp.keyWindow?.contentViewController?.tryToPerform(
                     #selector(NSSplitViewController.toggleSidebar(_:)), with: nil
                 )

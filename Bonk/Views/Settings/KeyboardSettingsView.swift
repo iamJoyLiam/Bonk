@@ -62,7 +62,7 @@ struct KeyboardSettingsView: View {
     private func binding(for action: ShortcutAction) -> Binding<KeyboardShortcut?> {
         Binding(
             get: {
-                var allShortcuts = shortcuts
+                let allShortcuts = shortcuts
                 return allShortcuts[action.rawValue] ?? action.defaultShortcut
             },
             set: { newValue in

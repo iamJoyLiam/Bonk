@@ -55,7 +55,6 @@ enum LogColorizer {
         // Collect all (range, ansiCode, priority) tuples from all pattern matches
         var annotations: [(range: NSRange, code: String, priority: Int)] = []
 
-        let nsLine = line as NSString
         let fullRange = NSRange(line.startIndex..., in: line)
 
         // 1. Syslog PRI: <134> → color the PRI tag itself

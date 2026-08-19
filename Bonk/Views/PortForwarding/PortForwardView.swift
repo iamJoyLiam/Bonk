@@ -131,7 +131,7 @@ struct PortForwardView: View {
     private func toggleForward(_ rule: PortForward) {
         Task {
             if rule.isActive {
-                await portForwardService.stop(config: rule)
+                portForwardService.stop(config: rule)
             } else {
                 do {
                     try await portForwardService.start(config: rule, using: sshService)

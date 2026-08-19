@@ -35,7 +35,6 @@ import SwiftTerm
                         Log.ui.info("[Feed] Feed task cancelled")
                         break
                     }
-                    let byteCount = text.utf8.count
                     let (shouldFlush, endsCR) = batchBuffer.withLock { buf -> (Bool, Bool) in
                         buf += text
                         let endsCR = buf.utf8.last == 0x0D

@@ -118,10 +118,11 @@ final class MainSplitViewController: NSSplitViewController {
     /// the window state changes (resign key / sidebar collapse). Force an
     /// immediate redraw so the shadow follows the window's rounded corners.
     private func installSidebarAppearanceRefresh() {
-        let refresh: (Notification) -> Void = { [weak self] note in
+        let refresh: @Sendable (Notification) -> Void = { [weak self] note in
+            nonisolated(unsafe) let object = note.object
             MainActor.assumeIsolated {
                 guard let self,
-                      let window = note.object as? NSWindow,
+                      let window = object as? NSWindow,
                       window === self.view.window
                 else { return }
                 self.refreshSidebarAppearance()

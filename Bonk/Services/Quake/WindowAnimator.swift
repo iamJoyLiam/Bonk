@@ -39,6 +39,7 @@ final class WindowAnimator {
 
     /// Show window with slide-in animation from top of screen.
     func show(panel: NSPanel, frame: CGRect, completion: (() -> Void)? = nil) {
+        nonisolated(unsafe) let completion = completion
         guard !isAnimating else { return }
         isAnimating = true
 
@@ -63,16 +64,17 @@ final class WindowAnimator {
             panel.animator().setFrame(frame, display: true)
             panel.animator().alphaValue = 1.0
         } completionHandler: { [weak self] in
-            self?.isAnimating = false
+            // AppKit guarantees this runs on the main thread.
+            MainActor.assumeIsolated {
+                self?.isAnimating = false
 
-            // Force activate app and make panel key for keyboard input
-            NSApp.activate(ignoringOtherApps: true)
-            DispatchQueue.main.async {
+                // Force activate app and make panel key for keyboard input
+                NSApp.activate(ignoringOtherApps: true)
                 panel.makeKey()
                 panel.makeFirstResponder(nil) // Let first responder chain work
-            }
 
-            completion?()
+                completion?()
+            }
         }
 
         logger.debug("Animating show")
@@ -80,6 +82,7 @@ final class WindowAnimator {
 
     /// Hide window with slide-out animation to top of screen.
     func hide(panel: NSPanel, completion: (() -> Void)? = nil) {
+        nonisolated(unsafe) let completion = completion
         guard !isAnimating else { return }
         isAnimating = true
 
@@ -100,10 +103,13 @@ final class WindowAnimator {
             panel.animator().setFrame(endFrame, display: true)
             panel.animator().alphaValue = 0.0
         } completionHandler: { [weak self] in
-            self?.isAnimating = false
-            panel.orderOut(nil)
-            panel.alphaValue = 1.0 // Reset for next show
-            completion?()
+            // AppKit guarantees this runs on the main thread.
+            MainActor.assumeIsolated {
+                self?.isAnimating = false
+                panel.orderOut(nil)
+                panel.alphaValue = 1.0 // Reset for next show
+                completion?()
+            }
         }
 
         logger.debug("Animating hide")

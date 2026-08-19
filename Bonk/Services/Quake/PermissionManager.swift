@@ -12,7 +12,7 @@ import os.log
 
 /// Manages Accessibility permissions required for global hotkeys.
 @Observable
-final class PermissionManager {
+final class PermissionManager: @unchecked Sendable {
     private let logger = Logger(subsystem: "com.bonk", category: "Permission")
 
     /// Whether Accessibility permission is granted.
@@ -72,9 +72,12 @@ final class PermissionManager {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            // Re-check when active app changes
-            self?.checkAccessibility()
-            self?.onPermissionChanged?(self?.isAccessibilityGranted ?? false)
+            // Re-check when active app changes (observer fires on main queue).
+            let pm = self
+            MainActor.assumeIsolated {
+                pm?.checkAccessibility()
+                pm?.onPermissionChanged?(pm?.isAccessibilityGranted ?? false)
+            }
         }
     }
 

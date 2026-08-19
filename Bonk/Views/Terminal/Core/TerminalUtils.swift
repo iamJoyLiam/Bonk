@@ -44,6 +44,7 @@ func mapCursorStyle(_ style: String, blink: Bool) -> SwiftTerm.CursorStyle {
 }
 
 /// Apply color scheme to a terminal view.
+@MainActor
 func applyColorScheme(to view: SwiftTerm.TerminalView, scheme: TerminalColorScheme) {
     view.nativeBackgroundColor = scheme.background.nsColor
     view.nativeForegroundColor = scheme.foreground.nsColor

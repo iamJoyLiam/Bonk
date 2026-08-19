@@ -93,16 +93,19 @@ extension TerminalTabView {
             object: nil,
             queue: .main
         ) { notification in
-            if let selectedText = notification.object as? String, !selectedText.isEmpty {
-                selectedTextForAI = selectedText
-            } else {
-                selectedTextForAI = ""
-            }
-            showAIChat = true
-            // Remove observer after receiving response
-            if let observer = selectionObserver {
-                NotificationCenter.default.removeObserver(observer)
-                selectionObserver = nil
+            let text = notification.object as? String
+            MainActor.assumeIsolated {
+                if let selectedText = text, !selectedText.isEmpty {
+                    selectedTextForAI = selectedText
+                } else {
+                    selectedTextForAI = ""
+                }
+                showAIChat = true
+                // Remove observer after receiving response
+                if let observer = selectionObserver {
+                    NotificationCenter.default.removeObserver(observer)
+                    selectionObserver = nil
+                }
             }
         }
 

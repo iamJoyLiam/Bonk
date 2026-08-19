@@ -6,7 +6,6 @@ enum LKey: String, CaseIterable {
     /// Tabs
     case settings, general, appearance, terminal = "editor", keyboard
     case ai
-    case account
 
     // General
     case language, launchBehavior = "launch_behavior"
@@ -65,17 +64,12 @@ enum LKey: String, CaseIterable {
     case alwaysAllow = "always_allow", askEachTime = "ask_each_time", never
 
     // Integrations
-    case docker, notDetected = "not_detected"
-    case plugins, installed
+    case notDetected = "not_detected"
+    case installed
 
-    // Account
-    case license, licenseKey = "license_key"
-    case notActivated = "not_activated", activate
     case status, inactive, plan, free
-    case sync, icloudSync = "icloud_sync"
-    case syncHosts = "sync_hosts", syncPrefs = "sync_prefs"
-    case lastSynced = "last_synced"
-    case syncNow = "sync_now"
+    case icloudSync = "icloud_sync"
+    case syncPrefs = "sync_prefs"
 
     // AI
     case aiAssistant = "ai_assistant"
@@ -84,9 +78,7 @@ enum LKey: String, CaseIterable {
     case aiPaste = "ai_paste"
     case aiRun = "ai_run"
     case aiCopy = "ai_copy"
-    case aiDismiss = "ai_dismiss"
     case aiAnalyzing = "ai_analyzing"
-    case aiHistory = "ai_history"
     case aiNoHistory = "ai_no_history"
     case aiDeleteConversation = "ai_delete_conversation"
     case aiApply = "ai_apply"
@@ -199,7 +191,7 @@ enum LKey: String, CaseIterable {
     case close, reconnect
 
     // ServerInfoPanel extra
-    case actions, disconnect, connected
+    case disconnect, connected
     case host, auth
     case privateKeyAuth = "private_key_auth"
     case error
@@ -259,7 +251,7 @@ enum LKey: String, CaseIterable {
     case command
 
     // Sessions
-    case sessions, noSessions = "no_sessions"
+    case noSessions = "no_sessions"
 
     // Port Forwarding
     case portForwarding = "port_forwarding"
@@ -306,7 +298,6 @@ enum LKey: String, CaseIterable {
     case noJumpHosts = "no_jump_hosts"
     case jumpHostHint = "jump_host_hint"
     case jumpHostAdvanced = "jump_host_advanced"
-    case jumpHostHostname = "jump_host_hostname"
 
     // Broadcast
     case disableBroadcast = "disable_broadcast"
@@ -323,7 +314,6 @@ enum LKey: String, CaseIterable {
     case paste, linked = "linked", unsplit = "unsplit"
     case color, enter, folder
     case cancelled, run
-    case copyCommand = "copy_command"
     case sendFile = "send_file"
     case receiveFile = "receive_file"
     case fileTransfer = "file_transfer"
@@ -332,22 +322,9 @@ enum LKey: String, CaseIterable {
     case securityFeatures = "security_features"
     case ecdsaP256 = "ecdsa_p256"
     case hardwareNonExportable = "hardware_non_exportable"
-    case icloudSyncRequires = "icloud_sync_requires"
 
     /// Keyboard shortcut action names
     case actionNewTerminal = "action_new_terminal"
-    case actionCloseTab = "action_close_tab"
-    case actionClosePane = "action_close_pane"
-    case actionNextTab = "action_next_tab"
-    case actionPreviousTab = "action_previous_tab"
-    case actionFind = "action_find"
-    case actionSettings = "action_settings"
-    case actionReconnect = "action_reconnect"
-    case actionClearTerminal = "action_clear_terminal"
-    case actionSplitHorizontal = "action_split_horizontal"
-    case actionSplitVertical = "action_split_vertical"
-    case actionSFTPBrowser = "action_sftp_browser"
-    case actionAIAssistant = "action_ai_assistant"
 
     // Command History
     case commandHistory = "command_history"
@@ -359,8 +336,6 @@ enum LKey: String, CaseIterable {
     case copy
 
     // Broadcast
-    case broadcastInput = "broadcast_input"
-    case selectPanes = "select_panes"
     case selectAll = "select_all"
     case deselectAll = "deselect_all"
     case pane
@@ -376,7 +351,6 @@ enum LKey: String, CaseIterable {
     case notSet = "not_set"
 
     /// Sessions
-    case favorite
 
     // MARK: - New keys for hardcoded string fixes
 
@@ -395,10 +369,8 @@ enum LKey: String, CaseIterable {
     case stepsCount = "steps_count"
     case executePlan = "execute_plan"
     case exitCode = "exit_code"
-    case waitingForOutput = "waiting_for_output"
 
     /// Broadcast
-    case broadcastMode = "broadcast_mode"
     case broadcastPanes = "broadcast_panes"
 
     // Command safety levels
@@ -415,14 +387,6 @@ enum LKey: String, CaseIterable {
     case skippedStep = "skipped_step"
 
     // Key recorder shortcuts
-    case shortcutNewTerminal = "shortcut_new_terminal"
-    case shortcutCloseTab = "shortcut_close_tab"
-    case shortcutNextTab = "shortcut_next_tab"
-    case shortcutPrevTab = "shortcut_prev_tab"
-    case shortcutFind = "shortcut_find"
-    case shortcutSettings = "shortcut_settings"
-    case shortcutReconnect = "shortcut_reconnect"
-    case shortcutClearTerminal = "shortcut_clear_terminal"
 
     // AI errors
     case noActiveProvider = "no_active_provider"
@@ -489,7 +453,6 @@ enum LKey: String, CaseIterable {
     case keyNotFound = "key_not_found"
     case secureEnclaveKeyGenerated = "secure_enclave_key_generated"
     case addPublicKeyToServer = "add_public_key_to_server"
-    case publicKeyCopied = "public_key_copied"
     case change = "change"
 
     // Workspaces

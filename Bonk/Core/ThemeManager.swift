@@ -1,6 +1,7 @@
 import SwiftUI
 
 enum ThemeManager {
+    @MainActor
     static func apply(_ mode: String) {
         UserDefaults.standard.set(mode, forKey: "app_themeMode")
         #if os(macOS)

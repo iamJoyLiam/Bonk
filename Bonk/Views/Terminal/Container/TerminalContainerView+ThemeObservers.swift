@@ -16,9 +16,10 @@ import SwiftTerm
             fontObserver = NotificationCenter.default.addObserver(
                 forName: .terminalFontDidChange, object: nil, queue: .main
             ) { [weak self] notification in
-                guard let self, let terminal = terminalView else { return }
                 let fontFamily = (notification.object as? String) ?? "SF Mono"
                 let fontSize = (notification.userInfo?["fontSize"] as? Double) ?? 14.0
+                MainActor.assumeIsolated {
+                guard let self, let terminal = self.terminalView else { return }
                 let size = CGFloat(fontSize)
                 let newFont = switch fontFamily {
                 case "Menlo":
@@ -36,16 +37,20 @@ import SwiftTerm
                 }
                 terminal.font = newFont
                 terminal.needsDisplay = true
+                }
             }
 
             themeObserver = NotificationCenter.default.addObserver(
                 forName: .terminalThemeDidChange, object: nil, queue: .main
             ) { [weak self] notification in
-                guard let self, let terminal = terminalView,
-                      let scheme = notification.object as? TerminalColorScheme else { return }
+                let scheme = notification.object as? TerminalColorScheme
+                MainActor.assumeIsolated {
+                guard let self, let terminal = self.terminalView,
+                      let scheme else { return }
                 terminal.nativeBackgroundColor = scheme.background.nsColor
                 terminal.nativeForegroundColor = scheme.foreground.nsColor
                 terminal.installColors(scheme.swiftTermColors)
+                }
             }
 
             // Selection request → respond with selected text
@@ -53,10 +58,12 @@ import SwiftTerm
                 forName: .requestTerminalSelection,
                 object: nil,
                 queue: .main
-            ) { [weak self] _ in
-                guard let self, let terminal = terminalView else { return }
-                let selectedText = terminal.getSelection()
+            ) { [weak self] notification in
+                let selectedText = (notification.object as? String) ?? ""
+                MainActor.assumeIsolated {
+                guard let self, self.terminalView != nil else { return }
                 NotificationCenter.default.post(name: .terminalSelectionResponse, object: selectedText)
+                }
             }
 
             // Select all text in terminal
@@ -65,8 +72,10 @@ import SwiftTerm
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                guard let self, let terminal = terminalView else { return }
+                MainActor.assumeIsolated {
+                guard let self, let terminal = self.terminalView else { return }
                 terminal.selectAll()
+                }
             }
 
             // Focus terminal
@@ -75,8 +84,10 @@ import SwiftTerm
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                guard let self, let terminal = terminalView else { return }
+                MainActor.assumeIsolated {
+                guard let self, let terminal = self.terminalView else { return }
                 terminal.window?.makeFirstResponder(terminal)
+                }
             }
         }
 

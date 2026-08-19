@@ -63,18 +63,6 @@ struct ZmodemFileInfo {
     let mode: Int32
 }
 
-// MARK: - Zmodem Handler Delegate
-
-/// Delegate for Zmodem events.
-protocol ZmodemHandlerDelegate: AnyObject {
-    func zmodemDidStartTransfer(_ file: ZmodemFileInfo)
-    func zmodemDidUpdateProgress(_ progress: Double)
-    func zmodemDidCompleteTransfer(_ file: ZmodemFileInfo)
-    func zmodemDidFailWithError(_ error: Error)
-    func zmodemDidCancel()
-    func zmodemDidRequestFileSelection() -> [URL]?
-}
-
 // MARK: - Zmodem Handler
 
 /// Handles Zmodem file transfer protocol.
@@ -83,9 +71,6 @@ class ZmodemHandler {
 
     /// Current transfer state.
     private(set) var state: ZmodemState = .idle
-
-    /// Delegate for callbacks.
-    weak var delegate: ZmodemHandlerDelegate?
 
     /// Output buffer for sending data to terminal.
     var onSendData: (([UInt8]) -> Void)?
@@ -118,9 +103,8 @@ class ZmodemHandler {
         currentFileIndex = 0
         state = .sendingFile
 
-        if let firstFile = files.first {
+        if !files.isEmpty {
             sendZrqinit()
-            _ = delegate?.zmodemDidRequestFileSelection()
         }
     }
 
@@ -129,7 +113,6 @@ class ZmodemHandler {
         logger.info("Cancelling Zmodem transfer")
         state = .cancelled
         sendCan()
-        delegate?.zmodemDidCancel()
     }
 
     /// Process incoming data from terminal.
@@ -213,7 +196,6 @@ class ZmodemHandler {
     private func handleZfin() {
         logger.info("Received ZFIN - transfer complete")
         state = .completed
-        delegate?.zmodemDidCompleteTransfer(currentFile ?? ZmodemFileInfo(name: "", size: 0, modificationDate: nil, mode: 0o644))
     }
 
     private func handleZrpos(data: [UInt8], offset: Int) {
@@ -289,7 +271,6 @@ class ZmodemHandler {
         )
         currentFile = fileInfo
 
-        delegate?.zmodemDidStartTransfer(fileInfo)
         sendZrfile(fileInfo)
     }
 

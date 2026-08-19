@@ -144,8 +144,6 @@ final class QuakeController {
             showQuakeWindow()
         case .embedded:
             hideQuakeWindow()
-        default:
-            break
         }
 
         logger.info("Transitioned from \(String(describing: previousMode)) to \(String(describing: mode))")
@@ -171,14 +169,11 @@ final class QuakeController {
             windowController.panel.makeKey()
 
             // Find and focus terminal view
-            if let panel = windowController.panel as? NSPanel {
-                // Post notification to trigger focus in terminal views
-                NotificationCenter.default.post(name: .focusTerminal, object: nil)
+            NotificationCenter.default.post(name: .focusTerminal, object: nil)
 
-                // Also try to directly make first responder
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    panel.makeKey()
-                }
+            // Also try to directly make first responder
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                windowController.panel.makeKey()
             }
         }
     }

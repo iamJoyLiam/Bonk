@@ -141,12 +141,11 @@ private struct UTF8Accumulator {
 
     private var isPartialPrefix: Bool {
         guard let first = pending.first else { return false }
-        let expected: Int
         switch first {
-        case 0xC2 ... 0xDF: expected = 2
-        case 0xE0 ... 0xEF: expected = 3
-        case 0xF0 ... 0xF4: expected = 4
-        default: return false
+        case 0xC2 ... 0xDF, 0xE0 ... 0xEF, 0xF0 ... 0xF4:
+            break
+        default:
+            return false
         }
         return pending.dropFirst().allSatisfy { $0 & 0xC0 == 0x80 }
     }

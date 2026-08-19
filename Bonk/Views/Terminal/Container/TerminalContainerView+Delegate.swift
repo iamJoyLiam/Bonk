@@ -63,22 +63,27 @@ import SwiftTerm
         /// 模拟 NSScrollView 的 overlay 滚动条行为：滚动时显示，静止时隐藏。
         /// SwiftTerm 使用独立 NSScroller（不在 NSScrollView 中），需要手动驱动 alpha 动画。
         private func flashScroller(in terminal: SwiftTerm.TerminalView) {
-            guard let scroller = terminal.subviews.compactMap({ $0 as? NSScroller }).first else { return }
+            // Delegate callbacks arrive on the main thread.
+            MainActor.assumeIsolated {
+                guard let scroller = terminal.subviews.compactMap({ $0 as? NSScroller }).first else { return }
 
-            // 取消之前的 fade-out 计划
-            scroller.layer?.removeAnimation(forKey: "scrollerFadeOut")
+                // 取消之前的 fade-out 计划
+                scroller.layer?.removeAnimation(forKey: "scrollerFadeOut")
 
-            // 立即显示
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.15
-                scroller.animator().alphaValue = 1.0
-            }
-
-            // 延迟后淡出
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                // 立即显示
                 NSAnimationContext.runAnimationGroup { context in
-                    context.duration = 0.4
-                    scroller.animator().alphaValue = 0.0
+                    context.duration = 0.15
+                    scroller.animator().alphaValue = 1.0
+                }
+
+                // 延迟后淡出
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    MainActor.assumeIsolated {
+                        NSAnimationContext.runAnimationGroup { context in
+                            context.duration = 0.4
+                            scroller.animator().alphaValue = 0.0
+                        }
+                    }
                 }
             }
         }

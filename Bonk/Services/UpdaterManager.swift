@@ -11,6 +11,7 @@ import Foundation
     import Sparkle
 
     @Observable
+    @MainActor
     final class UpdaterManager {
         private let updaterController: SPUStandardUpdaterController
 

@@ -49,6 +49,7 @@ final class I18n: @unchecked Sendable {
 
     // MARK: Set language
 
+    @MainActor
     func setLanguage(_ code: String) {
         _savedChoice = code
         UserDefaults.standard.set(code, forKey: "app_language")
@@ -66,6 +67,7 @@ final class I18n: @unchecked Sendable {
     }
 
     #if os(macOS)
+        @MainActor
         private func showRestartAlert() {
             let alert = NSAlert()
             alert.messageText = t(.restartRequired)
