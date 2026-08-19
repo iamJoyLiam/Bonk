@@ -56,6 +56,15 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate {
         window.toolbarStyle = .unified
         window.titleVisibility = .visible
 
+        // Read the saved frame up front: once the contentViewController is
+        // installed, SwiftUI layout constraints squeeze the window to its
+        // minimum (900x600) and AppKit autosaves that squeezed frame on
+        // first display, clobbering the user's saved size. Restoring from
+        // this early snapshot after display (but before any user resize)
+        // would read the already-clobbered value, so apply it manually.
+        let savedFrameString = UserDefaults.standard
+            .string(forKey: "NSWindow Frame BonkMainWindow")
+
         let splitVC = MainSplitViewController(
             workspace: workspace,
             sessionManager: sessionManager,
@@ -64,11 +73,17 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate {
             modelContainer: BonkApp.sharedModelContainer
         )
         window.contentViewController = splitVC
-        // Only center on the very first launch (no saved frame yet). Calling
-        // center() before the first display would override the frame that
-        // AppKit is about to restore from the autosave name, so every launch
-        // would fall back to the default size.
-        if UserDefaults.standard.string(forKey: "NSWindow Frame BonkMainWindow") == nil {
+        if let savedFrameString {
+            let parts = savedFrameString.split(separator: " ").compactMap { Double($0) }
+            if parts.count >= 4 {
+                window.setFrame(
+                    NSRect(x: parts[0], y: parts[1], width: parts[2], height: parts[3]),
+                    display: false
+                )
+            } else {
+                window.center()
+            }
+        } else {
             window.center()
         }
         window.makeKeyAndOrderFront(nil)
