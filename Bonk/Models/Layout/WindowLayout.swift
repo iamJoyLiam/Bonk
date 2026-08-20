@@ -65,9 +65,50 @@ final class TabLayout {
 
         func makeContainer(children: [LayoutNode]) -> LayoutNode {
             switch self {
-            case .horizontal: .horizontal(children: children)
-            case .vertical: .vertical(children: children)
+            case .horizontal: .horizontal(children: children, fraction: LayoutNode.defaultFraction)
+            case .vertical: .vertical(children: children, fraction: LayoutNode.defaultFraction)
             }
+        }
+    }
+
+    // MARK: - Resize Operations
+
+    /// Adjust the split proportion of a container (first child vs. the rest).
+    /// Called while the user drags a divider.
+    func setFraction(_ fraction: CGFloat, containerID: UUID) {
+        root = updateFraction(
+            in: root,
+            containerID: containerID,
+            fraction: LayoutNode.clampedFraction(fraction)
+        )
+    }
+
+    /// Recursively replace the container matching `containerID` with a new
+    /// fraction, preserving everything else.
+    private func updateFraction(
+        in node: LayoutNode,
+        containerID: UUID,
+        fraction: CGFloat
+    ) -> LayoutNode {
+        switch node {
+        case .pane:
+            return node
+        case let .horizontal(children, oldFraction):
+            if node.id == containerID {
+                return .horizontal(children: children, fraction: fraction)
+            }
+            let updated = children.map {
+                updateFraction(in: $0, containerID: containerID, fraction: fraction)
+            }
+            return .horizontal(children: updated, fraction: oldFraction)
+        case let .vertical(children, oldFraction):
+            if node.id == containerID {
+                return .vertical(children: children, fraction: fraction)
+            }
+            let updated = children.map {
+                updateFraction(in: $0, containerID: containerID, fraction: fraction)
+            }
+            return .vertical(children: updated, fraction: oldFraction)
         }
     }
 
@@ -131,7 +172,7 @@ final class TabLayout {
                 : [.pane(state), .pane(newPane)]
             return direction.makeContainer(children: children)
 
-        case let .horizontal(children), let .vertical(children):
+        case let .horizontal(children, fraction), let .vertical(children, fraction):
             var newChildren = children
             for index in 0 ..< newChildren.count {
                 let updated = insertSplit(
@@ -143,10 +184,10 @@ final class TabLayout {
                 )
                 if updated != newChildren[index] {
                     newChildren[index] = updated
-                    // Preserve original container type
+                    // Preserve original container type and proportion
                     switch node {
-                    case .horizontal: return .horizontal(children: newChildren)
-                    case .vertical: return .vertical(children: newChildren)
+                    case .horizontal: return .horizontal(children: newChildren, fraction: fraction)
+                    case .vertical: return .vertical(children: newChildren, fraction: fraction)
                     default: return node
                     }
                 }
@@ -167,7 +208,7 @@ final class TabLayout {
         case let .pane(state):
             return state.id == paneID ? .lastPane : .empty
 
-        case let .horizontal(children), let .vertical(children):
+        case let .horizontal(children, fraction), let .vertical(children, fraction):
             var newChildren: [LayoutNode] = []
             var removed = false
 
@@ -194,10 +235,10 @@ final class TabLayout {
                 return .empty
             }
 
-            // Rebuild container preserving original type
+            // Rebuild container preserving original type and proportion
             switch node {
-            case .horizontal: return .updated(.horizontal(children: newChildren))
-            case .vertical: return .updated(.vertical(children: newChildren))
+            case .horizontal: return .updated(.horizontal(children: newChildren, fraction: fraction))
+            case .vertical: return .updated(.vertical(children: newChildren, fraction: fraction))
             default: return .empty
             }
         }

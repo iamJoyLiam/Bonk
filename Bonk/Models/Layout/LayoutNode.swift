@@ -11,10 +11,21 @@ import Foundation
 indirect enum LayoutNode: Identifiable {
     /// A leaf node containing a pane with its own terminal instance.
     case pane(PaneState)
-    /// Horizontal split (left-right layout).
-    case horizontal(children: [LayoutNode])
-    /// Vertical split (top-bottom layout).
-    case vertical(children: [LayoutNode])
+    /// Horizontal split (left-right layout). `fraction` is the portion of
+    /// the container taken by the FIRST child (0.15...0.85), adjustable by
+    /// dragging the divider.
+    case horizontal(children: [LayoutNode], fraction: CGFloat)
+    /// Vertical split (top-bottom layout). `fraction` is the portion of the
+    /// container taken by the FIRST child.
+    case vertical(children: [LayoutNode], fraction: CGFloat)
+
+    /// Default split proportion for a new container (50/50).
+    static let defaultFraction: CGFloat = 0.5
+
+    /// Clamp a fraction to the draggable range.
+    static func clampedFraction(_ value: CGFloat) -> CGFloat {
+        min(max(value, 0.15), 0.85)
+    }
 
     /// Stable identity for SwiftUI diffing.
     /// Container nodes use a hash of children IDs.
@@ -22,9 +33,9 @@ indirect enum LayoutNode: Identifiable {
         switch self {
         case let .pane(state):
             state.id
-        case let .horizontal(children):
+        case let .horizontal(children, _):
             LayoutNode.stableID(for: children, prefix: "h")
-        case let .vertical(children):
+        case let .vertical(children, _):
             LayoutNode.stableID(for: children, prefix: "v")
         }
     }
@@ -46,7 +57,7 @@ indirect enum LayoutNode: Identifiable {
         switch self {
         case let .pane(state):
             return state.id == id ? state : nil
-        case let .horizontal(children), let .vertical(children):
+        case let .horizontal(children, _), let .vertical(children, _):
             for child in children {
                 if let found = child.findPane(id: id) { return found }
             }
@@ -58,7 +69,7 @@ indirect enum LayoutNode: Identifiable {
     var allPaneIDs: [UUID] {
         switch self {
         case let .pane(state): [state.id]
-        case let .horizontal(children), let .vertical(children):
+        case let .horizontal(children, _), let .vertical(children, _):
             children.flatMap(\.allPaneIDs)
         }
     }
@@ -67,7 +78,7 @@ indirect enum LayoutNode: Identifiable {
     var paneCount: Int {
         switch self {
         case .pane: 1
-        case let .horizontal(children), let .vertical(children):
+        case let .horizontal(children, _), let .vertical(children, _):
             children.reduce(0) { $0 + $1.paneCount }
         }
     }
@@ -95,10 +106,10 @@ extension LayoutNode: Equatable {
         switch (lhs, rhs) {
         case let (.pane(leftState), .pane(rightState)):
             leftState.id == rightState.id
-        case let (.horizontal(leftChildren), .horizontal(rightChildren)):
-            leftChildren == rightChildren
-        case let (.vertical(leftChildren), .vertical(rightChildren)):
-            leftChildren == rightChildren
+        case let (.horizontal(leftChildren, leftFraction), .horizontal(rightChildren, rightFraction)):
+            leftChildren == rightChildren && leftFraction == rightFraction
+        case let (.vertical(leftChildren, leftFraction), .vertical(rightChildren, rightFraction)):
+            leftChildren == rightChildren && leftFraction == rightFraction
         default:
             false
         }
