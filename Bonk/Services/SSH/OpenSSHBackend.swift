@@ -67,12 +67,18 @@ final class OpenSSHBackend: @unchecked Sendable {
     /// Called once at app launch, when no live connections exist. A mux that
     /// survives a crashed/killed client holds its PTY open forever, so this
     /// reclaims those PTYs for future sessions.
+    ///
+    /// SIGKILL (-9) is intentional: SIGTERM proved unreliable here — after a
+    /// force-quit of the app, leftover ssh -tt children (session leaders)
+    /// survived a plain pkill and kept consuming PTYs until macOS refused to
+    /// allocate new ones (openpty ENXIO, errno 6). At launch there are no
+    /// live Bonk connections, so killing every matching process is safe.
     static func cleanupOrphanedMuxes() {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
         task.arguments = [
             "-c",
-            "pkill -f 'bonk-ssh-.*\\.sock' 2>/dev/null; "
+            "pkill -9 -f 'bonk-ssh-.*\\.sock' 2>/dev/null; "
                 + "rm -f /tmp/bonk-ssh-*.sock 2>/dev/null",
         ]
         task.standardOutput = Pipe()
