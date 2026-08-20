@@ -472,6 +472,18 @@ public actor SSHNetworkService {
                 // Reconnection successful — stop network monitor if active
                 stopNetworkMonitor()
 
+                // Restart keepalive for the NEW client. Without this the
+                // reconnected session has no liveness monitoring, and the old
+                // keepalive task (weak ref to the dead client) lingers for up
+                // to one interval.
+                await keepAlive.settimeoutHandler { [weak self] in
+                    guard let self else { return }
+                    Task { await self.handleDisconnect() }
+                }
+                if let client {
+                    await keepAlive.start(client: client)
+                }
+
                 if let ptyConfig = lastPTYConfig, let client {
                     let session = PTYSession()
                     session.start(
@@ -532,6 +544,10 @@ public actor SSHNetworkService {
         defer { isHandlingDisconnect = false }
 
         guard let config else { return }
+
+        // Stop the keepalive loop immediately: it polls the old (dead) client
+        // and could otherwise fire onTimeout after a reconnect started.
+        await keepAlive.stop()
 
         activePTYSession?.close()
         activePTYSession = nil

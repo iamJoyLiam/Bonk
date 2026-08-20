@@ -145,6 +145,10 @@ final class OpenSSHBackend: @unchecked Sendable {
             rows: 50,
             termType: "xterm-256color"
         )
+        // The transport owns the PTY master fd; make sure it is released on
+        // every exit path (success, error, cancellation). session.close()
+        // does NOT close the fd (ownsFD == false).
+        defer { process.close() }
         let session = PTYSession()
         let rawStream = session.makeRawOutputStream()
         let responder = makeAuthResponder(process: process, allowInteractivePrompt: true)
@@ -252,6 +256,7 @@ final class OpenSSHBackend: @unchecked Sendable {
 
             let status = await process.waitForExit()
             session.close()
+            process.close()
             registerProcess?(nil)
 
             guard status == 0 else {

@@ -536,7 +536,10 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                     break
                 }
                 if pollResult == 0 { continue }
-                if pollDescriptor.revents & Int16(POLLHUP | POLLERR) != 0 {
+                // POLLNVAL means the fd was closed underneath us (e.g. the
+                // transport was closed while this reader was polling); treat
+                // it as EOF instead of looping forever on an invalid fd.
+                if pollDescriptor.revents & Int16(POLLHUP | POLLERR | POLLNVAL) != 0 {
                     break
                 }
                 guard pollDescriptor.revents & Int16(POLLIN) != 0 else { continue }
