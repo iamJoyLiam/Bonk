@@ -6,6 +6,34 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.1.21</title>
+            <pubDate>Thu, 20 Aug 2026 08:00:00 +0000</pubDate>
+            <sparkle:version>20261021</sparkle:version>
+            <sparkle:shortVersionString>2026.1.21</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- 分屏支持拖拽调整大小：拖动中间分隔线实时改变面板比例，悬停显示调整光标与视觉分隔线
+- 修复跳板机错误提示：跳板机未开启 TCP 转发（AllowTcpForwarding no）时明确显示跳板机地址与修复指引（sshd_config 设置 AllowTcpForwarding yes），不再误报为网络不通
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.21/Bonk-2026.1.21-arm64.dmg"
+                length="14301470"
+                type="application/octet-stream"
+                sparkle:edSignature="PkH2mzlItlFTqtvyZFohW501geadv5Cw3ek+FPX1pJlshJXn+PHC/O19Th9szG3blE41IepOTZcDSf9+5gI9Cg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.1.21/Bonk-2026.1.21-x86_64.dmg"
+                length="15241955"
+                type="application/octet-stream"
+                sparkle:edSignature="PWMYrd4zNaqn58wWp/q4SZ00wa/nJ4do6uCK9IrqoozId2djkiMBvTkjquw9yEtmPl3OVdQtMeLBeRdaktIcCA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.20</title>
             <pubDate>Wed, 19 Aug 2026 16:30:00 +0000</pubDate>
             <sparkle:version>20261020</sparkle:version>
