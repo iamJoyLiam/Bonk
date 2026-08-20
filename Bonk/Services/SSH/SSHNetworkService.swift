@@ -557,6 +557,11 @@ public actor SSHNetworkService {
             // OpenSSH PTY owns interactive auth. Child exit means session end;
             // never replace a password prompt with a reconnect spinner.
             usesOpenSSHTransport = false
+            // Tear the backend down too: it owns temp identity files and the
+            // jump askpass script (with plaintext password); without this they
+            // linger in /tmp and the ControlMaster socket stays for 300s.
+            openSSHBackend?.close()
+            openSSHBackend = nil
             connectionState = .disconnected
             stateContinuation.yield(.disconnected)
             return

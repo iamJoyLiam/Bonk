@@ -85,17 +85,38 @@ indirect enum LayoutNode: Identifiable {
 
     // MARK: - Private
 
-    /// Generate a stable UUID for container nodes based on children.
+    /// Generate a deterministic UUID for container nodes based on children.
+    /// Uses FNV-1a (not String.hashValue, which is randomly seeded per
+    /// process and truncated to 32 bits): the same layout must yield the same
+    /// container ID across launches, and 64 bits keep collisions negligible.
     private static func stableID(for children: [LayoutNode], prefix: String) -> UUID {
-        let childIDs = children.map(\.id.uuidString).joined(separator: "-")
-        let hash = "\(prefix):\(childIDs)".hashValue
-        // Use a deterministic UUID based on hash
-        let hashValue = Int32(truncatingIfNeeded: hash)
+        var bytes = Array(prefix.utf8)
+        for child in children {
+            bytes.append(contentsOf: Array(child.id.uuidString.utf8))
+        }
+        // Two FNV-1a passes with different seeds fill the 128-bit UUID
+        // deterministically (28 hash hex digits + fixed version/variant nibble).
+        let h1 = fnv1a(bytes, seed: 0xcbf29ce484222325)
+        let h2 = fnv1a(bytes, seed: 0x84222325cbf29ce4)
         let uuidString = String(
-            format: "%08x-0000-0000-0000-000000000000",
-            UInt32(bitPattern: hashValue)
+            format: "%08x-%04x-%04x-%04x-%012llx",
+            UInt32(truncatingIfNeeded: h1),
+            UInt16(truncatingIfNeeded: h1 >> 32),
+            UInt16(truncatingIfNeeded: h1 >> 48) | 0x4000,
+            UInt16(truncatingIfNeeded: h2),
+            UInt64(truncatingIfNeeded: h2 >> 16)
         )
         return UUID(uuidString: uuidString) ?? UUID()
+    }
+
+    /// FNV-1a 64-bit hash (deterministic across launches).
+    private static func fnv1a(_ bytes: [UInt8], seed: UInt64) -> UInt64 {
+        var hash = seed
+        for byte in bytes {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
+        }
+        return hash
     }
 }
 

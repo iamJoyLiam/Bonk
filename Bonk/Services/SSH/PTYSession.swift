@@ -60,6 +60,9 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// input right after a reconnect is never silently dropped.
     private let pendingInputBox = NIOLockedValueBox<[ByteBuffer]>([])
     private let onUnexpectedCloseBox = NIOLockedValueBox<(@Sendable () -> Void)?>(nil)
+    /// Set by close() so the reader task knows the close was user-initiated
+    /// and must NOT report an unexpected disconnect.
+    private let userClosedBox = NIOLockedValueBox<Bool>(false)
     private static let maxPendingInputBytes = 64 * 1024
 
     /// Optional tap on bytes typed into the PTY (used to capture manual
@@ -473,6 +476,10 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
     /// Gracefully close the PTY session.
     public func close() {
+        // Mark user-initiated FIRST so the reader task (cancelled below) does
+        // not fire onUnexpectedClose when it notices the fd is gone. Only
+        // genuinely unexpected disconnects should surface as errors.
+        userClosedBox.withLockedValue { $0 = true }
         readerTaskBox.withLockedValue { $0?.cancel(); $0 = nil }
         writerBox.withLockedValue { $0 = nil }
         let fileDescriptor = serialFDBox.withLockedValue { current in
@@ -577,7 +584,10 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
         liveContinuations.withLock { $0 }.values.forEach { $0.finish() }
         rawLiveContinuations.withLock { $0 }.values.forEach { $0.finish() }
-        onUnexpectedCloseBox.withLockedValue { $0 }?()
+        let userClosed = userClosedBox.withLockedValue { $0 }
+        if !userClosed {
+            onUnexpectedCloseBox.withLockedValue { $0 }?()
+        }
     }
 
     /// Split Data into UTF-8-safe chunks so escape sequences are not truncated.

@@ -42,7 +42,23 @@ final class OpenSSHBackend: @unchecked Sendable {
         // a client exited abnormally — eventually exhausting the PTY limit.
         let safeUser = config.username.replacingOccurrences(of: "/", with: "_")
         let safeHost = config.host.replacingOccurrences(of: "/", with: "_")
-        controlPath = "/tmp/bonk-ssh-\(safeUser)-\(safeHost)-\(config.port).sock"
+        // Include jump host and auth-method fingerprints: two tabs to the same
+        // host must NOT share a ControlMaster when they route through
+        // different jump hosts or authenticate differently — the second
+        // connection would silently use the first one's credentials, and
+        // closing one tab would kill the other's session via `ssh -O exit`.
+        let jumpTag: String = if let jump = config.jumpHost {
+            "via-\(jump.username.replacingOccurrences(of: "/", with: "_"))-\(jump.host.replacingOccurrences(of: "/", with: "_"))-\(jump.port)"
+        } else {
+            "direct"
+        }
+        let authTag: String = switch config.authMethod {
+        case .password: "pw"
+        case .privateKey: "key"
+        case .certificate: "cert"
+        case .secureEnclaveKey: "enclave"
+        }
+        controlPath = "/tmp/bonk-ssh-\(safeUser)-\(safeHost)-\(config.port)-\(jumpTag)-\(authTag).sock"
         knownHostsPath = try Self.prepareKnownHostsPath()
         try prepareIdentityFiles()
     }
