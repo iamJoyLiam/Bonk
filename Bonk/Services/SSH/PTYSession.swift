@@ -116,9 +116,12 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         Log.ssh.info("[PTY] Creating output stream for consumer \(consumerID.uuidString.prefix(8)), replaying \(buffer.count) buffered lines")
 
         let stream = AsyncStream<String>(bufferingPolicy: .bufferingNewest(256)) { continuation in
-            // Replay buffered output with OSC/DCS sequences stripped
+            // Replay buffered output: strip OSC/DCS first (prevents
+            // re-processing terminal query responses), then colorize for
+            // display. The buffer itself stays raw.
             for line in buffer {
-                continuation.yield(Self.filterOSCSequences(line))
+                let filtered = Self.filterOSCSequences(line)
+                continuation.yield(LogColorizer.colorize(filtered))
             }
 
             // Register as live consumer
@@ -167,14 +170,13 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             observer(text)
         }
 
-        // Client-side log colorization: inject ANSI SGR codes for plain-text log lines.
-        // Preserves existing ANSI sequences from the server — only colorizes plain text.
-        let displayText = LogColorizer.colorize(text)
-
-        // Add to buffer with byte-size limit
-        let chunkBytes = displayText.utf8.count
+        // Buffer RAW text only. Client-side log colorization is a DISPLAY
+        // concern: it must never leak into the buffer, or AI context
+        // (recentOutput), replay filtering, and copy paths all carry
+        // injected SGR codes. The display feed below gets the colored text.
+        let chunkBytes = text.utf8.count
         outputBuffer.withLockedValue { buf in
-            buf.append(displayText)
+            buf.append(text)
             bufferByteCount.withLockedValue { $0 += chunkBytes }
             // Trim by line count
             if buf.count > Self.maxBufferSize {
@@ -189,11 +191,13 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                 }
             }
         }
+        // Colorize for display only.
+        let displayText = LogColorizer.colorize(text)
         // Send to all live consumers with per-consumer backpressure.
         // Skip consumers whose pending bytes exceed the high watermark;
         // they will resume once the Coordinator calls decrementPendingBytes().
         let consumers = liveContinuations.withLock { $0 }
-        let chunkSize = displayText.utf8.count
+        let displayChunkSize = displayText.utf8.count
         for (id, cont) in consumers {
             let pending = pendingBytes.withLock { dict in
                 dict[id] ?? 0
@@ -208,7 +212,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                 }
                 continue // Consumer is too far behind, skip this chunk
             }
-            pendingBytes.withLock { $0[id, default: 0] += chunkSize }
+            pendingBytes.withLock { $0[id, default: 0] += displayChunkSize }
             cont.yield(displayText)
         }
 

@@ -80,7 +80,11 @@ enum LogPatterns {
     //   Thread   → dim magenta (2;35) — distinct from PID
 
     static let ipAddresses = LogFieldPattern(
-        "ip", "\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b", "1;34", 50
+        // Strict IPv4: every octet validated 0-255 (previous \d{1,3} matched
+        // invalid addresses like 192.168.8.290 and colored them).
+        "ip",
+        "\\b(?:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\b",
+        "1;34", 50
     )
 
     static let macAddresses = LogFieldPattern(
@@ -100,14 +104,17 @@ enum LogPatterns {
         "chinese_ts", "\\d{1,2}月\\s*\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2}", "2;32", 60
     )
 
-    /// Unix timestamp (milliseconds): 1764752100010 — 13 digits, 2001–2286 range
-    static let unixTimestamp = LogFieldPattern(
-        "unix_ts", "\\b1[5-9]\\d{11}\\b", "2;32", 60
+    /// BSD syslog timestamp: Aug 20 13:47:08 (must exist in the quick
+    /// signature too, or the prefilter and the patterns disagree).
+    static let bsdTimestamp = LogFieldPattern(
+        "bsd_ts", "[A-Z][a-z]{2}\\s+\\d{1,2}\\s+\\d{2}:\\d{2}(?::\\d{2})?", "2;32", 60
     )
 
-    /// Thread info: pool-5-thread-1, worker-3, main — must start with letter, end with digit
+    /// Thread info: pool-5-thread-1, worker-3 — must start with letter, end with digit.
+    /// (The bare word "main" is intentionally NOT matched: it colored any
+    /// ordinary line containing the word "main".)
     static let threadInfo = LogFieldPattern(
-        "thread", "\\b(?:main|[a-zA-Z][\\w]*(?:-\\d+)+)\\b", "2;35", 62
+        "thread", "\\b[a-zA-Z][\\w]*(?:-\\d+)+\\b", "2;35", 62
     )
 
     /// UUID: 5dad9bfa-a9da-4b50-8dc4-ae6f9dc634e0
@@ -139,10 +146,32 @@ enum LogPatterns {
         macAddresses,
         timestamps,
         chineseTimestamp,
-        unixTimestamp,
+        bsdTimestamp,
         processPID,
         threadInfo,
     ] + levelKeywords
+
+    /// ONE regex that recognizes ANY signature a log line can carry.
+    /// A line that fails this scan cannot match any pattern above, so it is
+    /// returned untouched after a single regex pass (the hot path for
+    /// non-log output). Kept in sync with `allPatterns` by hand.
+    static let quickSignatureRegex: NSRegularExpression? = try? NSRegularExpression(
+        pattern: """
+        (?:\\b(?:EMERG(?:ENCY)?|PANIC|ALERT|CRIT(?:ICAL)?|FATAL|ERR(?:OR)?|FAIL(?:ED)?|FAILURE|TIMEOUT|REFUSED|WARN(?:ING)?|NOTICE|SUCCESS|COMPLETED|CONNECTED|INFO(?:RMATIONAL)?|DEBUG|TRACE)\\b
+        |\\b(?:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\b
+        |\\b[0-9A-Fa-f]{1,2}(?::[0-9A-Fa-f]{1,2}){5}\\b
+        |\\d{4}[-/]\\d{2}[-/]\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?
+        |\\d{1,2}月\\s*\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2}
+        |[A-Z][a-z]{2}\\s+\\d{1,2}\\s+\\d{2}:\\d{2}(?::\\d{2})?
+        |\\b\\w+\\[\\d+\\]
+        |\\b[a-zA-Z][\\w]*(?:-\\d+)+\\b
+        |\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b
+        |\\[(?:emerg|alert|crit(?:ical)?|err(?:or)?|warn(?:ing)?|notice|info(?:rmational)?|debug|trace|fatal)\\]
+        |level=(?:emerg|alert|crit|error|warn|notice|info|debug)
+        |<\\d{1,3}>
+        """,
+        options: [.caseInsensitive]
+    )
 }
 
 // MARK: - Syslog PRI Helpers

@@ -18,9 +18,6 @@ enum LogColorizer {
     static func colorize(_ text: String) -> String {
         guard LogColorizerConfig.isEnabled else { return text }
 
-        // Fast path: skip chunks with no log-like content
-        guard mightContainLogs(text) else { return text }
-
         // Process line-by-line
         var result = ""
         var lineStart = text.startIndex
@@ -56,6 +53,18 @@ enum LogColorizer {
 
         // Skip shell prompts and cursor control
         if isShellNoise(line) { return line }
+
+        // Quick prefilter: ONE combined regex. A line with no recognizable
+        // signature cannot match any field pattern, so return it untouched
+        // instead of running every pattern's regex on it (the hot path).
+        guard let quick = LogPatterns.quickSignatureRegex,
+              quick.firstMatch(
+                  in: line,
+                  range: NSRange(line.startIndex..., in: line)
+              ) != nil
+        else {
+            return line
+        }
 
         // Collect all (range, ansiCode, priority) tuples from all pattern matches
         var annotations: [(range: NSRange, code: String, priority: Int)] = []
@@ -131,43 +140,6 @@ enum LogColorizer {
     }
 
     // MARK: - Detection Helpers
-
-    /// Quick heuristic: does this chunk look like it might contain log output?
-    private static func mightContainLogs(_ text: String) -> Bool {
-        let sample = String(text.prefix(300))
-
-        // syslog PRI
-        if sample.hasPrefix("<") { return true }
-
-        // Known keywords
-        let kw = ["ERROR", "WARN", "INFO", "DEBUG", "FATAL", "CRIT", "EMERG",
-                   "NOTICE", "FAILED", "TIMEOUT", "level=", "TRACE"]
-        for k in kw {
-            if sample.localizedCaseInsensitiveContains(k) { return true }
-        }
-
-        // ISO timestamp
-        if sample.range(of: "\\d{4}[-/]\\d{2}[-/]\\d{2}[T ]\\d{2}:\\d{2}", options: .regularExpression) != nil {
-            return true
-        }
-
-        // Chinese date: 7月 24
-        if sample.range(of: "\\d{1,2}月", options: .regularExpression) != nil {
-            return true
-        }
-
-        // BSD syslog timestamp
-        if sample.range(of: "[A-Z][a-z]{2}\\s+\\d{1,2}\\s+\\d{2}:\\d{2}", options: .regularExpression) != nil {
-            return true
-        }
-
-        // Bracketed level
-        if sample.range(of: "\\[(?:error|warn|info|debug|fatal|crit|notice|emerg)\\]", options: .regularExpression) != nil {
-            return true
-        }
-
-        return false
-    }
 
     /// Check if text contains ANY escape sequences.
     /// Any ESC byte disqualifies the line: CSI, OSC, DCS, and half-split
