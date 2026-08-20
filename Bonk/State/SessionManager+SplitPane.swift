@@ -26,7 +26,7 @@ extension SessionManager {
     /// Split the active pane horizontally (left-right).
     func splitHorizontal() {
         guard let tab = activeTab else { return }
-        let newPane = tab.layout.splitHorizontal()
+        guard let newPane = tab.layout.splitHorizontal() else { return }
         tab.activePaneID = newPane.id
         FocusManager.shared.focus(newPane.id)
         updateTabTitleForSplit(tab)
@@ -37,7 +37,7 @@ extension SessionManager {
     /// Split the active pane vertically (top-bottom).
     func splitVertical() {
         guard let tab = activeTab else { return }
-        let newPane = tab.layout.splitVertical()
+        guard let newPane = tab.layout.splitVertical() else { return }
         tab.activePaneID = newPane.id
         FocusManager.shared.focus(newPane.id)
         updateTabTitleForSplit(tab)
@@ -243,8 +243,15 @@ extension SessionManager {
     }
 
     /// Add a pane from source tab to target tab (for drag-to-split).
-    func addPaneFromTab(_ sourceTabID: UUID, to targetTabID: UUID, position: DropPosition = .right) {
-        Log.session.info("[SPLIT] addPaneFromTab: source=\(sourceTabID), target=\(targetTabID)")
+    /// The new pane is inserted NEXT TO `targetPaneID` — the pane the user
+    /// dropped onto — not beside whatever pane happens to be active.
+    func addPaneFromTab(
+        _ sourceTabID: UUID,
+        to targetTabID: UUID,
+        paneID targetPaneID: UUID,
+        position: DropPosition = .right
+    ) {
+        Log.session.info("[SPLIT] addPaneFromTab: source=\(sourceTabID), target=\(targetTabID), pane=\(targetPaneID)")
 
         guard sourceTabID != targetTabID else {
             Log.session.warning("[SPLIT] Source and target are the same tab, ignoring")
@@ -271,7 +278,14 @@ extension SessionManager {
         // Create new pane at the correct position based on drop location
         let direction: TabLayout.SplitDirection = position.isHorizontal ? .horizontal : .vertical
         let insertPosition: TabLayout.PaneInsertPosition = (position == .left || position == .top) ? .before : .after
-        let newPane = targetTab.layout.insertPane(direction: direction, at: insertPosition)
+        guard let newPane = targetTab.layout.insertPane(
+            direction: direction,
+            at: insertPosition,
+            targetPaneID: targetPaneID
+        ) else {
+            Log.session.warning("[SPLIT] Insert failed: target pane not in target layout")
+            return
+        }
         // Keep tab.activePaneID in sync with the layout's single source of truth
         targetTab.activePaneID = targetTab.layout.activePaneID
 
@@ -280,17 +294,9 @@ extension SessionManager {
         // Remember the pane's true host so unsplit recreates the original tab
         newPane.hostItem = sourceTab.hostItem
 
-        // Store source hostItem for unsplit
+        // Serial config: the moved pane may come from a serial tab
         if targetTab.serialConfig == nil {
             targetTab.serialConfig = sourceTab.serialConfig
-        }
-
-        // Set the target pane's title to target tab's hostItem name
-        let allPaneIDs = targetTab.layout.root.allPaneIDs
-        for paneID in allPaneIDs where paneID != newPane.id {
-            if let targetPane = targetTab.layout.findPane(id: paneID) {
-                targetPane.title = targetTab.hostItem.name
-            }
         }
 
         // Move PTY session from source to new pane

@@ -164,9 +164,14 @@ enum LogColorizer {
         return false
     }
 
-    /// Check if text already contains ANSI escape sequences.
+    /// Check if text contains ANY escape sequences.
+    /// Any ESC byte disqualifies the line: CSI, OSC, DCS, and half-split
+    /// sequences across chunk boundaries must all be preserved verbatim.
+    /// (Checking only complete CSI sequences let the colorizer inject SGR
+    /// codes into OSC strings / split escapes, corrupting SwiftTerm's
+    /// escape-state machine and rendering garbage like "1;34m1.2.3.4m".)
     private static func hasANSI(_ text: String) -> Bool {
-        text.contains("\u{1B}[") && text.range(of: "\u{1B}\\[[0-9;]*[a-zA-Z]", options: .regularExpression) != nil
+        text.contains("\u{1B}")
     }
 
     /// Skip shell prompts, cursor control, tab completion noise.

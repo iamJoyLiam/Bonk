@@ -142,7 +142,14 @@ extension PaneTerminalView {
 
     func handleTabDrop(sourceTabID: UUID, position: DropPosition) {
         guard sourceTabID != tab.id else { return }
-        sessionManager.addPaneFromTab(sourceTabID, to: tab.id, position: position)
+        // Drop lands on THIS pane — pass its id so the new pane is inserted
+        // next to the pane the user pointed at, not the active one.
+        sessionManager.addPaneFromTab(
+            sourceTabID,
+            to: tab.id,
+            paneID: paneState.id,
+            position: position
+        )
     }
 
     func handleFileDrop(urls: [URL]) {

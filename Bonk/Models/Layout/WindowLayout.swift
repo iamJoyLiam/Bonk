@@ -25,26 +25,34 @@ final class TabLayout {
 
     /// Split the active pane horizontally (left-right).
     @discardableResult
-    func splitHorizontal() -> PaneState {
+    func splitHorizontal() -> PaneState? {
         split(direction: .horizontal)
     }
 
     /// Split the active pane vertically (top-bottom).
     @discardableResult
-    func splitVertical() -> PaneState {
+    func splitVertical() -> PaneState? {
         split(direction: .vertical)
     }
 
     /// Insert a new pane at a specific position (used for drag-to-split).
     /// - Parameters:
     ///   - direction: .horizontal (left-right) or .vertical (top-bottom)
-    ///   - position: The position relative to the active pane (.left/.top = before, .right/.bottom = after)
+    ///   - position: The position relative to the target pane (.left/.top = before, .right/.bottom = after)
+    ///   - targetPaneID: The pane the new one is inserted next to. nil = the
+    ///     active pane. Returns nil when the target no longer exists.
     @discardableResult
-    func insertPane(direction: SplitDirection, at position: PaneInsertPosition) -> PaneState {
+    func insertPane(
+        direction: SplitDirection,
+        at position: PaneInsertPosition,
+        targetPaneID: UUID? = nil
+    ) -> PaneState? {
+        let target = targetPaneID ?? activePaneID
+        guard root.findPane(id: target) != nil else { return nil }
         let newPane = PaneState()
         root = insertSplit(
             into: root,
-            targetPaneID: activePaneID,
+            targetPaneID: target,
             direction: direction,
             newPane: newPane,
             at: position
@@ -212,7 +220,7 @@ final class TabLayout {
     // MARK: - Private
 
     /// Generic split method to avoid code duplication.
-    private func split(direction: SplitDirection) -> PaneState {
+    private func split(direction: SplitDirection) -> PaneState? {
         insertPane(direction: direction, at: .after)
     }
 
