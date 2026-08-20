@@ -39,7 +39,7 @@ struct LayoutNodeView: View {
                 sessionManager.selectPane(paneState.id)
             }
 
-        case let .horizontal(children, fraction):
+        case let .horizontal(children, weights):
             GeometryReader { geometry in
                 HStack(spacing: 0) {
                     ForEach(Array(children.enumerated()), id: \.element.id) { index, child in
@@ -48,16 +48,16 @@ struct LayoutNodeView: View {
                                 width: childSize(
                                     total: geometry.size.width,
                                     index: index,
-                                    count: children.count,
-                                    fraction: fraction
+                                    weights: weights
                                 )
                             )
                             .frame(minWidth: 100)
                         if index < children.count - 1 {
                             SplitDivider(direction: .horizontal) { delta in
                                 sessionManager.setSplitFraction(
-                                    fraction + delta / max(geometry.size.width, 1),
+                                    delta / max(geometry.size.width, 1),
                                     containerID: node.id,
+                                    dividerIndex: index,
                                     in: tab
                                 )
                             }
@@ -68,7 +68,7 @@ struct LayoutNodeView: View {
                 }
             }
 
-        case let .vertical(children, fraction):
+        case let .vertical(children, weights):
             GeometryReader { geometry in
                 VStack(spacing: 0) {
                     ForEach(Array(children.enumerated()), id: \.element.id) { index, child in
@@ -77,16 +77,16 @@ struct LayoutNodeView: View {
                                 height: childSize(
                                     total: geometry.size.height,
                                     index: index,
-                                    count: children.count,
-                                    fraction: fraction
+                                    weights: weights
                                 )
                             )
                             .frame(minHeight: 100)
                         if index < children.count - 1 {
                             SplitDivider(direction: .vertical) { delta in
                                 sessionManager.setSplitFraction(
-                                    fraction + delta / max(geometry.size.height, 1),
+                                    delta / max(geometry.size.height, 1),
                                     containerID: node.id,
+                                    dividerIndex: index,
                                     in: tab
                                 )
                             }
@@ -114,16 +114,17 @@ struct LayoutNodeView: View {
         )
     }
 
-    /// Size for the child at `index`: the first child takes `fraction` of the
-    /// total, the remaining children share the rest evenly.
+    /// Size for the child at `index`: its share of the total is
+    /// `weight / sum(weights)` — dragging one divider only moves the two
+    /// adjacent children.
     private func childSize(
         total: CGFloat,
         index: Int,
-        count: Int,
-        fraction: CGFloat
+        weights: [CGFloat]
     ) -> CGFloat {
-        guard count > 1 else { return total }
-        if index == 0 { return total * fraction }
-        return total * (1 - fraction) / CGFloat(count - 1)
+        guard index < weights.count else { return total }
+        let sum = weights.reduce(0, +)
+        guard sum > 0 else { return total / CGFloat(max(weights.count, 1)) }
+        return total * weights[index] / sum
     }
 }

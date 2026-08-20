@@ -64,52 +64,112 @@ final class TabLayout {
         case horizontal, vertical
 
         func makeContainer(children: [LayoutNode]) -> LayoutNode {
+            let weights = Array(
+                repeating: LayoutNode.defaultWeight,
+                count: max(children.count, 1)
+            )
             switch self {
-            case .horizontal: .horizontal(children: children, fraction: LayoutNode.defaultFraction)
-            case .vertical: .vertical(children: children, fraction: LayoutNode.defaultFraction)
+            case .horizontal:
+                return LayoutNode.horizontal(children: children, weights: weights)
+            case .vertical:
+                return LayoutNode.vertical(children: children, weights: weights)
             }
         }
     }
 
     // MARK: - Resize Operations
 
-    /// Adjust the split proportion of a container (first child vs. the rest).
-    /// Called while the user drags a divider.
-    func setFraction(_ fraction: CGFloat, containerID: UUID) {
-        root = updateFraction(
+    /// Adjust the split proportion of a container. Called while the user
+    /// drags the divider at `dividerIndex` (between children at that index
+    /// and index+1). ONLY those two children change — panes beyond the
+    /// divider keep their size, which is what users expect with 3+ panes.
+    /// `normalizedDelta` is the drag movement as a fraction of the container
+    /// size (-1...1).
+    func setFraction(_ normalizedDelta: CGFloat, containerID: UUID, dividerIndex: Int) {
+        root = adjustWeights(
             in: root,
             containerID: containerID,
-            fraction: LayoutNode.clampedFraction(fraction)
+            dividerIndex: dividerIndex,
+            normalizedDelta: normalizedDelta
         )
     }
 
-    /// Recursively replace the container matching `containerID` with a new
-    /// fraction, preserving everything else.
-    private func updateFraction(
+    /// Recursively find the container matching `containerID` and adjust the
+    /// weights of its two children adjacent to `dividerIndex`.
+    private func adjustWeights(
         in node: LayoutNode,
         containerID: UUID,
-        fraction: CGFloat
+        dividerIndex: Int,
+        normalizedDelta: CGFloat
     ) -> LayoutNode {
         switch node {
         case .pane:
             return node
-        case let .horizontal(children, oldFraction):
+        case let .horizontal(children, weights):
             if node.id == containerID {
-                return .horizontal(children: children, fraction: fraction)
+                return .horizontal(
+                    children: children,
+                    weights: Self.adjustedWeights(
+                        weights: weights,
+                        dividerIndex: dividerIndex,
+                        normalizedDelta: normalizedDelta
+                    )
+                )
             }
             let updated = children.map {
-                updateFraction(in: $0, containerID: containerID, fraction: fraction)
+                adjustWeights(
+                    in: $0,
+                    containerID: containerID,
+                    dividerIndex: dividerIndex,
+                    normalizedDelta: normalizedDelta
+                )
             }
-            return .horizontal(children: updated, fraction: oldFraction)
-        case let .vertical(children, oldFraction):
+            return .horizontal(children: updated, weights: weights)
+        case let .vertical(children, weights):
             if node.id == containerID {
-                return .vertical(children: children, fraction: fraction)
+                return .vertical(
+                    children: children,
+                    weights: Self.adjustedWeights(
+                        weights: weights,
+                        dividerIndex: dividerIndex,
+                        normalizedDelta: normalizedDelta
+                    )
+                )
             }
             let updated = children.map {
-                updateFraction(in: $0, containerID: containerID, fraction: fraction)
+                adjustWeights(
+                    in: $0,
+                    containerID: containerID,
+                    dividerIndex: dividerIndex,
+                    normalizedDelta: normalizedDelta
+                )
             }
-            return .vertical(children: updated, fraction: oldFraction)
+            return .vertical(children: updated, weights: weights)
         }
+    }
+
+    /// Move share from child `dividerIndex+1` to child `dividerIndex`
+    /// (positive delta) or the other way, clamped so no child drops below
+    /// `minWeightFraction` of the total. The total share is conserved.
+    private static func adjustedWeights(
+        weights: [CGFloat],
+        dividerIndex: Int,
+        normalizedDelta: CGFloat
+    ) -> [CGFloat] {
+        guard dividerIndex >= 0, dividerIndex + 1 < weights.count else { return weights }
+        let sum = weights.reduce(0, +)
+        guard sum > 0 else { return weights }
+        let minShare = sum * LayoutNode.minWeightFraction
+
+        var newWeights = weights
+        var first = newWeights[dividerIndex] + normalizedDelta * sum
+        var second = newWeights[dividerIndex + 1] - normalizedDelta * sum
+        first = min(max(first, minShare), sum - minShare)
+        second = sum - first
+        // Re-normalize so the total stays exactly sum.
+        newWeights[dividerIndex] = first
+        newWeights[dividerIndex + 1] = second
+        return newWeights
     }
 
     // MARK: - Close Operations
@@ -172,7 +232,7 @@ final class TabLayout {
                 : [.pane(state), .pane(newPane)]
             return direction.makeContainer(children: children)
 
-        case let .horizontal(children, fraction), let .vertical(children, fraction):
+        case let .horizontal(children, weights), let .vertical(children, weights):
             var newChildren = children
             for index in 0 ..< newChildren.count {
                 let updated = insertSplit(
@@ -184,10 +244,15 @@ final class TabLayout {
                 )
                 if updated != newChildren[index] {
                     newChildren[index] = updated
-                    // Preserve original container type and proportion
+                    // Preserve original container type; grow the weights with
+                    // the default share for the newly inserted child.
+                    var newWeights = weights
+                    if newWeights.count < newChildren.count {
+                        newWeights.append(LayoutNode.defaultWeight)
+                    }
                     switch node {
-                    case .horizontal: return .horizontal(children: newChildren, fraction: fraction)
-                    case .vertical: return .vertical(children: newChildren, fraction: fraction)
+                    case .horizontal: return .horizontal(children: newChildren, weights: newWeights)
+                    case .vertical: return .vertical(children: newChildren, weights: newWeights)
                     default: return node
                     }
                 }
@@ -208,26 +273,33 @@ final class TabLayout {
         case let .pane(state):
             return state.id == paneID ? .lastPane : .empty
 
-        case let .horizontal(children, fraction), let .vertical(children, fraction):
+        case let .horizontal(children, weights), let .vertical(children, weights):
             var newChildren: [LayoutNode] = []
+            var newWeights: [CGFloat] = []
             var removed = false
 
-            for child in children {
+            for (childIndex, child) in children.enumerated() {
                 let result = removePane(from: child, paneID: paneID)
                 switch result {
                 case .empty:
                     newChildren.append(child)
+                    if childIndex < weights.count {
+                        newWeights.append(weights[childIndex])
+                    }
                 case .lastPane:
                     removed = true
                 case let .updated(updatedNode):
                     newChildren.append(updatedNode)
+                    if childIndex < weights.count {
+                        newWeights.append(weights[childIndex])
+                    }
                     removed = true
                 }
             }
 
             guard removed else { return .empty }
 
-            // Collapse single-child containers
+            // Collapse single-child containers (weights become meaningless)
             if newChildren.count == 1 {
                 return .updated(newChildren[0])
             }
@@ -235,10 +307,14 @@ final class TabLayout {
                 return .empty
             }
 
-            // Rebuild container preserving original type and proportion
+            // Rebuild container preserving original type; keep the weights
+            // aligned with the surviving children.
+            if newWeights.count < newChildren.count {
+                newWeights.append(LayoutNode.defaultWeight)
+            }
             switch node {
-            case .horizontal: return .updated(.horizontal(children: newChildren, fraction: fraction))
-            case .vertical: return .updated(.vertical(children: newChildren, fraction: fraction))
+            case .horizontal: return .updated(.horizontal(children: newChildren, weights: newWeights))
+            case .vertical: return .updated(.vertical(children: newChildren, weights: newWeights))
             default: return .empty
             }
         }

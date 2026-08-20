@@ -11,21 +11,19 @@ import Foundation
 indirect enum LayoutNode: Identifiable {
     /// A leaf node containing a pane with its own terminal instance.
     case pane(PaneState)
-    /// Horizontal split (left-right layout). `fraction` is the portion of
-    /// the container taken by the FIRST child (0.15...0.85), adjustable by
-    /// dragging the divider.
-    case horizontal(children: [LayoutNode], fraction: CGFloat)
-    /// Vertical split (top-bottom layout). `fraction` is the portion of the
-    /// container taken by the FIRST child.
-    case vertical(children: [LayoutNode], fraction: CGFloat)
+    /// Horizontal split (left-right layout). `weights` holds one share per
+    /// child; a child's size is `total * weight / sum(weights)`. Dragging a
+    /// divider adjusts ONLY the two adjacent children's weights, so resizing
+    /// one pair never resizes the panes beyond it.
+    case horizontal(children: [LayoutNode], weights: [CGFloat])
+    /// Vertical split (top-bottom layout), same weight semantics.
+    case vertical(children: [LayoutNode], weights: [CGFloat])
 
-    /// Default split proportion for a new container (50/50).
-    static let defaultFraction: CGFloat = 0.5
+    /// Default share for a freshly created container child.
+    static let defaultWeight: CGFloat = 1
 
-    /// Clamp a fraction to the draggable range.
-    static func clampedFraction(_ value: CGFloat) -> CGFloat {
-        min(max(value, 0.15), 0.85)
-    }
+    /// Minimum share of the total a child can be dragged to.
+    static let minWeightFraction: CGFloat = 0.15
 
     /// Stable identity for SwiftUI diffing.
     /// Container nodes use a hash of children IDs.
@@ -127,10 +125,10 @@ extension LayoutNode: Equatable {
         switch (lhs, rhs) {
         case let (.pane(leftState), .pane(rightState)):
             leftState.id == rightState.id
-        case let (.horizontal(leftChildren, leftFraction), .horizontal(rightChildren, rightFraction)):
-            leftChildren == rightChildren && leftFraction == rightFraction
-        case let (.vertical(leftChildren, leftFraction), .vertical(rightChildren, rightFraction)):
-            leftChildren == rightChildren && leftFraction == rightFraction
+        case let (.horizontal(leftChildren, leftWeights), .horizontal(rightChildren, rightWeights)):
+            leftChildren == rightChildren && leftWeights == rightWeights
+        case let (.vertical(leftChildren, leftWeights), .vertical(rightChildren, rightWeights)):
+            leftChildren == rightChildren && leftWeights == rightWeights
         default:
             false
         }

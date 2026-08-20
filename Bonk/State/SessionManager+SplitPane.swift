@@ -11,9 +11,16 @@ import os.log
 extension SessionManager {
     // MARK: - Split Pane
 
-    /// Adjust a split container's proportion while the user drags its divider.
-    func setSplitFraction(_ fraction: CGFloat, containerID: UUID, in tab: TerminalTab) {
-        tab.layout.setFraction(fraction, containerID: containerID)
+    /// Adjust a split container's proportion while the user drags a divider.
+    /// `normalizedDelta` is the drag movement as a fraction of the container
+    /// size; `dividerIndex` selects the adjacent child pair to resize.
+    func setSplitFraction(
+        _ normalizedDelta: CGFloat,
+        containerID: UUID,
+        dividerIndex: Int,
+        in tab: TerminalTab
+    ) {
+        tab.layout.setFraction(normalizedDelta, containerID: containerID, dividerIndex: dividerIndex)
     }
 
     /// Split the active pane horizontally (left-right).
