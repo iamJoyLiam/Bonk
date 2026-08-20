@@ -15,10 +15,10 @@
 import Foundation
 
 enum SSHErrorMessageParser {
-    /// Explain `raw` ssh output for `host`. Returns nil when the output does
-    /// not match any known connection-failure signature (the caller keeps the
-    /// original text).
-    static func explain(_ raw: String, host: String?) -> String? {
+    /// Explain `raw` ssh output for `host` (optionally via `jumpHost`).
+    /// Returns nil when the output does not match any known
+    /// connection-failure signature (the caller keeps the original text).
+    static func explain(_ raw: String, host: String?, jumpHost: String? = nil) -> String? {
         let i18n = I18n.shared
 
         for rawLine in raw.components(separatedBy: .newlines) {
@@ -30,10 +30,19 @@ enum SSHErrorMessageParser {
             let lower = line.lowercased()
 
             // Server or jump host refuses TCP forwarding (-W/-J tunnels).
+            // "Connection closed by UNKNOWN port 65535" is what newer ssh
+            // clients print after the server rejects the direct-tcpip channel
+            // ("administratively prohibited") when AllowTcpForwarding is off —
+            // NOT a network failure, so it must be checked before the generic
+            // "connection closed by" network signature below.
             if lower.contains("administratively prohibited")
                 || lower.contains("open failed")
                 || lower.contains("channel 0:")
+                || lower.contains("connection closed by unknown port 65535")
             {
+                if let jumpHost, !jumpHost.isEmpty {
+                    return i18n.tr(.sshErrorJumpForwardingDisabled, args: jumpHost, host ?? "", line)
+                }
                 return i18n.tr(.sshErrorForwardingDisabled, args: host ?? "", line)
             }
 

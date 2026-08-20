@@ -110,7 +110,11 @@ final class OpenSSHBackend: @unchecked Sendable {
                 if let message = Self.extractConnectionError(from: tail) {
                     Log.ssh.error("[PTY] Session failed: \(message)")
                     onError?(
-                        SSHErrorMessageParser.explain(tail, host: self.config.host) ?? message
+                        SSHErrorMessageParser.explain(
+                            tail,
+                            host: self.config.host,
+                            jumpHost: self.config.jumpHost?.host
+                        ) ?? message
                     )
                 } else if !tail.isEmpty {
                     Log.ssh.error("[PTY] Session exited. Raw tail:\n\(tail)")
@@ -162,7 +166,11 @@ final class OpenSSHBackend: @unchecked Sendable {
             throw SSHServiceError.connectionFailed(
                 detail.isEmpty
                     ? "OpenSSH command exited with status \(status)."
-                    : (SSHErrorMessageParser.explain(detail, host: config.host) ?? detail)
+                    : (SSHErrorMessageParser.explain(
+                        detail,
+                        host: config.host,
+                        jumpHost: config.jumpHost?.host
+                    ) ?? detail)
             )
         }
         return Self.cleanCommandOutput(output)
@@ -251,7 +259,11 @@ final class OpenSSHBackend: @unchecked Sendable {
                 throw SSHServiceError.connectionFailed(
                     detail.isEmpty
                         ? "OpenSSH SFTP exited with status \(status)."
-                        : (SSHErrorMessageParser.explain(detail, host: config.host) ?? detail)
+                        : (SSHErrorMessageParser.explain(
+                        detail,
+                        host: config.host,
+                        jumpHost: config.jumpHost?.host
+                    ) ?? detail)
                 )
             }
             return Self.cleanCommandOutput(output)

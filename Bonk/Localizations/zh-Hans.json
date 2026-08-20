@@ -466,6 +466,7 @@
   "action_ai_assistant": "AI 助手（终端）",
   "enter_key_identifier": "请输入密钥标识符",
   "ssh_error_forwarding_disabled": "服务器（%@）未开启 TCP 转发（AllowTcpForwarding no），无法通过跳板机转发连接。请联系管理员开启转发，或改用堡垒机厂商的 SFTP 网关。\n原始错误：%@",
+  "ssh_error_jump_forwarding_disabled": "跳板机 %@ 未开启 TCP 转发（AllowTcpForwarding no），无法通过它转发到目标主机 %@。请在跳板机的 sshd_config 中设置 AllowTcpForwarding yes，或联系管理员。\n原始错误：%@",
   "ssh_error_network_unreachable": "无法连接 %@：网络不通（连接被拒绝、超时或无路由）。请检查 IP、端口、网络连通性和防火墙。\n原始错误：%@",
   "ssh_error_authentication": "认证失败：用户名或密码错误，或该账户不允许登录。\n原始错误：%@",
   "ssh_error_host_key": "主机密钥校验失败：主机密钥可能已变更，或连接可能遭受中间人攻击。\n原始错误：%@",

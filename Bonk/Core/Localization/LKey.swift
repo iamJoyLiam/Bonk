@@ -457,6 +457,7 @@ enum LKey: String, CaseIterable {
 
     // SSH Connection Errors
     case sshErrorForwardingDisabled = "ssh_error_forwarding_disabled"
+    case sshErrorJumpForwardingDisabled = "ssh_error_jump_forwarding_disabled"
     case sshErrorNetworkUnreachable = "ssh_error_network_unreachable"
     case sshErrorAuthentication = "ssh_error_authentication"
     case sshErrorHostKey = "ssh_error_host_key"
