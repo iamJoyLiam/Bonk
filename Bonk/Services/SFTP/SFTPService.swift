@@ -284,6 +284,8 @@ final class SFTPService {
         FileManager.default.createFile(atPath: localURL.path, contents: nil)
         let handle = try FileHandle(forWritingTo: localURL)
         defer { try? handle.close() }
+        // Sendable wrapper for the off-MainActor network reads below.
+        let remoteFile = SendableSFTPFile(file)
 
         // Don't rely on entry.size for loop control - it may be inaccurate
         // for some file types or SFTP servers. Read until EOF.
@@ -299,8 +301,10 @@ final class SFTPService {
                     nextReadOffset += UInt64(chunkSize)
                     inFlight += 1
                     group.addTask {
-                        let data = try await file.read(from: readOffset, length: chunkSize)
-                        return (readOffset, Data(buffer: data))
+                        // Network read runs off the MainActor (see SFTPTransferEngine).
+                        try await SFTPTransferEngine.readChunk(
+                            remoteFile, offset: readOffset, length: chunkSize
+                        )
                     }
                 }
 
@@ -590,6 +594,9 @@ final class SFTPService {
         var updateCounter = 0
         var lastReportedProgress: Double = -1
 
+        // Sendable wrapper for the off-MainActor network writes below.
+        let remoteFile = SendableSFTPFile(file)
+
         try await withThrowingTaskGroup(of: Int.self) { group in
             while true {
                 let isCancelled = transfers.first(where: { $0.id == transferID })?.isCancelled ?? false
@@ -601,10 +608,11 @@ final class SFTPService {
                     let chunkOffset = offset
                     offset += UInt64(chunkData.count)
                     pending += 1
-                    let buffer = ByteBuffer(data: chunkData)
                     group.addTask {
-                        try await file.write(buffer, at: chunkOffset)
-                        return chunkData.count
+                        // Network write runs off the MainActor (see SFTPTransferEngine).
+                        try await SFTPTransferEngine.writeChunk(
+                            remoteFile, data: chunkData, at: chunkOffset
+                        )
                     }
                 }
 
@@ -702,5 +710,42 @@ enum SFTPServiceError: LocalizedError, Equatable {
         case .transferCancelled: "Transfer cancelled."
         case let .operationFailed(message): message
         }
+    }
+}
+
+// MARK: - Transfer Engine (off MainActor)
+
+/// Wraps Citadel's SFTPFile so chunk I/O can run outside the MainActor.
+/// SFTPFile serializes requests internally via channel request IDs, so
+/// concurrent reads/writes are safe; the wrapper only satisfies Swift 6
+/// Sendable checks.
+final class SendableSFTPFile: @unchecked Sendable {
+    let file: SFTPFile
+    init(_ file: SFTPFile) { self.file = file }
+}
+
+/// SFTP chunk I/O executed OUTSIDE the MainActor. Network round trips are
+/// the transfer bottleneck; running 16 in-flight requests on the main thread
+/// froze the UI during large transfers. Local disk I/O stays on the main
+/// thread — sequential 32KB writes are orders of magnitude faster than the
+/// network and never become the bottleneck.
+enum SFTPTransferEngine {
+    nonisolated static func readChunk(
+        _ file: SendableSFTPFile,
+        offset: UInt64,
+        length: UInt32
+    ) async throws -> (UInt64, Data) {
+        let data = try await file.file.read(from: offset, length: length)
+        return (offset, Data(buffer: data))
+    }
+
+    nonisolated static func writeChunk(
+        _ file: SendableSFTPFile,
+        data: Data,
+        at offset: UInt64
+    ) async throws -> Int {
+        var buffer = ByteBuffer(data: data)
+        try await file.file.write(buffer, at: offset)
+        return data.count
     }
 }
