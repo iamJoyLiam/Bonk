@@ -134,17 +134,22 @@ extension SessionManager {
             return
         }
 
+        // The pane's own host is the single source of truth: it was recorded when
+        // the pane was moved in (drag-to-split), so unsplitting restores the
+        // exact original tab. Plain split panes inherit the tab's host.
+        let paneHostItem = pane.hostItem ?? tab.hostItem
+
         // Get the pane's title for the new tab
-        let paneTitle: String = if let sourceHostItem = tab.sourceHostItem {
-            sourceHostItem.name
+        let paneTitle: String = if let paneHost = pane.hostItem {
+            paneHost.name
         } else if !pane.title.isEmpty {
             pane.title
         } else {
             tab.hostItem.name
         }
 
-        // Create a new tab for this pane with the source hostItem
-        let newTab = TerminalTab(hostItem: tab.sourceHostItem ?? tab.hostItem)
+        // Create a new tab for this pane with the pane's own host item
+        let newTab = TerminalTab(hostItem: paneHostItem)
         newTab.title = paneTitle
         if let serialConfig = tab.serialConfig {
             newTab.serialConfig = serialConfig
@@ -183,7 +188,6 @@ extension SessionManager {
             tab.activePaneID = tab.layout.activePaneID
             if tab.layout.root.paneCount <= 1 {
                 tab.title = tab.hostItem.name
-                tab.sourceHostItem = nil
             }
         }
 
@@ -273,9 +277,10 @@ extension SessionManager {
 
         // Set new pane title to source tab name
         newPane.title = sourceTab.hostItem.name
+        // Remember the pane's true host so unsplit recreates the original tab
+        newPane.hostItem = sourceTab.hostItem
 
         // Store source hostItem for unsplit
-        targetTab.sourceHostItem = sourceTab.hostItem
         if targetTab.serialConfig == nil {
             targetTab.serialConfig = sourceTab.serialConfig
         }

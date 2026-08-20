@@ -10,9 +10,6 @@ final class TerminalTab: Identifiable {
     var colorLabel: String?
     var pendingRestore = false
 
-    /// Source tab hostItem for unsplit (preserves original hostItem after drag-to-split)
-    var sourceHostItem: HostItem?
-
     /// Serial port config when this tab is a serial connection (nil for SSH tabs).
     var serialConfig: SerialPortConfig?
 
@@ -79,6 +76,10 @@ final class PaneState: Identifiable {
     var sessionMode: SessionMode = .independent
     /// Display title for this pane.
     var title: String = ""
+    /// The host this pane belongs to. nil when the pane is a plain split of
+    /// its tab's own connection; set when the pane was moved in from another
+    /// tab (drag-to-split) so unsplitting can recreate the original tab.
+    var hostItem: HostItem?
 
     init() {
         id = UUID()
