@@ -271,7 +271,11 @@ public actor SSHNetworkService {
     public func executeCommand(_ command: String) async throws -> String {
         #if os(macOS)
             if usesOpenSSHTransport, let openSSHBackend {
-                return try await openSSHBackend.executeCommand(command)
+                // Commands normally finish in seconds; a half-open connection
+                // would hang this forever, so bound it.
+                return try await withThrowingTimeout(of: .seconds(30)) {
+                    try await openSSHBackend.executeCommand(command)
+                }
             }
         #endif
         guard !usesOpenSSHTransport else {
@@ -472,7 +476,12 @@ public actor SSHNetworkService {
             guard !Task.isCancelled else { break }
 
             do {
-                try await establishConnection(config: config)
+                // Bound the reconnect attempt too: against a half-open link
+                // the handshake would otherwise hang forever, blocking the
+                // retry loop (makes `catch is SSHTimeoutError` below reachable).
+                try await withThrowingTimeout(of: .seconds(Self.connectionTimeoutSeconds)) {
+                    try await self.establishConnection(config: config)
+                }
 
                 // Reconnection successful — stop network monitor if active
                 stopNetworkMonitor()
