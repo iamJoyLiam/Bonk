@@ -455,6 +455,13 @@ enum LKey: String, CaseIterable {
     case addPublicKeyToServer = "add_public_key_to_server"
     case change = "change"
 
+    // SSH Connection Errors
+    case sshErrorForwardingDisabled = "ssh_error_forwarding_disabled"
+    case sshErrorNetworkUnreachable = "ssh_error_network_unreachable"
+    case sshErrorAuthentication = "ssh_error_authentication"
+    case sshErrorHostKey = "ssh_error_host_key"
+    case sshErrorTimeout = "ssh_error_timeout"
+
     // Workspaces
     case workspaces = "workspaces"
     case saveWorkspace = "save_workspace"

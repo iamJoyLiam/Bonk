@@ -464,5 +464,10 @@
   "action_split_vertical": "Split Vertical",
   "action_sftp_browser": "SFTP Browser",
   "action_ai_assistant": "AI Assistant (Terminal)",
-  "enter_key_identifier": "Please enter a key identifier"
+  "enter_key_identifier": "Please enter a key identifier",
+  "ssh_error_forwarding_disabled": "TCP forwarding is disabled on %@ (AllowTcpForwarding no), so the connection cannot be tunneled through the jump host. Ask an administrator to enable forwarding, or use the bastion vendor's SFTP gateway.\nOriginal error: %@",
+  "ssh_error_network_unreachable": "Cannot reach %@: the network is down (connection refused, timed out, or no route). Check the address, port, network connectivity, and firewall.\nOriginal error: %@",
+  "ssh_error_authentication": "Authentication failed: wrong username or password, or the account is not allowed to log in.\nOriginal error: %@",
+  "ssh_error_host_key": "Host key verification failed: the host key may have changed, or this connection may be under attack.\nOriginal error: %@",
+  "ssh_error_timeout": "Connection timed out: %@. Check network connectivity."
 }

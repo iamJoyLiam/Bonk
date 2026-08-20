@@ -109,7 +109,9 @@ final class OpenSSHBackend: @unchecked Sendable {
                 let tail = ptyTail.withLock { String($0.suffix(4096)) }
                 if let message = Self.extractConnectionError(from: tail) {
                     Log.ssh.error("[PTY] Session failed: \(message)")
-                    onError?(message)
+                    onError?(
+                        SSHErrorMessageParser.explain(tail, host: self.config.host) ?? message
+                    )
                 } else if !tail.isEmpty {
                     Log.ssh.error("[PTY] Session exited. Raw tail:\n\(tail)")
                 }
@@ -160,7 +162,7 @@ final class OpenSSHBackend: @unchecked Sendable {
             throw SSHServiceError.connectionFailed(
                 detail.isEmpty
                     ? "OpenSSH command exited with status \(status)."
-                    : detail
+                    : (SSHErrorMessageParser.explain(detail, host: config.host) ?? detail)
             )
         }
         return Self.cleanCommandOutput(output)
@@ -249,7 +251,7 @@ final class OpenSSHBackend: @unchecked Sendable {
                 throw SSHServiceError.connectionFailed(
                     detail.isEmpty
                         ? "OpenSSH SFTP exited with status \(status)."
-                        : detail
+                        : (SSHErrorMessageParser.explain(detail, host: config.host) ?? detail)
                 )
             }
             return Self.cleanCommandOutput(output)
