@@ -227,10 +227,12 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
         // If the auth responder auto-replied to a password prompt, erase the
         // rendered "password:" line now that the chunk carrying it has been
-        // fed. \r returns to column 0, ESC[2K erases the whole line.
+        // fed. CR returns to column 0, ESC[2K erases the line, ESC[A moves up
+        // to the banner line above so the server's following CRLF lands on the
+        // cleared line and overwrites it (no blank-line residue).
         if clearPromptBox.withLockedValue({ $0 }) {
             clearPromptBox.withLockedValue { $0 = false }
-            let eraser = "\r\u{1B}[2K"
+            let eraser = "\r\u{1B}[2K\u{1B}[A"
             let consumersAfter = liveContinuations.withLock { $0 }
             for continuation in consumersAfter.values {
                 continuation.yield(eraser)
