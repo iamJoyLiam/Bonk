@@ -56,6 +56,11 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
     /// Called with a manually typed password once the server has accepted it.
     var onManualPasswordVerified: (@Sendable (String) -> Void)?
 
+    /// Called right after an automatic reply was sent for a password prompt.
+    /// The caller uses it to erase the just-displayed "password:" line from
+    /// the terminal (the prompt text has already been rendered by then).
+    var onAutoReply: (@Sendable () -> Void)?
+
     /// `user@host` values that identify this connection's own auth prompts.
     private let authUserHosts: [String]
 
@@ -184,6 +189,7 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
         lock.unlock()
 
         write(Data((credential.password + "\n").utf8))
+        onAutoReply?()
         return true
     }
 

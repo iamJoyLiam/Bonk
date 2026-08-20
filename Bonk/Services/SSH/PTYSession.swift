@@ -63,6 +63,10 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// Set by close() so the reader task knows the close was user-initiated
     /// and must NOT report an unexpected disconnect.
     private let userClosedBox = NIOLockedValueBox<Bool>(false)
+    /// Set when the auth responder auto-replied to a password prompt: the
+    /// prompt line has already been rendered, so the display feed must erase
+    /// it right after the current chunk.
+    private let clearPromptBox = NIOLockedValueBox<Bool>(false)
     private static let maxPendingInputBytes = 64 * 1024
 
     /// Optional tap on bytes typed into the PTY (used to capture manual
@@ -219,6 +223,18 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         let rawConsumers = rawLiveContinuations.withLock { $0 }
         for continuation in rawConsumers.values {
             continuation.yield(text)
+        }
+
+        // If the auth responder auto-replied to a password prompt, erase the
+        // rendered "password:" line now that the chunk carrying it has been
+        // fed. \r returns to column 0, ESC[2K erases the whole line.
+        if clearPromptBox.withLockedValue({ $0 }) {
+            clearPromptBox.withLockedValue { $0 = false }
+            let eraser = "\r\u{1B}[2K"
+            let consumersAfter = liveContinuations.withLock { $0 }
+            for continuation in consumersAfter.values {
+                continuation.yield(eraser)
+            }
         }
     }
 
@@ -482,6 +498,12 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     public var isClosed: Bool {
         if userClosedBox.withLockedValue({ $0 }) { return true }
         return serialFDBox.withLockedValue { $0 } < 0
+    }
+
+    /// Ask the display feed to erase the just-rendered password prompt line
+    /// (called by the auth responder right after an automatic reply).
+    public func queuePromptClear() {
+        clearPromptBox.withLockedValue { $0 = true }
     }
 
     /// Gracefully close the PTY session.

@@ -112,6 +112,11 @@ final class OpenSSHBackend: @unchecked Sendable {
         responder.onManualPasswordVerified = { [weak self] password in
             self?.onManualPasswordVerified?(password)
         }
+        // After an automatic password reply, erase the on-screen "password:"
+        // prompt line so authentication leaves no residue.
+        responder.onAutoReply = { [weak session] in
+            session?.queuePromptClear()
+        }
 
         lock.lock()
         activeProcess = process
