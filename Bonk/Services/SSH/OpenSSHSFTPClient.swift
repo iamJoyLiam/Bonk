@@ -148,11 +148,13 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
             throw SFTPServiceError.operationFailed("Invalid OpenSSH SFTP command.")
         }
 
-        if let operationID {
-            operationState.withLock { state in
-                state.cancelledOperations.remove(operationID)
-                state.activeProcesses.removeValue(forKey: operationID)
-            }
+        // Track EVERY process so close()/cancel() can kill a hung sftp child,
+        // not just transfer operations. Non-transfer calls (realPath,
+        // listDirectory, remove, ...) get an internal id.
+        let effectiveID = operationID ?? UUID()
+        operationState.withLock { state in
+            state.cancelledOperations.remove(effectiveID)
+            state.activeProcesses.removeValue(forKey: effectiveID)
         }
 
         do {
@@ -160,8 +162,8 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
                 commands: commands,
                 onOutput: onOutput,
                 registerProcess: { [weak self] process in
-                    guard let self, let operationID else { return }
-                    self.register(process, for: operationID)
+                    guard let self else { return }
+                    self.register(process, for: effectiveID)
                 }
             )
             if let operationID, consumeCancellation(for: operationID) {

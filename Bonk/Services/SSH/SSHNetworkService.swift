@@ -61,7 +61,7 @@ public actor SSHNetworkService {
     private var reconnectTask: Task<Void, Never>?
 
     /// Network monitor for detecting connectivity changes.
-    private let networkMonitor = NWPathMonitor()
+    private var networkMonitor: NWPathMonitor?
     private var isMonitoringNetwork = false
     /// Whether we're waiting for network to come back (for delayed reconnect).
     private var isWaitingForNetwork = false
@@ -170,6 +170,7 @@ public actor SSHNetworkService {
             }
             await keepAlive.start(client: client)
             Log.ssh.info("[CONNECT] keepAlive started, connection complete")
+            startNetworkMonitor()
         } catch {
             Log.ssh.error("[CONNECT] Connection failed: \(error.localizedDescription)")
 
@@ -402,19 +403,23 @@ public actor SSHNetworkService {
     private func startNetworkMonitor() {
         guard !isMonitoringNetwork else { return }
         isMonitoringNetwork = true
-
+        // A cancelled NWPathMonitor cannot be restarted — always build a
+        // fresh instance (stopNetworkMonitor() cancels the previous one).
+        let monitor = NWPathMonitor()
+        networkMonitor = monitor
         let queue = DispatchQueue(label: "com.bonk.ssh.network-monitor")
-        networkMonitor.pathUpdateHandler = { [weak self] path in
+        monitor.pathUpdateHandler = { [weak self] path in
             Task {
                 await self?.handleNetworkChange(path)
             }
         }
-        networkMonitor.start(queue: queue)
+        monitor.start(queue: queue)
     }
 
     /// Stop monitoring network connectivity.
     private func stopNetworkMonitor() {
-        networkMonitor.cancel()
+        networkMonitor?.cancel()
+        networkMonitor = nil
         isMonitoringNetwork = false
         isWaitingForNetwork = false
     }
@@ -471,6 +476,7 @@ public actor SSHNetworkService {
 
                 // Reconnection successful — stop network monitor if active
                 stopNetworkMonitor()
+                startNetworkMonitor()
 
                 // Restart keepalive for the NEW client. Without this the
                 // reconnected session has no liveness monitoring, and the old
@@ -573,6 +579,9 @@ public actor SSHNetworkService {
             return
         }
 
+        // Wait for the network to come back: the monitor fires when the
+        // path is satisfied again and kicks off an immediate reconnect.
+        isWaitingForNetwork = true
         startReconnect()
     }
 
