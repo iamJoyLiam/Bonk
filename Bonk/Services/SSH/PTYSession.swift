@@ -63,10 +63,6 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// Set by close() so the reader task knows the close was user-initiated
     /// and must NOT report an unexpected disconnect.
     private let userClosedBox = NIOLockedValueBox<Bool>(false)
-    /// Set when the auth responder auto-replied to a password prompt: the
-    /// prompt line has already been rendered, so the display feed must erase
-    /// it right after the current chunk.
-    private let clearPromptBox = NIOLockedValueBox<Bool>(false)
     private static let maxPendingInputBytes = 64 * 1024
 
     /// Optional tap on bytes typed into the PTY (used to capture manual
@@ -223,20 +219,6 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         let rawConsumers = rawLiveContinuations.withLock { $0 }
         for continuation in rawConsumers.values {
             continuation.yield(text)
-        }
-
-        // If the auth responder auto-replied to a password prompt, erase the
-        // rendered "password:" line now that the chunk carrying it has been
-        // fed. CR returns to column 0, ESC[2K erases the line, ESC[A moves up
-        // to the banner line above so the server's following CRLF lands on the
-        // cleared line and overwrites it (no blank-line residue).
-        if clearPromptBox.withLockedValue({ $0 }) {
-            clearPromptBox.withLockedValue { $0 = false }
-            let eraser = "\r\u{1B}[2K\u{1B}[A"
-            let consumersAfter = liveContinuations.withLock { $0 }
-            for continuation in consumersAfter.values {
-                continuation.yield(eraser)
-            }
         }
     }
 
@@ -502,10 +484,16 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         return serialFDBox.withLockedValue { $0 } < 0
     }
 
-    /// Ask the display feed to erase the just-rendered password prompt line
-    /// (called by the auth responder right after an automatic reply).
-    public func queuePromptClear() {
-        clearPromptBox.withLockedValue { $0 = true }
+    /// Optional cleanup for the process backing this session (OpenSSH
+    /// subprocess mode). The session does NOT own the fd (ownsFD == false),
+    /// so without this the ssh child would survive a pane close and hold its
+    /// PTY forever. Set by OpenSSHBackend.openPTY.
+    private let processCleanupBox = NIOLockedValueBox<(@Sendable () -> Void)?>(nil)
+
+    /// Attach the process cleanup for this session (OpenSSH subprocess mode):
+    /// close() then terminates the child, releasing its PTY.
+    public func setProcessCleanup(_ closure: @escaping @Sendable () -> Void) {
+        processCleanupBox.withLockedValue { $0 = closure }
     }
 
     /// Gracefully close the PTY session.
@@ -524,6 +512,11 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         if fileDescriptor >= 0, ownsFDBox.withLock({ $0 }) {
             Darwin.close(fileDescriptor)
         }
+        // Terminate the backing process (OpenSSH subprocess mode): this
+        // releases its PTY. Without it, split-pane sessions leaked an ssh
+        // child per pane — enough pane churn exhausted the system PTY pool
+        // (openpty ENXIO, "Pseudo Terminal Setup Error").
+        processCleanupBox.withLockedValue { $0 }?()
         pendingInputBox.withLockedValue { $0.removeAll() }
         outputObservers.withLock { $0.removeAll() }
         liveContinuations.withLock { $0 }.values.forEach { $0.finish() }

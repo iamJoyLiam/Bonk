@@ -32,6 +32,13 @@ final class SessionManager {
     /// Centralized session store for lifecycle management.
     let sessionStore = SessionStore.shared
 
+    /// Guard against the auth-failure dialog loop. One tab goes through at most:
+    /// dialog → reconnect → (fail) → cleanup+reconnect → (fail) → STOP. The
+    /// user must start a fresh connect to try again.
+    private enum AuthRetryState { case idle, dialogShown, cleanupDone }
+    private var authRetryState: AuthRetryState = .idle
+    private var authRetryTabID: UUID?
+
     init(viewCache: TerminalViewCache = .shared) {
         self.viewCache = viewCache
     }
@@ -123,9 +130,34 @@ final class SessionManager {
         syncBroadcastTargets()
     }
 
+    /// Disconnect every tab WITHOUT removing it: the tab structure (and its
+    /// host) stays, but all ssh children are terminated and PTYs released.
+    /// Called when the main window closes — the app keeps running for the
+    /// Quake terminal, but no SSH connection may linger in the background.
+    func disconnectAllTabs() async {
+        for tab in tabs {
+            await disconnectTab(tab.id)
+        }
+    }
+
     // MARK: - Connection
 
     func connectTab(_ tab: TerminalTab) async {
+        // A fresh manual connect resets the auth-retry state machine.
+        authRetryState = .idle
+        authRetryTabID = nil
+        await connectTab(tab, passwordOverride: nil, resetAuthRetry: false)
+    }
+
+    /// Connect a tab. `passwordOverride` supplies a freshly typed password
+    /// (from the auth-failure dialog) that replaces the stored credential
+    /// for this attempt; on success it is persisted back (vault credential
+    /// or host-embedded Keychain entry) so the next connect works silently.
+    func connectTab(
+        _ tab: TerminalTab,
+        passwordOverride: String?,
+        resetAuthRetry: Bool = true
+    ) async {
         Log.session.info("[CONNECT] Starting connectTab for \(tab.hostItem.host):\(tab.hostItem.port)")
 
         guard !sessionStore.isConnecting(tab.id) else {
@@ -140,9 +172,30 @@ final class SessionManager {
         session.connectionState = .connecting
         session.errorMessage = nil
 
-        guard let config = resolveConnectionConfig(for: tab, session: session) else {
+        guard var config = resolveConnectionConfig(for: tab, session: session) else {
             Log.session.error("[CONNECT] Failed to resolve connection config")
             return
+        }
+        if let override = passwordOverride, !override.isEmpty {
+            Log.session.info("[AUTH] connectTab with override len=\(override.count)")
+            // The re-password reconnect must start from a clean slate: a stale
+            // ControlMaster socket left over from the failed attempt (or an
+            // earlier crashed session) can poison the new authentication. The
+            // launch-time cleanup only runs once, so do it here per host.
+            Self.cleanupHostControlSockets(
+                username: config.username,
+                host: config.host,
+                port: config.port
+            )
+            config = SSHConnectionConfig(
+                host: config.host,
+                port: config.port,
+                username: config.username,
+                authMethod: .password(override),
+                jumpHost: config.jumpHost,
+                maxReconnectAttempts: config.maxReconnectAttempts,
+                baseReconnectDelay: config.baseReconnectDelay
+            )
         }
 
         let service = SSHNetworkService(hostKeyStore: hostKeyStore)
@@ -176,6 +229,11 @@ final class SessionManager {
             // UI never renders a terminal view without a live PTY session.
             session.connectionState = .connected
             session.connectedAt = Date()
+            // A typed password from the auth-failure dialog worked — persist
+            // it to the credential source (vault credential or host entry).
+            if let override = passwordOverride, !override.isEmpty {
+                persistPassword(override, for: tab)
+            }
             Log.session.info("[CONNECT] PTY session established successfully")
         } catch {
             Log.session.error("[CONNECT] Connection failed: \(error.localizedDescription)")
@@ -185,6 +243,39 @@ final class SessionManager {
             lastError = error.localizedDescription
             showError = true
 
+        }
+    }
+
+    /// Save a password to the credential source this host actually uses:
+    /// the referenced vault credential, or the host-embedded Keychain entry.
+    private func persistPassword(_ password: String, for tab: TerminalTab) {
+        guard !password.isEmpty else { return }
+        if let credential = tab.hostItem.credentialRef {
+            credential.storeSecret(password)
+            Log.session.info("[CRED] Updated vault credential password for \(tab.hostItem.name, privacy: .public)")
+        } else {
+            tab.hostItem.updateSavedPassword(password)
+            Log.session.info("[CRED] Updated host-embedded password for \(tab.hostItem.name, privacy: .public)")
+        }
+    }
+
+    /// Remove stale ControlMaster sockets for a host so a reconnection starts
+    /// clean. The sockets are named /tmp/bonk-ssh-{user}-{host}-{port}-*.sock;
+    /// deleting one whose master has exited is harmless (OpenSSH recreates it).
+    static func cleanupHostControlSockets(username: String, host: String, port: UInt16) {
+        let safeUser = username.replacingOccurrences(of: "/", with: "_")
+        let safeHost = host.replacingOccurrences(of: "/", with: "_")
+        let pattern = "/tmp/bonk-ssh-\(safeUser)-\(safeHost)-\(port)-*.sock"
+        var globResult = glob_t()
+        let flags = GLOB_NOSORT | GLOB_ERR
+        if glob(pattern, flags, nil, &globResult) == 0 {
+            for i in 0 ..< globResult.gl_pathc {
+                if let c = globResult.gl_pathv[Int(i)] {
+                    let path = String(cString: c)
+                    try? FileManager.default.removeItem(atPath: path)
+                }
+            }
+            globfree(&globResult)
         }
     }
 
@@ -312,6 +403,43 @@ final class SessionManager {
         }
     }
 
+    /// Whether an SSH error message means the saved credential was rejected
+    /// (as opposed to a network/host-key problem). Only credential failures
+    /// trigger the re-password dialog.
+    private static func isAuthFailure(_ message: String) -> Bool {
+        let lower = message.lowercased()
+        return lower.contains("permission denied")
+            || lower.contains("authentication failed")
+            || lower.contains("authentication failure")
+            || lower.contains("no supported authentication methods")
+    }
+
+    /// Show a modal dialog asking for the password of `username@host`
+    /// (username preserved, only the password is entered). Returns nil when
+    /// the user cancels.
+    private func promptForPassword(username: String, host: String) async -> String? {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = I18n.shared.t(.authFailedTitle)
+        let displayUser = username.isEmpty ? "?" : username
+        alert.informativeText = "\(displayUser)@\(host)\n\(I18n.shared.t(.authFailedMessage))"
+
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 26))
+        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        field.placeholderString = I18n.shared.t(.password)
+        container.addSubview(field)
+        alert.accessoryView = container
+
+        alert.addButton(withTitle: I18n.shared.t(.retry))
+        alert.addButton(withTitle: I18n.shared.t(.cancel))
+        alert.window.initialFirstResponder = field
+
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else { return nil }
+        let value = field.stringValue
+        return value.isEmpty ? nil : value
+    }
+
     private func setupPTYSession(
         for tab: TerminalTab,
         pane: PaneState,
@@ -320,9 +448,48 @@ final class SessionManager {
     ) async throws {
         Log.session.info("[PTY] Opening PTY session...")
         let ptySession = try await service.openPTY(
-            onError: { [weak session] message in
+            onError: { [weak self, weak tab] message in
                 Task { @MainActor in
-                    session?.errorMessage = message
+                    guard let self, let tab else { return }
+                    session.errorMessage = message
+                    Log.session.error("[AUTH] onError: \(message.prefix(120))")
+                    // Authentication was rejected (wrong saved password).
+                    guard Self.isAuthFailure(message) else {
+                        Log.session.error("[AUTH] not an auth failure, no dialog")
+                        return
+                    }
+                    // State machine: at most dialog -> reconnect -> (fail) ->
+                    // cleanup+reconnect -> (fail) -> STOP.
+                    if self.authRetryState == .dialogShown, self.authRetryTabID == tab.id {
+                        Log.session.error("[AUTH] reconnect failed; cleaning stale SSH state and retrying once")
+                        OpenSSHBackend.cleanupOrphanedMuxes()
+                        self.authRetryState = .cleanupDone
+                        guard self.tabs.contains(where: { $0.id == tab.id }) else { return }
+                        await self.connectTab(tab, passwordOverride: nil, resetAuthRetry: false)
+                        return
+                    }
+                    if self.authRetryState == .cleanupDone, self.authRetryTabID == tab.id {
+                        Log.session.error("[AUTH] giving up: reconnect failed after cleanup. Manual reconnect required.")
+                        self.authRetryState = .idle
+                        self.authRetryTabID = nil
+                        return
+                    }
+                    self.authRetryState = .dialogShown
+                    self.authRetryTabID = tab.id
+                    guard self.tabs.contains(where: { $0.id == tab.id }) else { return }
+                    guard let password = await self.promptForPassword(
+                        username: tab.hostItem.resolveUsername(),
+                        host: tab.hostItem.host
+                    ) else {
+                        Log.session.error("[AUTH] dialog cancelled/empty")
+                        self.authRetryState = .idle
+                        self.authRetryTabID = nil
+                        return
+                    }
+                    Log.session.info("[AUTH] dialog returned password len=\(password.count) fp=\(OpenSSHBackend.passwordFingerprint(password))")
+                    // Reconnect with the typed password; on success it is
+                    // persisted to the credential source.
+                    await self.connectTab(tab, passwordOverride: password, resetAuthRetry: false)
                 }
             }
         )

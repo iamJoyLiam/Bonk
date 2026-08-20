@@ -29,6 +29,10 @@ final class OpenSSHBackend: @unchecked Sendable {
     private var targetCertificateFile: URL?
     private var jumpIdentityFile: URL?
     private var jumpCertificateFile: URL?
+    /// SSH_ASKPASS script for the TARGET password (clean silent auth): the
+    /// prompt never appears in the terminal. nil when not applicable (no
+    /// saved password, or askpass suppressed after a failed attempt).
+    private var targetAskpassPath: String?
 
     /// Called with a password the user typed manually into the terminal once
     /// the server accepted it (stored credential was wrong or missing).
@@ -95,33 +99,61 @@ final class OpenSSHBackend: @unchecked Sendable {
         onExit: @escaping @Sendable () -> Void,
         onError: (@Sendable (String) -> Void)? = nil
     ) throws -> PTYSession {
+        // One connection attempt = one attempt ID, correlated across the
+        // askpass script path, the spawned process PID, and the invocation
+        // log emitted by the script itself.
+        let attemptID = UUID().uuidString
+        // Clean silent auth: when a saved password exists, hand it to ssh via
+        // SSH_ASKPASS_REQUIRE=force so the password prompt never renders in
+        // the terminal.
+        var environment: [String: String] = [:]
+        if let targetPassword = password(from: config.authMethod)
+        {
+            let askpassPath = writeAskPassScript(
+                targetPassword,
+                attemptID: attemptID,
+                host: config.host,
+                username: config.username
+            )
+            targetAskpassPath = askpassPath
+            environment["SSH_ASKPASS"] = askpassPath
+            environment["SSH_ASKPASS_REQUIRE"] = "force"
+            Log.ssh.info("[ASKPASS] attempt=\(attemptID) script=\(askpassPath) host=\(self.config.host) username=\(self.config.username) passwordLength=\(targetPassword.count) fp=\(Self.passwordFingerprint(targetPassword))")
+        }
+
         let arguments = sshArguments(
             pty: true,
             command: nil,
-            additionalOptions: []
+            additionalOptions: [],
+            attemptID: attemptID
         )
         let process = try OpenSSHProcessTransport.spawn(
             executable: "/usr/bin/ssh",
             arguments: arguments,
             cols: cols,
             rows: rows,
-            termType: termType
+            termType: termType,
+            environment: environment
         )
+        Log.ssh.info("[CONNECT] attempt=\(attemptID) processPID=\(process.processID) host=\(self.config.host):\(self.config.port) username=\(self.config.username)")
         let session = PTYSession()
         let responder = makeAuthResponder(process: process, allowInteractivePrompt: false)
         responder.onManualPasswordVerified = { [weak self] password in
             self?.onManualPasswordVerified?(password)
-        }
-        // After an automatic password reply, erase the on-screen "password:"
-        // prompt line so authentication leaves no residue.
-        responder.onAutoReply = { [weak session] in
-            session?.queuePromptClear()
         }
 
         lock.lock()
         activeProcess = process
         activePTYSession = session
         lock.unlock()
+
+        // The session must own its process teardown: a split-pane session can
+        // be closed directly (closePane) while this backend's single
+        // activeProcess still points at the LAST opened pane — without this,
+        // every other pane's ssh child leaked its PTY forever.
+        session.setProcessCleanup { [weak process] in
+            process?.close()
+        }
 
         session.inputTap = { [weak responder] bytes in
             responder?.observeInput(bytes)
@@ -160,10 +192,12 @@ final class OpenSSHBackend: @unchecked Sendable {
 
     /// Execute one command with clean output.
     func executeCommand(_ command: String) async throws -> String {
+        let attemptID = UUID().uuidString
         let arguments = sshArguments(
             pty: false,
             command: command,
-            additionalOptions: []
+            additionalOptions: [],
+            attemptID: attemptID
         )
         let process = try OpenSSHProcessTransport.spawn(
             executable: "/usr/bin/ssh",
@@ -230,7 +264,7 @@ final class OpenSSHBackend: @unchecked Sendable {
 
         let process = try OpenSSHProcessTransport.spawn(
             executable: "/usr/bin/sftp",
-            arguments: sftpArguments(),
+            arguments: sftpArguments(attemptID: UUID().uuidString),
             cols: 160,
             rows: 50,
             termType: "xterm-256color"
@@ -354,7 +388,8 @@ final class OpenSSHBackend: @unchecked Sendable {
                 "-N",
                 "-o", "ExitOnForwardFailure=yes",
                 forwardOption,
-            ]
+            ],
+            attemptID: UUID().uuidString
         )
         let process = try OpenSSHProcessTransport.spawn(
             executable: "/usr/bin/ssh",
@@ -421,11 +456,15 @@ final class OpenSSHBackend: @unchecked Sendable {
         if let askpass = jumpAskpassPath {
             try? FileManager.default.removeItem(atPath: askpass)
         }
+        if let askpass = targetAskpassPath {
+            try? FileManager.default.removeItem(atPath: askpass)
+        }
         targetIdentityFile = nil
         targetCertificateFile = nil
         jumpIdentityFile = nil
         jumpCertificateFile = nil
         jumpAskpassPath = nil
+        targetAskpassPath = nil
     }
 
     // MARK: - Command construction
@@ -433,7 +472,8 @@ final class OpenSSHBackend: @unchecked Sendable {
     private func sshArguments(
         pty: Bool,
         command: String?,
-        additionalOptions: [String]
+        additionalOptions: [String],
+        attemptID: String
     ) -> [String] {
         var args: [String] = []
         if pty {
@@ -442,7 +482,10 @@ final class OpenSSHBackend: @unchecked Sendable {
             args += ["-o", "RequestTTY=no"]
         }
 
-        args += commonOpenSSHArguments(additionalOptions: additionalOptions)
+        args += commonOpenSSHArguments(
+            additionalOptions: additionalOptions,
+            attemptID: attemptID
+        )
         args += ["-p", String(config.port), "\(config.username)@\(config.host)"]
         if let command {
             args.append(command)
@@ -450,18 +493,22 @@ final class OpenSSHBackend: @unchecked Sendable {
         return args
     }
 
-    private func sftpArguments() -> [String] {
+    private func sftpArguments(attemptID: String) -> [String] {
         var args = commonOpenSSHArguments(
             additionalOptions: [
                 "-B", "131072",
                 "-R", "128",
-            ]
+            ],
+            attemptID: attemptID
         )
         args += ["-P", String(config.port), "\(config.username)@\(config.host)"]
         return args
     }
 
-    private func commonOpenSSHArguments(additionalOptions: [String]) -> [String] {
+    private func commonOpenSSHArguments(
+        additionalOptions: [String],
+        attemptID: String
+    ) -> [String] {
         var args: [String] = [
             "-o", "ControlMaster=auto",
             "-o", "ControlPersist=300",
@@ -477,7 +524,7 @@ final class OpenSSHBackend: @unchecked Sendable {
         args += legacyRSACompatibilityArguments()
         args += authenticationArguments(for: config.authMethod)
 
-        if let proxyCommand = jumpProxyCommand() {
+        if let proxyCommand = jumpProxyCommand(attemptID: attemptID) {
             args += ["-o", "ProxyCommand=\(proxyCommand)"]
         }
 
@@ -671,7 +718,7 @@ final class OpenSSHBackend: @unchecked Sendable {
         """
     }
 
-    private func jumpProxyCommand() -> String? {
+    private func jumpProxyCommand(attemptID: String) -> String? {
         guard let jumpHost = config.jumpHost else { return nil }
 
         var args = [
@@ -706,25 +753,55 @@ final class OpenSSHBackend: @unchecked Sendable {
         // macOS) mis-parses a bare `VAR=... cmd` prefix and tries to exec
         // the assignment as a program.
         if let jumpPassword = password(from: jumpHost.authMethod) {
-            let askpassPath = writeAskPassScript(jumpPassword)
+            let askpassPath = writeAskPassScript(
+                jumpPassword,
+                attemptID: attemptID,
+                host: jumpHost.host,
+                username: jumpHost.username
+            )
             jumpAskpassPath = askpassPath
             command = "env SSH_ASKPASS=\(Self.shellQuote(askpassPath)) SSH_ASKPASS_REQUIRE=force " + command
+            Log.ssh.info("[ASKPASS] attempt=\(attemptID) script=\(askpassPath) host=\(jumpHost.host) username=\(jumpHost.username) passwordLength=\(jumpPassword.count) fp=\(Self.passwordFingerprint(jumpPassword))")
         }
 
         Log.ssh.info("[JUMP] ProxyCommand: \(command)")
         return command
     }
 
-    /// Writes a 0700 script that echoes the jump password once. OpenSSH
+    /// SHA-256 fingerprint of a password for cross-checking the auth data flow
+    /// WITHOUT logging the password itself.
+    static func passwordFingerprint(_ password: String) -> String {
+        let digest = SHA256.hash(data: Data(password.utf8))
+        return String(digest.map { String(format: "%02x", $0) }.joined().prefix(16))
+    }
+
+    /// Writes a 0700 script that echoes the password once. OpenSSH
     /// invokes it via SSH_ASKPASS; the file is removed when the connection
     /// closes.
+    ///
+    /// The script's filename embeds the connection attempt ID so every
+    /// invocation can be correlated with the app-side logs. On invocation it
+    /// emits a secure audit line via /usr/bin/logger (never the password —
+    /// only its length, plus the fingerprint logged by the app): this proves
+    /// OpenSSH really read the credential through SSH_ASKPASS and not the
+    /// terminal.
     /// Passphrase-protected keys are not supported via ProxyCommand.
     private var jumpAskpassPath: String?
 
-    private func writeAskPassScript(_ password: String) -> String {
-        let path = "/tmp/bonk-ssh-askpass-\(UUID().uuidString)"
+    private func writeAskPassScript(
+        _ password: String,
+        attemptID: String,
+        host: String,
+        username: String
+    ) -> String {
+        let path = "/tmp/bonk-ssh-askpass-\(attemptID)"
         let escaped = password.replacingOccurrences(of: "'", with: "'\\''")
-        let script = "#!/bin/sh\nprintf '%s\\n' '\(escaped)'\n"
+        let script = """
+        #!/bin/sh
+        attempt=$(basename "$0" | sed 's/^bonk-ssh-askpass-//')
+        /usr/bin/logger -t bonk.askpass "[ASKPASS] attempt=$attempt invoked host=\(Self.shellQuote(host)) username=\(Self.shellQuote(username)) passwordLength=\(password.count)"
+        printf '%s\\n' '\(escaped)'
+        """
         try? Data(script.utf8).write(to: URL(fileURLWithPath: path), options: [.atomic])
         _ = chmod(path, mode_t(0o700))
         return path
@@ -825,6 +902,15 @@ final class OpenSSHBackend: @unchecked Sendable {
                 .replacingOccurrences(of: "\r", with: "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !line.isEmpty else { continue }
+            // `ssh -v` debug lines are NOT errors ("No such file" for a
+            // missing known_hosts is routine). Ignore them so a successful
+            // connection is never misreported as failed.
+            if line.lowercased().hasPrefix("debug1:")
+                || line.lowercased().hasPrefix("debug2:")
+                || line.lowercased().hasPrefix("debug3:")
+            {
+                continue
+            }
             let l = line.lowercased()
             let keywords = [
                 "permission denied", "denied", "refused", "timed out",

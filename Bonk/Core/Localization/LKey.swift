@@ -166,6 +166,10 @@ enum LKey: String, CaseIterable {
     case username, groupOptional = "group_optional"
     case method, password, privateKey = "private_key"
 
+    // Authentication failure dialog
+    case authFailedTitle = "auth_failed_title"
+    case authFailedMessage = "auth_failed_message"
+
     // SFTPBrowserView
     case retry, sftpNotConnected = "sftp_not_connected"
     case connect, create, sftp, uploadFile = "upload_file"

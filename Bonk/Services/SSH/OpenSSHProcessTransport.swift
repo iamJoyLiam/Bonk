@@ -31,6 +31,9 @@ final class OpenSSHProcessTransport: @unchecked Sendable {
         return _masterFD
     }
 
+    /// Child process ID, for audit-log correlation ([CONNECT] attempt ↔ PID).
+    var processID: pid_t { pid }
+
     private init(pid: pid_t, masterFD: Int32) {
         self.pid = pid
         _masterFD = masterFD
@@ -42,7 +45,8 @@ final class OpenSSHProcessTransport: @unchecked Sendable {
         arguments: [String],
         cols: Int = 120,
         rows: Int = 40,
-        termType: String = "xterm-256color"
+        termType: String = "xterm-256color",
+        environment: [String: String] = [:]
     ) throws -> OpenSSHProcessTransport {
         guard !executable.isEmpty else {
             throw SSHServiceError.connectionFailed("OpenSSH executable is empty.")
@@ -67,6 +71,9 @@ final class OpenSSHProcessTransport: @unchecked Sendable {
             Darwin.close(master)
             guard login_tty(slave) == 0 else { _exit(127) }
             _ = termType.withCString { setenv("TERM", $0, 1) }
+            for (key, value) in environment {
+                _ = value.withCString { setenv(key, $0, 1) }
+            }
 
             var cargs: [UnsafeMutablePointer<CChar>?] = argv
             cargs.append(nil)

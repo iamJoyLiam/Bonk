@@ -185,6 +185,8 @@
   "password": "密码",
   "private_key": "私钥",
   "retry": "重试",
+  "auth_failed_title": "认证失败",
+  "auth_failed_message": "密码被服务器拒绝，请输入正确的密码：",
   "sftp_not_connected": "SFTP 未连接",
   "connect": "连接",
   "create": "创建",

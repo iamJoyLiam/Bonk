@@ -20,11 +20,12 @@ import SwiftData
 import SwiftUI
 
 @MainActor
-final class BonkAppDelegate: NSObject, NSApplicationDelegate {
+final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var mainWindow: NSWindow?
     private var toolbarDelegate: BonkToolbarDelegate?
     private var toolbar: NSToolbar?
     private var toolbarObservation: NSKeyValueObservation?
+    private var sessionManager: SessionManager?
 
     // MARK: - Launch
 
@@ -40,6 +41,7 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate {
         let i18n = I18n.shared
         let workspace = WorkspaceManager()
         let sessionManager = SessionManager()
+        self.sessionManager = sessionManager
         let coordinator = ToolbarCoordinator(
             workspace: workspace,
             sessionManager: sessionManager,
@@ -94,8 +96,22 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate {
         window.makeKeyAndOrderFront(nil)
         mainWindow = window
 
+        // Closing the window must not leave SSH connections running in the
+        // background (the app stays alive for the Quake terminal).
+        window.delegate = self
+
         installToolbar(on: window)
         startToolbarKeepAlive(on: window)
+    }
+
+    // MARK: - Window Closing
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+              window === mainWindow else { return }
+        Task { @MainActor [weak self] in
+            await self?.sessionManager?.disconnectAllTabs()
+        }
     }
 
     // MARK: - Toolbar
@@ -159,6 +175,15 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         // Keep running with the Quake terminal (global hotkey) available.
         false
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Kill every bonk-ssh child so no PTY-holding process survives the
+        // app (a plain app exit leaves the ssh children behind until the
+        // NEXT launch's cleanup runs).
+        #if os(macOS)
+            OpenSSHBackend.cleanupOrphanedMuxes()
+        #endif
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

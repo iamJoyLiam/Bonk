@@ -52,14 +52,15 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
     private var pendingPassword: String?
     private var captureExpiresAt = Date.distantPast
     private static let captureTimeout: TimeInterval = 30
+    /// Deadline after which a submitted password counts as accepted, PROVIDED
+    /// no rejection signal (Permission denied / re-prompt) appeared meanwhile.
+    /// Without this window the single next chunk (which may be an empty echo
+    /// or control sequence) triggered a false "accepted", even when the
+    /// server had actually rejected the password.
+    private var passwordResultDeadline = Date.distantPast
 
     /// Called with a manually typed password once the server has accepted it.
     var onManualPasswordVerified: (@Sendable (String) -> Void)?
-
-    /// Called right after an automatic reply was sent for a password prompt.
-    /// The caller uses it to erase the just-displayed "password:" line from
-    /// the terminal (the prompt text has already been rendered by then).
-    var onAutoReply: (@Sendable () -> Void)?
 
     /// `user@host` values that identify this connection's own auth prompts.
     private let authUserHosts: [String]
@@ -86,11 +87,12 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
         let suffix = String(normalized.suffix(256))
         lock.unlock()
 
-        // A manually typed password is pending: the next output decides
-        // whether the server accepted it. A re-prompt or "Permission denied"
-        // in THIS chunk means it failed — discard the capture and wait for
-        // the next try. (Judged against the fresh chunk, not the cumulative
-        // suffix, which may still contain an earlier denial.)
+        // A manually typed password is pending: decide acceptance over a short
+        // window, not a single chunk. The server's rejection
+        // ("Permission denied, please try again.") may arrive split across
+        // chunks or after an empty/control-sequence chunk — judging on the
+        // first chunk alone caused a false "accepted" (and a spurious
+        // credential update) right before the connection failed.
         if let pending = pendingPassword {
             let fresh = Self.stripANSI(text)
             if containsPermissionDenied(fresh)
@@ -99,14 +101,19 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
                     options: .regularExpression
                 ) != nil
             {
+                // Rejected — abandon the capture, wait for the next try.
                 pendingPassword = nil
                 awaitingManualPassword = true
-            } else {
+                passwordResultDeadline = .distantPast
+            } else if Date() >= passwordResultDeadline {
+                // No rejection within the window: the password was accepted.
                 pendingPassword = nil
                 awaitingManualPassword = false
+                passwordResultDeadline = .distantPast
                 os_log("Manual password accepted, offering for save", type: .info)
                 onManualPasswordVerified?(pending)
             }
+            // else: keep waiting for the rejection signal within the window.
         }
 
         if matchesPasswordPrompt(suffix) {
@@ -146,6 +153,8 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
             // Enter — submit whatever was captured.
             if !manualPasswordBuffer.isEmpty {
                 pendingPassword = manualPasswordBuffer
+                // Allow a 2s window for the server's rejection signal.
+                passwordResultDeadline = Date().addingTimeInterval(2)
                 manualPasswordBuffer = ""
             }
             awaitingManualPassword = false
@@ -189,7 +198,6 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
         lock.unlock()
 
         write(Data((credential.password + "\n").utf8))
-        onAutoReply?()
         return true
     }
 

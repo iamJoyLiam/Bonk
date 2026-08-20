@@ -185,6 +185,8 @@
   "password": "Password",
   "private_key": "Private Key",
   "retry": "Retry",
+  "auth_failed_title": "Authentication Failed",
+  "auth_failed_message": "The password was rejected by the server. Please enter the correct password:",
   "sftp_not_connected": "SFTP Not Connected",
   "connect": "Connect",
   "create": "Create",
