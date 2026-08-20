@@ -69,14 +69,17 @@ extension SessionManager {
 
     /// Close the active pane in the active tab.
     func closePane() {
-        guard let tab = activeTab, let paneID = tab.activePaneID else { return }
+        guard let tab = activeTab else { return }
+        // The layout's activePaneID is the single source of truth; using it
+        // here keeps this in sync even if tab.activePaneID drifted.
+        let paneID = tab.layout.activePaneID
         // Don't close if it's the last pane
         guard tab.layout.root.paneCount > 1 else { return }
 
         // Capture pane reference BEFORE removing from layout tree
         guard let pane = tab.layout.findPane(id: paneID) else { return }
 
-        if tab.layout.closeActivePane() {
+        if tab.layout.closePane(id: paneID) {
             // Close the PTY session for the closed pane
             pane.ptySession?.close()
             // Clean up the closed pane
@@ -101,10 +104,8 @@ extension SessionManager {
             pane.ptySession?.close()
             // Clean up the closed pane
             viewCache.remove(paneID)
-            // Update active pane if needed
-            if tab.activePaneID == paneID {
-                tab.activePaneID = tab.layout.activePaneID
-            }
+            // Keep tab.activePaneID in sync unconditionally
+            tab.activePaneID = tab.layout.activePaneID
             // Update tab title
             updateTabTitleForSplit(tab)
         }
@@ -172,9 +173,7 @@ extension SessionManager {
         // Remove the pane from the original tab
         if tab.layout.closePane(id: paneID) {
             viewCache.remove(paneID)
-            if tab.activePaneID == paneID {
-                tab.activePaneID = tab.layout.activePaneID
-            }
+            tab.activePaneID = tab.layout.activePaneID
             if tab.layout.root.paneCount <= 1 {
                 tab.title = tab.hostItem.name
                 tab.sourceHostItem = nil
@@ -187,6 +186,17 @@ extension SessionManager {
 
     /// Connect a new pane (open PTY session).
     func connectPane(tab: TerminalTab, pane: PaneState) async {
+        // Guards against the pane having been removed from the tree while the
+        // connection was in flight (e.g. user closed the pane right after
+        // splitting). Returns the session for cleanup instead of leaking it.
+        func adoptOrClose(_ ptySession: PTYSession) {
+            guard tab.layout.findPane(id: pane.id) != nil else {
+                ptySession.close()
+                return
+            }
+            pane.ptySession = ptySession
+        }
+
         if let serialConfig = tab.serialConfig {
             do {
                 let ptySession = try SerialPortService.shared.openSession(
@@ -198,7 +208,7 @@ extension SessionManager {
                         }
                     }
                 )
-                pane.ptySession = ptySession
+                adoptOrClose(ptySession)
             } catch {
                 Log.session.error("[SPLIT] Failed to open serial PTY: \(error.localizedDescription)")
             }
@@ -208,7 +218,7 @@ extension SessionManager {
         guard let service = tab.session?.sshService else { return }
         do {
             let ptySession = try await service.openPTY()
-            pane.ptySession = ptySession
+            adoptOrClose(ptySession)
         } catch {
             Log.session.error("[SPLIT] Failed to open PTY for new pane: \(error.localizedDescription)")
         }
@@ -251,6 +261,8 @@ extension SessionManager {
         let direction: TabLayout.SplitDirection = position.isHorizontal ? .horizontal : .vertical
         let insertPosition: TabLayout.PaneInsertPosition = (position == .left || position == .top) ? .before : .after
         let newPane = targetTab.layout.insertPane(direction: direction, at: insertPosition)
+        // Keep tab.activePaneID in sync with the layout's single source of truth
+        targetTab.activePaneID = targetTab.layout.activePaneID
 
         // Set new pane title to source tab name
         newPane.title = sourceTab.hostItem.name

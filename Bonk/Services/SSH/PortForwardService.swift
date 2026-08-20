@@ -16,7 +16,9 @@ final class PortForwardService {
     private let logger = Logger(subsystem: "com.bonk", category: "PortForward")
 
     /// Active port forwardings — stores the running Task and its config.
-    private var activeTasks: [UUID: (task: Task<Void, Never>, config: PortForward)] = [:]
+    /// The task is nil while a forward is still being started (claimed slot),
+    /// so stop()/stopAll() can cancel an in-flight start too.
+    private var activeTasks: [UUID: (task: Task<Void, Never>?, config: PortForward)] = [:]
     /// OpenSSH process handles.
     private var openSSHHandles: [UUID: OpenSSHForwardHandle] = [:]
 
@@ -42,6 +44,12 @@ final class PortForwardService {
             throw PortForwardError.serviceUnavailable
         }
 
+        // Claim the slot BEFORE the first await. stop()/stopAll() and a
+        // concurrent start for the same config then see this entry instead of
+        // racing us: stop removes the claim (cancelling the pending start
+        // below), a second start fails with alreadyRunning.
+        activeTasks[config.id] = (task: nil, config: config)
+
         let forward = SSHPortForwardConfiguration(
             type: {
                 switch config.type {
@@ -55,25 +63,38 @@ final class PortForwardService {
             remoteHost: config.remoteHost,
             remotePort: config.remotePort
         )
-        let handle = try await sshService.startPortForward(forward, onExit: {})
-        let task = Task {
-            await handle.waitUntilExit()
-            await MainActor.run {
-                config.isActive = false
-                self.activeTasks.removeValue(forKey: config.id)
-                self.openSSHHandles.removeValue(forKey: config.id)
+
+        do {
+            let handle = try await sshService.startPortForward(forward, onExit: {})
+            // stop()/stopAll() may have removed our claim while we awaited;
+            // close the freshly spawned tunnel so it does not outlive us.
+            guard activeTasks[config.id] != nil else {
+                handle.close()
+                throw PortForwardError.alreadyRunning
             }
+            let task = Task {
+                await handle.waitUntilExit()
+                await MainActor.run {
+                    config.isActive = false
+                    self.activeTasks.removeValue(forKey: config.id)
+                    self.openSSHHandles.removeValue(forKey: config.id)
+                }
+            }
+            activeTasks[config.id] = (task: task, config: config)
+            openSSHHandles[config.id] = handle
+            config.isActive = true
+            logger.info("Started OpenSSH port forwarding: \(config.displayDescription)")
+        } catch {
+            // Release the claim on failure (keep the original error).
+            activeTasks.removeValue(forKey: config.id)
+            throw error
         }
-        activeTasks[config.id] = (task: task, config: config)
-        openSSHHandles[config.id] = handle
-        config.isActive = true
-        logger.info("Started OpenSSH port forwarding: \(config.displayDescription)")
     }
 
     /// Stop a port forwarding.
     func stop(config: PortForward) {
         guard let entry = activeTasks[config.id] else { return }
-        entry.task.cancel()
+        entry.task?.cancel()
         activeTasks.removeValue(forKey: config.id)
         openSSHHandles.removeValue(forKey: config.id)?.close()
         config.isActive = false
@@ -83,7 +104,7 @@ final class PortForwardService {
     /// Stop all port forwardings.
     func stopAll() {
         for (_, entry) in activeTasks {
-            entry.task.cancel()
+            entry.task?.cancel()
             entry.config.isActive = false
         }
         activeTasks.removeAll()

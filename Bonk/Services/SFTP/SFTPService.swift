@@ -274,6 +274,10 @@ final class SFTPService {
         // for some file types or SFTP servers. Read until EOF.
         try await withThrowingTaskGroup(of: (UInt64, Data).self) { group in
             while !readDone || inFlight > 0 {
+                // Honor user cancellation (same pattern as writeChunks).
+                let isCancelled = transfers.first(where: { $0.id == transferID })?.isCancelled ?? false
+                if isCancelled { throw SFTPServiceError.transferCancelled }
+
                 // Top up the read pipeline
                 while !readDone && inFlight < pipelineDepth {
                     let readOffset = nextReadOffset
