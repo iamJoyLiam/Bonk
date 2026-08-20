@@ -28,13 +28,18 @@ enum LogColorizer {
         while lineStart < text.endIndex {
             let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
             let line = String(text[lineStart..<lineEnd])
-            result += colorizeLine(line)
+            // Only colorize COMPLETE lines (terminated by \n). A chunk may end
+            // in the middle of a line; the tail half is either a fragment of a
+            // server escape sequence or will be completed by the next chunk —
+            // injecting SGR into it can corrupt the terminal's escape state.
+            // The completed line gets colorized when its final piece arrives.
             if lineEnd < text.endIndex {
+                result += colorizeLine(line)
                 result += "\n"
-                lineStart = text.index(after: lineEnd)
             } else {
-                lineStart = lineEnd
+                result += line
             }
+            lineStart = lineEnd == text.endIndex ? lineEnd : text.index(after: lineEnd)
         }
         return result
     }
