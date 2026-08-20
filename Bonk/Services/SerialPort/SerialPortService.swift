@@ -86,6 +86,11 @@ final class SerialPortService {
     private static let iossIOSpeed64Request: UInt = 0x8008_5402
     private static let iossIOSpeed32Request: UInt = 0x8004_5402
 
+    /// Currently open serial ports (path → session). USB drivers often do not
+    /// report EBUSY on a second open(), so without this guard two panes could
+    /// read the same data stream twice (duplicate output, interleaved writes).
+    private var openPorts: [String: WeakRefBox<PTYSession>] = [:]
+
     private init() {}
 
     // MARK: - Port Scanning
@@ -205,6 +210,11 @@ final class SerialPortService {
             throw SerialPortError.portNotFound(path)
         }
 
+        // Reject a second open of the same device while a live session exists.
+        if let existing = openPorts[path]?.value, !existing.isClosed {
+            throw SerialPortError.portInUse(path)
+        }
+
         let fileDescriptor = open(path, O_RDWR | O_NOCTTY | O_NONBLOCK)
         guard fileDescriptor >= 0 else {
             throw SerialPortError.openFailed(path, String(cString: strerror(errno)))
@@ -220,6 +230,7 @@ final class SerialPortService {
         let session = PTYSession()
         session.onUnexpectedClose = onDisconnect
         session.startSerial(fileDescriptor: fileDescriptor)
+        openPorts[path] = WeakRefBox(session)
         logger.info("Opened serial port: \(path, privacy: .public)")
         return session
     }
@@ -418,6 +429,7 @@ enum SerialPortError: LocalizedError {
     case openFailed(String, String)
     case configureFailed(String)
     case writeFailed(String)
+    case portInUse(String)
 
     var errorDescription: String? {
         switch self {
@@ -429,6 +441,14 @@ enum SerialPortError: LocalizedError {
             "Failed to configure serial port: \(reason)"
         case let .writeFailed(reason):
             "Failed to write to serial port: \(reason)"
+        case let .portInUse(path):
+            "Serial port already in use: \(path)"
         }
     }
+}
+
+/// A weak reference box so the port map does not retain sessions.
+private final class WeakRefBox<T: AnyObject> {
+    weak var value: T?
+    init(_ value: T) { self.value = value }
 }

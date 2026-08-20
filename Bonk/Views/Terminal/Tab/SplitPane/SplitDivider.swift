@@ -15,11 +15,15 @@ struct SplitDivider: View {
     enum Direction { case horizontal, vertical }
 
     let direction: Direction
-    /// Reports the drag translation in points (horizontal split → x, vertical
-    /// split → y). The container converts it into a fraction change.
+    /// Reports the drag translation INCREMENT in points (horizontal split →
+    /// x, vertical split → y). The container converts it into a fraction
+    /// change. Increments (not cumulative translation) keep the math correct
+    /// when the container re-renders mid-drag with a fresh fraction snapshot.
     var onResize: (CGFloat) -> Void = { _ in }
 
     private var hitDimension: CGFloat { 8 }
+
+    @State private var lastOffset: CGFloat = 0
 
     var body: some View {
         Rectangle()
@@ -46,14 +50,19 @@ struct SplitDivider: View {
                     NSCursor.pop()
                 }
             }
-            .gesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { value in
-                        switch direction {
-                        case .horizontal: onResize(value.translation.width)
-                        case .vertical: onResize(value.translation.height)
-                        }
-                    }
-            )
+.gesture(
+            DragGesture(minimumDistance: 1)
+                .onChanged { value in
+                    let current = direction == .horizontal
+                        ? value.translation.width
+                        : value.translation.height
+                    let delta = current - lastOffset
+                    lastOffset = current
+                    onResize(delta)
+                }
+                .onEnded { _ in
+                    lastOffset = 0
+                }
+        )
     }
 }

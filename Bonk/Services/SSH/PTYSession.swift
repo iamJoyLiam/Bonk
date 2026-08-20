@@ -474,6 +474,12 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         return Array(lines.suffix(maxLines)).joined(separator: "")
     }
 
+    /// Whether this session has been closed (user-initiated or via reader EOF).
+    public var isClosed: Bool {
+        if userClosedBox.withLockedValue({ $0 }) { return true }
+        return serialFDBox.withLockedValue { $0 } < 0
+    }
+
     /// Gracefully close the PTY session.
     public func close() {
         // Mark user-initiated FIRST so the reader task (cancelled below) does

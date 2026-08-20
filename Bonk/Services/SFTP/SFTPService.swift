@@ -23,6 +23,16 @@ final class SFTPService {
     #if os(macOS)
         private var openSSHSFTPClient: OpenSSHSFTPClient?
     #endif
+    /// Monotonic counter for listDirectory: a stale result (background
+    /// refresh finishing after the user navigated) must not overwrite the
+    /// newer listing.
+    private var listRequestSequence = 0
+
+    /// Claim the next list request id.
+    private func beginListRequest() -> Int {
+        listRequestSequence += 1
+        return listRequestSequence
+    }
 
     init() {}
 
@@ -98,7 +108,9 @@ final class SFTPService {
                 }
 
                 let targetPath = path ?? self.currentPath
+                let requestID = self.beginListRequest()
                 var result = try await sftp.listDirectory(at: targetPath)
+                guard requestID == self.listRequestSequence else { return }
                 result.sort {
                     if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
                     return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
@@ -124,7 +136,9 @@ final class SFTPService {
         }
 
         let targetPath = path ?? self.currentPath
+        let requestID = beginListRequest()
         let names = try await sftp.listDirectory(atPath: targetPath)
+        guard requestID == listRequestSequence else { return }
 
         var result: [SFTPFileEntry] = []
         for name in names {
@@ -153,6 +167,7 @@ final class SFTPService {
             if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
             return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
+        guard requestID == listRequestSequence else { return }
 
         entries = result
         currentPath = targetPath
