@@ -50,8 +50,9 @@ public actor SSHSessionCoordinator {
         public let backend: SSHBackendType
         public let reason: SSHBackendReason
         public let isValid: Bool
-        public init(backend: SSHBackendType, reason: SSHBackendReason, isValid: Bool = true) {
-            self.backend = backend; self.reason = reason; self.isValid = isValid
+        public let algorithms: SSHAlgorithmRequirements?
+        public init(backend: SSHBackendType, reason: SSHBackendReason, isValid: Bool = true, algorithms: SSHAlgorithmRequirements? = nil) {
+            self.backend = backend; self.reason = reason; self.isValid = isValid; self.algorithms = algorithms
         }
     }
 

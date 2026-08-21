@@ -79,6 +79,8 @@ public actor SSHNetworkService {
     public private(set) var pendingPTYSession: PTYSession?
 
     private let hostKeyStore: any SSHHostKeyStore
+    // VNext — forced backend for Hybrid routing (T2.2). When set, overrides shouldUseOpenSSH.
+    private var vnextForcedBackend: SSHBackendType?
 
     public init(hostKeyStore: some SSHHostKeyStore) {
         self.hostKeyStore = hostKeyStore
@@ -685,12 +687,20 @@ public actor SSHNetworkService {
 
     #if os(macOS)
         private func shouldUseOpenSSH(_ method: SSHAuthMethod) -> Bool {
+            if let forced = vnextForcedBackend {
+                return forced == .compatibility
+            }
             switch method {
             case .secureEnclaveKey:
                 return false
             case .password, .privateKey, .certificate:
                 return true
             }
+        }
+
+        /// VNext: force next connect to use a specific backend (T2.2).
+        public func setVNextPreferredBackend(_ backend: SSHBackendType?) {
+            vnextForcedBackend = backend
         }
     #endif
 

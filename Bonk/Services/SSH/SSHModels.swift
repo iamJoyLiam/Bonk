@@ -18,6 +18,8 @@ public struct SSHConnectionConfig: Sendable, Hashable {
     public let jumpHost: SSHJumpHostConfig?
     public let maxReconnectAttempts: Int
     public let baseReconnectDelay: Duration
+    /// VNext — per-endpoint algorithm overrides for legacy hosts (T3.1). Nil = system defaults.
+    public let algorithmRequirements: SSHAlgorithmRequirements?
 
     public init(
         host: String,
@@ -26,7 +28,8 @@ public struct SSHConnectionConfig: Sendable, Hashable {
         authMethod: SSHAuthMethod,
         jumpHost: SSHJumpHostConfig? = nil,
         maxReconnectAttempts: Int = 5,
-        baseReconnectDelay: Duration = .seconds(1)
+        baseReconnectDelay: Duration = .seconds(1),
+        algorithmRequirements: SSHAlgorithmRequirements? = nil
     ) {
         self.host = host
         self.port = port
@@ -35,6 +38,7 @@ public struct SSHConnectionConfig: Sendable, Hashable {
         self.jumpHost = jumpHost
         self.maxReconnectAttempts = maxReconnectAttempts
         self.baseReconnectDelay = baseReconnectDelay
+        self.algorithmRequirements = algorithmRequirements
     }
 }
 

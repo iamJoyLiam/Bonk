@@ -522,6 +522,10 @@ final class OpenSSHBackend: @unchecked Sendable {
         // Keep modern host-key algorithms first, but retain compatibility with
         // legacy JumpServer/OpenSSH servers that advertise only ssh-rsa.
         args += legacyRSACompatibilityArguments()
+        // VNext T3.1 — per-endpoint legacy algorithms (only for this host, not global)
+        if let req = config.algorithmRequirements, !req.isEmpty {
+            args += algorithmRequirementsArguments(req)
+        }
         args += authenticationArguments(for: config.authMethod)
 
         if let proxyCommand = jumpProxyCommand(attemptID: attemptID) {
@@ -552,6 +556,24 @@ final class OpenSSHBackend: @unchecked Sendable {
             "-o", "HostKeyAlgorithms=+ssh-rsa",
             "-o", "PubkeyAcceptedAlgorithms=+ssh-rsa",
         ]
+    }
+
+    /// VNext T3.1 — per-endpoint algorithm overrides (only for this host).
+    private func algorithmRequirementsArguments(_ req: SSHAlgorithmRequirements) -> [String] {
+        var args: [String] = []
+        if !req.kex.isEmpty {
+            args += ["-o", "KexAlgorithms=+\(req.kex.joined(separator: ","))"]
+        }
+        if !req.hostKey.isEmpty {
+            args += ["-o", "HostKeyAlgorithms=+\(req.hostKey.joined(separator: ","))"]
+        }
+        if !req.cipher.isEmpty {
+            args += ["-o", "Ciphers=+\(req.cipher.joined(separator: ","))"]
+        }
+        if !req.mac.isEmpty {
+            args += ["-o", "MACs=+\(req.mac.joined(separator: ","))"]
+        }
+        return args
     }
 
     func makeAuthResponder(

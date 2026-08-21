@@ -43,6 +43,11 @@ final class SessionManager {
     // full native-first wiring lands in T2.2.
     private let vnextCoordinator = SSHSessionCoordinator()
 
+    private var vnextProfileStore: SSHProfileStore? {
+        guard let ctx = modelContext else { return nil }
+        return SSHProfileStore(context: ctx)
+    }
+
     init(viewCache: TerminalViewCache = .shared) {
         self.viewCache = viewCache
     }
@@ -202,9 +207,15 @@ final class SessionManager {
             )
         }
 
-        // VNext routing decision (T2.1: log only, no behavior change yet)
+        // VNext routing decision (T2.2: native-first live, T4.1: cached profile)
         let vnextReq = SSHRequirementsMapper.requirements(from: config)
-        let vnextDecision = await vnextCoordinator.resolve(request: SSHConnectionRequest(requirements: vnextReq))
+        let vnextCached: SSHSessionCoordinator.CachedProfile? = {
+            guard let p = vnextProfileStore?.profile(for: vnextReq), p.isValid,
+                  let backend = p.backendType, let reason = p.reason else { return nil }
+            Log.session.info("[VNext] Cache hit: \(p.backendRaw)/\(p.reasonRaw) — \(p.host):\(p.port)")
+            return SSHSessionCoordinator.CachedProfile(backend: backend, reason: reason, isValid: true, algorithms: p.algorithmRequirements)
+        }()
+        let vnextDecision = await vnextCoordinator.resolve(request: SSHConnectionRequest(requirements: vnextReq), cachedProfile: vnextCached)
         switch vnextDecision {
         case .native:
             Log.session.info("[VNext] Decision: native — \(config.host):\(config.port) auth=\(String(describing: vnextReq.authentication))")
@@ -214,7 +225,37 @@ final class SessionManager {
             Log.session.info("[VNext] Decision: nativeWithCompatibilityFallback — \(config.host):\(config.port) (will try Native, fallback on compatibility failure)")
         }
 
-        let service = SSHNetworkService(hostKeyStore: hostKeyStore)
+        var service: SSHNetworkService
+        // Helper to create a service with forced backend
+        func makeService(forced: SSHBackendType?) async -> SSHNetworkService {
+            let s = SSHNetworkService(hostKeyStore: hostKeyStore)
+            #if os(macOS)
+            await s.setVNextPreferredBackend(forced)
+            #endif
+            return s
+        }
+
+        // Decide initial service
+        let initialForced: SSHBackendType? = {
+            switch vnextDecision {
+            case .native: return .native
+            case .compatibility: return .compatibility
+            case .nativeWithCompatibilityFallback: return .native
+            }
+        }()
+        // VNext T4.1 — apply cached algorithms for direct Compatibility
+        var effectiveConfig = config
+        if case .compatibility = vnextDecision, let algos = vnextCached?.algorithms, !algos.isEmpty {
+            effectiveConfig = SSHConnectionConfig(
+                host: config.host, port: config.port, username: config.username,
+                authMethod: config.authMethod, jumpHost: config.jumpHost,
+                maxReconnectAttempts: config.maxReconnectAttempts,
+                baseReconnectDelay: config.baseReconnectDelay,
+                algorithmRequirements: algos
+            )
+            Log.session.info("[VNext] Using cached compat algorithms: kex=\(algos.kex)")
+        }
+        service = await makeService(forced: initialForced)
         session.sshService = service
         observeStateChanges(for: tab, session: session, service: service)
 
@@ -228,8 +269,66 @@ final class SessionManager {
             }
         }
 
+        var vnextDidFallback = false
+        var vnextFallbackAlgorithms: SSHAlgorithmRequirements? = nil
+        var vnextFallbackReason: SSHBackendReason = .kexMismatch
         do {
-            try await service.connect(config: config)
+            do {
+                try await service.connect(config: effectiveConfig)
+            } catch {
+                // Single compatibility fallback for nativeWithCompatibilityFallback
+                guard case .nativeWithCompatibilityFallback = vnextDecision else { throw error }
+                let phase: SSHProtocolPhase = {
+                    let m = (error.localizedDescription + " " + String(describing: error)).lowercased()
+                    if m.contains("keyexchangenegotiationfailure") || m.contains("no matching") { return .keyExchange }
+                    if m.contains("host key") { return .hostKeyVerification }
+                    if m.contains("permission denied") || m.contains("no supported authentication") { return .userAuthentication }
+                    return .keyExchange
+                }()
+                let ctx = SSHFailureContext(phase: phase, underlyingError: error, endpoint: vnextReq.endpoint)
+                let classification = NativeErrorClassifier().classify(ctx)
+                guard classification.canFallbackToCompatibility else { throw error }
+                Log.session.info("[VNext] Native failed (\(classification.rawValue)) — falling back to Compatibility: \(error.localizedDescription)")
+                // VNext T3.1 — infer per-endpoint algorithms for this host
+                let compatConfig: SSHConnectionConfig = {
+                    if let req = Self.inferAlgorithmRequirements(from: error), !req.isEmpty {
+                        Log.session.info("[VNext] Inferred compat algorithms: kex=\(req.kex) hostKey=\(req.hostKey)")
+                        vnextFallbackAlgorithms = req
+                        return SSHConnectionConfig(
+                            host: config.host, port: config.port, username: config.username,
+                            authMethod: config.authMethod, jumpHost: config.jumpHost,
+                            maxReconnectAttempts: config.maxReconnectAttempts,
+                            baseReconnectDelay: config.baseReconnectDelay,
+                            algorithmRequirements: req
+                        )
+                    }
+                    return config
+                }()
+                vnextDidFallback = true
+                vnextFallbackReason = {
+                    switch classification {
+                    case .protocolCompatibility:
+                        if phase == .hostKeyVerification { return .hostKeyMismatch }
+                        if phase == .keyExchange { return .kexMismatch }
+                        return .kexMismatch
+                    case .backendCapability: return .noKbdInteractive
+                    default: return .kexMismatch
+                    }
+                }()
+                // New service for Compatibility (clean state)
+                let compatService = await makeService(forced: .compatibility)
+                session.sshService = compatService
+                // Also observe new service
+                observeStateChanges(for: tab, session: session, service: compatService)
+                await compatService.setManualPasswordHandler { [weak tab] password in
+                    Task { @MainActor in
+                        tab?.hostItem.updateSavedPassword(password)
+                        Log.session.info("[CONNECT] Manual password accepted (compat); saved credential updated")
+                    }
+                }
+                try await compatService.connect(config: compatConfig)
+                service = compatService
+            }
 
             guard tabs.contains(where: { $0.id == tab.id }) else { return }
 
@@ -249,6 +348,24 @@ final class SessionManager {
             // it to the credential source (vault credential or host entry).
             if let override = passwordOverride, !override.isEmpty {
                 persistPassword(override, for: tab)
+            }
+            // VNext T4.1 — save successful backend to profile cache
+            if let store = vnextProfileStore {
+                let (backend, reason, algos): (SSHBackendType, SSHBackendReason, SSHAlgorithmRequirements?) = {
+                    switch vnextDecision {
+                    case .native: return (.native, .modern, nil)
+                    case .compatibility(let r): return (.compatibility, r, effectiveConfig.algorithmRequirements)
+                    case .nativeWithCompatibilityFallback:
+                        if vnextDidFallback {
+                            return (.compatibility, vnextFallbackReason, vnextFallbackAlgorithms)
+                        } else {
+                            return (.native, .modern, nil)
+                        }
+                    }
+                }()
+                let classification: SSHFailureClassification? = vnextDidFallback ? .protocolCompatibility : nil
+                store.save(vnextReq, backend: backend, reason: reason, classification: classification, algorithms: algos)
+                Log.session.info("[VNext] Profile saved: \(backend.rawValue)/\(reason.rawValue) — \(config.host):\(config.port)")
             }
             Log.session.info("[CONNECT] PTY session established successfully")
         } catch {
@@ -273,6 +390,42 @@ final class SessionManager {
             tab.hostItem.updateSavedPassword(password)
             Log.session.info("[CRED] Updated host-embedded password for \(tab.hostItem.name, privacy: .public)")
         }
+    }
+
+    /// VNext T3.1 — infer legacy algorithms needed for Compatibility fallback.
+    /// Checks error message for known algorithm names; falls back to a minimal
+    /// legacy bundle for generic negotiation failures.
+    static func inferAlgorithmRequirements(from error: Error) -> SSHAlgorithmRequirements? {
+        let msg = (error.localizedDescription + " " + String(describing: error)).lowercased()
+        // If not a negotiation failure, no algorithm hint
+        guard msg.contains("keyexchangenegotiationfailure") || msg.contains("no matching")
+            || msg.contains("invalidhostkeyforkeyexchange") || msg.contains("unsupportedversion") else {
+            return nil
+        }
+        var kex: [String] = []
+        var hostKey: [String] = []
+        var cipher: [String] = []
+        var mac: [String] = []
+        // Specific hints in message
+        if msg.contains("diffie-hellman-group1-sha1") { kex.append("diffie-hellman-group1-sha1") }
+        if msg.contains("diffie-hellman-group14-sha1") { kex.append("diffie-hellman-group14-sha1") }
+        if msg.contains("group-exchange") { kex.append("diffie-hellman-group-exchange-sha1") }
+        if msg.contains("ssh-rsa") { hostKey.append("ssh-rsa") }
+        if msg.contains("ssh-dss") { hostKey.append("ssh-dss") }
+        if msg.contains("aes128-cbc") { cipher.append("aes128-cbc") }
+        if msg.contains("3des") { cipher.append("3des-cbc") }
+        // Generic fallback for legacy bastion (covers H3C / old OpenSSH)
+        if kex.isEmpty && hostKey.isEmpty && cipher.isEmpty {
+            // Minimal legacy bundle — only added for this host via Compatibility path
+            return SSHAlgorithmRequirements(
+                kex: ["diffie-hellman-group1-sha1", "diffie-hellman-group14-sha1"],
+                hostKey: ["ssh-rsa"],
+                cipher: [],
+                mac: []
+            )
+        }
+        let req = SSHAlgorithmRequirements(kex: kex, hostKey: hostKey, cipher: cipher, mac: mac)
+        return req.isEmpty ? nil : req
     }
 
     /// Remove stale ControlMaster sockets for a host so a reconnection starts

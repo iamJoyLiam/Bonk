@@ -27,6 +27,7 @@ struct BonkApp: App {
             HostItem.self, UserPreferences.self, Credential.self, HostGroup.self,
             AIConversationRecord.self, AIMessageRecord.self, AIProviderRecord.self,
             Snippet.self, PortForward.self, JumpHost.self, InlineSuggestionRecord.self,
+            SSHBackendProfile.self,
         ])
         #if DEBUG
             let config = ModelConfiguration("Bonk-Dev", schema: schema, isStoredInMemoryOnly: false)
