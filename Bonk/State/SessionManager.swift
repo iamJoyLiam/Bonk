@@ -112,15 +112,21 @@ final class SessionManager {
         activeTabID = id
     }
 
-    /// Move a tab relative to another tab (for drop-target reordering).
-    /// The dragged tab swaps with the target tab.
+    /// Move a tab relative to another tab — Ghostty-style insert.
+    /// Dragging left→right inserts *after* target, right→left inserts *before*.
     func moveTab(_ tabID: UUID, relativeTo targetID: UUID) {
         guard let sourceIndex = tabs.firstIndex(where: { $0.id == tabID }),
               let targetIndex = tabs.firstIndex(where: { $0.id == targetID }),
               sourceIndex != targetIndex
         else { return }
 
-        tabs.swapAt(sourceIndex, targetIndex)
+        let tab = tabs.remove(at: sourceIndex)
+        guard let newTargetIndex = tabs.firstIndex(where: { $0.id == targetID }) else {
+            tabs.append(tab)
+            return
+        }
+        let insertIndex = sourceIndex < targetIndex ? newTargetIndex + 1 : newTargetIndex
+        tabs.insert(tab, at: insertIndex)
     }
 
     func closeTab(_ id: UUID) async {

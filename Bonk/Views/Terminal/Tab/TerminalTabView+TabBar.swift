@@ -16,6 +16,7 @@ extension TerminalTabView {
                 HStack(spacing: 6) {
                     ForEach(sessionManager.tabs) { tab in
                         tabCapsule(tab)
+                            .matchedGeometryEffect(id: tab.id, in: tabNamespace)
                             .contextMenu { tabContextMenu(tab) }
                     }
 
@@ -29,8 +30,27 @@ extension TerminalTabView {
                             .frame(width: 24, height: 24)
                     }
                     .buttonStyle(.plain)
+
+                    // Trailing drop zone — drag to end of bar
+                    if sessionManager.tabs.count > 1 {
+                        Color.clear
+                            .frame(width: 40, height: 24)
+                            .contentShape(Rectangle())
+                            .dropDestination(for: String.self) { items, _ in
+                                guard let draggedIDString = items.first,
+                                      let draggedID = UUID(uuidString: draggedIDString),
+                                      let sourceIndex = sessionManager.tabs.firstIndex(where: { $0.id == draggedID })
+                                else { return false }
+                                let targetIndex = sessionManager.tabs.count - 1
+                                if sourceIndex != targetIndex {
+                                    let tab = sessionManager.tabs.remove(at: sourceIndex)
+                                    sessionManager.tabs.append(tab)
+                                }
+                                return true
+                            }
+                    }
                 }
-                .animation(.spring(response: 0.35, dampingFraction: 0.7), value: sessionManager.tabs.map(\.id))
+                .animation(.smooth(duration: 0.22, extraBounce: 0), value: sessionManager.tabs.map(\.id))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
             }

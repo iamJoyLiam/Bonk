@@ -43,6 +43,7 @@ struct TerminalTabView: View {
     @State var selectionObserver: NSObjectProtocol?
     @State var showQuickConnect = false
     @State private var copyMessage: String?
+    @Namespace var tabNamespace
 
     var body: some View {
         mainView
