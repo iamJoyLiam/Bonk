@@ -483,7 +483,7 @@
   "ssh_no_profile": "No cached profile. Next connect will probe Native first.",
   "ssh_redetect": "Re-detect",
   "ssh_always_compatibility": "Always Use Compatibility Mode",
-  "ssh_always_compatibility_desc": "When enabled, always use system OpenSSH for this host",
+  "ssh_always_compatibility_desc": "Compatible with legacy key exchange algorithms",
   "ssh_fingerprint": "Fingerprint",
   "ssh_algorithms": "Algorithms",
   "ssh_profile_valid": "Valid",

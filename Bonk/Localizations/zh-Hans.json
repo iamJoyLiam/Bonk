@@ -483,7 +483,7 @@
   "ssh_no_profile": "暂无缓存，下次连接将优先尝试 Native。",
   "ssh_redetect": "重新探测",
   "ssh_always_compatibility": "始终使用兼容模式",
-  "ssh_always_compatibility_desc": "开启后直接使用系统 OpenSSH",
+  "ssh_always_compatibility_desc": "兼容旧版密钥交换算法",
   "ssh_fingerprint": "指纹",
   "ssh_algorithms": "算法",
   "ssh_profile_valid": "有效",
