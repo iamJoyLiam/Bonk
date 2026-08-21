@@ -10,51 +10,58 @@ import UniformTypeIdentifiers
 
 extension TerminalTabView {
     var tabBar: some View {
-        HStack(spacing: 0) {
-            // Tab area
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(sessionManager.tabs) { tab in
-                        tabCapsule(tab)
-                            .matchedGeometryEffect(id: tab.id, in: tabNamespace)
-                            .contextMenu { tabContextMenu(tab) }
-                    }
-
-                    // + button at the end of tabs
-                    Button {
-                        showQuickConnect = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 24, height: 24)
-                    }
-                    .buttonStyle(.plain)
-
-                    // Trailing drop zone — drag to end of bar
-                    if sessionManager.tabs.count > 1 {
-                        Color.clear
-                            .frame(width: 40, height: 24)
-                            .contentShape(Rectangle())
-                            .dropDestination(for: String.self) { items, _ in
-                                guard let draggedIDString = items.first,
-                                      let draggedID = UUID(uuidString: draggedIDString),
-                                      let sourceIndex = sessionManager.tabs.firstIndex(where: { $0.id == draggedID })
-                                else { return false }
-                                let targetIndex = sessionManager.tabs.count - 1
-                                if sourceIndex != targetIndex {
-                                    let tab = sessionManager.tabs.remove(at: sourceIndex)
-                                    sessionManager.tabs.append(tab)
-                                }
-                                return true
-                            }
-                    }
+        ViewThatFits(in: .horizontal) {
+            // Fits: tabs + plus inline — leading, not centered
+            HStack(spacing: 6) {
+                ForEach(sessionManager.tabs) { tab in
+                    tabCapsule(tab)
+                        .matchedGeometryEffect(id: tab.id, in: tabNamespace)
+                        .contextMenu { tabContextMenu(tab) }
                 }
-                .animation(.smooth(duration: 0.22, extraBounce: 0), value: sessionManager.tabs.map(\.id))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                plusButton
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(.smooth(duration: 0.22, extraBounce: 0), value: sessionManager.tabs.map(\.id))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+
+            // Overflow: scroll tabs, plus固定右端
+            HStack(spacing: 0) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(sessionManager.tabs) { tab in
+                            tabCapsule(tab)
+                                .matchedGeometryEffect(id: tab.id, in: tabNamespace)
+                                .contextMenu { tabContextMenu(tab) }
+                        }
+                        if sessionManager.tabs.count > 1 {
+                            Color.clear
+                                .frame(width: sessionManager.draggingTabID != nil ? 12 : 0, height: 24)
+                                .contentShape(Rectangle())
+                                .dropDestination(for: String.self) { items, _ in
+                                    guard let draggedIDString = items.first,
+                                          let draggedID = UUID(uuidString: draggedIDString),
+                                          let sourceIndex = sessionManager.tabs.firstIndex(where: { $0.id == draggedID })
+                                    else { return false }
+                                    let targetIndex = sessionManager.tabs.count - 1
+                                    if sourceIndex != targetIndex {
+                                        let tab = sessionManager.tabs.remove(at: sourceIndex)
+                                        sessionManager.tabs.append(tab)
+                                    }
+                                    return true
+                                }
+                        }
+                    }
+                    .animation(.smooth(duration: 0.22, extraBounce: 0), value: sessionManager.tabs.map(\.id))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 8)
+                }
+                Divider().frame(height: 24).padding(.horizontal, 4)
+                plusButton
+                    .padding(.trailing, 6)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: 44)
         .background {
             Rectangle()
@@ -69,6 +76,28 @@ extension TerminalTabView {
             )
             .environment(i18n)
         }
+    }
+
+    private var plusButton: some View {
+        Button {
+            showQuickConnect = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(isHoverPlus ? .primary : .secondary)
+                .frame(width: 28, height: 28)
+                .background {
+                    if isHoverPlus {
+                        Circle().fill(Color.primary.opacity(0.10))
+                    } else {
+                        Circle().fill(Color.primary.opacity(0.06))
+                    }
+                }
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help("New Tab")
+        .onHover { isHoverPlus = $0 }
     }
 
     // MARK: - Tab Capsule
