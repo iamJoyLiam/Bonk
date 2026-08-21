@@ -329,6 +329,18 @@ enum LKey: String, CaseIterable {
 
     /// Keyboard shortcut action names
     case actionNewTerminal = "action_new_terminal"
+    case actionCloseTab = "action_close_tab"
+    case actionClosePane = "action_close_pane"
+    case actionNextTab = "action_next_tab"
+    case actionPreviousTab = "action_previous_tab"
+    case actionFind = "action_find"
+    case actionSettings = "action_settings"
+    case actionReconnect = "action_reconnect"
+    case actionClearTerminal = "action_clear_terminal"
+    case actionSplitHorizontal = "action_split_horizontal"
+    case actionSplitVertical = "action_split_vertical"
+    case actionSftpBrowser = "action_sftp_browser"
+    case actionAiAssistant = "action_ai_assistant"
 
     // Command History
     case commandHistory = "command_history"
