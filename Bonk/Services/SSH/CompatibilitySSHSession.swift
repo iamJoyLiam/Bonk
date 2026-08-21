@@ -54,6 +54,18 @@ private final class OpenSSHPTYAdapter: SSHPTYChannel, @unchecked Sendable {
 private final class OpenSSHSFTPAdapter: SFTPChannel {
     private let client: OpenSSHSFTPClient
     init(client: OpenSSHSFTPClient) { self.client = client }
+
+    func realPath() async throws -> String { try await client.realPath() }
+    func listDirectory(at path: String) async throws -> [SFTPFileEntry] { try await client.listDirectory(at: path) }
+    func createDirectory(at path: String) async throws { try await client.createDirectory(at: path) }
+    func remove(at path: String, isDirectory: Bool) async throws { try await client.remove(at: path, isDirectory: isDirectory) }
+    func upload(_ localURL: URL, to remotePath: String, operationID: UUID, onProgress: @escaping @Sendable (Double) -> Void) async throws {
+        try await client.upload(localURL, to: remotePath, operationID: operationID, onProgress: onProgress)
+    }
+    func download(_ remotePath: String, to localURL: URL, operationID: UUID, onProgress: @escaping @Sendable (Double) -> Void) async throws {
+        try await client.download(remotePath, to: localURL, operationID: operationID, onProgress: onProgress)
+    }
+    func fileExists(at path: String) async -> Bool { await client.fileExists(at: path) }
     func close() async { client.close() }
 }
 #endif

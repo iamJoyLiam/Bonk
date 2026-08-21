@@ -11,6 +11,7 @@ final class TerminalSession {
     var ptySession: PTYSession?
     var sftpService: SFTPService?
     private var sftpConnectionTask: Task<SFTPService, Error>?
+    var vnextSession: (any SSHSession)?
     var sftpErrorMessage: String?
     var outputStream: AsyncStream<String>?
     var connectedAt: Date?
@@ -47,6 +48,27 @@ final class TerminalSession {
             return try? await sftpConnectionTask.value
         }
 
+        // VNext T5 — prefer unified session if available (single-connection multiplex)
+        if let vnextSession {
+            sftpErrorMessage = nil
+            let task = Task { @MainActor in
+                let service = SFTPService()
+                try await service.connect(using: vnextSession)
+                return service
+            }
+            sftpConnectionTask = task
+            defer { sftpConnectionTask = nil }
+            do {
+                let service = try await task.value
+                sftpService = service
+                sftpErrorMessage = nil
+                return service
+            } catch {
+                sftpErrorMessage = error.localizedDescription
+                return nil
+            }
+        }
+
         guard let sshService else { return nil }
 
         sftpErrorMessage = nil
@@ -78,6 +100,7 @@ final class TerminalSession {
         sftpConnectionTask = nil
         sftpService = nil
         sftpErrorMessage = nil
+        vnextSession = nil
         ptySession?.close()
         ptySession = nil
         // Only disconnect SSH service if this session owns it

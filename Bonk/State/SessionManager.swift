@@ -330,6 +330,11 @@ final class SessionManager {
                 service = compatService
             }
 
+            // VNext T5 — vend unified session for SFTP multiplexing
+            if let vnext = await service.makeVNextSession(endpoint: SSHEndpoint(host: config.host, port: config.port)) {
+                session.vnextSession = vnext
+            }
+
             guard tabs.contains(where: { $0.id == tab.id }) else { return }
 
             await service.enableReconnection(attempts: 3)

@@ -23,6 +23,7 @@ final class SFTPService {
     #if os(macOS)
         private var openSSHSFTPClient: OpenSSHSFTPClient?
     #endif
+    private var vnextChannel: (any SFTPChannel)?
     /// Monotonic counter for listDirectory: a stale result (background
     /// refresh finishing after the user navigated) must not overwrite the
     /// newer listing.
@@ -93,8 +94,43 @@ final class SFTPService {
         }
     }
 
+    /// VNext — connect via unified SSHSession (single-connection multiplex, T5)
+    func connect(using session: any SSHSession) async throws {
+        if let vnextChannel {
+            if entries.isEmpty { try await listDirectory() }
+            return
+        }
+        vnextChannel = nil
+        Log.sftp.info("Opening SFTP via VNext session...")
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        let channel = try await session.openSFTP()
+        let path = try await channel.realPath()
+        vnextChannel = channel
+        currentPath = path
+        Log.sftp.info("VNext SFTP connected, initial path: \(self.currentPath)")
+        try await listDirectory()
+    }
+
     /// List files in the current directory.
     func listDirectory(_ path: String? = nil, showLoading: Bool = true) async throws {
+        if let channel = vnextChannel {
+            if showLoading { self.isLoading = true }
+            self.errorMessage = nil
+            defer { if showLoading { self.isLoading = false } }
+            let targetPath = path ?? self.currentPath
+            let requestID = self.beginListRequest()
+            var result = try await channel.listDirectory(at: targetPath)
+            guard requestID == self.listRequestSequence else { return }
+            result.sort {
+                if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
+                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+            entries = result
+            currentPath = targetPath
+            return
+        }
         #if os(macOS)
             if let sftp = openSSHSFTPClient {
                 if showLoading {
@@ -188,6 +224,12 @@ final class SFTPService {
 
     /// Create a new directory.
     func createDirectory(name: String) async throws {
+        if let channel = vnextChannel {
+            let newPath = pathJoin(currentPath, name)
+            try await channel.createDirectory(at: newPath)
+            try await listDirectory()
+            return
+        }
         #if os(macOS)
             if let sftp = openSSHSFTPClient {
                 let newPath = pathJoin(currentPath, name)
@@ -205,6 +247,11 @@ final class SFTPService {
 
     /// Delete a file or directory.
     func delete(_ entry: SFTPFileEntry) async throws {
+        if let channel = vnextChannel {
+            try await channel.remove(at: entry.path, isDirectory: entry.isDirectory)
+            try await listDirectory()
+            return
+        }
         #if os(macOS)
             if let sftp = openSSHSFTPClient {
                 try await sftp.remove(at: entry.path, isDirectory: entry.isDirectory)
@@ -224,6 +271,11 @@ final class SFTPService {
 
     /// Download a file to local disk.
     func download(_ entry: SFTPFileEntry, to localURL: URL) async throws {
+        if let channel = vnextChannel {
+            guard !entry.isDirectory else { return }
+            try await channel.download(entry.path, to: localURL, operationID: UUID(), onProgress: { _ in })
+            return
+        }
         #if os(macOS)
             if let sftp = openSSHSFTPClient {
                 guard !entry.isDirectory else { return }
@@ -397,6 +449,11 @@ final class SFTPService {
         to remotePath: String?,
         continuation: AsyncThrowingStream<Double, Error>.Continuation
     ) async throws {
+        if let channel = vnextChannel {
+            let targetPath = remotePath ?? pathJoin(currentPath, localURL.lastPathComponent)
+            try await channel.upload(localURL, to: targetPath, operationID: UUID(), onProgress: { p in continuation.yield(p) })
+            return
+        }
         #if os(macOS)
             if let sftp = openSSHSFTPClient {
                 try await performOpenSSHUpload(

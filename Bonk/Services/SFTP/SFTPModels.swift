@@ -6,15 +6,20 @@
 import Foundation
 
 /// Represents a remote file or directory from SFTP listing.
-struct SFTPFileEntry: Identifiable {
-    let id: String // path-based identity for stable SwiftUI diffing
-    let name: String
-    let path: String
-    let isDirectory: Bool
-    let size: UInt64
-    let permissions: UInt32
-    let modifiedAt: Date?
-    let longname: String
+public struct SFTPFileEntry: Identifiable, Sendable {
+    public let id: String // path-based identity for stable SwiftUI diffing
+    public let name: String
+    public let path: String
+    public let isDirectory: Bool
+    public let size: UInt64
+    public let permissions: UInt32
+    public let modifiedAt: Date?
+    public let longname: String
+
+    public init(id: String, name: String, path: String, isDirectory: Bool, size: UInt64, permissions: UInt32, modifiedAt: Date?, longname: String) {
+        self.id = id; self.name = name; self.path = path; self.isDirectory = isDirectory
+        self.size = size; self.permissions = permissions; self.modifiedAt = modifiedAt; self.longname = longname
+    }
 
     var permissionsString: String {
         let perms = permissions

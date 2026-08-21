@@ -702,6 +702,19 @@ public actor SSHNetworkService {
         public func setVNextPreferredBackend(_ backend: SSHBackendType?) {
             vnextForcedBackend = backend
         }
+
+        /// VNext T5 — vend a unified session for SFTP multiplexing on the same connection.
+        public func makeVNextSession(endpoint: SSHEndpoint) -> (any SSHSession)? {
+            #if os(macOS)
+            if usesOpenSSHTransport, let backend = openSSHBackend {
+                return CompatibilitySSHSession(backend: backend, endpoint: endpoint)
+            }
+            #endif
+            if let c = client {
+                return NativeSSHSession(client: c, endpoint: endpoint)
+            }
+            return nil
+        }
     #endif
 
     private nonisolated func decodePEM(_ pem: String) throws -> Data {

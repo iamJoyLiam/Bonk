@@ -42,8 +42,15 @@ public protocol SSHPTYChannel: Sendable {
     func close() async
 }
 
-// SFTP channel — unified file operations
+// SFTP channel — unified file operations (T5)
 public protocol SFTPChannel: Sendable {
+    func realPath() async throws -> String
+    func listDirectory(at path: String) async throws -> [SFTPFileEntry]
+    func createDirectory(at path: String) async throws
+    func remove(at path: String, isDirectory: Bool) async throws
+    func upload(_ localURL: URL, to remotePath: String, operationID: UUID, onProgress: @escaping @Sendable (Double) -> Void) async throws
+    func download(_ remotePath: String, to localURL: URL, operationID: UUID, onProgress: @escaping @Sendable (Double) -> Void) async throws
+    func fileExists(at path: String) async -> Bool
     func close() async
 }
 
