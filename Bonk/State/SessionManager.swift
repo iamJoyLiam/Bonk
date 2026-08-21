@@ -655,26 +655,27 @@ final class SessionManager {
                         attachPTYSessionObservers(newPTY, to: tab)
                         session.connectedAt = Date()
                         session.errorMessage = nil
-                        session.phase = .ready
-                        session.connectionState = .connected
+                        session.terminalState = .ready
+                        self.setPhase(session, to: .ready, host: tab.hostItem.host, engine: "Observer", reason: "reconnect PTY")
                         NotificationCenter.default.post(name: .terminalPTYSessionReady, object: nil, userInfo: ["tabID": tab.id])
                     } else if tab.layout.root.paneState?.ptySession != nil {
-                        session.phase = .ready
-                        session.connectionState = .connected
+                        session.terminalState = .ready
+                        self.setPhase(session, to: .ready, host: tab.hostItem.host, engine: "Observer", reason: "PTY ready")
                     } else {
                         Log.session.debug("[CONNECT] Ignoring .connected before PTY ready (phase=\(String(describing: session.phase)))")
                     }
                 case .disconnected:
                     session.connectedAt = nil
                     if case .failed = session.phase { break }
-                    session.phase = .idle
-                    session.connectionState = .disconnected
+                    self.setPhase(session, to: .idle, host: tab.hostItem.host, engine: "Observer", reason: "disconnected")
                 case .reconnecting(let attempt, let max):
-                    session.phase = .reconnecting(attempt: attempt, maxAttempts: max)
-                    session.connectionState = state
+                    self.setPhase(session, to: .reconnecting(attempt: attempt, maxAttempts: max), host: tab.hostItem.host, engine: "Observer", reason: "reconnecting")
                 case .connecting:
-                    if case .idle = session.phase { session.phase = .connectingTransport }
-                    session.connectionState = state
+                    if case .idle = session.phase {
+                        self.setPhase(session, to: .connectingTransport, host: tab.hostItem.host, engine: "Observer", reason: "connecting")
+                    } else {
+                        session.connectionState = state
+                    }
                 }
             }
         }

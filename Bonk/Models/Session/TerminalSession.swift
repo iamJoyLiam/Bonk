@@ -8,6 +8,7 @@ final class TerminalSession {
     let tabID: UUID
     var connectionState: SSHConnectionState = .disconnected
     var phase: SSHConnectionPhase = .idle
+    var terminalState: TerminalState = .idle
     var sshService: SSHNetworkService?
     var ptySession: PTYSession?
     var sftpService: SFTPService?
@@ -104,6 +105,7 @@ final class TerminalSession {
         stateObservationTask = nil
         stateObserverToken = UUID()
         phase = .idle
+        terminalState = .closed
         sftpConnectionTask?.cancel()
         sftpConnectionTask = nil
         sftpService = nil

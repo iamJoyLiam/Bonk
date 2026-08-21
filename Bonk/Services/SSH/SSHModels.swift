@@ -132,8 +132,9 @@ public enum SSHConnectionPhase: Sendable, Equatable {
     case connectingTransport
     case negotiatingSSH
     case authenticating
+    case fallbacking(to: SSHBackendType) // Hybrid: Native→Compatibility
     case openingChannel
-    case ready
+    case ready // SSH usable, PTY-agnostic (SFTP/Exec may use without PTY)
     case failed(String)
     case reconnecting(attempt: Int, maxAttempts: Int)
 
@@ -144,10 +145,33 @@ public enum SSHConnectionPhase: Sendable, Equatable {
 
     public var isConnecting: Bool {
         switch self {
-        case .resolving, .connectingTransport, .negotiatingSSH, .authenticating, .openingChannel: return true
+        case .resolving, .connectingTransport, .negotiatingSSH, .authenticating, .fallbacking, .openingChannel: return true
         default: return false
         }
     }
+
+    public var isFallbacking: Bool {
+        if case .fallbacking = self { return true }
+        return false
+    }
+}
+
+// Terminal is a feature on top of SSH, not the session itself
+public enum TerminalState: Sendable, Equatable {
+    case idle
+    case waitingPTY
+    case ready
+    case closed
+}
+
+// Service → SessionManager event bus (unifies Native/OpenSSH)
+public enum SSHServiceEvent: Sendable {
+    case transportConnected
+    case handshakeCompleted
+    case authSucceeded
+    case channelOpened
+    case ptyReady
+    case failed(Error)
 }
 
 // MARK: - Host Key Fingerprint
