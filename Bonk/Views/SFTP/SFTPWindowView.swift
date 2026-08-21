@@ -16,6 +16,7 @@ struct SFTPWindowView: View {
     @State private var localPath: String = "/"
     @State private var localFiles: [LocalFileEntry] = []
     @State private var selectedRemote: SFTPFileEntry?
+    @State private var localSelection: Set<UUID> = []
     // Overwrite dialog state
     @State private var pendingUploadURL: URL?
     @State private var showOverwriteAlert = false
@@ -37,6 +38,8 @@ struct SFTPWindowView: View {
                     // Right: Remote files
                     SFTPBrowserView(tab: tab, onUpload: { url in
                         Task { await checkAndUpload(url) }
+                    }, onDownloadCompleted: {
+                        loadLocalFiles()
                     })
                     .frame(minWidth: 250)
                 }
@@ -134,10 +137,11 @@ struct SFTPWindowView: View {
 
             Divider()
 
-            // File list — uses LocalFileRow matching SFTPFileRow
-            List(localFiles) { file in
+            // File list — uses LocalFileRow matching SFTPFileRow, supports Shift multi-select
+            List(localFiles, id: \.id, selection: $localSelection) { file in
                 LocalFileRow(file: file)
                     .environment(i18n)
+                    .tag(file.id)
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) {
                         if file.isDirectory {
@@ -168,6 +172,7 @@ struct SFTPWindowView: View {
                     }
             }
             .listStyle(.plain)
+            .animation(nil, value: localFiles)
         }
     }
 
@@ -246,7 +251,8 @@ struct SFTPWindowView: View {
             guard let attrs = try? fileManager.attributesOfItem(atPath: path) else { return nil }
             let isDir = attrs[.type] as? FileAttributeType == .typeDirectory
             let size = attrs[.size] as? UInt64 ?? 0
-            return LocalFileEntry(name: name, path: path, isDirectory: isDir, size: size)
+            let mtime = attrs[.modificationDate] as? Date
+            return LocalFileEntry(name: name, path: path, isDirectory: isDir, size: size, modifiedAt: mtime)
         }
         .sorted { lhs, rhs in
             if lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory }
@@ -284,7 +290,12 @@ struct SFTPWindowView: View {
         case false:
             await performUpload(url)
         case nil:
-            sftp.errorMessage = i18n.t(.sftpConnectFailed)
+            // fileExists check failed (SFTP interrupted) — allow upload, server will handle it
+            // Don't show placeholder %@, try to ensure SFTP and proceed
+            if sessionManager.activeTab?.session?.sftpService == nil {
+                _ = await sessionManager.activeTab?.session?.ensureSFTP()
+            }
+            await performUpload(url)
         }
     }
 

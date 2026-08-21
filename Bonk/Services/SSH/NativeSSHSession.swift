@@ -113,13 +113,28 @@ private final class CitadelSFTPChannel: SFTPChannel {
     }
 
     func upload(_ localURL: URL, to remotePath: String, operationID: UUID, onProgress: @escaping @Sendable (Double) -> Void) async throws {
-        let data = try Data(contentsOf: localURL)
+        let attrs = try FileManager.default.attributesOfItem(atPath: localURL.path)
+        let total = (attrs[.size] as? UInt64) ?? 0
+        let handle = try FileHandle(forReadingFrom: localURL)
+        defer { try? handle.close() }
         let file = try await sftp.openFile(filePath: remotePath, flags: [.write, .create, .truncate])
-        var buffer = ByteBuffer()
-        buffer.writeBytes(data)
+        let chunkSize = 32_000
+        var offset: UInt64 = 0
+        var lastProgress: Double = -1
         do {
-            try await file.write(buffer, at: 0)
-            onProgress(1.0)
+            while true {
+                guard let chunk = try handle.read(upToCount: chunkSize), !chunk.isEmpty else { break }
+                var buffer = ByteBuffer()
+                buffer.writeBytes(chunk)
+                try await file.write(buffer, at: offset)
+                offset += UInt64(chunk.count)
+                let p = total > 0 ? Double(offset) / Double(total) : 1.0
+                if p - lastProgress >= 0.01 || p >= 1.0 {
+                    lastProgress = p
+                    onProgress(min(p, 1.0))
+                }
+            }
+            if total == 0 { onProgress(1.0) }
             try? await file.close()
         } catch {
             try? await file.close()
@@ -128,6 +143,8 @@ private final class CitadelSFTPChannel: SFTPChannel {
     }
 
     func download(_ remotePath: String, to localURL: URL, operationID: UUID, onProgress: @escaping @Sendable (Double) -> Void) async throws {
+        let attrs = try? await sftp.getAttributes(at: remotePath)
+        let total = attrs?.size ?? 0
         let file = try await sftp.openFile(filePath: remotePath, flags: [.read])
         FileManager.default.createFile(atPath: localURL.path, contents: nil)
         guard let handle = FileHandle(forWritingAtPath: localURL.path) else {
@@ -137,6 +154,7 @@ private final class CitadelSFTPChannel: SFTPChannel {
         defer { handle.closeFile() }
         let chunkSize: UInt32 = 32_000
         var offset: UInt64 = 0
+        var lastProgress: Double = -1
         do {
             while true {
                 let buffer = try await file.read(from: offset, length: chunkSize)
@@ -144,9 +162,14 @@ private final class CitadelSFTPChannel: SFTPChannel {
                 let data = Data(buffer.readableBytesView)
                 handle.write(data)
                 offset += UInt64(data.count)
-                onProgress(Double(offset) / Double(max(offset, 1)))
+                let p: Double = total > 0 ? Double(offset) / Double(total) : (buffer.readableBytes < Int(chunkSize) ? 1.0 : Double(offset) / Double(offset + UInt64(chunkSize)))
+                if p - lastProgress >= 0.01 || p >= 1.0 {
+                    lastProgress = p
+                    onProgress(min(p, 1.0))
+                }
                 if buffer.readableBytes < Int(chunkSize) { break }
             }
+            if total == 0 { onProgress(1.0) }
             try? await file.close()
         } catch {
             try? await file.close()

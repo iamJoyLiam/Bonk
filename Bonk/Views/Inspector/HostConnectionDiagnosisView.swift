@@ -17,8 +17,14 @@ struct HostConnectionDiagnosisView: View {
                 get: { host.forceCompatibility == true },
                 set: { newValue in
                     host.forceCompatibility = newValue ? true : nil
-                    // Routing reads host flag directly (SessionManager: isForced);
-                    // profile with forcedCompatibility will be written on next successful connect.
+                    if !newValue {
+                        // 关闭即清空历史强制诊断，下一连回 nativeWithFallback 试探
+                        let store = SSHProfileStore(context: modelContext)
+                        let forced = store.profiles(forHost: host.host, port: host.port)
+                            .filter { $0.reasonRaw == SSHBackendReason.forcedCompatibility.rawValue }
+                        for p in forced { modelContext.delete(p) }
+                        try? modelContext.save()
+                    }
                     reload()
                 }
             )) {

@@ -273,7 +273,28 @@ final class SFTPService {
     func download(_ entry: SFTPFileEntry, to localURL: URL) async throws {
         if let channel = vnextChannel {
             guard !entry.isDirectory else { return }
-            try await channel.download(entry.path, to: localURL, operationID: UUID(), onProgress: { _ in })
+            let transferID = UUID()
+            transfers.append(SFTPTransfer(id: transferID, filename: entry.name, totalBytes: entry.size, transferredBytes: 0, isComplete: false, error: nil))
+            do {
+                try await channel.download(entry.path, to: localURL, operationID: transferID, onProgress: { [weak self] p in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        let clamped = min(max(p, 0), 1)
+                        if let idx = self.transfers.firstIndex(where: { $0.id == transferID }) {
+                            self.transfers[idx].transferredBytes = UInt64(Double(entry.size) * clamped)
+                        }
+                    }
+                })
+                if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                    transfers[idx].transferredBytes = entry.size
+                    transfers[idx].isComplete = true
+                }
+                scheduleTransferRemoval(transferID, after: 3)
+            } catch {
+                markTransferError(transferID, error: error)
+                scheduleTransferRemoval(transferID, after: 5)
+                throw error
+            }
             return
         }
         #if os(macOS)
@@ -451,7 +472,34 @@ final class SFTPService {
     ) async throws {
         if let channel = vnextChannel {
             let targetPath = remotePath ?? pathJoin(currentPath, localURL.lastPathComponent)
-            try await channel.upload(localURL, to: targetPath, operationID: UUID(), onProgress: { p in continuation.yield(p) })
+            let filename = localURL.lastPathComponent
+            let attrs = try? FileManager.default.attributesOfItem(atPath: localURL.path)
+            let total = (attrs?[.size] as? UInt64) ?? 0
+            let transferID = UUID()
+            transfers.append(SFTPTransfer(id: transferID, filename: filename, totalBytes: total, transferredBytes: 0, isComplete: false, error: nil))
+            do {
+                try await channel.upload(localURL, to: targetPath, operationID: transferID, onProgress: { [weak self] p in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        let clamped = min(max(p, 0), 1)
+                        if let idx = self.transfers.firstIndex(where: { $0.id == transferID }) {
+                            self.transfers[idx].transferredBytes = UInt64(Double(total) * clamped)
+                        }
+                        continuation.yield(clamped)
+                    }
+                })
+                if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                    transfers[idx].transferredBytes = total
+                    transfers[idx].isComplete = true
+                }
+                continuation.yield(1.0)
+                scheduleTransferRemoval(transferID, after: 3)
+            } catch {
+                markTransferError(transferID, error: error)
+                scheduleTransferRemoval(transferID, after: 5)
+                throw error
+            }
+            try? await listDirectory(showLoading: false)
             return
         }
         #if os(macOS)
@@ -742,6 +790,8 @@ final class SFTPService {
 
     /// Close the SFTP session.
     func disconnect() async {
+        if let ch = vnextChannel { await ch.close() }
+        vnextChannel = nil
         #if os(macOS)
             openSSHSFTPClient?.close()
             openSSHSFTPClient = nil
@@ -749,6 +799,8 @@ final class SFTPService {
         try? await sftpClient?.close()
         sftpClient = nil
         entries = []
+        // Cancel any in-flight transfers
+        for t in transfers where !t.isComplete { transfers[transfers.firstIndex(where: { $0.id == t.id })!].isCancelled = true }
     }
 
     private func pathJoin(_ base: String, _ component: String) -> String {

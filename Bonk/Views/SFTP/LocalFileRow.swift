@@ -15,6 +15,7 @@ struct LocalFileEntry: Identifiable, Hashable {
     let path: String
     let isDirectory: Bool
     let size: UInt64
+    let modifiedAt: Date?
 }
 
 // MARK: - Local File Row (matches SFTPFileRow layout)
@@ -50,6 +51,12 @@ struct LocalFileRow: View {
                         Text(formatSize(file.size))
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
+                    }
+                    if let date = file.modifiedAt {
+                        Text(Self.dateFormatter.string(from: date))
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
                     }
                 }
             }
@@ -91,4 +98,11 @@ struct LocalFileRow: View {
         if bytes < 1024 * 1024 * 1024 { return String(format: "%.1f MB", Double(bytes) / 1024 / 1024) }
         return String(format: "%.1f GB", Double(bytes) / 1024 / 1024 / 1024)
     }
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .short
+        f.timeStyle = .short
+        return f
+    }()
 }

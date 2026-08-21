@@ -13,9 +13,12 @@ struct SFTPBrowserView: View {
     let tab: TerminalTab
     /// Optional upload handler with overwrite check. If nil, uploads directly.
     var onUpload: ((URL) -> Void)?
+    var onDownloadCompleted: (() -> Void)?
     @State private var showNewFolder = false
     @State private var newFolderName = ""
     @State private var pendingDeleteEntry: SFTPFileEntry?
+    @State private var selection: Set<String> = []
+    @State private var pendingDeleteIDs: Set<String> = []
 
     private var sftpService: SFTPService? {
         tab.session?.sftpService
@@ -123,6 +126,7 @@ struct SFTPBrowserView: View {
                         do { try await service.delete(entry) } catch {
                             service.errorMessage = error.localizedDescription
                         }
+                        selection.removeAll()
                     }
                 }
                 pendingDeleteEntry = nil
@@ -133,10 +137,33 @@ struct SFTPBrowserView: View {
                 Text(i18n.tr(.deleteConfirm, args: entry.name))
             }
         }
+        .alert(i18n.t(.delete), isPresented: deleteBatchAlertBinding) {
+            Button(i18n.t(.delete), role: .destructive) {
+                if let service = sftpService {
+                    let ids = pendingDeleteIDs
+                    Task {
+                        for id in ids {
+                            if let e = service.entries.first(where: { $0.id == id }) {
+                                try? await service.delete(e)
+                            }
+                        }
+                        selection.removeAll()
+                    }
+                }
+                pendingDeleteIDs.removeAll()
+            }
+            Button(i18n.t(.cancel), role: .cancel) { pendingDeleteIDs.removeAll() }
+        } message: {
+            Text(i18n.tr(.deleteConfirm, args: "\(pendingDeleteIDs.count) items"))
+        }
     }
 
     private var deleteEntryAlertBinding: Binding<Bool> {
         Binding(get: { pendingDeleteEntry != nil }, set: { if !$0 { pendingDeleteEntry = nil } })
+    }
+
+    private var deleteBatchAlertBinding: Binding<Bool> {
+        Binding(get: { !pendingDeleteIDs.isEmpty }, set: { if !$0 { pendingDeleteIDs.removeAll() } })
     }
 
     // MARK: - Header
@@ -233,13 +260,13 @@ struct SFTPBrowserView: View {
         .background(.quaternary.opacity(0.3))
     }
 
-    // MARK: - File List
+    // MARK: - File List — native List with system multi-select (Shift/Cmd) + double-click
 
     // swiftlint:disable:next function_body_length
     private func fileList(_ service: SFTPService) -> some View {
-        List(service.entries) { entry in
+        List(service.entries, id: \.id, selection: $selection) { entry in
             SFTPFileRow(entry: entry)
-                .contentShape(Rectangle())
+                .tag(entry.id)
                 .onTapGesture(count: 2) {
                     if entry.isDirectory {
                         Task {
@@ -261,14 +288,18 @@ struct SFTPBrowserView: View {
                             Label(i18n.t(.open), systemImage: "folder")
                         }
                     }
-
                     Button {
                         #if os(macOS)
                             let panel = NSSavePanel()
                             panel.nameFieldStringValue = entry.name
+                            panel.isExtensionHidden = false
+                            panel.canCreateDirectories = true
                             if panel.runModal() == .OK, let url = panel.url {
                                 Task {
-                                    do { try await service.download(entry, to: url) } catch {
+                                    do {
+                                        try await service.download(entry, to: url)
+                                        onDownloadCompleted?()
+                                    } catch {
                                         service.errorMessage = error.localizedDescription
                                     }
                                 }
@@ -277,17 +308,20 @@ struct SFTPBrowserView: View {
                     } label: {
                         Label(i18n.t(.download), systemImage: "arrow.down.circle")
                     }
-
                     Divider()
-
                     Button {
-                        pendingDeleteEntry = entry
+                        if selection.contains(entry.id) && selection.count > 1 {
+                            pendingDeleteIDs = selection
+                        } else {
+                            pendingDeleteEntry = entry
+                        }
                     } label: {
                         Label(i18n.t(.delete), systemImage: "trash")
                     }
                 }
         }
         .listStyle(.plain)
+        .animation(nil, value: service.entries.count)
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             for provider in providers {
                 provider.loadItem(forTypeIdentifier: "public.file-url") { data, _ in

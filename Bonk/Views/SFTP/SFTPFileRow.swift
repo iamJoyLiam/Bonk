@@ -31,6 +31,13 @@ struct SFTPFileRow: View {
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
                     }
+
+                    if let date = entry.modifiedAt {
+                        Text(Self.dateFormatter.string(from: date))
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
                 }
             }
 
@@ -64,4 +71,11 @@ struct SFTPFileRow: View {
         default: return .secondary
         }
     }
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .short
+        f.timeStyle = .short
+        return f
+    }()
 }
