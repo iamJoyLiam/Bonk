@@ -112,7 +112,10 @@ extension SessionManager {
         session: TerminalSession,
         tab: TerminalTab
     ) async throws -> (service: SSHNetworkService, compatConfig: SSHConnectionConfig, algorithms: SSHAlgorithmRequirements?, reason: SSHBackendReason) {
-        guard case .nativeWithCompatibilityFallback = decision else { throw error }
+        switch decision {
+        case .native, .nativeWithCompatibilityFallback: break
+        case .compatibility: throw error
+        }
         let phase: SSHProtocolPhase = {
             let text = (error.localizedDescription + " " + String(describing: error)).lowercased()
             if text.contains("keyexchangenegotiationfailure") || text.contains("no matching") { return .keyExchange }
@@ -178,6 +181,8 @@ extension SessionManager {
         }
         if let store = vnextProfileStore {
             let (backend, reason, algos): (SSHBackendType, SSHBackendReason, SSHAlgorithmRequirements?) = switch context.vnextDecision {
+            case .native where context.fallback?.didFallback == true:
+                (.compatibility, context.fallback!.reason, context.fallback!.algorithms)
             case .native: (.native, .modern, nil)
             case .compatibility(let requestReason): (.compatibility, requestReason, context.effectiveConfig.algorithmRequirements)
             case .nativeWithCompatibilityFallback where context.fallback?.didFallback == true:

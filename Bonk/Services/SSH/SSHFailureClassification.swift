@@ -136,8 +136,11 @@ public struct NativeErrorClassifier: SSHErrorClassifier {
     private func isBackendCapabilityAuthFailure(msg: String, desc: String) -> Bool {
         let haystack = msg + " " + desc
         // Server only accepts keyboard-interactive, but we offered password — capability gap, not credential
+        // Citadel 0.12 reports this as `allAuthenticationOptionsFailed` (error 4)
         return haystack.contains("no supported authentication methods")
             || haystack.contains("no supported auth")
+            || haystack.contains("allauthenticationoptionsfailed")
+            || haystack.contains("all authentication options failed")
     }
 
     private func isHostKeyIdentityMismatch(_ error: Error, msg: String, desc: String) -> Bool {
