@@ -167,10 +167,10 @@ struct HostListView: View {
         }
         .sheet(item: $diagnosisHost) { host in
             NavigationStack {
-                Form {
+                ScrollView {
                     HostConnectionDiagnosisView(host: host)
+                        .padding(16)
                 }
-                .formStyle(.grouped)
                 .navigationTitle(host.name)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
@@ -178,7 +178,9 @@ struct HostListView: View {
                     }
                 }
             }
-            .frame(minWidth: 520, minHeight: 380)
+            .frame(minWidth: 520, idealWidth: 560)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxHeight: 600)
             .environment(i18n)
         }
     }
