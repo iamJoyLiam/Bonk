@@ -39,6 +39,10 @@ final class SessionManager {
     private var authRetryState: AuthRetryState = .idle
     private var authRetryTabID: UUID?
 
+    // VNext — Hybrid SSH coordinator (T1.4+). Used for routing decision logging in T2.1,
+    // full native-first wiring lands in T2.2.
+    private let vnextCoordinator = SSHSessionCoordinator()
+
     init(viewCache: TerminalViewCache = .shared) {
         self.viewCache = viewCache
     }
@@ -196,6 +200,18 @@ final class SessionManager {
                 maxReconnectAttempts: config.maxReconnectAttempts,
                 baseReconnectDelay: config.baseReconnectDelay
             )
+        }
+
+        // VNext routing decision (T2.1: log only, no behavior change yet)
+        let vnextReq = SSHRequirementsMapper.requirements(from: config)
+        let vnextDecision = await vnextCoordinator.resolve(request: SSHConnectionRequest(requirements: vnextReq))
+        switch vnextDecision {
+        case .native:
+            Log.session.info("[VNext] Decision: native — \(config.host):\(config.port) auth=\(String(describing: vnextReq.authentication))")
+        case .compatibility(let reason):
+            Log.session.info("[VNext] Decision: compatibility(\(reason.rawValue)) — \(config.host):\(config.port)")
+        case .nativeWithCompatibilityFallback:
+            Log.session.info("[VNext] Decision: nativeWithCompatibilityFallback — \(config.host):\(config.port) (will try Native, fallback on compatibility failure)")
         }
 
         let service = SSHNetworkService(hostKeyStore: hostKeyStore)
