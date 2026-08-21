@@ -36,6 +36,7 @@ struct AddHostSheet: View {
     @State private var selectedCredential: Credential?
     @State private var showJumpHost = false
     @State private var selectedJumpHost: JumpHost?
+    @State private var forceCompatibilityToggle = false
 
     /// Detected key algorithm (Citadel 0.11+) for the pasted private key.
     private var detectedPrivateKeyType: String? {
@@ -341,6 +342,25 @@ struct AddHostSheet: View {
                     }
                 }
             }
+
+            // VNext — SSH Engine diagnosis (§6.4)
+            if let existing = existingHost {
+                Section(i18n.t(.sshEngineDiagnosis)) {
+                    HostConnectionDiagnosisView(host: existing)
+                }
+            } else {
+                Section(i18n.t(.sshEngineDiagnosis)) {
+                    Toggle(isOn: $forceCompatibilityToggle) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(i18n.t(.sshAlwaysCompatibility))
+                                .font(.system(size: 12, weight: .medium))
+                            Text(i18n.t(.sshAlwaysCompatibilityDesc))
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
         .frame(minWidth: 420, minHeight: 480)
@@ -404,6 +424,7 @@ struct AddHostSheet: View {
         selectedCredential = existing.credentialRef
         selectedJumpHost = existing.jumpHostRef
         showJumpHost = existing.jumpHostRef != nil
+        forceCompatibilityToggle = existing.forceCompatibility == true
     }
 
     private func save() {
@@ -467,6 +488,7 @@ struct AddHostSheet: View {
                 credentialRef: selectedCredential,
                 jumpHostRef: showJumpHost ? selectedJumpHost : nil
             )
+            if forceCompatibilityToggle { item.forceCompatibility = true }
             onSave(item)
         }
         dismiss()

@@ -34,23 +34,44 @@ struct BonkApp: App {
         #else
             let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         #endif
+        func deleteDevStore() {
+            let fm = FileManager.default
+            if let url = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+                let base = url.appendingPathComponent("Bonk-Dev.store")
+                for ext in ["", "-shm", "-wal"] {
+                    let file = URL(fileURLWithPath: base.path + ext)
+                    try? fm.removeItem(at: file)
+                }
+            }
+        }
+        func isSchemaMismatch(_ error: Error) -> Bool {
+            let msg = error.localizedDescription + " " + String(describing: error)
+            return msg.contains("no such table") || msg.contains("no such column")
+                || msg.contains("ZSSHBACKENDPROFILE") || msg.contains("ZFORCECOMPATIBILITY")
+        }
         do {
-            return try ModelContainer(for: schema, configurations: [config])
+            let container = try ModelContainer(for: schema, configurations: [config])
+            // Verify tables exist — ModelContainer init is lazy; first fetch reveals missing table
+            #if DEBUG
+            do {
+                let ctx = ModelContext(container)
+                _ = try ctx.fetch(FetchDescriptor<SSHBackendProfile>())
+                _ = try ctx.fetch(FetchDescriptor<HostItem>())
+            } catch {
+                if isSchemaMismatch(error) {
+                    Log.app.error("Schema mismatch detected after init, deleting Dev store and retrying: \(error)")
+                    deleteDevStore()
+                    return try ModelContainer(for: schema, configurations: [config])
+                }
+                throw error
+            }
+            #endif
+            return container
         } catch {
             #if DEBUG
-            // T4.1 added SSHBackendProfile — existing Dev store has no table.
-            // Delete and recreate in DEBUG only (safe: Dev store is throwaway).
-            let msg = error.localizedDescription + " " + String(describing: error)
-            if msg.contains("no such table") || msg.contains("ZSSHBACKENDPROFILE") {
-                Log.app.error("ModelContainer missing table, deleting Dev store and retrying: \(error)")
-                let fm = FileManager.default
-                if let url = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
-                    let base = url.appendingPathComponent("Bonk-Dev.store")
-                    for ext in ["", "-shm", "-wal"] {
-                        let file = URL(fileURLWithPath: base.path + ext)
-                        try? fm.removeItem(at: file)
-                    }
-                }
+            if isSchemaMismatch(error) {
+                Log.app.error("ModelContainer missing table/column, deleting Dev store and retrying: \(error)")
+                deleteDevStore()
                 do {
                     return try ModelContainer(for: schema, configurations: [config])
                 } catch {

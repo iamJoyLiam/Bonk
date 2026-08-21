@@ -36,6 +36,8 @@ final class HostItem {
     var credentialRef: Credential?
     @Relationship(deleteRule: .nullify)
     var jumpHostRef: JumpHost?
+    /// VNext — manual override: always use Compatibility engine (§6.4 forcedCompatibility)
+    var forceCompatibility: Bool?
 
     var authType: AuthType {
         get { AuthType(rawValue: authTypeRaw) ?? .password }

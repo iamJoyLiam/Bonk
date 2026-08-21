@@ -19,7 +19,29 @@ final class SSHProfileStore {
         let desc = FetchDescriptor<SSHBackendProfile>(predicate: predicate)
         guard let all = try? context.fetch(desc) else { return nil }
         // Route is not predicate-friendly (Data); filter in memory
+        // Prefer valid entries; policy entries stay valid past TTL (§6.3)
         return all.first { $0.routeData == routeData && $0.isValid }
+    }
+
+    /// Return all profiles for a host (any auth/route) — for Host Inspector list.
+    func profiles(forHost host: String, port: Int) -> [SSHBackendProfile] {
+        let predicate = #Predicate<SSHBackendProfile> { p in
+            p.host == host && p.port == port
+        }
+        let desc = FetchDescriptor<SSHBackendProfile>(predicate: predicate)
+        guard let all = try? context.fetch(desc) else { return [] }
+        return all.sorted { $0.detectedAt > $1.detectedAt }
+    }
+
+    /// Remove all profiles for a host — for Host Inspector "Re-detect" bulk clear.
+    func removeAll(forHost host: String, port: Int) {
+        let predicate = #Predicate<SSHBackendProfile> { p in
+            p.host == host && p.port == port
+        }
+        let desc = FetchDescriptor<SSHBackendProfile>(predicate: predicate)
+        guard let all = try? context.fetch(desc) else { return }
+        for p in all { context.delete(p) }
+        try? context.save()
     }
 
     func save(

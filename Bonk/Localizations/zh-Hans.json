@@ -472,5 +472,21 @@
   "ssh_error_network_unreachable": "无法连接 %@：网络不通（连接被拒绝、超时或无路由）。请检查 IP、端口、网络连通性和防火墙。\n原始错误：%@",
   "ssh_error_authentication": "认证失败：用户名或密码错误，或该账户不允许登录。\n原始错误：%@",
   "ssh_error_host_key": "主机密钥校验失败：主机密钥可能已变更，或连接可能遭受中间人攻击。\n原始错误：%@",
-  "ssh_error_timeout": "连接超时：%@。请检查网络连通性。"
+  "ssh_error_timeout": "连接超时：%@。请检查网络连通性。",
+  "ssh_engine_diagnosis": "SSH 引擎诊断",
+  "ssh_backend": "引擎",
+  "ssh_backend_native": "Native (SwiftNIO)",
+  "ssh_backend_compatibility": "兼容模式 (OpenSSH)",
+  "ssh_backend_reason": "原因",
+  "ssh_last_detected": "上次探测",
+  "ssh_expires_at": "过期时间",
+  "ssh_no_profile": "暂无缓存，下次连接将优先尝试 Native。",
+  "ssh_redetect": "重新探测",
+  "ssh_always_compatibility": "始终使用兼容模式 (OpenSSH)",
+  "ssh_always_compatibility_desc": "关闭（默认，推荐）：优先 Native，协商失败自动回退到 OpenSSH。开启：跳过 Native，直接走系统 OpenSSH，适用于探测遗漏的老旧堡垒机。",
+  "ssh_fingerprint": "指纹",
+  "ssh_algorithms": "算法",
+  "ssh_profile_valid": "有效",
+  "ssh_profile_expired": "已过期",
+  "ssh_policy_no_expiry": "策略（永不过期）"
 }

@@ -467,6 +467,24 @@ enum LKey: String, CaseIterable {
     case sshErrorHostKey = "ssh_error_host_key"
     case sshErrorTimeout = "ssh_error_timeout"
 
+    // VNext — Host Inspector (§6.4)
+    case sshEngineDiagnosis = "ssh_engine_diagnosis"
+    case sshBackend = "ssh_backend"
+    case sshBackendNative = "ssh_backend_native"
+    case sshBackendCompatibility = "ssh_backend_compatibility"
+    case sshBackendReason = "ssh_backend_reason"
+    case sshLastDetected = "ssh_last_detected"
+    case sshExpiresAt = "ssh_expires_at"
+    case sshNoProfile = "ssh_no_profile"
+    case sshRedetect = "ssh_redetect"
+    case sshAlwaysCompatibility = "ssh_always_compatibility"
+    case sshAlwaysCompatibilityDesc = "ssh_always_compatibility_desc"
+    case sshFingerprint = "ssh_fingerprint"
+    case sshAlgorithms = "ssh_algorithms"
+    case sshProfileValid = "ssh_profile_valid"
+    case sshProfileExpired = "ssh_profile_expired"
+    case sshPolicyNoExpiry = "ssh_policy_no_expiry"
+
     // Workspaces
     case workspaces = "workspaces"
     case saveWorkspace = "save_workspace"

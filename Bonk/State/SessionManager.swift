@@ -207,15 +207,26 @@ final class SessionManager {
             )
         }
 
-        // VNext routing decision (T2.2: native-first live, T4.1: cached profile)
+        // VNext routing decision (T2.2: native-first live, T4.1: cached profile, §6.4 forced)
         let vnextReq = SSHRequirementsMapper.requirements(from: config)
+        // Host-level forced override (§6.4) — takes precedence over cached profile
+        let isForced = tab.hostItem.forceCompatibility == true
         let vnextCached: SSHSessionCoordinator.CachedProfile? = {
+            if isForced {
+                Log.session.info("[VNext] Forced compatibility for \(config.host):\(config.port) (host toggle)")
+                return SSHSessionCoordinator.CachedProfile(backend: .compatibility, reason: .forcedCompatibility, isValid: true, algorithms: nil)
+            }
             guard let p = vnextProfileStore?.profile(for: vnextReq), p.isValid,
                   let backend = p.backendType, let reason = p.reason else { return nil }
             Log.session.info("[VNext] Cache hit: \(p.backendRaw)/\(p.reasonRaw) — \(p.host):\(p.port)")
             return SSHSessionCoordinator.CachedProfile(backend: backend, reason: reason, isValid: true, algorithms: p.algorithmRequirements)
         }()
-        let vnextDecision = await vnextCoordinator.resolve(request: SSHConnectionRequest(requirements: vnextReq), cachedProfile: vnextCached)
+        let vnextDecision: SSHConnectionDecision
+        if isForced {
+            vnextDecision = .compatibility(reason: .forcedCompatibility)
+        } else {
+            vnextDecision = await vnextCoordinator.resolve(request: SSHConnectionRequest(requirements: vnextReq), cachedProfile: vnextCached)
+        }
         switch vnextDecision {
         case .native:
             Log.session.info("[VNext] Decision: native — \(config.host):\(config.port) auth=\(String(describing: vnextReq.authentication))")
@@ -410,7 +421,7 @@ final class SessionManager {
         var kex: [String] = []
         var hostKey: [String] = []
         var cipher: [String] = []
-        var mac: [String] = []
+        let mac: [String] = []
         // Specific hints in message
         if msg.contains("diffie-hellman-group1-sha1") { kex.append("diffie-hellman-group1-sha1") }
         if msg.contains("diffie-hellman-group14-sha1") { kex.append("diffie-hellman-group14-sha1") }

@@ -80,9 +80,16 @@ final class SSHBackendProfile {
 
     var isExpired: Bool { Date() > expiresAt }
 
+    /// Policy reasons (jumpHost / forcedCompatibility) never expire by TTL (§6.3)
+    var isPolicyReason: Bool {
+        reasonRaw == SSHBackendReason.jumpHost.rawValue
+            || reasonRaw == SSHBackendReason.forcedCompatibility.rawValue
+    }
+
     var isValid: Bool {
-        guard !isExpired else { return false }
-        // Fingerprint check — dependency upgrade invalidates
+        // Policy entries ignore TTL — only fingerprint invalidates them
+        if !isPolicyReason, isExpired { return false }
+        // Fingerprint check — dependency upgrade invalidates even policy entries
         let current = SSHCapabilityFingerprint.current
         if let cv = citadelVersion, cv != current.citadelVersion { return false }
         if let nv = niosshVersion, nv != current.niosshVersion { return false }

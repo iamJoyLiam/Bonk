@@ -23,6 +23,7 @@ struct HostListView: View {
     @State private var showKeychain = false
     @State private var searchText = ""
     @State private var pendingDeleteHost: HostItem?
+    @State private var diagnosisHost: HostItem?
 
     private var filteredHosts: [HostItem] {
         if searchText.isEmpty { return hosts }
@@ -164,6 +165,22 @@ struct HostListView: View {
                 Text(i18n.tr(.deleteConfirm, args: host.name))
             }
         }
+        .sheet(item: $diagnosisHost) { host in
+            NavigationStack {
+                Form {
+                    HostConnectionDiagnosisView(host: host)
+                }
+                .formStyle(.grouped)
+                .navigationTitle(host.name)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(i18n.t(.done)) { diagnosisHost = nil }
+                    }
+                }
+            }
+            .frame(minWidth: 520, minHeight: 380)
+            .environment(i18n)
+        }
     }
 
     private var deleteHostAlertBinding: Binding<Bool> {
@@ -298,6 +315,14 @@ struct HostListView: View {
                 }
             } label: {
                 Label(i18n.t(.moveToGroup), systemImage: "folder")
+            }
+
+            if host.isSerial != true {
+                Button {
+                    diagnosisHost = host
+                } label: {
+                    Label(i18n.t(.sshEngineDiagnosis), systemImage: "info.circle")
+                }
             }
 
             Button {

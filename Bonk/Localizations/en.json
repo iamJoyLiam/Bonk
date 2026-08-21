@@ -472,5 +472,21 @@
   "ssh_error_network_unreachable": "Cannot reach %@: the network is down (connection refused, timed out, or no route). Check the address, port, network connectivity, and firewall.\nOriginal error: %@",
   "ssh_error_authentication": "Authentication failed: wrong username or password, or the account is not allowed to log in.\nOriginal error: %@",
   "ssh_error_host_key": "Host key verification failed: the host key may have changed, or this connection may be under attack.\nOriginal error: %@",
-  "ssh_error_timeout": "Connection timed out: %@. Check network connectivity."
+  "ssh_error_timeout": "Connection timed out: %@. Check network connectivity.",
+  "ssh_engine_diagnosis": "SSH Engine Diagnosis",
+  "ssh_backend": "Engine",
+  "ssh_backend_native": "Native (SwiftNIO)",
+  "ssh_backend_compatibility": "Compatibility (OpenSSH)",
+  "ssh_backend_reason": "Reason",
+  "ssh_last_detected": "Last Detected",
+  "ssh_expires_at": "Expires",
+  "ssh_no_profile": "No cached profile. Next connect will probe Native first.",
+  "ssh_redetect": "Re-detect",
+  "ssh_always_compatibility": "Always Use Compatibility Mode (OpenSSH)",
+  "ssh_always_compatibility_desc": "OFF (default, recommended): Try Native first, auto-fallback to OpenSSH on failure. ON: Skip Native and always use system OpenSSH — for legacy bastions with missed detection.",
+  "ssh_fingerprint": "Fingerprint",
+  "ssh_algorithms": "Algorithms",
+  "ssh_profile_valid": "Valid",
+  "ssh_profile_expired": "Expired",
+  "ssh_policy_no_expiry": "Policy (no expiry)"
 }

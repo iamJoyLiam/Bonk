@@ -95,6 +95,10 @@ public actor SSHSessionCoordinator {
             // v1 policy: any hop → Compatibility (Citadel jump exists but not mature)
             return .compatibility(reason: .jumpHost)
         }
+        if req.service == .forward {
+            // v1 policy: Forward always via Compatibility (includes dynamic -D) (§9)
+            return .compatibility(reason: .modern)
+        }
 
         // 3. Capability check — does Native support this request?
         let nativeBackend = _NativeBackendStub(capabilities: nativeCapabilities)
