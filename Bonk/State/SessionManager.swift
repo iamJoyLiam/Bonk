@@ -41,9 +41,9 @@ final class SessionManager {
 
     // VNext — Hybrid SSH coordinator (T1.4+). Used for routing decision logging in T2.1,
     // full native-first wiring lands in T2.2.
-    private let vnextCoordinator = SSHSessionCoordinator()
+    let vnextCoordinator = SSHSessionCoordinator()
 
-    private var vnextProfileStore: SSHProfileStore? {
+    var vnextProfileStore: SSHProfileStore? {
         guard let ctx = modelContext else { return nil }
         return SSHProfileStore(context: ctx)
     }
@@ -181,208 +181,51 @@ final class SessionManager {
         session.connectionState = .connecting
         session.errorMessage = nil
 
-        guard var config = resolveConnectionConfig(for: tab, session: session) else {
+        guard let config = preparedConfig(for: tab, session: session, passwordOverride: passwordOverride) else {
             Log.session.error("[CONNECT] Failed to resolve connection config")
             return
         }
-        if let override = passwordOverride, !override.isEmpty {
-            Log.session.info("[AUTH] connectTab with override len=\(override.count)")
-            // The re-password reconnect must start from a clean slate: a stale
-            // ControlMaster socket left over from the failed attempt (or an
-            // earlier crashed session) can poison the new authentication. The
-            // launch-time cleanup only runs once, so do it here per host.
-            Self.cleanupHostControlSockets(
-                username: config.username,
-                host: config.host,
-                port: config.port
-            )
-            config = SSHConnectionConfig(
-                host: config.host,
-                port: config.port,
-                username: config.username,
-                authMethod: .password(override),
-                jumpHost: config.jumpHost,
-                maxReconnectAttempts: config.maxReconnectAttempts,
-                baseReconnectDelay: config.baseReconnectDelay
-            )
-        }
 
-        // VNext routing decision (T2.2: native-first live, T4.1: cached profile, §6.4 forced)
-        let vnextReq = SSHRequirementsMapper.requirements(from: config)
-        // Host-level forced override (§6.4) — takes precedence over cached profile
-        let isForced = tab.hostItem.forceCompatibility == true
-        let vnextCached: SSHSessionCoordinator.CachedProfile? = {
-            if isForced {
-                Log.session.info("[VNext] Forced compatibility for \(config.host):\(config.port) (host toggle)")
-                return SSHSessionCoordinator.CachedProfile(backend: .compatibility, reason: .forcedCompatibility, isValid: true, algorithms: nil)
-            }
-            guard let p = vnextProfileStore?.profile(for: vnextReq), p.isValid,
-                  let backend = p.backendType, let reason = p.reason else { return nil }
-            Log.session.info("[VNext] Cache hit: \(p.backendRaw)/\(p.reasonRaw) — \(p.host):\(p.port)")
-            return SSHSessionCoordinator.CachedProfile(backend: backend, reason: reason, isValid: true, algorithms: p.algorithmRequirements)
-        }()
-        let vnextDecision: SSHConnectionDecision
-        if isForced {
-            vnextDecision = .compatibility(reason: .forcedCompatibility)
-        } else {
-            vnextDecision = await vnextCoordinator.resolve(request: SSHConnectionRequest(requirements: vnextReq), cachedProfile: vnextCached)
-        }
-        switch vnextDecision {
-        case .native:
-            Log.session.info("[VNext] Decision: native — \(config.host):\(config.port) auth=\(String(describing: vnextReq.authentication))")
-        case .compatibility(let reason):
-            Log.session.info("[VNext] Decision: compatibility(\(reason.rawValue)) — \(config.host):\(config.port)")
-        case .nativeWithCompatibilityFallback:
-            Log.session.info("[VNext] Decision: nativeWithCompatibilityFallback — \(config.host):\(config.port) (will try Native, fallback on compatibility failure)")
-        }
+        let routing = await vnextRouting(for: config, host: tab.hostItem)
+        let vnextReq = routing.requirements
+        let vnextCached = routing.cached
+        let vnextDecision = routing.decision
+        logVNextDecision(vnextDecision, config: config, requirements: vnextReq)
 
-        var service: SSHNetworkService
-        // Helper to create a service with forced backend
-        func makeService(forced: SSHBackendType?) async -> SSHNetworkService {
-            let s = SSHNetworkService(hostKeyStore: hostKeyStore)
-            #if os(macOS)
-            await s.setVNextPreferredBackend(forced)
-            #endif
-            return s
-        }
-
-        // Decide initial service
-        let initialForced: SSHBackendType? = {
-            switch vnextDecision {
-            case .native: return .native
-            case .compatibility: return .compatibility
-            case .nativeWithCompatibilityFallback: return .native
-            }
-        }()
-        // VNext T4.1 — apply cached algorithms for direct Compatibility
-        var effectiveConfig = config
+        var service = await makeVNextService(for: vnextDecision)
+        var effectiveConfig = effectiveConfig(for: config, decision: vnextDecision, cached: vnextCached)
         if case .compatibility = vnextDecision, let algos = vnextCached?.algorithms, !algos.isEmpty {
-            effectiveConfig = SSHConnectionConfig(
-                host: config.host, port: config.port, username: config.username,
-                authMethod: config.authMethod, jumpHost: config.jumpHost,
-                maxReconnectAttempts: config.maxReconnectAttempts,
-                baseReconnectDelay: config.baseReconnectDelay,
-                algorithmRequirements: algos
-            )
             Log.session.info("[VNext] Using cached compat algorithms: kex=\(algos.kex)")
         }
-        service = await makeService(forced: initialForced)
         session.sshService = service
         observeStateChanges(for: tab, session: session, service: service)
+        await attachManualPasswordHandler(to: service, tab: tab)
 
-        // When the stored password was wrong and the user types a working
-        // one into the terminal, refresh the saved credential so the next
-        // connect succeeds automatically.
-        await service.setManualPasswordHandler { [weak tab] password in
-            Task { @MainActor in
-                tab?.hostItem.updateSavedPassword(password)
-                Log.session.info("[CONNECT] Manual password accepted; saved credential updated")
-            }
-        }
-
-        var vnextDidFallback = false
-        var vnextFallbackAlgorithms: SSHAlgorithmRequirements? = nil
-        var vnextFallbackReason: SSHBackendReason = .kexMismatch
+        var fallbackInfo: FallbackInfo?
         do {
             do {
                 try await service.connect(config: effectiveConfig)
             } catch {
-                // Single compatibility fallback for nativeWithCompatibilityFallback
-                guard case .nativeWithCompatibilityFallback = vnextDecision else { throw error }
-                let phase: SSHProtocolPhase = {
-                    let m = (error.localizedDescription + " " + String(describing: error)).lowercased()
-                    if m.contains("keyexchangenegotiationfailure") || m.contains("no matching") { return .keyExchange }
-                    if m.contains("host key") { return .hostKeyVerification }
-                    if m.contains("permission denied") || m.contains("no supported authentication") { return .userAuthentication }
-                    return .keyExchange
-                }()
-                let ctx = SSHFailureContext(phase: phase, underlyingError: error, endpoint: vnextReq.endpoint)
-                let classification = NativeErrorClassifier().classify(ctx)
-                guard classification.canFallbackToCompatibility else { throw error }
-                Log.session.info("[VNext] Native failed (\(classification.rawValue)) — falling back to Compatibility: \(error.localizedDescription)")
-                // VNext T3.1 — infer per-endpoint algorithms for this host
-                let compatConfig: SSHConnectionConfig = {
-                    if let req = Self.inferAlgorithmRequirements(from: error), !req.isEmpty {
-                        Log.session.info("[VNext] Inferred compat algorithms: kex=\(req.kex) hostKey=\(req.hostKey)")
-                        vnextFallbackAlgorithms = req
-                        return SSHConnectionConfig(
-                            host: config.host, port: config.port, username: config.username,
-                            authMethod: config.authMethod, jumpHost: config.jumpHost,
-                            maxReconnectAttempts: config.maxReconnectAttempts,
-                            baseReconnectDelay: config.baseReconnectDelay,
-                            algorithmRequirements: req
-                        )
-                    }
-                    return config
-                }()
-                vnextDidFallback = true
-                vnextFallbackReason = {
-                    switch classification {
-                    case .protocolCompatibility:
-                        if phase == .hostKeyVerification { return .hostKeyMismatch }
-                        if phase == .keyExchange { return .kexMismatch }
-                        return .kexMismatch
-                    case .backendCapability: return .noKbdInteractive
-                    default: return .kexMismatch
-                    }
-                }()
-                // New service for Compatibility (clean state)
-                let compatService = await makeService(forced: .compatibility)
-                session.sshService = compatService
-                // Also observe new service
-                observeStateChanges(for: tab, session: session, service: compatService)
-                await compatService.setManualPasswordHandler { [weak tab] password in
-                    Task { @MainActor in
-                        tab?.hostItem.updateSavedPassword(password)
-                        Log.session.info("[CONNECT] Manual password accepted (compat); saved credential updated")
-                    }
-                }
-                try await compatService.connect(config: compatConfig)
-                service = compatService
+                let result = try await handleNativeFallback(
+                    error: error, decision: vnextDecision, config: config,
+                    requirements: vnextReq, currentService: service,
+                    session: session, tab: tab
+                )
+                service = result.service
+                effectiveConfig = result.compatConfig
+                fallbackInfo = FallbackInfo(
+                    didFallback: true,
+                    algorithms: result.algorithms,
+                    reason: result.reason
+                )
             }
 
-            // VNext T5 — vend unified session for SFTP multiplexing
-            if let vnext = await service.makeVNextSession(endpoint: SSHEndpoint(host: config.host, port: config.port)) {
-                session.vnextSession = vnext
-            }
-
-            guard tabs.contains(where: { $0.id == tab.id }) else { return }
-
-            await service.enableReconnection(attempts: 3)
-
-            guard tabs.contains(where: { $0.id == tab.id }) else { return }
-
-            // Connect the first pane
-            if let firstPane = tab.layout.root.paneState {
-                try await setupPTYSession(for: tab, pane: firstPane, session: session, service: service)
-            }
-            // Only mark connected once the PTY is actually established, so the
-            // UI never renders a terminal view without a live PTY session.
-            session.connectionState = .connected
-            session.connectedAt = Date()
-            // A typed password from the auth-failure dialog worked — persist
-            // it to the credential source (vault credential or host entry).
-            if let override = passwordOverride, !override.isEmpty {
-                persistPassword(override, for: tab)
-            }
-            // VNext T4.1 — save successful backend to profile cache
-            if let store = vnextProfileStore {
-                let (backend, reason, algos): (SSHBackendType, SSHBackendReason, SSHAlgorithmRequirements?) = {
-                    switch vnextDecision {
-                    case .native: return (.native, .modern, nil)
-                    case .compatibility(let r): return (.compatibility, r, effectiveConfig.algorithmRequirements)
-                    case .nativeWithCompatibilityFallback:
-                        if vnextDidFallback {
-                            return (.compatibility, vnextFallbackReason, vnextFallbackAlgorithms)
-                        } else {
-                            return (.native, .modern, nil)
-                        }
-                    }
-                }()
-                let classification: SSHFailureClassification? = vnextDidFallback ? .protocolCompatibility : nil
-                store.save(vnextReq, backend: backend, reason: reason, classification: classification, algorithms: algos)
-                Log.session.info("[VNext] Profile saved: \(backend.rawValue)/\(reason.rawValue) — \(config.host):\(config.port)")
-            }
+            let finalizeCtx = FinalizeContext(
+                config: config, effectiveConfig: effectiveConfig,
+                vnextReq: vnextReq, vnextDecision: vnextDecision,
+                fallback: fallbackInfo, passwordOverride: passwordOverride
+            )
+            try await finalizeConnection(tab: tab, session: session, service: service, context: finalizeCtx)
             Log.session.info("[CONNECT] PTY session established successfully")
         } catch {
             Log.session.error("[CONNECT] Connection failed: \(error.localizedDescription)")
@@ -391,13 +234,12 @@ final class SessionManager {
             session.errorMessage = error.localizedDescription
             lastError = error.localizedDescription
             showError = true
-
         }
     }
 
     /// Save a password to the credential source this host actually uses:
     /// the referenced vault credential, or the host-embedded Keychain entry.
-    private func persistPassword(_ password: String, for tab: TerminalTab) {
+    func persistPassword(_ password: String, for tab: TerminalTab) {
         guard !password.isEmpty else { return }
         if let credential = tab.hostItem.credentialRef {
             credential.storeSecret(password)
@@ -571,7 +413,7 @@ final class SessionManager {
 
     // MARK: - Private
 
-    private func resolveConnectionConfig(for tab: TerminalTab, session: TerminalSession) -> SSHConnectionConfig? {
+    func resolveConnectionConfig(for tab: TerminalTab, session: TerminalSession) -> SSHConnectionConfig? {
         let hostItem = tab.hostItem
         guard modelContext != nil else {
             session.connectionState = .disconnected
@@ -625,7 +467,7 @@ final class SessionManager {
         return value.isEmpty ? nil : value
     }
 
-    private func setupPTYSession(
+    func setupPTYSession(
         for tab: TerminalTab,
         pane: PaneState,
         session: TerminalSession,
@@ -765,7 +607,7 @@ final class SessionManager {
         return nil
     }
 
-    private func observeStateChanges(for tab: TerminalTab, session: TerminalSession, service: SSHNetworkService) {
+    func observeStateChanges(for tab: TerminalTab, session: TerminalSession, service: SSHNetworkService) {
         session.stateObservationTask = Task { [weak self, weak tab, weak session] in
             guard let self, let tab, let session else { return }
             for await state in service.stateStream {
