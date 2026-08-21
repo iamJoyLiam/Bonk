@@ -14,6 +14,7 @@ struct HostListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \HostItem.createdAt) private var hosts: [HostItem]
     @Query(sort: \HostGroup.sortOrder) private var hostGroups: [HostGroup]
+    @Query(sort: \SSHBackendProfile.detectedAt, order: .reverse) private var backendProfiles: [SSHBackendProfile]
 
     @Bindable var sessionManager: SessionManager
     let defaultPort: Int
@@ -249,6 +250,10 @@ struct HostListView: View {
 
                 Spacer()
 
+                if host.isSerial != true {
+                    backendBadge(for: host)
+                }
+
                 if tab != nil {
                     Image(systemName: "xmark.circle.fill")
                         .font(.caption)
@@ -353,5 +358,58 @@ struct HostListView: View {
         case .connecting, .reconnecting: .yellow
         case .disconnected: .gray
         }
+    }
+
+    // MARK: - Backend Badge (v3.2 routing visualization)
+
+    private func latestProfile(for host: HostItem) -> SSHBackendProfile? {
+        // Direct lookup: host+port; prefer valid, newest first (Query already sorted)
+        for p in backendProfiles where p.host == host.host && p.port == host.port && p.isValid {
+            return p
+        }
+        // Fallback: any profile for host (even if expired, show stale)
+        return backendProfiles.first { $0.host == host.host && $0.port == host.port }
+    }
+
+    @ViewBuilder
+    private func backendBadge(for host: HostItem) -> some View {
+        if let profile = latestProfile(for: host) {
+            let isNative = profile.backendRaw == SSHBackendType.native.rawValue
+            let isExpired = !profile.isValid
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(isExpired ? Color.gray : (isNative ? Color.green : Color.orange))
+                    .frame(width: 6, height: 6)
+                Text(badgeText(for: profile, isNative: isNative))
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(isExpired ? .secondary : (isNative ? Color.green : Color.orange))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background((isNative ? Color.green : Color.orange).opacity(isExpired ? 0.08 : 0.12))
+            .clipShape(Capsule())
+            .help(badgeHelp(for: profile))
+        }
+    }
+
+    private func badgeText(for profile: SSHBackendProfile, isNative: Bool) -> String {
+        let base = isNative ? "Native" : "兼容"
+        let reason = profile.reasonRaw
+        // Short reason suffix for legacy/policy
+        switch reason {
+        case SSHBackendReason.kexMismatch.rawValue: return "\(base)·KEX"
+        case SSHBackendReason.hostKeyMismatch.rawValue: return "\(base)·HostKey"
+        case SSHBackendReason.cipherMismatch.rawValue: return "\(base)·Cipher"
+        case SSHBackendReason.noKbdInteractive.rawValue: return "\(base)·KBD"
+        case SSHBackendReason.jumpHost.rawValue: return "兼容·Jump"
+        case SSHBackendReason.forcedCompatibility.rawValue: return "兼容·强制"
+        case SSHBackendReason.modern.rawValue: return base
+        default: return "\(base)·\(reason)"
+        }
+    }
+
+    private func badgeHelp(for profile: SSHBackendProfile) -> String {
+        let backend = profile.backendRaw == SSHBackendType.native.rawValue ? "Native (SwiftNIO)" : "兼容 (OpenSSH)"
+        return "\(backend) · \(profile.reasonRaw) · \(profile.isValid ? "有效" : "已过期")"
     }
 }
