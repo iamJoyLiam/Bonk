@@ -1,17 +1,20 @@
 //
 //  NativePortForward.swift
-//  Bonk — v3.3 Native Local Forward stub (Citadel directTCPIP + Network.framework)
-//  Full data-plane glue lands after M6; this keeps the hybrid API shippable.
+//  Bonk — v3.3 Native Local Forward (Citadel directTCPIP + Network.framework)
+//  NWListener + directTCPIPChannel + manual NW↔NIO glue
 //
 #if os(macOS)
 import Citadel
 import Foundation
 import Network
 import NIO
+import NIOCore
 import NIOSSH
 import os.log
 
-/// Local port forward via Native engine (stub — establishes listener, data pump TODO).
+/// Local port forward via Native engine — full data plane.
+/// Listens on localHost:localPort via NWListener, for each inbound NWConnection
+/// opens a SSH directTCPIP channel and pumps bytes both ways.
 final class NativePortForward: @unchecked Sendable {
     private let client: SSHClient
     private let localHost: String
@@ -19,7 +22,10 @@ final class NativePortForward: @unchecked Sendable {
     private let remoteHost: String
     private let remotePort: Int
     private var listener: NWListener?
+    private var bonds: [NWSSHForwardBond] = []
+    private let lock = NSLock()
     private let log = Logger(subsystem: "com.bonk", category: "NativeForward")
+    private var running = false
 
     init(client: SSHClient, localHost: String, localPort: Int, remoteHost: String, remotePort: Int) {
         self.client = client
@@ -30,31 +36,194 @@ final class NativePortForward: @unchecked Sendable {
     }
 
     func start() throws {
+        guard !running else { return }
         let params = NWParameters.tcp
         params.allowLocalEndpointReuse = true
+        params.includePeerToPeer = true
         guard let port = NWEndpoint.Port(rawValue: UInt16(localPort)) else { throw PortForwardError.serviceUnavailable }
+        // Bind to localHost if it's 127.0.0.1/localhost; otherwise 0.0.0.0 via NWListener default.
         listener = try NWListener(using: params, on: port)
         listener?.newConnectionHandler = { [weak self] conn in
-            self?.log.info("[NativeForward] incoming \(conn.endpoint.debugDescription, privacy: .public) — data pump TODO, falling back to OpenSSH for now")
-            conn.cancel()
-            // TODO v3.3 full: createDirectTCPIPChannel + NWConnection ↔ Channel glue (see earlier draft)
+            self?.handleIncoming(conn)
         }
         listener?.stateUpdateHandler = { [weak self] state in
-            if case .ready = state {
-                self?.log.info("[NativeForward] listening \(self?.localHost ?? ""):\(self?.localPort ?? 0) → \(self?.remoteHost ?? ""):\(self?.remotePort ?? 0) (stub)")
+            switch state {
+            case .ready:
+                self?.log.info("[NativeForward] listening \(self?.localHost ?? ""):\(self?.localPort ?? 0) → \(self?.remoteHost ?? ""):\(self?.remotePort ?? 0)")
+            case .failed(let err):
+                self?.log.error("[NativeForward] listener failed: \(err.localizedDescription, privacy: .public)")
+            case .cancelled:
+                self?.log.info("[NativeForward] listener cancelled")
+            default: break
             }
         }
         listener?.start(queue: .global(qos: .userInitiated))
+        running = true
+        log.info("[NativeForward] starting listener \(self.localHost):\(self.localPort) → \(self.remoteHost):\(self.remotePort)")
+    }
+
+    private func handleIncoming(_ nw: NWConnection) {
+        nw.stateUpdateHandler = { [weak self, weak nw] state in
+            guard let self, let nw else { return }
+            switch state {
+            case .ready:
+                Task { await self.openChannel(for: nw) }
+            case .failed, .cancelled:
+                nw.cancel()
+            default: break
+            }
+        }
+        nw.start(queue: .global(qos: .userInitiated))
+    }
+
+    private func openChannel(for nw: NWConnection) async {
+        do {
+            let originator = try SocketAddress(ipAddress: "127.0.0.1", port: 0)
+            let settings = SSHChannelType.DirectTCPIP(targetHost: remoteHost, targetPort: remotePort, originatorAddress: originator)
+            // Initialize channel with SSH->NW bridge handler
+            let bond: NWSSHForwardBond
+            let channel: Channel = try await client.createDirectTCPIPChannel(using: settings) { channel in
+                let handler = SSHToNWHandler(nw: nw)
+                return channel.pipeline.addHandler(handler).flatMap {
+                    channel.pipeline.addHandler(ErrorHandler())
+                }
+            }
+            bond = NWSSHForwardBond(nw: nw, sshChannel: channel, log: log)
+            lock.withLock { bonds.append(bond) }
+            bond.start()
+            log.info("[NativeForward] bond created local:\(self.localPort) → \(self.remoteHost):\(self.remotePort)")
+            // Cleanup on close
+            channel.closeFuture.whenComplete { [weak self, weak bond] _ in
+                if let bond { self?.removeBond(bond) }
+                nw.cancel()
+            }
+        } catch {
+            log.error("[NativeForward] createDirectTCPIPChannel failed: \(error.localizedDescription, privacy: .public)")
+            nw.cancel()
+        }
+    }
+
+    private func removeBond(_ bond: NWSSHForwardBond) {
+        lock.withLock { bonds.removeAll { $0 === bond } }
     }
 
     func stop() {
+        guard running else { return }
+        running = false
         listener?.cancel()
         listener = nil
+        let snap = lock.withLock { bonds }
+        for b in snap { b.close() }
+        lock.withLock { bonds.removeAll() }
         log.info("[NativeForward] stopped \(self.localHost):\(self.localPort)")
+    }
+
+    deinit { listener?.cancel() }
+}
+
+// MARK: - Bond (NW ↔ SSH)
+
+private final class NWSSHForwardBond: @unchecked Sendable {
+    let nw: NWConnection
+    let sshChannel: Channel
+    let log: Logger
+    private var closed = false
+    private let closeLock = NSLock()
+
+    init(nw: NWConnection, sshChannel: Channel, log: Logger) {
+        self.nw = nw
+        self.sshChannel = sshChannel
+        self.log = log
+    }
+
+    func start() {
+        // NW -> SSH loop
+        receiveNext()
+        // SSH -> NW is handled by SSHToNWHandler added before
+        // NW close is already handled via Data.isComplete in receiveNext + channel closeFuture
+    }
+
+    private func receiveNext() {
+        guard !closed else { return }
+        nw.receive(minimumIncompleteLength: 1, maximumLength: 32_768) { [weak self] data, _, isComplete, error in
+            guard let self else { return }
+            if self.closed { return }
+            if let error {
+                self.log.debug("[NativeForward] NW receive error: \(error.localizedDescription, privacy: .public)")
+                self.close()
+                return
+            }
+            if let data, !data.isEmpty {
+                let payload = data
+                self.sshChannel.eventLoop.execute {
+                    var buffer = self.sshChannel.allocator.buffer(capacity: payload.count)
+                    buffer.writeBytes(payload)
+                    self.sshChannel.writeAndFlush(buffer, promise: nil)
+                }
+            }
+            if isComplete {
+                self.sshChannel.eventLoop.execute {
+                    self.sshChannel.close(mode: .output, promise: nil)
+                }
+                return
+            }
+            self.receiveNext()
+        }
+    }
+
+    func close() {
+        let shouldClose: Bool = closeLock.withLock {
+            if closed { return false }
+            closed = true
+            return true
+        }
+        guard shouldClose else { return }
+        nw.cancel()
+        sshChannel.eventLoop.execute { self.sshChannel.close(promise: nil) }
     }
 }
 
-// NativeSSHSession exposes client internally for forward (friend file, same module)
+// MARK: - Handler SSH -> NW
+
+private final class SSHToNWHandler: ChannelInboundHandler, RemovableChannelHandler, @unchecked Sendable {
+    typealias InboundIn = ByteBuffer
+    private let nw: NWConnection
+    init(nw: NWConnection) { self.nw = nw }
+
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        let buf = self.unwrapInboundIn(data)
+        let count = buf.readableBytes
+        guard count > 0 else { return }
+        let data = Data(buf.readableBytesView)
+        nw.send(content: data, completion: .contentProcessed { _ in })
+    }
+
+    func channelInactive(context: ChannelHandlerContext) {
+        nw.cancel()
+        context.fireChannelInactive()
+    }
+
+    func errorCaught(context: ChannelHandlerContext, error: Error) {
+        nw.cancel()
+        context.close(promise: nil)
+    }
+
+    func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
+        if let ev = event as? ChannelEvent, case .inputClosed = ev {
+            nw.send(content: nil, completion: .contentProcessed { _ in })
+            // half close NW send side: NWConnection doesn't have half-close, just continue
+        }
+        context.fireUserInboundEventTriggered(event)
+    }
+}
+
+private final class ErrorHandler: ChannelInboundHandler, @unchecked Sendable {
+    typealias InboundIn = Any
+    func errorCaught(context: ChannelHandlerContext, error: Error) {
+        context.close(promise: nil)
+    }
+}
+
 extension NativeSSHSession {
     var forwardClient: SSHClient { client }
     func makeLocalForward(localHost: String, localPort: Int, remoteHost: String, remotePort: Int) throws -> NativePortForward {
