@@ -240,19 +240,17 @@ struct HostListView: View {
                         .font(.body)
                         .lineLimit(1)
 
-                    Text(host.isSerial == true
-                        ? "\(i18n.t(.serialPort)) · \(host.host)"
-                        : "\(host.username)@\(host.host):\(host.port)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if host.isSerial == true {
+                        Text("\(i18n.t(.serialPort)) · \(host.host)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    } else {
+                        backendSubtitle(for: host)
+                    }
                 }
 
                 Spacer()
-
-                if host.isSerial != true {
-                    backendBadge(for: host)
-                }
 
                 if tab != nil {
                     Image(systemName: "xmark.circle.fill")
@@ -372,23 +370,26 @@ struct HostListView: View {
     }
 
     @ViewBuilder
-    private func backendBadge(for host: HostItem) -> some View {
+    private func backendSubtitle(for host: HostItem) -> some View {
         if let profile = latestProfile(for: host) {
             let isNative = profile.backendRaw == SSHBackendType.native.rawValue
             let isExpired = !profile.isValid
             HStack(spacing: 4) {
                 Circle()
                     .fill(isExpired ? Color.gray : (isNative ? Color.green : Color.orange))
-                    .frame(width: 6, height: 6)
+                    .frame(width: 5, height: 5)
                 Text(badgeText(for: profile, isNative: isNative))
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .font(.system(size: 10))
                     .foregroundStyle(isExpired ? .secondary : (isNative ? Color.green : Color.orange))
                     .lineLimit(1)
             }
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .background((isNative ? Color.green : Color.orange).opacity(isExpired ? 0.08 : 0.12))
-            .clipShape(Capsule())
             .help(badgeHelp(for: profile))
+        } else {
+            // No profile yet — show address as fallback so row not empty
+            Text(host.host)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
     }
 
