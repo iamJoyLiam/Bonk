@@ -236,32 +236,23 @@ struct HostListView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(host.name)
-                        .font(.body)
-                        .lineLimit(1)
-
+                    HStack(spacing: 6) {
+                        Text(host.name)
+                            .font(.body)
+                            .lineLimit(1)
+                        if host.isSerial != true {
+                            inlineBackendBadge(for: host)
+                        }
+                    }
                     if host.isSerial == true {
                         Text("\(i18n.t(.serialPort)) · \(host.host)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
-                    } else {
-                        backendSubtitle(for: host)
                     }
                 }
 
                 Spacer()
-
-                if tab != nil {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .onTapGesture {
-                            if let tabID = tab?.id {
-                                Task { await sessionManager.closeTab(tabID) }
-                            }
-                        }
-                }
             }
             .contentShape(Rectangle())
         }
@@ -370,7 +361,7 @@ struct HostListView: View {
     }
 
     @ViewBuilder
-    private func backendSubtitle(for host: HostItem) -> some View {
+    private func inlineBackendBadge(for host: HostItem) -> some View {
         if let profile = latestProfile(for: host) {
             let isNative = profile.backendRaw == SSHBackendType.native.rawValue
             let isExpired = !profile.isValid
@@ -379,34 +370,33 @@ struct HostListView: View {
                     .fill(isExpired ? Color.gray : (isNative ? Color.green : Color.orange))
                     .frame(width: 5, height: 5)
                 Text(badgeText(for: profile, isNative: isNative))
-                    .font(.system(size: 10))
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
                     .foregroundStyle(isExpired ? .secondary : (isNative ? Color.green : Color.orange))
                     .lineLimit(1)
             }
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background((isNative ? Color.green : Color.orange).opacity(isExpired ? 0.08 : 0.12))
+            .clipShape(Capsule())
             .help(badgeHelp(for: profile))
-        } else {
-            // No profile yet — show address as fallback so row not empty
-            Text(host.host)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
         }
     }
 
     private func badgeText(for profile: SSHBackendProfile, isNative: Bool) -> String {
-        let base = isNative ? "Native" : "兼容"
-        let reason = profile.reasonRaw
-        // Short reason suffix for legacy/policy
-        switch reason {
-        case SSHBackendReason.kexMismatch.rawValue: return "\(base)·KEX"
-        case SSHBackendReason.hostKeyMismatch.rawValue: return "\(base)·HostKey"
-        case SSHBackendReason.cipherMismatch.rawValue: return "\(base)·Cipher"
-        case SSHBackendReason.noKbdInteractive.rawValue: return "\(base)·KBD"
-        case SSHBackendReason.jumpHost.rawValue: return "兼容·Jump"
-        case SSHBackendReason.forcedCompatibility.rawValue: return "兼容·强制"
-        case SSHBackendReason.modern.rawValue: return base
-        default: return "\(base)·\(reason)"
+        // User wants yellow badge to say OpenSSH, not "兼容·强制"
+        if !isNative {
+            // All Compatibility shows as OpenSSH (yellow)
+            if profile.reasonRaw == SSHBackendReason.forcedCompatibility.rawValue { return "OpenSSH" }
+            if profile.reasonRaw == SSHBackendReason.jumpHost.rawValue { return "OpenSSH·Jump" }
+            if profile.reasonRaw == SSHBackendReason.hostKeyMismatch.rawValue { return "OpenSSH" }
+            // Keep short suffix for debug, but base is OpenSSH
+            switch profile.reasonRaw {
+            case SSHBackendReason.kexMismatch.rawValue: return "OpenSSH"
+            case SSHBackendReason.cipherMismatch.rawValue: return "OpenSSH"
+            case SSHBackendReason.noKbdInteractive.rawValue: return "OpenSSH"
+            default: return "OpenSSH"
+            }
         }
+        return "Native"
     }
 
     private func badgeHelp(for profile: SSHBackendProfile) -> String {
