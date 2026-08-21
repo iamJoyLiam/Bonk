@@ -236,12 +236,13 @@ struct HostListView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 4) {
                         Text(host.name)
-                            .font(.body)
+                            .font(.system(size: 13))
                             .lineLimit(1)
                             .truncationMode(.tail)
-                        Spacer(minLength: 8)
+                            .layoutPriority(1)
+                        Spacer(minLength: 4)
                         if host.isSerial != true {
                             inlineBackendBadge(for: host)
                         }
@@ -366,17 +367,17 @@ struct HostListView: View {
         if let profile = latestProfile(for: host) {
             let isNative = profile.backendRaw == SSHBackendType.native.rawValue
             let isExpired = !profile.isValid
-            HStack(spacing: 4) {
+            HStack(spacing: 3) {
                 Circle()
                     .fill(isExpired ? Color.gray : (isNative ? Color.green : Color.orange))
-                    .frame(width: 5, height: 5)
+                    .frame(width: 4, height: 4)
                 Text(badgeText(for: profile, isNative: isNative))
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .font(.system(size: 8, weight: .medium, design: .monospaced))
                     .foregroundStyle(isExpired ? .secondary : (isNative ? Color.green : Color.orange))
                     .lineLimit(1)
             }
-            .padding(.horizontal, 5).padding(.vertical, 1)
-            .background((isNative ? Color.green : Color.orange).opacity(isExpired ? 0.08 : 0.12))
+            .padding(.horizontal, 4).padding(.vertical, 2)
+            .background((isNative ? Color.green : Color.orange).opacity(isExpired ? 0.07 : 0.10))
             .clipShape(Capsule())
             .help(badgeHelp(for: profile))
         }
