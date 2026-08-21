@@ -608,10 +608,14 @@ final class SessionManager {
     }
 
     func observeStateChanges(for tab: TerminalTab, session: TerminalSession, service: SSHNetworkService) {
+        session.stateObservationTask?.cancel()
+        let token = UUID()
+        session.stateObserverToken = token
         session.stateObservationTask = Task { [weak self, weak tab, weak session] in
             guard let self, let tab, let session else { return }
             for await state in service.stateStream {
                 guard !Task.isCancelled else { break }
+                guard session.stateObserverToken == token else { return }
                 guard tab.session === session else { break }
 
                 switch state {

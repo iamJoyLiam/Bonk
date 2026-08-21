@@ -33,7 +33,11 @@ struct TerminalTabContentView: View {
             case .connecting:
                 connectingView
             case .connected:
-                terminalView
+                if tab.session?.ptySession != nil {
+                    terminalView
+                } else {
+                    connectingView
+                }
             case let .reconnecting(attempt, max):
                 reconnectingView(attempt: attempt, max: max)
             }

@@ -38,21 +38,25 @@ import SwiftUI
                 case .connecting:
                     connectingView
                 case .connected:
-                    MacTerminalContainerBridge(
-                        activeTabID: activeTab.id,
-                        colorScheme: colorScheme,
-                        fontSize: fontSize,
-                        fontFamily: fontFamily,
-                        lineHeight: lineHeight,
-                        scrollbackLines: scrollbackLines,
-                        cursorStyle: cursorStyle,
-                        cursorBlink: cursorBlink,
-                        copyOnSelect: copyOnSelect,
-                        scrollSensitivity: scrollSensitivity,
-                        onSend: onSend,
-                        onResize: onResize,
-                        onTitleChange: onTitleChange
-                    )
+                    if activeTab.session?.ptySession != nil {
+                        MacTerminalContainerBridge(
+                            activeTabID: activeTab.id,
+                            colorScheme: colorScheme,
+                            fontSize: fontSize,
+                            fontFamily: fontFamily,
+                            lineHeight: lineHeight,
+                            scrollbackLines: scrollbackLines,
+                            cursorStyle: cursorStyle,
+                            cursorBlink: cursorBlink,
+                            copyOnSelect: copyOnSelect,
+                            scrollSensitivity: scrollSensitivity,
+                            onSend: onSend,
+                            onResize: onResize,
+                            onTitleChange: onTitleChange
+                        )
+                    } else {
+                        connectingView
+                    }
                 case let .reconnecting(attempt, max):
                     reconnectingView(attempt: attempt, max: max)
                 }
