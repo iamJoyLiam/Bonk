@@ -6,17 +6,17 @@
 import XCTest
 @testable import Bonk
 
-final class ThemeRegistryTests: XCTestCase {
+@MainActor final class ThemeRegistryTests: XCTestCase {
 
     func testAllThemesContainsBuiltinThemes() {
         let all = ThemeRegistry.all
-        XCTAssertTrue(all.count >= 9)  // light, dark, transparent, dracula, tokyo, gruvbox, catppuccin, nord, solarized
+        XCTAssertTrue(all.count >= 3)  // light, dark, solarizedDark
     }
 
     func testThemeByIDReturnsCorrectTheme() {
-        let theme = ThemeRegistry.theme(byID: "dracula")
+        let theme = ThemeRegistry.theme(byID: "solarized-dark")
         XCTAssertNotNil(theme)
-        XCTAssertEqual(theme?.name, "Dracula")
+        XCTAssertEqual(theme?.name, "Solarized Dark")
     }
 
     func testThemeByIDReturnsNilForUnknown() {

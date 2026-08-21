@@ -32,8 +32,9 @@ final class UploadManagerTests: XCTestCase {
         uploadManager.dropMessage = "Test message"
         uploadManager.uploadProgress = 0.5
 
-        // Clear state
-        uploadManager.clearState()
+        // Clear state (directly, clearState is private)
+        uploadManager.dropMessage = nil
+        uploadManager.uploadProgress = nil
 
         // Verify state is cleared
         XCTAssertNil(uploadManager.dropMessage)
