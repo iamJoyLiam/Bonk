@@ -240,6 +240,8 @@ struct HostListView: View {
                         Text(host.name)
                             .font(.body)
                             .lineLimit(1)
+                            .truncationMode(.tail)
+                        Spacer(minLength: 8)
                         if host.isSerial != true {
                             inlineBackendBadge(for: host)
                         }
@@ -251,8 +253,7 @@ struct HostListView: View {
                             .lineLimit(1)
                     }
                 }
-
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .contentShape(Rectangle())
         }
