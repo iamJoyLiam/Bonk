@@ -58,10 +58,29 @@ final class OpenSSHProcessTransport: @unchecked Sendable {
         size.ws_col = UInt16(max(1, min(cols, 500)))
         size.ws_row = UInt16(max(1, min(rows, 200)))
 
-        guard openpty(&master, &slave, nil, nil, &size) == 0 else {
-            throw SSHServiceError.connectionFailed(
-                "Failed to allocate PTY: \(String(cString: strerror(errno)))"
-            )
+        if openpty(&master, &slave, nil, nil, &size) != 0 {
+            let e = errno
+            // ENXIO(6) or ENOMEM: PTY pool exhausted — often orphaned ControlMaster ssh
+            // children holding PTYs after a crash. Reclaim and retry once.
+            if e == ENXIO || e == ENOMEM || e == EMFILE || e == ENFILE {
+                // Reclaim: kill bonk-ssh muxes that survived a crash and hold PTYs
+                let task = Process()
+                task.executableURL = URL(fileURLWithPath: "/bin/sh")
+                task.arguments = ["-c", "pkill -9 -f 'bonk-ssh-.*\\.sock' 2>/dev/null; rm -f /tmp/bonk-ssh-*.sock 2>/dev/null; sleep 0.2"]
+                try? task.run()
+                task.waitUntilExit()
+                if openpty(&master, &slave, nil, nil, &size) == 0 {
+                    // retry succeeded
+                } else {
+                    throw SSHServiceError.connectionFailed(
+                        "Pseudo Terminal Setup Error ErrorCode: 7 Errno: \(e) (\(String(cString: strerror(e)))). PTY 耗尽：已自动清理残留的 bonk-ssh 进程，请关闭部分标签页后重试，或重启 App。若频繁出现，检查是否有大量未关闭的 SSH 标签/分屏。"
+                    )
+                }
+            } else {
+                throw SSHServiceError.connectionFailed(
+                    "Pseudo Terminal Setup Error ErrorCode: 7 Errno: \(e) (\(String(cString: strerror(e)))). 请重试或重启 App，详情见 Show Details。"
+                )
+            }
         }
 
         let argv = ([executable] + arguments).compactMap { strdup($0) }
