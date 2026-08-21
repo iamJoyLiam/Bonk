@@ -14,6 +14,18 @@ extension AgentEngine {
         conversation: AIConversationRecord? = nil,
         context: ModelContext? = nil
     ) async {
+        await runAgent(input: input, sshService: sshService, hybridSession: nil, hostName: hostName, conversation: conversation, context: context)
+    }
+
+    /// v3.3 Hybrid overload — activeTab's TerminalSession provides multiplexed exec.
+    func runAgent(
+        input: String,
+        sshService: SSHNetworkService,
+        hybridSession: TerminalSession?,
+        hostName: String? = nil,
+        conversation: AIConversationRecord? = nil,
+        context: ModelContext? = nil
+    ) async {
         appendAgentMessage(.user, content: input, conversation: conversation, context: context)
 
         let useToolLoop = resolveProvider().map { resolved in
@@ -24,12 +36,12 @@ extension AgentEngine {
         } ?? false
         if useToolLoop {
             await runAgentToolLoop(
-                input: input, sshService: sshService, hostName: hostName,
+                input: input, sshService: sshService, hybridSession: hybridSession, hostName: hostName,
                 conversation: conversation, context: context
             )
         } else {
             await runAgentLegacy(
-                input: input, sshService: sshService,
+                input: input, sshService: sshService, hybridSession: hybridSession,
                 conversation: conversation, context: context
             )
         }
@@ -40,6 +52,7 @@ extension AgentEngine {
     func runAgentLegacy(
         input: String,
         sshService: SSHNetworkService,
+        hybridSession: TerminalSession? = nil,
         conversation: AIConversationRecord?,
         context: ModelContext?
     ) async {
@@ -58,9 +71,9 @@ extension AgentEngine {
             return
         }
 
-        // Phase 3: Execute steps
+        // Phase 3: Execute steps (v3.3 hybrid)
         let report = await executePlan(
-            plan: plan, sshService: sshService,
+            plan: plan, sshService: sshService, hybridSession: hybridSession,
             conversation: conversation, context: context
         )
 
@@ -132,9 +145,13 @@ extension AgentEngine {
     private func executePlan(
         plan: AgentPlan,
         sshService: SSHNetworkService,
+        hybridSession: TerminalSession? = nil,
         conversation: AIConversationRecord?,
         context: ModelContext?
     ) async -> ExecutionReport {
+        let hybridExec: (@Sendable (String) async throws -> String)? = if let session = hybridSession {
+            { @Sendable command async throws -> String in try await session.executeHybrid(command) }
+        } else { nil }
         var results: [StepResult] = []
         let startTime = Date()
 
@@ -169,11 +186,17 @@ extension AgentEngine {
                 }
             }
 
-            // Execute
+            // Execute (v3.3 hybrid — one connection, many channels)
             let stepStart = Date()
+            let sshService = sshService
+            let hybridExec = hybridExec
+            let command = step.command
             do {
                 let output = try await withTimeout(seconds: 30) {
-                    try await sshService.executeCommand(step.command)
+                    if let exec = hybridExec {
+                        return try await exec(command)
+                    }
+                    return try await sshService.executeCommand(command)
                 }
                 let truncated = String(output.prefix(4000))
                 let duration = Date().timeIntervalSince(stepStart)

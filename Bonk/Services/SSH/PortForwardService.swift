@@ -31,6 +31,37 @@ final class PortForwardService {
 
     // MARK: - Public API
 
+    // v3.3 Native handles for local/remote (Dynamic stays Compatibility)
+    private var nativeForwards: [UUID: NativePortForward] = [:]
+
+    /// Start a port forwarding via TerminalSession (prefers Native for local/remote, Dynamic → Compatibility).
+    func start(config: PortForward, using session: TerminalSession) async throws {
+        // Dynamic always Compatibility (see v3.3)
+        if config.type == .dynamic {
+            guard let svc = session.sshService else { throw PortForwardError.serviceUnavailable }
+            return try await start(config: config, using: svc)
+        }
+        // Try Native when vnextSession is Native
+        if let vnext = session.vnextSession as? NativeSSHSession {
+            do {
+                let fwd = try vnext.makeLocalForward(
+                    localHost: config.localHost, localPort: config.localPort,
+                    remoteHost: config.remoteHost, remotePort: config.remotePort
+                )
+                try fwd.start()
+                nativeForwards[config.id] = fwd
+                activeTasks[config.id] = (task: nil, config: config)
+                config.isActive = true
+                logger.info("Started Native port forwarding: \(config.displayDescription)")
+                return
+            } catch {
+                logger.warning("Native forward failed, falling back to OpenSSH: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        guard let svc = session.sshService else { throw PortForwardError.serviceUnavailable }
+        try await start(config: config, using: svc)
+    }
+
     /// Start a port forwarding.
     func start(
         config: PortForward,
@@ -93,6 +124,13 @@ final class PortForwardService {
 
     /// Stop a port forwarding.
     func stop(config: PortForward) {
+        if let native = nativeForwards.removeValue(forKey: config.id) {
+            native.stop()
+            activeTasks.removeValue(forKey: config.id)
+            config.isActive = false
+            logger.info("Stopped Native port forwarding: \(config.displayDescription)")
+            return
+        }
         guard let entry = activeTasks[config.id] else { return }
         entry.task?.cancel()
         activeTasks.removeValue(forKey: config.id)
@@ -103,6 +141,8 @@ final class PortForwardService {
 
     /// Stop all port forwardings.
     func stopAll() {
+        for (_, fwd) in nativeForwards { fwd.stop() }
+        nativeForwards.removeAll()
         for (_, entry) in activeTasks {
             entry.task?.cancel()
             entry.config.isActive = false

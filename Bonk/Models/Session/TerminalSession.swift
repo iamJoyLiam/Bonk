@@ -44,6 +44,17 @@ final class TerminalSession {
         self.tabID = tabID
     }
 
+    /// v3.3 Hybrid exec — prefers multiplexed SSHSession (Native or Compatibility)
+    /// over the legacy SSHNetworkService path. One connection, many exec channels.
+    func executeHybrid(_ command: String) async throws -> String {
+        if let vnext = vnextSession {
+            let result = try await vnext.execute(command)
+            return result.output
+        }
+        guard let sshService else { throw SSHServiceError.notConnected }
+        return try await sshService.executeCommand(command)
+    }
+
     /// Return the existing SFTP service, or coalesce concurrent connection
     /// requests into one native SFTP handshake.
     func ensureSFTP() async -> SFTPService? {

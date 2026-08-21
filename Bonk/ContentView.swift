@@ -144,7 +144,8 @@ struct ContentView: View {
             .sheet(isPresented: workspaceBindable.isPortForwardingPresented) {
                 PortForwardView(
                     isPresented: workspaceBindable.isPortForwardingPresented,
-                    sshService: sessionManager.activeTab?.session?.sshService
+                    sshService: sessionManager.activeTab?.session?.sshService,
+                    session: sessionManager.activeTab?.session
                 )
                 .environment(i18n)
             }

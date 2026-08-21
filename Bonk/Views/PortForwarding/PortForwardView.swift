@@ -16,6 +16,7 @@ struct PortForwardView: View {
     @Query(sort: \PortForward.createdAt) private var rules: [PortForward]
     @Binding var isPresented: Bool
     let sshService: SSHNetworkService?
+    var session: TerminalSession? // v3.3 Native prefers session (has vnextSession)
 
     @State private var showAddSheet = false
     @State private var editingRule: PortForward?
@@ -134,7 +135,11 @@ struct PortForwardView: View {
                 portForwardService.stop(config: rule)
             } else {
                 do {
-                    try await portForwardService.start(config: rule, using: sshService)
+                    if let session {
+                        try await portForwardService.start(config: rule, using: session)
+                    } else {
+                        try await portForwardService.start(config: rule, using: sshService)
+                    }
                 } catch {
                     Log.ssh.error("Port forward error: \(error.localizedDescription)")
                 }

@@ -48,14 +48,15 @@ extension AIChatSidebarView {
                 )]
                 return
             }
-            submitAgentTask(text: text, ssh: ssh, hostName: hostDisplayName(tab.hostItem))
+            // v3.3 hybrid: pass TerminalSession so exec reuses multiplexed channel (Native 1000× channel vs 1000× Process)
+            submitAgentTask(text: text, ssh: ssh, hybridSession: tab.session, hostName: hostDisplayName(tab.hostItem))
         case .host(let hostID):
             guard let host = hosts.first(where: { $0.id == hostID }) else { return }
             if connectionService.connectedHostID == hostID {
                 Task {
                     do {
                         let ssh = try await connectionService.service(for: host)
-                        submitAgentTask(text: text, ssh: ssh, hostName: hostDisplayName(host))
+                        submitAgentTask(text: text, ssh: ssh, hybridSession: nil, hostName: hostDisplayName(host))
                     } catch {
                         engine.agentMessages = [AgentMessage(
                             role: .system,
@@ -70,7 +71,7 @@ extension AIChatSidebarView {
         }
     }
 
-    private func submitAgentTask(text: String, ssh: SSHNetworkService, hostName: String) {
+    private func submitAgentTask(text: String, ssh: SSHNetworkService, hybridSession: TerminalSession? = nil, hostName: String) {
         if currentConversation == nil { createNewConversation() }
         let conversation = currentConversation
 
@@ -81,7 +82,7 @@ extension AIChatSidebarView {
         currentTask?.cancel()
         currentTask = Task {
             await engine.runAgent(
-                input: text, sshService: ssh, hostName: hostName,
+                input: text, sshService: ssh, hybridSession: hybridSession, hostName: hostName,
                 conversation: conversation, context: modelContext
             )
             engine.isProcessing = false

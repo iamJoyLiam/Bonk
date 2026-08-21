@@ -13,7 +13,7 @@ import NIOConcurrencyHelpers
 import NIOCore
 
 final class NativeSSHSession: SSHSession, @unchecked Sendable {
-    private let client: SSHClient
+    let client: SSHClient
     private let _endpoint: SSHEndpoint
     private let stateBox = NIOLockedValueBox<SSHSessionState>(.connected)
 

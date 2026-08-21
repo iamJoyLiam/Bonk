@@ -6,6 +6,7 @@ import SwiftData
 private struct AgentToolContext {
     let llmProvider: any LLMProvider
     let sshService: SSHNetworkService
+    let hybridExec: (@Sendable (String) async throws -> String)? // v3.3 — multiplexed channel when available
     let hostName: String?
     let conversation: AIConversationRecord?
     let context: ModelContext?
@@ -24,13 +25,29 @@ extension AgentEngine {
         conversation: AIConversationRecord?,
         context: ModelContext?
     ) async {
+        await runAgentToolLoop(input: input, sshService: sshService, hybridSession: nil, hostName: hostName, conversation: conversation, context: context)
+    }
+
+    /// v3.3 Hybrid overload — when a TerminalSession with vnextSession is available,
+    /// exec reuses the multiplexed channel (Native 1000× channel vs 1000× Process).
+    func runAgentToolLoop(
+        input: String,
+        sshService: SSHNetworkService,
+        hybridSession: TerminalSession?,
+        hostName: String?,
+        conversation: AIConversationRecord?,
+        context: ModelContext?
+    ) async {
         guard let (provider, apiKey) = resolveProvider() else { return }
         let llmProvider = LLMProviderFactory.provider(
             for: provider, apiKey: apiKey, workload: .agentToolLoop
         )
+        let hybridExec: (@Sendable (String) async throws -> String)? = if let session = hybridSession {
+            { @Sendable command async throws -> String in try await session.executeHybrid(command) }
+        } else { nil }
         let toolContext = AgentToolContext(
             llmProvider: llmProvider,
-            sshService: sshService, hostName: hostName,
+            sshService: sshService, hybridExec: hybridExec, hostName: hostName,
             conversation: conversation, context: context
         )
 
@@ -190,10 +207,14 @@ extension AgentEngine {
         }
 
         do {
-            let sshService = toolContext.sshService
             let start = Date()
+            let hybridExec = toolContext.hybridExec
+            let sshService = toolContext.sshService
             let output = try await withTimeout(seconds: 30) {
-                try await sshService.executeCommand(command)
+                if let exec = hybridExec {
+                    return try await exec(command)
+                }
+                return try await sshService.executeCommand(command)
             }
             let duration = Date().timeIntervalSince(start)
             let truncated = String(output.prefix(4000))
