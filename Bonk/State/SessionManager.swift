@@ -179,12 +179,14 @@ final class SessionManager {
         let session = sessionStore.session(for: tab)
         tab.session = session
         session.connectionState = .connecting
+        session.phase = .resolving
         session.errorMessage = nil
 
         guard let config = preparedConfig(for: tab, session: session, passwordOverride: passwordOverride) else {
-            Log.session.error("[CONNECT] Failed to resolve connection config")
+            setPhase(session, to: .failed("resolve config"), host: tab.hostItem.host, engine: "Resolver", reason: "config")
             return
         }
+        setPhase(session, to: .connectingTransport, host: config.host, engine: "Resolver", reason: "VNext routing")
 
         let routing = await vnextRouting(for: config, host: tab.hostItem)
         let vnextReq = routing.requirements
@@ -202,6 +204,14 @@ final class SessionManager {
         await attachManualPasswordHandler(to: service, tab: tab)
 
         var fallbackInfo: FallbackInfo?
+        let transportEngine: String = {
+            switch vnextDecision {
+            case .native: return "Native"
+            case .compatibility: return "Compatibility"
+            case .nativeWithCompatibilityFallback: return "Native"
+            }
+        }()
+        setPhase(session, to: .negotiatingSSH, host: config.host, engine: transportEngine, reason: "transport connect")
         do {
             do {
                 try await service.connect(config: effectiveConfig)
@@ -230,11 +240,24 @@ final class SessionManager {
         } catch {
             Log.session.error("[CONNECT] Connection failed: \(error.localizedDescription)")
             guard tabs.contains(where: { $0.id == tab.id }) else { return }
-            session.connectionState = .disconnected
+            setPhase(session, to: .failed(error.localizedDescription), host: config.host, engine: "Session", reason: "failed")
             session.errorMessage = error.localizedDescription
             lastError = error.localizedDescription
             showError = true
         }
+    }
+
+    func setPhase(_ session: TerminalSession, to newPhase: SSHConnectionPhase, host: String, engine: String, reason: String) {
+        let old = String(describing: session.phase)
+        session.phase = newPhase
+        // Keep legacy connectionState in sync for non-phase-aware UI
+        switch newPhase {
+        case .idle, .failed: session.connectionState = .disconnected
+        case .ready: session.connectionState = .connected
+        case .reconnecting(let a, let m): session.connectionState = .reconnecting(attempt: a, maxAttempts: m)
+        default: session.connectionState = .connecting
+        }
+        Log.session.info("[SSH_STATE] host:\(host) engine:\(engine) old:\(old) new:\(String(describing: newPhase)) reason:\(reason)")
     }
 
     /// Save a password to the credential source this host actually uses:
@@ -621,16 +644,10 @@ final class SessionManager {
                 switch state {
                 case .connected:
                     if let newPTY = await service.consumePendingPTY() {
-                        // Update the first pane's PTY session
                         if let firstPane = tab.layout.root.paneState {
                             firstPane.ptySession?.close()
                             firstPane.ptySession = newPTY
                             session.ptySession = newPTY
-                            // Rebind the terminal to the fresh session and reset
-                            // it — the old output stream is already dead, which
-                            // otherwise leaves a frozen, unresponsive terminal.
-                            // Single-pane views cache by tab.id, split panes by
-                            // pane.id — cover both.
                             TerminalViewCache.shared.rebindOutputStream(for: tab.id, to: newPTY)
                             TerminalViewCache.shared.rebindOutputStream(for: firstPane.id, to: newPTY)
                             syncPTYSize(for: firstPane.id, ptySession: newPTY)
@@ -638,26 +655,26 @@ final class SessionManager {
                         attachPTYSessionObservers(newPTY, to: tab)
                         session.connectedAt = Date()
                         session.errorMessage = nil
+                        session.phase = .ready
                         session.connectionState = .connected
-                        NotificationCenter.default.post(
-                            name: .terminalPTYSessionReady,
-                            object: nil,
-                            userInfo: ["tabID": tab.id]
-                        )
+                        NotificationCenter.default.post(name: .terminalPTYSessionReady, object: nil, userInfo: ["tabID": tab.id])
                     } else if tab.layout.root.paneState?.ptySession != nil {
-                        // Initial connect: PTY already attached by connectTab.
+                        session.phase = .ready
                         session.connectionState = .connected
                     } else {
-                        // Stale/early connected signal — no PTY yet. Holding the
-                        // current state avoids a blank terminal with no session.
-                        Log.session.debug("[CONNECT] Ignoring .connected before PTY ready")
+                        Log.session.debug("[CONNECT] Ignoring .connected before PTY ready (phase=\(String(describing: session.phase)))")
                     }
                 case .disconnected:
                     session.connectedAt = nil
+                    if case .failed = session.phase { break }
+                    session.phase = .idle
                     session.connectionState = .disconnected
-                default:
+                case .reconnecting(let attempt, let max):
+                    session.phase = .reconnecting(attempt: attempt, maxAttempts: max)
                     session.connectionState = state
-                    break
+                case .connecting:
+                    if case .idle = session.phase { session.phase = .connectingTransport }
+                    session.connectionState = state
                 }
             }
         }

@@ -103,7 +103,7 @@ public enum SSHAuthMethod: Sendable, Hashable {
     case secureEnclaveKey(keyTag: String)
 }
 
-// MARK: - Connection State
+// MARK: - Connection State (legacy, kept for color/isConnected)
 
 public enum SSHConnectionState: Sendable, Equatable {
     case disconnected
@@ -121,6 +121,31 @@ public enum SSHConnectionState: Sendable, Equatable {
         case .connected: "green"
         case .connecting, .reconnecting: "yellow"
         case .disconnected: "gray"
+        }
+    }
+}
+
+// VNext — fine-grained phase for UI binding (Transport ≠ Terminal)
+public enum SSHConnectionPhase: Sendable, Equatable {
+    case idle
+    case resolving
+    case connectingTransport
+    case negotiatingSSH
+    case authenticating
+    case openingChannel
+    case ready
+    case failed(String)
+    case reconnecting(attempt: Int, maxAttempts: Int)
+
+    public var isReady: Bool {
+        if case .ready = self { return true }
+        return false
+    }
+
+    public var isConnecting: Bool {
+        switch self {
+        case .resolving, .connectingTransport, .negotiatingSSH, .authenticating, .openingChannel: return true
+        default: return false
         }
     }
 }

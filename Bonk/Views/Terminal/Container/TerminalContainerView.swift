@@ -32,12 +32,13 @@ import SwiftUI
 
         var body: some View {
             ZStack {
-                switch activeTab.session?.connectionState ?? .disconnected {
-                case .disconnected:
+                let phase = activeTab.session?.phase ?? .idle
+                switch phase {
+                case .idle, .failed:
                     disconnectedView
-                case .connecting:
+                case .resolving, .connectingTransport, .negotiatingSSH, .authenticating, .openingChannel:
                     connectingView
-                case .connected:
+                case .ready:
                     if activeTab.session?.ptySession != nil {
                         MacTerminalContainerBridge(
                             activeTabID: activeTab.id,
@@ -57,7 +58,7 @@ import SwiftUI
                     } else {
                         connectingView
                     }
-                case let .reconnecting(attempt, max):
+                case .reconnecting(let attempt, let max):
                     reconnectingView(attempt: attempt, max: max)
                 }
             }

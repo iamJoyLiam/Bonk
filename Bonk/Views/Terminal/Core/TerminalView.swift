@@ -27,18 +27,19 @@ struct TerminalTabContentView: View {
 
     var body: some View {
         ZStack {
-            switch tab.session?.connectionState ?? .disconnected {
-            case .disconnected:
+            let phase = tab.session?.phase ?? .idle
+            switch phase {
+            case .idle, .failed:
                 disconnectedView
-            case .connecting:
+            case .resolving, .connectingTransport, .negotiatingSSH, .authenticating, .openingChannel:
                 connectingView
-            case .connected:
+            case .ready:
                 if tab.session?.ptySession != nil {
                     terminalView
                 } else {
                     connectingView
                 }
-            case let .reconnecting(attempt, max):
+            case .reconnecting(let attempt, let max):
                 reconnectingView(attempt: attempt, max: max)
             }
         }

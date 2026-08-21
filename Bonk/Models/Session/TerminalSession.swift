@@ -7,6 +7,7 @@ import Foundation
 final class TerminalSession {
     let tabID: UUID
     var connectionState: SSHConnectionState = .disconnected
+    var phase: SSHConnectionPhase = .idle
     var sshService: SSHNetworkService?
     var ptySession: PTYSession?
     var sftpService: SFTPService?
@@ -28,6 +29,10 @@ final class TerminalSession {
 
     var isConnected: Bool {
         connectionState.isConnected
+    }
+
+    var isReady: Bool {
+        phase.isReady && ptySession != nil
     }
 
     var isSFTPConnecting: Bool {
@@ -98,6 +103,7 @@ final class TerminalSession {
         stateObservationTask?.cancel()
         stateObservationTask = nil
         stateObserverToken = UUID()
+        phase = .idle
         sftpConnectionTask?.cancel()
         sftpConnectionTask = nil
         sftpService = nil

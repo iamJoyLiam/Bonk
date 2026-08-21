@@ -148,6 +148,7 @@ extension SessionManager {
         session.sshService = compatService
         observeStateChanges(for: tab, session: session, service: compatService)
         await attachManualPasswordHandler(to: compatService, tab: tab)
+        setPhase(session, to: .authenticating, host: config.host, engine: "Compatibility", reason: "fallback \(classification.rawValue)")
         try await compatService.connect(config: compatConfig)
         return (compatService, compatConfig, inferred, reason)
     }
@@ -164,10 +165,11 @@ extension SessionManager {
         guard tabs.contains(where: { $0.id == tab.id }) else { return }
         await service.enableReconnection(attempts: 3)
         guard tabs.contains(where: { $0.id == tab.id }) else { return }
+        setPhase(session, to: .openingChannel, host: context.config.host, engine: "Session", reason: "PTY")
         if let firstPane = tab.layout.root.paneState {
             try await setupPTYSession(for: tab, pane: firstPane, session: session, service: service)
         }
-        session.connectionState = .connected
+        setPhase(session, to: .ready, host: context.config.host, engine: "Session", reason: "PTY ready")
         session.connectedAt = Date()
         if let override = context.passwordOverride, !override.isEmpty {
             persistPassword(override, for: tab)
