@@ -37,6 +37,27 @@ struct BonkApp: App {
         do {
             return try ModelContainer(for: schema, configurations: [config])
         } catch {
+            #if DEBUG
+            // T4.1 added SSHBackendProfile — existing Dev store has no table.
+            // Delete and recreate in DEBUG only (safe: Dev store is throwaway).
+            let msg = error.localizedDescription + " " + String(describing: error)
+            if msg.contains("no such table") || msg.contains("ZSSHBACKENDPROFILE") {
+                Log.app.error("ModelContainer missing table, deleting Dev store and retrying: \(error)")
+                let fm = FileManager.default
+                if let url = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+                    let base = url.appendingPathComponent("Bonk-Dev.store")
+                    for ext in ["", "-shm", "-wal"] {
+                        let file = URL(fileURLWithPath: base.path + ext)
+                        try? fm.removeItem(at: file)
+                    }
+                }
+                do {
+                    return try ModelContainer(for: schema, configurations: [config])
+                } catch {
+                    Log.app.error("Retry failed: \(error)")
+                }
+            }
+            #endif
             Log.app.error("ModelContainer failed: \(error.localizedDescription)")
             fatalError("Database initialization failed: \(error)")
         }

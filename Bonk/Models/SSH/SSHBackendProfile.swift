@@ -14,10 +14,11 @@ final class SSHBackendProfile {
     var backendRaw: String           // SSHBackendType.rawValue
     var reasonRaw: String            // SSHBackendReason.rawValue
     var classificationRaw: String?   // SSHFailureClassification.rawValue
-    var kexAlgorithms: [String]
-    var hostKeyAlgorithms: [String]
-    var cipherAlgorithms: [String]
-    var macAlgorithms: [String]
+    // Stored as Data (JSON) — SwiftData cannot store [String] directly
+    var kexData: Data?
+    var hostKeyData: Data?
+    var cipherData: Data?
+    var macData: Data?
     var detectedAt: Date
     var expiresAt: Date
     var citadelVersion: String?
@@ -49,14 +50,32 @@ final class SSHBackendProfile {
         self.backendRaw = backendRaw
         self.reasonRaw = reasonRaw
         self.classificationRaw = classificationRaw
-        self.kexAlgorithms = kexAlgorithms
-        self.hostKeyAlgorithms = hostKeyAlgorithms
-        self.cipherAlgorithms = cipherAlgorithms
-        self.macAlgorithms = macAlgorithms
+        self.kexData = kexAlgorithms.isEmpty ? nil : try? JSONEncoder().encode(kexAlgorithms)
+        self.hostKeyData = hostKeyAlgorithms.isEmpty ? nil : try? JSONEncoder().encode(hostKeyAlgorithms)
+        self.cipherData = cipherAlgorithms.isEmpty ? nil : try? JSONEncoder().encode(cipherAlgorithms)
+        self.macData = macAlgorithms.isEmpty ? nil : try? JSONEncoder().encode(macAlgorithms)
         self.detectedAt = detectedAt
         self.expiresAt = expiresAt
         self.citadelVersion = citadelVersion
         self.niosshVersion = niosshVersion
+    }
+
+    // Transient decoded arrays
+    var kexAlgorithms: [String] {
+        get { kexData.flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? [] }
+        set { kexData = newValue.isEmpty ? nil : try? JSONEncoder().encode(newValue) }
+    }
+    var hostKeyAlgorithms: [String] {
+        get { hostKeyData.flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? [] }
+        set { hostKeyData = newValue.isEmpty ? nil : try? JSONEncoder().encode(newValue) }
+    }
+    var cipherAlgorithms: [String] {
+        get { cipherData.flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? [] }
+        set { cipherData = newValue.isEmpty ? nil : try? JSONEncoder().encode(newValue) }
+    }
+    var macAlgorithms: [String] {
+        get { macData.flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? [] }
+        set { macData = newValue.isEmpty ? nil : try? JSONEncoder().encode(newValue) }
     }
 
     var isExpired: Bool { Date() > expiresAt }
