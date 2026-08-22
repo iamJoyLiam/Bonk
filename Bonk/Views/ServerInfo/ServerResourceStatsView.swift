@@ -54,7 +54,16 @@ final class ServerResourceRingControl: NSButton {
         needsDisplay = true
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
     override func draw(_ dirtyRect: NSRect) {
+        // Sidebar vibrancy can leave the toolbar item's effectiveAppearance
+        // stuck in aqua while the app is darkAqua — force the app's appearance
+        // for drawing so separator/label/system colors resolve correctly.
+        NSApp.effectiveAppearance.performAsCurrentDrawingAppearance {
         // The toolbar can stretch the control; always draw a true circle
         // centered on the shortest edge.
         let side = min(bounds.width, bounds.height)
@@ -103,6 +112,7 @@ final class ServerResourceRingControl: NSButton {
             x: (bounds.width - textSize.width) / 2,
             y: (bounds.height - textSize.height) / 2
         ))
+        }
     }
 
     /// Named font avoids macOS 26 display-list crashes seen with

@@ -149,6 +149,12 @@ final class MainSplitViewController: NSSplitViewController {
     }
 
     private func refreshSidebarAppearance() {
+        // Keep window chrome (toolbar rings included) locked to the app theme —
+        // sidebar's vibrant material can otherwise leave toolbar items stuck in aqua
+        // while NSApp is darkAqua (visible as black-on-black track).
+        if let window = view.window, window.appearance != NSApp.appearance {
+            window.appearance = NSApp.appearance
+        }
         splitView.needsDisplay = true
         splitView.needsLayout = true
         splitView.subviews.forEach { sub in
@@ -156,6 +162,15 @@ final class MainSplitViewController: NSSplitViewController {
             sub.layer?.setNeedsDisplay()
         }
         view.window?.contentView?.needsDisplay = true
+        // Toolbar ring views are NSButton-based and cache their appearance at
+        // creation; whack them so they redraw with the corrected appearance.
+        view.window?.toolbar?.validateVisibleItems()
+        // Also nudge any ServerResourceRingControl that is currently visible.
+        if let toolbar = view.window?.toolbar {
+            for item in toolbar.items where item.view is ServerResourceRingControl {
+                item.view?.needsDisplay = true
+            }
+        }
         CATransaction.flush()
     }
 
