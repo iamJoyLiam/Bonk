@@ -90,7 +90,7 @@ struct AIChatSidebarView: View {
         VStack(spacing: 16) {
             Spacer()
             Image(systemName: "sparkles")
-                .font(.system(size: 36))
+                .font(.system(size: AppStyle.fontHero))
                 .foregroundStyle(.tertiary)
             Text(i18n.t(.aiAssistant))
                 .font(.headline)
@@ -117,13 +117,13 @@ struct AIChatSidebarView: View {
     private var header: some View {
         HStack(spacing: 8) {
             Text(i18n.t(.aiAssistant))
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: AppStyle.fontRegular, weight: .semibold))
 
             Spacer()
 
             Button { showHistory.toggle() } label: {
                 Image(systemName: "clock")
-                    .font(.system(size: 12))
+                    .font(.system(size: AppStyle.fontBody))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
@@ -131,13 +131,13 @@ struct AIChatSidebarView: View {
 
             Button { createNewConversation() } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 12))
+                    .font(.system(size: AppStyle.fontBody))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, AppStyle.spacingL)
+        .padding(.vertical, AppStyle.spacingML)
     }
 
     // MARK: - Regular Message List (Ask/Edit modes)
@@ -162,9 +162,9 @@ struct AIChatSidebarView: View {
                     if wasCancelled, !engine.isProcessing {
                         stoppedIndicator
                     }
-                    Color.clear.frame(height: 1).id("bottom")
+                    Color.clear.frame(height: AppStyle.sizeHairline).id("bottom")
                 }
-                .padding(12)
+                .padding(AppStyle.spacingL)
             }
             .onChange(of: engine.streamingResponse) { _, _ in
                 withAnimation(AppStyle.animationFast) { proxy.scrollTo("bottom", anchor: .bottom) }
@@ -190,9 +190,9 @@ struct AIChatSidebarView: View {
                     if engine.isProcessing {
                         loadingBubble
                     }
-                    Color.clear.frame(height: 1).id("agentBottom")
+                    Color.clear.frame(height: AppStyle.sizeHairline).id("agentBottom")
                 }
-                .padding(12)
+                .padding(AppStyle.spacingL)
             }
             .onChange(of: engine.agentMessages.count) { _, _ in
                 withAnimation(AppStyle.animationFast) { proxy.scrollTo("agentBottom", anchor: .bottom) }
@@ -206,24 +206,24 @@ struct AIChatSidebarView: View {
         VStack(spacing: 6) {
             HStack(spacing: 8) {
                 Image(systemName: "apple.intelligence")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: AppStyle.fontBody, weight: .medium))
                     .foregroundStyle(isInputFocused ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.secondary))
 
                 TextField(selectedMode == .agent ? i18n.t(.describeTask) : i18n.t(.terminalAssistant), text: $inputText)
-                    .textFieldStyle(.plain).font(.system(size: 12))
+                    .textFieldStyle(.plain).font(.system(size: AppStyle.fontBody))
                     .focused($isInputFocused).onSubmit { submit() }
 
                 if engine.isProcessing {
                     Button { cancelCurrentTask() } label: {
                         Image(systemName: "stop.circle.fill")
-                            .font(.system(size: 12))
+                            .font(.system(size: AppStyle.fontBody))
                             .foregroundStyle(.red)
                     }
                     .buttonStyle(.plain)
                     .transition(.opacity)
                 }
             }
-            .padding(.horizontal, 12).frame(height: 34)
+            .padding(.horizontal, AppStyle.spacingL).frame(height: 34)
             .background(.regularMaterial, in: Capsule())
             .background(
                 Capsule()
@@ -244,7 +244,7 @@ struct AIChatSidebarView: View {
                 modelMenu
             }
         }
-        .padding(.horizontal, 10).padding(.vertical, 8)
+        .padding(.horizontal, AppStyle.spacingML).padding(.vertical, AppStyle.spacingM)
         .onAppear {
             providerStore.setModelContext(modelContext)
             engine.activeProvider = providerStore.activeProvider
@@ -269,12 +269,12 @@ struct AIChatSidebarView: View {
             }
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: selectedMode.icon).font(.system(size: 11))
-                Text(selectedMode.localizedName).font(.system(size: 11))
-                Image(systemName: "chevron.down").font(.system(size: 8))
+                Image(systemName: selectedMode.icon).font(.system(size: AppStyle.fontSmall))
+                Text(selectedMode.localizedName).font(.system(size: AppStyle.fontSmall))
+                Image(systemName: "chevron.down").font(.system(size: AppStyle.fontTiny))
             }
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 8).padding(.vertical, 4)
+            .padding(.horizontal, AppStyle.spacingM).padding(.vertical, AppStyle.spacingXS)
             .background(Color(nsColor: .controlColor))
             .clipShape(Capsule())
         }

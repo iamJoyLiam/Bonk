@@ -30,9 +30,9 @@ struct HostConnectionDiagnosisView: View {
             )) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(i18n.t(.sshAlwaysCompatibility))
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: AppStyle.fontBody, weight: .medium))
                     Text(i18n.t(.sshAlwaysCompatibilityDesc))
-                        .font(.system(size: 10))
+                        .font(.system(size: AppStyle.fontCaption))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -42,7 +42,7 @@ struct HostConnectionDiagnosisView: View {
 
             if profiles.isEmpty {
                 Text(i18n.t(.sshNoProfile))
-                    .font(.system(size: 11))
+                    .font(.system(size: AppStyle.fontSmall))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
@@ -54,7 +54,7 @@ struct HostConnectionDiagnosisView: View {
                     Button(showAll ? "Show less" : "Show all (\(profiles.count))") {
                         showAll.toggle()
                     }
-                    .font(.system(size: 11))
+                    .font(.system(size: AppStyle.fontSmall))
                 }
             }
 
@@ -76,26 +76,26 @@ struct HostConnectionDiagnosisView: View {
             HStack(spacing: 6) {
                 Circle()
                     .fill(profile.isValid ? Color.green : Color.orange)
-                    .frame(width: 7, height: 7)
+                    .frame(width: AppStyle.iconMicro, height: AppStyle.iconMicro)
                 Text(profile.backendRaw == SSHBackendType.native.rawValue
                     ? i18n.t(.sshBackendNative)
                     : i18n.t(.sshBackendCompatibility))
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: AppStyle.fontSmall, weight: .semibold))
                 Text("· \(profile.reasonRaw)")
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: AppStyle.fontSmall, design: .monospaced))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(profile.isPolicyReason ? i18n.t(.sshPolicyNoExpiry)
                     : (profile.isValid ? i18n.t(.sshProfileValid) : i18n.t(.sshProfileExpired)))
-                    .font(.system(size: 10))
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(profile.isPolicyReason ? Color.blue.opacity(0.15) : (profile.isValid ? Color.green.opacity(0.15) : Color.orange.opacity(0.15)))
+                    .font(.system(size: AppStyle.fontCaption))
+                    .padding(.horizontal, AppStyle.spacingS).padding(.vertical, AppStyle.spacingXXS)
+                    .background(profile.isPolicyReason ? Color.blue.opacity(AppStyle.opacityBackgroundLight) : (profile.isValid ? Color.green.opacity(AppStyle.opacityBackgroundLight) : Color.orange.opacity(AppStyle.opacityBackgroundLight)))
                     .clipShape(Capsule())
             }
 
             // Auth + route
             Text("\(profile.authMethodRaw) · \(profile.host):\(profile.port)\(routeSummary(profile))")
-                .font(.system(size: 10, design: .monospaced))
+                .font(.system(size: AppStyle.fontCaption, design: .monospaced))
                 .foregroundStyle(.secondary)
 
             // Timestamps
@@ -105,18 +105,18 @@ struct HostConnectionDiagnosisView: View {
                     Label(dateString(profile.expiresAt), systemImage: "hourglass")
                 }
             }
-            .font(.system(size: 10))
+            .font(.system(size: AppStyle.fontCaption))
             .foregroundStyle(.secondary)
 
             // Algorithms
             let algos = profile.algorithmRequirements
             if let algo = algos, !algo.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(i18n.t(.sshAlgorithms)).font(.system(size: 10, weight: .medium))
-                    if !algo.kex.isEmpty { Text("KEX: \(algo.kex.joined(separator: ", "))").font(.system(size: 10, design: .monospaced)) }
-                    if !algo.hostKey.isEmpty { Text("HostKey: \(algo.hostKey.joined(separator: ", "))").font(.system(size: 10, design: .monospaced)) }
-                    if !algo.cipher.isEmpty { Text("Cipher: \(algo.cipher.joined(separator: ", "))").font(.system(size: 10, design: .monospaced)) }
-                    if !algo.mac.isEmpty { Text("MAC: \(algo.mac.joined(separator: ", "))").font(.system(size: 10, design: .monospaced)) }
+                    Text(i18n.t(.sshAlgorithms)).font(.system(size: AppStyle.fontCaption, weight: .medium))
+                    if !algo.kex.isEmpty { Text("KEX: \(algo.kex.joined(separator: ", "))").font(.system(size: AppStyle.fontCaption, design: .monospaced)) }
+                    if !algo.hostKey.isEmpty { Text("HostKey: \(algo.hostKey.joined(separator: ", "))").font(.system(size: AppStyle.fontCaption, design: .monospaced)) }
+                    if !algo.cipher.isEmpty { Text("Cipher: \(algo.cipher.joined(separator: ", "))").font(.system(size: AppStyle.fontCaption, design: .monospaced)) }
+                    if !algo.mac.isEmpty { Text("MAC: \(algo.mac.joined(separator: ", "))").font(.system(size: AppStyle.fontCaption, design: .monospaced)) }
                 }
                 .foregroundStyle(.secondary)
             }
@@ -124,14 +124,14 @@ struct HostConnectionDiagnosisView: View {
             // Fingerprint
             if let citadelVer = profile.citadelVersion ?? profile.niosshVersion {
                 Text("\(i18n.t(.sshFingerprint)): \(citadelVer) / \(profile.niosshVersion ?? "")")
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.system(size: AppStyle.fontCaption, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(8)
+        .padding(AppStyle.spacingM)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.08)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(AppStyle.opacityStroke)))
     }
 
     private func routeSummary(_ profile: SSHBackendProfile) -> String {

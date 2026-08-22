@@ -42,7 +42,7 @@ struct SSHKeyGeneratorView: View {
             // Footer
             footerSection
         }
-        .frame(minWidth: 500, minHeight: 450)
+        .frame(minWidth: AppStyle.settingsWindowHeight, minHeight: AppStyle.serialPortWidth)
         .alert(i18n.t(.unknownError), isPresented: .constant(errorMessage != nil)) {
             Button(i18n.t(.ok)) { errorMessage = nil }
         } message: {

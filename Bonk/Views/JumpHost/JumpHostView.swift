@@ -37,8 +37,8 @@ struct JumpHostView: View {
                 }
                 .help(i18n.t(.addJumpHost))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.horizontal, AppStyle.spacingXL)
+            .padding(.vertical, AppStyle.spacingML)
 
             Divider()
 
@@ -46,7 +46,7 @@ struct JumpHostView: View {
             if jumpHosts.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "arrow.triangle.swap")
-                        .font(.system(size: 36))
+                        .font(.system(size: AppStyle.fontHero))
                         .foregroundStyle(.secondary)
                     Text(i18n.t(.noJumpHosts))
                         .font(.headline)
@@ -67,7 +67,7 @@ struct JumpHostView: View {
                 }
             }
         }
-        .frame(minWidth: 400, minHeight: 300)
+        .frame(minWidth: AppStyle.quickConnectWidth, minHeight: AppStyle.panelWidthSmall)
         .sheet(isPresented: $showAddSheet) {
             JumpHostEditSheet(host: nil, modelContext: modelContext)
                 .environment(i18n)
@@ -82,16 +82,16 @@ struct JumpHostView: View {
         HStack(spacing: 12) {
             // Icon
             Image(systemName: "arrow.triangle.swap")
-                .font(.system(size: 14))
+                .font(.system(size: AppStyle.fontMedium))
                 .foregroundStyle(.blue)
-                .frame(width: 20)
+                .frame(width: AppStyle.iconDisplay)
 
             // Info
             VStack(alignment: .leading, spacing: 2) {
                 Text(host.name)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: AppStyle.fontRegular, weight: .medium))
                 Text(host.displayString)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: AppStyle.fontSmall, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
 
@@ -102,13 +102,13 @@ struct JumpHostView: View {
                 editingHost = host
             } label: {
                 Image(systemName: "pencil")
-                    .font(.system(size: 12))
+                    .font(.system(size: AppStyle.fontBody))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, AppStyle.spacingXL)
+        .padding(.vertical, AppStyle.spacingML)
         .contentShape(Rectangle())
         .contextMenu {
             Button {
@@ -243,7 +243,7 @@ struct JumpHostEditSheet: View {
                         }
                     }
                     TextField(i18n.t(.port), text: $port)
-                        .font(.system(size: 13, design: .monospaced))
+                        .font(.system(size: AppStyle.fontRegular, design: .monospaced))
                     TextField(i18n.t(.username), text: $username)
                         .autocorrectionDisabled()
                 }
@@ -266,7 +266,7 @@ struct JumpHostEditSheet: View {
                             }
                             Button { showPassword.toggle() } label: {
                                 Image(systemName: showPassword ? "eye.slash" : "eye")
-                                    .font(.system(size: 12))
+                                    .font(.system(size: AppStyle.fontBody))
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
@@ -391,7 +391,7 @@ struct JumpHostEditSheet: View {
                 }
             }
         }
-        .frame(width: 480, height: 480)
+        .frame(width: AppStyle.dialogWidth, height: 480)
     }
 
     private var canBuildAuth: Bool {
@@ -477,8 +477,8 @@ struct JumpHostEditSheet: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(8)
-                .background(.quaternary.opacity(0.5))
+                .padding(AppStyle.spacingM)
+                .background(.quaternary.opacity(AppStyle.opacityDisabled))
                 .cornerRadius(6)
             } else {
                 Button {
@@ -502,8 +502,8 @@ struct JumpHostEditSheet: View {
                         Text(placeholder)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(8)
-                    .background(.quaternary.opacity(0.5))
+                    .padding(AppStyle.spacingM)
+                    .background(.quaternary.opacity(AppStyle.opacityDisabled))
                     .cornerRadius(6)
                 }
                 .buttonStyle(.plain)

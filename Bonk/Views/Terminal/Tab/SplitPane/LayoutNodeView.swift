@@ -51,7 +51,7 @@ struct LayoutNodeView: View {
                                     weights: weights
                                 )
                             )
-                            .frame(minWidth: 100)
+                            .frame(minWidth: AppStyle.size100)
                         if index < children.count - 1 {
                             SplitDivider(direction: .horizontal) { delta in
                                 sessionManager.setSplitFraction(
@@ -61,7 +61,7 @@ struct LayoutNodeView: View {
                                     in: tab
                                 )
                             }
-                            .frame(width: 8)
+                            .frame(width: AppStyle.statusDotMedium)
                             .frame(maxHeight: .infinity)
                         }
                     }
@@ -90,7 +90,7 @@ struct LayoutNodeView: View {
                                     in: tab
                                 )
                             }
-                            .frame(height: 8)
+                            .frame(height: AppStyle.statusDotMedium)
                             .frame(maxWidth: .infinity)
                         }
                     }

@@ -37,7 +37,7 @@ struct SecureEnclaveKeyGeneratorView: View {
             // Footer
             footerSection
         }
-        .frame(minWidth: 500, minHeight: 400)
+        .frame(minWidth: AppStyle.settingsWindowHeight, minHeight: AppStyle.quickConnectWidth)
         .alert(i18n.t(.unknownError), isPresented: .constant(errorMessage != nil)) {
             Button(i18n.t(.ok)) { errorMessage = nil }
         } message: {
@@ -125,7 +125,7 @@ struct SecureEnclaveKeyGeneratorView: View {
                         .font(.headline)
                 }
                 .padding()
-                .background(.green.opacity(0.1))
+                .background(.green.opacity(AppStyle.opacityOverlaySubtle))
                 .cornerRadius(8)
 
                 // Key info

@@ -71,10 +71,10 @@ struct QuakeSettingsView: View {
                         Text(i18n.t(.height))
                         Spacer()
                         Slider(value: $heightRatio, in: 0.2 ... 0.9, step: 0.1)
-                            .frame(width: 150)
+                            .frame(width: AppStyle.editorColumnLarge)
                         Text("\(Int(heightRatio * 100))%")
                             .monospacedDigit()
-                            .frame(width: 40, alignment: .trailing)
+                            .frame(width: AppStyle.size40, alignment: .trailing)
                     }
                     .onChange(of: heightRatio) { _, newValue in
                         updateConfig { $0.heightRatio = CGFloat(newValue) }
@@ -84,10 +84,10 @@ struct QuakeSettingsView: View {
                         Text(i18n.t(.width))
                         Spacer()
                         Slider(value: $widthRatio, in: 0.5 ... 1.0, step: 0.1)
-                            .frame(width: 150)
+                            .frame(width: AppStyle.editorColumnLarge)
                         Text("\(Int(widthRatio * 100))%")
                             .monospacedDigit()
-                            .frame(width: 40, alignment: .trailing)
+                            .frame(width: AppStyle.size40, alignment: .trailing)
                     }
                     .onChange(of: widthRatio) { _, newValue in
                         updateConfig { $0.widthRatio = CGFloat(newValue) }

@@ -15,8 +15,8 @@ enum TerminalStateViews {
     static func connectingView(host: String, username: String, port: Int, i18n: I18n) -> some View {
         VStack(spacing: 20) {
             Image(systemName: "antenna.radiowaves.left.and.right")
-                .font(.system(size: 44))
-                .foregroundStyle(.blue.opacity(0.7))
+                .font(.system(size: AppStyle.fontGiant))
+                .foregroundStyle(.blue.opacity(AppStyle.opacitySecondary))
                 .symbolEffect(.variableColor.iterative, options: .repeating)
             ProgressView().controlSize(.large)
             VStack(spacing: 6) {
@@ -38,16 +38,16 @@ enum TerminalStateViews {
     ) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "bolt.slash.fill")
-                .font(.system(size: 40))
-                .foregroundStyle(.red.opacity(0.6))
+                .font(.system(size: AppStyle.fontHuge))
+                .foregroundStyle(.red.opacity(AppStyle.opacityPressed))
             Text(i18n.t(.disconnected)).font(.headline)
             if let error = errorMessage {
                 Text(error).font(.caption).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center).frame(maxWidth: 300)
+                    .multilineTextAlignment(.center).frame(maxWidth: AppStyle.panelWidthSmall)
             }
             if let onReconnect {
                 Button(i18n.t(.reconnect), systemImage: "arrow.clockwise") { onReconnect() }
-                    .buttonStyle(.borderedProminent).padding(.top, 8)
+                    .buttonStyle(.borderedProminent).padding(.top, AppStyle.spacingM)
             }
         }
     }

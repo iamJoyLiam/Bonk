@@ -38,8 +38,8 @@ struct PortForwardView: View {
                 }
                 .help(i18n.t(.addPortForward))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.horizontal, AppStyle.spacingXL)
+            .padding(.vertical, AppStyle.spacingML)
 
             Divider()
 
@@ -47,7 +47,7 @@ struct PortForwardView: View {
             if rules.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "arrow.triangle.branch")
-                        .font(.system(size: 36))
+                        .font(.system(size: AppStyle.fontHero))
                         .foregroundStyle(.secondary)
                     Text(i18n.t(.noPortForwards))
                         .font(.headline)
@@ -65,7 +65,7 @@ struct PortForwardView: View {
                 .formStyle(.grouped)
             }
         }
-        .frame(minWidth: 400, minHeight: 300)
+        .frame(minWidth: AppStyle.quickConnectWidth, minHeight: AppStyle.panelWidthSmall)
         .sheet(isPresented: $showAddSheet) {
             PortForwardEditSheet(rule: nil, modelContext: modelContext)
                 .environment(i18n)
@@ -80,16 +80,16 @@ struct PortForwardView: View {
         HStack(spacing: 12) {
             // Type icon
             Image(systemName: rule.type == .local ? "arrow.right" : "arrow.left")
-                .font(.system(size: 14))
+                .font(.system(size: AppStyle.fontMedium))
                 .foregroundStyle(rule.isActive ? .green : .secondary)
-                .frame(width: 20)
+                .frame(width: AppStyle.iconDisplay)
 
             // Info
             VStack(alignment: .leading, spacing: 2) {
                 Text(rule.name)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: AppStyle.fontRegular, weight: .medium))
                 Text(rule.displayDescription)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: AppStyle.fontSmall, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
 
@@ -97,10 +97,10 @@ struct PortForwardView: View {
 
             // Type badge
             Text(rule.type.displayName)
-                .font(.system(size: 10, weight: .medium))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.accentColor.opacity(0.15))
+                .font(.system(size: AppStyle.fontCaption, weight: .medium))
+                .padding(.horizontal, AppStyle.spacingS)
+                .padding(.vertical, AppStyle.spacingXXS)
+                .background(Color.accentColor.opacity(AppStyle.opacityBackgroundLight))
                 .clipShape(Capsule())
 
             // Toggle
@@ -108,7 +108,7 @@ struct PortForwardView: View {
                 toggleForward(rule)
             } label: {
                 Image(systemName: rule.isActive ? "stop.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 18))
+                    .font(.system(size: AppStyle.fontSubtitle))
                     .foregroundStyle(rule.isActive ? .red : .green)
             }
             .buttonStyle(.plain)
@@ -182,13 +182,13 @@ struct PortForwardEditSheet: View {
                 Section(i18n.t(.local)) {
                     TextField(i18n.t(.host), text: $localHost)
                     TextField(i18n.t(.port), text: $localPort)
-                        .font(.system(size: 13, design: .monospaced))
+                        .font(.system(size: AppStyle.fontRegular, design: .monospaced))
                 }
 
                 Section(i18n.t(.remote)) {
                     TextField(i18n.t(.host), text: $remoteHost)
                     TextField(i18n.t(.port), text: $remotePort)
-                        .font(.system(size: 13, design: .monospaced))
+                        .font(.system(size: AppStyle.fontRegular, design: .monospaced))
                 }
                 .disabled(type == .dynamic)
             }
@@ -217,7 +217,7 @@ struct PortForwardEditSheet: View {
                 }
             }
         }
-        .frame(width: 480, height: 440)
+        .frame(width: AppStyle.dialogWidth, height: 440)
     }
 
     private func save() {

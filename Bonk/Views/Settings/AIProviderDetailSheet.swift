@@ -93,7 +93,7 @@ struct AIProviderDetailSheet: View {
             }
             .onDisappear { cancelTasks() }
         }
-        .frame(minWidth: 520, minHeight: 480)
+        .frame(minWidth: 520, minHeight: AppStyle.dialogWidth)
         .alert(i18n.t(.modelRequired), isPresented: $showModelRequiredAlert) {
             Button(i18n.t(.ok), role: .cancel) {}
         } message: {
@@ -239,7 +239,7 @@ struct AIProviderDetailSheet: View {
                 Text(i18n.t(.maxOutputTokens))
                 Spacer()
                 TextField("", text: maxOutputTokensBinding)
-                    .frame(width: 100).multilineTextAlignment(.trailing)
+                    .frame(width: AppStyle.size100).multilineTextAlignment(.trailing)
             }
         }
     }
@@ -419,7 +419,7 @@ struct AIProviderDetailSheet: View {
             ForEach($headerFields) { $field in
                 HStack(spacing: 8) {
                     TextField(i18n.t(.headerName), text: $field.key)
-                        .frame(width: 140)
+                        .frame(width: AppStyle.size140)
                     TextField(i18n.t(.headerValue), text: $field.value)
                     Button(role: .destructive) {
                         removeHeader(field.id)

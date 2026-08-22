@@ -19,12 +19,12 @@ struct InteractiveCodeBlock: View {
             // Header bar
             HStack(spacing: 6) {
                 Image(systemName: "terminal.fill")
-                    .font(.system(size: 10))
+                    .font(.system(size: AppStyle.fontCaption))
                     .foregroundStyle(.green)
 
                 if let lang = language {
                     Text(lang.uppercased())
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(.system(size: AppStyle.fontCaption, design: .monospaced))
                         .fontWeight(.bold)
                         .foregroundStyle(.tertiary)
                 }
@@ -36,7 +36,7 @@ struct InteractiveCodeBlock: View {
                         HStack(spacing: 4) {
                             Image(systemName: "play.fill")
                             Text(i18n.t(.aiRun))
-                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                .font(.system(size: AppStyle.fontCaption, weight: .semibold, design: .monospaced))
                         }
                         .foregroundStyle(.green)
                     }
@@ -50,22 +50,22 @@ struct InteractiveCodeBlock: View {
                     Task { @MainActor in try? await Task.sleep(for: .seconds(2)); copied = false }
                 } label: {
                     Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 10))
+                        .font(.system(size: AppStyle.fontCaption))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color(nsColor: .controlColor).opacity(0.5))
+            .padding(.horizontal, AppStyle.spacingML)
+            .padding(.vertical, AppStyle.spacingS)
+            .background(Color(nsColor: .controlColor).opacity(AppStyle.opacityDisabled))
 
             // Code content
             HighlightedCodeLines(code: code)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall))
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall)
+                .stroke(Color.secondary.opacity(AppStyle.opacityBackgroundLight), lineWidth: 1)
         )
     }
 }

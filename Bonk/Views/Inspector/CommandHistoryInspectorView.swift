@@ -22,20 +22,20 @@ struct CommandHistoryInspectorView: View {
             HStack {
                 Image(systemName: "clock")
                     .foregroundStyle(.secondary)
-                    .font(.system(size: 12))
+                    .font(.system(size: AppStyle.fontBody))
                 Text(i18n.t(.commandHistory))
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: AppStyle.fontRegular, weight: .medium))
                 Spacer()
                 Button { showClearConfirm = true } label: {
                     Image(systemName: "trash")
-                        .font(.system(size: 11))
+                        .font(.system(size: AppStyle.fontSmall))
                         .foregroundStyle(.secondary)
                 }
                 .help(i18n.t(.clearHistory))
                 .disabled(GlobalCommandHistory.shared.commands.isEmpty)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, AppStyle.spacingL)
+            .padding(.vertical, AppStyle.spacingM)
             .alert(i18n.t(.clearHistoryConfirm), isPresented: $showClearConfirm) {
                 Button(i18n.t(.delete), role: .destructive) {
                     GlobalCommandHistory.shared.clear()
@@ -50,7 +50,7 @@ struct CommandHistoryInspectorView: View {
             if commands.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "clock")
-                        .font(.system(size: 36))
+                        .font(.system(size: AppStyle.fontHero))
                         .foregroundStyle(.secondary)
                     Text(i18n.t(.noCommands))
                         .font(.headline)
@@ -85,8 +85,8 @@ struct CommandHistoryInspectorView: View {
             Spacer()
             actionButtons(for: entry)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, AppStyle.spacingL)
+        .padding(.vertical, AppStyle.spacingS)
         .contentShape(Rectangle())
         .contextMenu { historyContextMenu(for: entry) }
     }
@@ -95,11 +95,11 @@ struct CommandHistoryInspectorView: View {
     private func statusIcon(for entry: CommandRecord) -> some View {
         if entry.exitCode != nil {
             Image(systemName: entry.isSuccess ? "checkmark.circle.fill" : "xmark.circle.fill")
-                .font(.system(size: 12))
+                .font(.system(size: AppStyle.fontBody))
                 .foregroundStyle(entry.isSuccess ? .green : .red)
         } else {
             Image(systemName: "circle")
-                .font(.system(size: 12))
+                .font(.system(size: AppStyle.fontBody))
                 .foregroundStyle(.tertiary)
         }
     }
@@ -107,15 +107,15 @@ struct CommandHistoryInspectorView: View {
     private func commandInfo(for entry: CommandRecord) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(entry.command)
-                .font(.system(size: 12, design: .monospaced))
+                .font(.system(size: AppStyle.fontBody, design: .monospaced))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
             HStack(spacing: 6) {
                 Text(entry.startTime, style: .time)
-                    .font(.system(size: 9, design: .monospaced))
+                    .font(.system(size: AppStyle.fontSmallest, design: .monospaced))
                     .foregroundStyle(.tertiary)
                 Text(entry.durationFormatted)
-                    .font(.system(size: 9, design: .monospaced))
+                    .font(.system(size: AppStyle.fontSmallest, design: .monospaced))
                     .foregroundStyle(.tertiary)
             }
         }
@@ -127,7 +127,7 @@ struct CommandHistoryInspectorView: View {
             sessionManager.sendTextToActiveTab(entry.command)
         } label: {
             Image(systemName: "arrow.right.circle")
-                .font(.system(size: 14))
+                .font(.system(size: AppStyle.fontMedium))
                 .foregroundStyle(.blue)
         }
         .buttonStyle(.plain)
@@ -137,7 +137,7 @@ struct CommandHistoryInspectorView: View {
             GlobalCommandHistory.shared.delete(entry)
         } label: {
             Image(systemName: "trash")
-                .font(.system(size: 11))
+                .font(.system(size: AppStyle.fontSmall))
                 .foregroundStyle(.tertiary)
         }
         .buttonStyle(.plain)

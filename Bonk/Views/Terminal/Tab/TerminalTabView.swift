@@ -126,8 +126,8 @@ struct TerminalTabView: View {
                 onNext: { performSearch(.forward) },
                 onPrevious: { performSearch(.backward) }
             )
-            .padding(.top, 8)
-            .padding(.trailing, 16)
+            .padding(.top, AppStyle.spacingM)
+            .padding(.trailing, AppStyle.spacingXL)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
@@ -262,7 +262,7 @@ extension TerminalTabView {
                 }
             )
             .frame(maxHeight: .infinity, alignment: .bottom)
-            .padding(.bottom, 16)
+            .padding(.bottom, AppStyle.spacingXL)
             .zIndex(1)
         }
     }

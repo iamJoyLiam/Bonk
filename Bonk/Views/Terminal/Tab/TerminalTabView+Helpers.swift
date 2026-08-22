@@ -13,7 +13,7 @@ extension TerminalTabView {
     var emptyState: some View {
         VStack(spacing: 20) {
             Image(systemName: "terminal.fill")
-                .font(.system(size: 56))
+                .font(.system(size: AppStyle.fontEpic))
                 .foregroundStyle(.quaternary)
 
             Text(i18n.t(.noTerminal))

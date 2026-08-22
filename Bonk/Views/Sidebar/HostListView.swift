@@ -88,11 +88,11 @@ struct HostListView: View {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.tertiary)
-                    .font(.system(size: 11))
+                    .font(.system(size: AppStyle.fontSmall))
 
                 TextField(i18n.t(.search), text: $searchText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 12))
+                    .font(.system(size: AppStyle.fontBody))
 
                 if !searchText.isEmpty {
                     Button {
@@ -100,32 +100,32 @@ struct HostListView: View {
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.tertiary)
-                            .font(.system(size: 11))
+                            .font(.system(size: AppStyle.fontSmall))
                     }
                     .buttonStyle(.plain)
                 }
 
                 Divider()
-                    .frame(height: 14)
+                    .frame(height: AppStyle.iconXL)
 
                 Button {
                     showKeychain = true
                 } label: {
                     Image(systemName: "key.fill")
                         .foregroundStyle(.secondary)
-                        .font(.system(size: 11))
+                        .font(.system(size: AppStyle.fontSmall))
                 }
                 .buttonStyle(.plain)
                 .help(i18n.t(.manageCredentials))
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, AppStyle.spacingML)
+            .padding(.vertical, AppStyle.spacingS)
             .background {
                 Capsule()
-                    .fill(.quaternary.opacity(0.5))
+                    .fill(.quaternary.opacity(AppStyle.opacityDisabled))
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, AppStyle.spacingL)
+            .padding(.vertical, AppStyle.spacingM)
         }
         .sheet(isPresented: $showKeychain) {
             NavigationStack {
@@ -198,7 +198,7 @@ struct HostListView: View {
         HStack(spacing: 4) {
             if let icon = group?.icon, !icon.isEmpty {
                 Image(systemName: icon)
-                    .font(.system(size: 10))
+                    .font(.system(size: AppStyle.fontCaption))
                     .foregroundStyle(group?.resolvedColor ?? .secondary)
             }
             Text(groupName)
@@ -224,12 +224,12 @@ struct HostListView: View {
                 if let color = groupColor {
                     RoundedRectangle(cornerRadius: 2)
                         .fill(color)
-                        .frame(width: 3, height: 16)
+                        .frame(width: AppStyle.indicatorMedium, height: 16)
                 }
 
                 if host.isSerial == true {
                     Image(systemName: "cable.connector")
-                        .font(.system(size: 12))
+                        .font(.system(size: AppStyle.fontBody))
                         .foregroundStyle(stateColor(state))
                 } else {
                     statusDot(state)
@@ -238,7 +238,7 @@ struct HostListView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         Text(host.name)
-                            .font(.system(size: 13))
+                            .font(.system(size: AppStyle.fontRegular))
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .layoutPriority(1)
@@ -340,7 +340,7 @@ struct HostListView: View {
     private func statusDot(_ state: SSHConnectionState) -> some View {
         Circle()
             .fill(stateColor(state))
-            .frame(width: 8, height: 8)
+            .frame(width: AppStyle.statusDotMedium, height: AppStyle.statusDotMedium)
     }
 
     private func stateColor(_ state: SSHConnectionState) -> Color {
@@ -370,13 +370,13 @@ struct HostListView: View {
             HStack(spacing: 3) {
                 Circle()
                     .fill(isExpired ? Color.gray : (isNative ? Color.green : Color.orange))
-                    .frame(width: 4, height: 4)
+                    .frame(width: AppStyle.statusDotTiny, height: AppStyle.statusDotTiny)
                 Text(badgeText(for: profile, isNative: isNative))
-                    .font(.system(size: 8, weight: .medium, design: .monospaced))
+                    .font(.system(size: AppStyle.fontTiny, weight: .medium, design: .monospaced))
                     .foregroundStyle(isExpired ? .secondary : (isNative ? Color.green : Color.orange))
                     .lineLimit(1)
             }
-            .padding(.horizontal, 4).padding(.vertical, 2)
+            .padding(.horizontal, AppStyle.spacingXS).padding(.vertical, AppStyle.spacingXXS)
             .background((isNative ? Color.green : Color.orange).opacity(isExpired ? 0.07 : 0.10))
             .clipShape(Capsule())
             .help(badgeHelp(for: profile))

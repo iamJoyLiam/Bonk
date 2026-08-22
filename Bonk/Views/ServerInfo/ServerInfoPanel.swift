@@ -23,7 +23,7 @@ struct ServerInfoPanel: View {
                         Divider()
                         resourceSection(tab)
                     }
-                    .padding(16)
+                    .padding(AppStyle.spacingXL)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
@@ -40,7 +40,7 @@ struct ServerInfoPanel: View {
         HStack {
             Circle()
                 .fill(statusColor(activeState))
-                .frame(width: 8, height: 8)
+                .frame(width: AppStyle.statusDotMedium, height: AppStyle.statusDotMedium)
             Text(displayName)
                 .font(.headline)
                 .lineLimit(1)
@@ -52,13 +52,13 @@ struct ServerInfoPanel: View {
             Spacer()
             Button(action: onClose) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: AppStyle.fontSmall, weight: .semibold))
             }
             .buttonStyle(.borderless)
             .help(i18n.t(.close))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        .padding(.horizontal, AppStyle.spacingL)
+        .padding(.vertical, AppStyle.spacingMPlus)
     }
 
     private var activeState: SSHConnectionState {
@@ -120,7 +120,7 @@ struct ServerInfoPanel: View {
                         .foregroundStyle(.secondary)
                     Spacer()
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, AppStyle.spacingM)
             }
         }
     }

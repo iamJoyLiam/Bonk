@@ -14,13 +14,13 @@ struct TypingIndicator: View {
                         ? 0.5 + 0.5 * sin(progress * .pi)
                         : 0.5 + 0.5 * sin((2.0 - progress) * .pi)
                     Circle()
-                        .fill(Color.secondary.opacity(0.6))
-                        .frame(width: 6, height: 6)
+                        .fill(Color.secondary.opacity(AppStyle.opacityPressed))
+                        .frame(width: AppStyle.statusDotSmall, height: AppStyle.statusDotSmall)
                         .scaleEffect(scale)
                 }
             }
         }
-        .frame(width: 26, height: 10)
+        .frame(width: AppStyle.size26, height: 10)
     }
 }
 
@@ -30,31 +30,31 @@ extension AIChatSidebarView {
     var emptyState: some View {
         VStack(spacing: 8) {
             Image(systemName: "sparkles")
-                .font(.system(size: 28))
+                .font(.system(size: AppStyle.fontXXL))
                 .foregroundStyle(.tertiary)
             Text(i18n.t(.terminalAssistant))
-                .font(.system(size: 13))
+                .font(.system(size: AppStyle.fontRegular))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 60)
+        .padding(.top, AppStyle.spacingTop)
     }
 
     var agentEmptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "terminal")
-                .font(.system(size: 28))
+                .font(.system(size: AppStyle.fontXXL))
                 .foregroundStyle(.tertiary)
             Text(i18n.t(.agentMode))
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: AppStyle.fontRegular, weight: .semibold))
                 .foregroundStyle(.secondary)
             Text(i18n.t(.agentModeDesc))
-                .font(.system(size: 12))
+                .font(.system(size: AppStyle.fontBody))
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 60)
+        .padding(.top, AppStyle.spacingTop)
     }
 
     // MARK: - Regular Bubbles
@@ -62,7 +62,7 @@ extension AIChatSidebarView {
     func bubble(_ msg: AIMessageRecord) -> some View {
         VStack(alignment: msg.role == .user ? .trailing : .leading, spacing: 4) {
             Text(msg.timestamp, style: .time)
-                .font(.system(size: 10))
+                .font(.system(size: AppStyle.fontCaption))
                 .foregroundStyle(.tertiary)
 
             if msg.role == .assistant {
@@ -78,11 +78,11 @@ extension AIChatSidebarView {
                 HStack(alignment: .top, spacing: 8) {
                     Spacer()
                     Text(msg.content)
-                        .font(.system(size: 13))
+                        .font(.system(size: AppStyle.fontRegular))
                         .textSelection(.enabled)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color.accentColor.opacity(0.08))
+                        .padding(.horizontal, AppStyle.spacingL)
+                        .padding(.vertical, AppStyle.spacingM)
+                        .background(Color.accentColor.opacity(AppStyle.opacityStroke))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     avatar("person.fill")
                 }
@@ -106,21 +106,21 @@ extension AIChatSidebarView {
         HStack(alignment: .top, spacing: 8) {
             avatar("sparkles")
             TypingIndicator()
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, AppStyle.spacingL)
+                .padding(.vertical, AppStyle.spacingM)
         }
     }
 
     var stoppedIndicator: some View {
         HStack(spacing: 6) {
             Image(systemName: "stop.circle")
-                .font(.system(size: 11))
+                .font(.system(size: AppStyle.fontSmall))
             Text(i18n.t(.aiStopped))
-                .font(.system(size: 11))
+                .font(.system(size: AppStyle.fontSmall))
         }
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 4)
+        .padding(.horizontal, AppStyle.spacingL)
+        .padding(.vertical, AppStyle.spacingXS)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -129,7 +129,7 @@ extension AIChatSidebarView {
     func agentBubble(_ msg: AgentMessage) -> some View {
         VStack(alignment: msg.role == .user ? .trailing : .leading, spacing: 4) {
             Text(msg.timestamp, style: .time)
-                .font(.system(size: 10))
+                .font(.system(size: AppStyle.fontCaption))
                 .foregroundStyle(.tertiary)
 
             HStack(alignment: .top, spacing: 8) {
@@ -152,11 +152,11 @@ extension AIChatSidebarView {
         Group {
             Spacer()
             Text(msg.content)
-                .font(.system(size: 13))
+                .font(.system(size: AppStyle.fontRegular))
                 .textSelection(.enabled)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.accentColor.opacity(0.08))
+                .padding(.horizontal, AppStyle.spacingL)
+                .padding(.vertical, AppStyle.spacingM)
+                .background(Color.accentColor.opacity(AppStyle.opacityStroke))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             avatar("person.fill")
         }
@@ -169,11 +169,11 @@ extension AIChatSidebarView {
                 if let thinking = msg.thinking, !thinking.isEmpty {
                     DisclosureGroup {
                         Text(thinking)
-                            .font(.system(size: 11))
+                            .font(.system(size: AppStyle.fontSmall))
                             .foregroundStyle(.secondary)
                     } label: {
                         Label(i18n.t(.thinking), systemImage: "brain")
-                            .font(.system(size: 11))
+                            .font(.system(size: AppStyle.fontSmall))
                             .foregroundStyle(.tertiary)
                     }
                 }
@@ -187,8 +187,8 @@ extension AIChatSidebarView {
                     agentCommandBlock(command)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, AppStyle.spacingL)
+            .padding(.vertical, AppStyle.spacingM)
             .background(Color(nsColor: .controlColor))
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
@@ -202,38 +202,38 @@ extension AIChatSidebarView {
                 HStack(spacing: 6) {
                     if let command = msg.command, !command.isEmpty {
                         Text("$ \(command)")
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(.system(size: AppStyle.fontSmall, design: .monospaced))
                             .lineLimit(1)
                             .truncationMode(.middle)
                     } else {
                         Text(i18n.t(.output))
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: AppStyle.fontSmall, weight: .semibold))
                     }
                     Spacer()
                     if let status = msg.status {
                         Image(systemName: status.icon)
-                            .font(.system(size: 9))
+                            .font(.system(size: AppStyle.fontSmallest))
                             .foregroundStyle(status.color)
                     }
                     if let duration = msg.duration {
                         Text(String(format: "%.1fs", duration))
-                            .font(.system(size: 10, design: .monospaced))
+                            .font(.system(size: AppStyle.fontCaption, design: .monospaced))
                             .foregroundStyle(.tertiary)
                     }
                 }
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color(nsColor: .controlColor).opacity(0.5))
+                .padding(.horizontal, AppStyle.spacingML)
+                .padding(.vertical, AppStyle.spacingS)
+                .background(Color(nsColor: .controlColor).opacity(AppStyle.opacityDisabled))
 
                 // Output body
                 if !msg.content.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         Text(msg.content)
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(.system(size: AppStyle.fontSmall, design: .monospaced))
                             .textSelection(.enabled)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
+                            .padding(.horizontal, AppStyle.spacingML)
+                            .padding(.vertical, AppStyle.spacingM)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .background(Color(nsColor: .textBackgroundColor))
@@ -242,7 +242,7 @@ extension AIChatSidebarView {
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                    .stroke(Color.secondary.opacity(AppStyle.opacityBackgroundStrong), lineWidth: 1)
             )
         }
     }
@@ -256,31 +256,31 @@ extension AIChatSidebarView {
                     .trimmingCharacters(in: .whitespaces)
                 HStack(spacing: 6) {
                     Image(systemName: "play.fill")
-                        .font(.system(size: 8))
+                        .font(.system(size: AppStyle.fontTiny))
                         .foregroundStyle(.blue)
                     Text("$ \(command)")
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(.system(size: AppStyle.fontSmall, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                     Spacer()
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
+                .padding(.horizontal, AppStyle.spacingML)
+                .padding(.vertical, AppStyle.spacingSPlus)
                 .frame(maxWidth: .infinity)
-                .background(Color.blue.opacity(0.07))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .background(Color.blue.opacity(AppStyle.opacityOverlayFaint))
+                .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall))
             } else {
                 HStack(spacing: 6) {
                     Image(systemName: "info.circle")
-                        .font(.system(size: 11))
+                        .font(.system(size: AppStyle.fontSmall))
                     Text(msg.content)
-                        .font(.system(size: 12))
+                        .font(.system(size: AppStyle.fontBody))
                 }
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.horizontal, AppStyle.spacingL)
+                .padding(.vertical, AppStyle.spacingS)
                 .frame(maxWidth: .infinity)
-                .background(Color.orange.opacity(0.1))
+                .background(Color.orange.opacity(AppStyle.opacityOverlaySubtle))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
@@ -289,16 +289,16 @@ extension AIChatSidebarView {
     private func agentCommandBlock(_ command: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "terminal")
-                .font(.system(size: 10))
+                .font(.system(size: AppStyle.fontCaption))
                 .foregroundStyle(.secondary)
             Text(command)
-                .font(.system(size: 12, design: .monospaced))
+                .font(.system(size: AppStyle.fontBody, design: .monospaced))
                 .textSelection(.enabled)
         }
-        .padding(8)
+        .padding(AppStyle.spacingM)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlColor).opacity(0.6))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .background(Color(nsColor: .controlColor).opacity(AppStyle.opacityPressed))
+        .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall))
     }
 
     // MARK: - Plan Approval
@@ -309,19 +309,19 @@ extension AIChatSidebarView {
             ForEach(plan.steps) { step in planStepRow(step) }
             planActionButtons
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.blue.opacity(0.06)))
-        .padding(.horizontal, 12).padding(.vertical, 4)
+        .padding(AppStyle.spacingML)
+        .background(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium).fill(Color.blue.opacity(AppStyle.opacityBackgroundSubtle)))
+        .padding(.horizontal, AppStyle.spacingL).padding(.vertical, AppStyle.spacingXS)
     }
 
     private func planHeaderView(_ plan: AgentPlan) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "list.bullet.clipboard").foregroundStyle(.blue)
-            Text(i18n.t(.executionPlan)).font(.system(size: 12, weight: .semibold))
+            Text(i18n.t(.executionPlan)).font(.system(size: AppStyle.fontBody, weight: .semibold))
             Spacer()
             let stepsCount = String(format: i18n.t(.stepsCount), plan.steps.count)
             Text(stepsCount)
-                .font(.system(size: 10))
+                .font(.system(size: AppStyle.fontCaption))
                 .foregroundStyle(.tertiary)
         }
     }
@@ -334,10 +334,10 @@ extension AIChatSidebarView {
         case .blocked: ("xmark.shield", .gray)
         }
         return HStack(spacing: 6) {
-            Image(systemName: icon).font(.system(size: 10)).foregroundStyle(color).frame(width: 14)
+            Image(systemName: icon).font(.system(size: AppStyle.fontCaption)).foregroundStyle(color).frame(width: AppStyle.iconXL)
             VStack(alignment: .leading, spacing: 1) {
-                Text(step.description).font(.system(size: 11))
-                Text(step.command).font(.system(size: 10, design: .monospaced))
+                Text(step.description).font(.system(size: AppStyle.fontSmall))
+                Text(step.command).font(.system(size: AppStyle.fontCaption, design: .monospaced))
                     .foregroundStyle(.secondary).lineLimit(1)
             }
         }
@@ -347,15 +347,15 @@ extension AIChatSidebarView {
         HStack(spacing: 8) {
             Button { engine.approvePlan() } label: {
                 Label(i18n.t(.executePlan), systemImage: "play.fill")
-                    .font(.system(size: 11))
-                    .padding(.horizontal, 10).padding(.vertical, 4)
-                    .background(Color.accentColor.opacity(0.15)).clipShape(Capsule())
+                    .font(.system(size: AppStyle.fontSmall))
+                    .padding(.horizontal, AppStyle.spacingML).padding(.vertical, AppStyle.spacingXS)
+                    .background(Color.accentColor.opacity(AppStyle.opacityBackgroundLight)).clipShape(Capsule())
             }
             .buttonStyle(.plain)
             Button { engine.rejectPlan() } label: {
                 Label(i18n.t(.cancel), systemImage: "xmark")
-                    .font(.system(size: 11))
-                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .font(.system(size: AppStyle.fontSmall))
+                    .padding(.horizontal, AppStyle.spacingML).padding(.vertical, AppStyle.spacingXS)
                     .background(Color(nsColor: .controlColor)).clipShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -371,14 +371,14 @@ extension AIChatSidebarView {
                 Image(systemName: icon)
                     .foregroundStyle(pending.riskLevel == .dangerous ? .red : .orange)
                 Text(pending.riskLevel == .dangerous ? i18n.t(.dangerousCommand) : i18n.t(.confirmCommand))
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: AppStyle.fontBody, weight: .semibold))
             }
             Text(pending.command)
-                .font(.system(size: 12, design: .monospaced))
+                .font(.system(size: AppStyle.fontBody, design: .monospaced))
                 .textSelection(.enabled)
-                .padding(6)
+                .padding(AppStyle.spacingS)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(nsColor: .controlColor).opacity(0.5))
+                .background(Color(nsColor: .controlColor).opacity(AppStyle.opacityDisabled))
                 .clipShape(RoundedRectangle(cornerRadius: 4))
 
             HStack(spacing: 8) {
@@ -387,9 +387,9 @@ extension AIChatSidebarView {
                     engine.pendingConfirmation = nil
                 } label: {
                     Label(i18n.t(.execute), systemImage: "play.fill")
-                        .font(.system(size: 11))
-                        .padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(Color.accentColor.opacity(0.15))
+                        .font(.system(size: AppStyle.fontSmall))
+                        .padding(.horizontal, AppStyle.spacingML).padding(.vertical, AppStyle.spacingXS)
+                        .background(Color.accentColor.opacity(AppStyle.opacityBackgroundLight))
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -399,30 +399,30 @@ extension AIChatSidebarView {
                     engine.pendingConfirmation = nil
                 } label: {
                     Label(i18n.t(.cancel), systemImage: "xmark")
-                        .font(.system(size: 11))
-                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .font(.system(size: AppStyle.fontSmall))
+                        .padding(.horizontal, AppStyle.spacingML).padding(.vertical, AppStyle.spacingXS)
                         .background(Color(nsColor: .controlColor))
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(10)
+        .padding(AppStyle.spacingML)
         .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(pending.riskLevel == .dangerous ? Color.red.opacity(0.08) : Color.orange.opacity(0.08))
+            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium)
+                .fill(pending.riskLevel == .dangerous ? Color.red.opacity(AppStyle.opacityStroke) : Color.orange.opacity(AppStyle.opacityStroke))
         )
-        .padding(.horizontal, 12)
-        .padding(.vertical, 4)
+        .padding(.horizontal, AppStyle.spacingL)
+        .padding(.vertical, AppStyle.spacingXS)
     }
 
     // MARK: - Avatar
 
     func avatar(_ icon: String) -> some View {
         Image(systemName: icon)
-            .font(.system(size: 10))
+            .font(.system(size: AppStyle.fontCaption))
             .foregroundStyle(.secondary)
-            .frame(width: 22, height: 22)
+            .frame(width: AppStyle.size22, height: AppStyle.size22)
             .background(Color(nsColor: .controlColor))
             .clipShape(Circle())
     }

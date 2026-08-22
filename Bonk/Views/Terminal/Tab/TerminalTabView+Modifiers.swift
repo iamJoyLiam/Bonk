@@ -67,13 +67,13 @@ struct DropOverlayModifier: ViewModifier {
                         if let progress = uploadProgress {
                             ProgressView(value: progress)
                                 .progressViewStyle(.linear)
-                                .frame(maxWidth: 200)
+                                .frame(maxWidth: AppStyle.size200)
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, AppStyle.spacingL)
+                    .padding(.vertical, AppStyle.spacingS)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
-                    .padding(.bottom, 12)
+                    .padding(.bottom, AppStyle.spacingL)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
@@ -92,10 +92,10 @@ struct CopyOverlayModifier: ViewModifier {
                     Text(msg)
                         .font(.caption)
                         .lineLimit(1)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
+                        .padding(.horizontal, AppStyle.spacingL)
+                        .padding(.vertical, AppStyle.spacingS)
                         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
-                        .padding(.bottom, 12)
+                        .padding(.bottom, AppStyle.spacingL)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }

@@ -44,7 +44,7 @@ struct WorkspaceListView: View {
             // Footer
             footerSection
         }
-        .frame(minWidth: 450, minHeight: 350)
+        .frame(minWidth: AppStyle.serialPortWidth, minHeight: AppStyle.newConnectionHeight)
         .onAppear {
             loadWorkspaces()
         }
@@ -109,7 +109,7 @@ struct WorkspaceListView: View {
     private var emptyStateView: some View {
         VStack(spacing: 16) {
             Image(systemName: "square.stack.3d.up")
-                .font(.system(size: 48))
+                .font(.system(size: AppStyle.fontDisplay))
                 .foregroundStyle(.tertiary)
             Text(i18n.t(.noWorkspaces))
                 .font(.title3)
@@ -118,7 +118,7 @@ struct WorkspaceListView: View {
                 .font(.body)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 300)
+                .frame(maxWidth: AppStyle.panelWidthSmall)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -133,7 +133,7 @@ struct WorkspaceListView: View {
 
                     if workspace.id != workspaces.last?.id {
                         Divider()
-                            .padding(.leading, 44)
+                            .padding(.leading, AppStyle.spacingSidebar)
                     }
                 }
             }
@@ -145,7 +145,7 @@ struct WorkspaceListView: View {
             // Icon
             Image(systemName: "square.stack.3d.up.fill")
                 .foregroundStyle(.blue)
-                .frame(width: 28)
+                .frame(width: AppStyle.buttonMedium)
 
             // Info
             VStack(alignment: .leading, spacing: 3) {
@@ -170,7 +170,7 @@ struct WorkspaceListView: View {
                     loadWorkspace(workspace)
                 } label: {
                     Image(systemName: "arrow.right.circle.fill")
-                        .font(.system(size: 18))
+                        .font(.system(size: AppStyle.fontSubtitle))
                         .foregroundStyle(.blue)
                 }
                 .buttonStyle(.plain)
@@ -197,11 +197,11 @@ struct WorkspaceListView: View {
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
-                .frame(width: 20)
+                .frame(width: AppStyle.iconDisplay)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, AppStyle.spacingL)
+        .padding(.vertical, AppStyle.spacingML)
         .contentShape(Rectangle())
         .onTapGesture {
             loadWorkspace(workspace)
@@ -237,7 +237,7 @@ struct WorkspaceListView: View {
 
             TextField(i18n.t(.workspaceName), text: $newWorkspaceName)
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 300)
+                .frame(width: AppStyle.panelWidthSmall)
 
             HStack {
                 Button(i18n.t(.cancel)) {
@@ -256,7 +256,7 @@ struct WorkspaceListView: View {
             }
         }
         .padding()
-        .frame(width: 400)
+        .frame(width: AppStyle.quickConnectWidth)
     }
 
     // MARK: - Actions

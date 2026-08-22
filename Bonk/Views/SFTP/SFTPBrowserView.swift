@@ -89,7 +89,7 @@ struct SFTPBrowserView: View {
             } else {
                 VStack(spacing: 12) {
                     Image(systemName: "folder.badge.questionmark")
-                        .font(.system(size: 40))
+                        .font(.system(size: AppStyle.fontHuge))
                         .foregroundStyle(.quaternary)
                     Text(i18n.t(.sftpNotConnected))
                         .font(.headline)
@@ -108,11 +108,11 @@ struct SFTPBrowserView: View {
         .overlay(alignment: .top) {
             if let msg = toast {
                 Text(msg)
-                    .font(.system(size: 11))
-                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .font(.system(size: AppStyle.fontSmall))
+                    .padding(.horizontal, AppStyle.spacingL).padding(.vertical, 7)
                     .background(.ultraThinMaterial, in: Capsule())
                     .shadow(radius: 4)
-                    .padding(.top, 8)
+                    .padding(.top, AppStyle.spacingM)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
@@ -243,8 +243,8 @@ struct SFTPBrowserView: View {
                 .help(i18n.t(.refresh))
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, AppStyle.spacingL)
+        .padding(.vertical, AppStyle.spacingM)
     }
 
     // MARK: - Path Bar — single TextField, whole middle tappable, adaptive
@@ -259,13 +259,13 @@ struct SFTPBrowserView: View {
                 }
             } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: AppStyle.fontSmall, weight: .medium))
             }
             .buttonStyle(.plain)
             .disabled(sftpService?.currentPath == "/" || isEditingPath)
 
-            TextField("", text: $editingPath, prompt: Text(sftpService?.currentPath ?? "/").font(.system(size: 11).monospaced()))
-                .font(.system(size: 11).monospaced())
+            TextField("", text: $editingPath, prompt: Text(sftpService?.currentPath ?? "/").font(.system(size: AppStyle.fontSmall).monospaced()))
+                .font(.system(size: AppStyle.fontSmall).monospaced())
                 .textFieldStyle(.plain)
                 .focused($isPathFocused)
                 .disabled(!isEditingPath)
@@ -281,15 +281,15 @@ struct SFTPBrowserView: View {
                 if isEditingPath { commitPath() } else { editingPath = sftpService?.currentPath ?? "/"; isEditingPath = true; isPathFocused = true }
             } label: {
                 Image(systemName: isEditingPath ? "arrow.right.circle.fill" : "arrow.right.circle")
-                    .font(.system(size: 14))
+                    .font(.system(size: AppStyle.fontMedium))
                     .foregroundStyle(isEditingPath ? .blue : .secondary)
             }
             .buttonStyle(.plain)
             .help(isEditingPath ? "Go" : "Edit")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(.quaternary.opacity(0.3))
+        .padding(.horizontal, AppStyle.spacingL)
+        .padding(.vertical, AppStyle.spacingS)
+        .background(.quaternary.opacity(AppStyle.opacityOverlay))
     }
 
     private func commitPath() {

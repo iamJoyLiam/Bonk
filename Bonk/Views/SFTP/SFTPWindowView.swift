@@ -36,7 +36,7 @@ struct SFTPWindowView: View {
                 HSplitView {
                     // Left: Local files
                     localFilePanel
-                        .frame(minWidth: 250)
+                        .frame(minWidth: AppStyle.sftpPaneMinWidth)
 
                     // Right: Remote files
                     SFTPBrowserView(tab: tab, onUpload: { url in
@@ -44,7 +44,7 @@ struct SFTPWindowView: View {
                     }, onDownloadCompleted: {
                         loadLocalFiles()
                     })
-                    .frame(minWidth: 250)
+                    .frame(minWidth: AppStyle.sftpPaneMinWidth)
                 }
 
                 // Bottom: Transfer progress
@@ -85,7 +85,7 @@ struct SFTPWindowView: View {
                 showOverwriteAlert = false
             }
         }
-        .frame(minWidth: 800, minHeight: 500)
+        .frame(minWidth: 800, minHeight: AppStyle.settingsWindowHeight)
         .onAppear {
             let defaultPath = preferences.sftpDefaultLocalPath
                 ?? (NSHomeDirectory() as NSString).appendingPathComponent("Downloads")
@@ -113,21 +113,21 @@ struct SFTPWindowView: View {
                 .buttonStyle(.borderless)
                 .help(i18n.t(.refresh))
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, AppStyle.spacingL)
+            .padding(.vertical, AppStyle.spacingM)
 
             Divider()
 
             HStack(spacing: 6) {
                 Button { goUpLocal() } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: AppStyle.fontSmall, weight: .medium))
                 }
                 .buttonStyle(.plain)
                 .disabled(localPath == "/" || isEditingLocal)
 
-                TextField("", text: $editingLocal, prompt: Text(localPath).font(.system(size: 11).monospaced()))
-                    .font(.system(size: 11).monospaced())
+                TextField("", text: $editingLocal, prompt: Text(localPath).font(.system(size: AppStyle.fontSmall).monospaced()))
+                    .font(.system(size: AppStyle.fontSmall).monospaced())
                     .textFieldStyle(.plain)
                     .focused($isLocalFocused)
                     .disabled(!isEditingLocal)
@@ -143,15 +143,15 @@ struct SFTPWindowView: View {
                     if isEditingLocal { commitLocal() } else { editingLocal = localPath; isEditingLocal = true; isLocalFocused = true }
                 } label: {
                     Image(systemName: isEditingLocal ? "arrow.right.circle.fill" : "arrow.right.circle")
-                        .font(.system(size: 14))
+                        .font(.system(size: AppStyle.fontMedium))
                         .foregroundStyle(isEditingLocal ? .blue : .secondary)
                 }
                 .buttonStyle(.plain)
                 .help(isEditingLocal ? "Go" : "Edit")
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(.quaternary.opacity(0.3))
+            .padding(.horizontal, AppStyle.spacingL)
+            .padding(.vertical, AppStyle.spacingS)
+            .background(.quaternary.opacity(AppStyle.opacityOverlay))
 
             Divider()
 
@@ -204,13 +204,13 @@ struct SFTPWindowView: View {
                         ? "xmark.circle.fill"
                         : (transfer.isComplete ? "checkmark.circle.fill" : "arrow.down.circle")
                     Image(systemName: iconName)
-                        .font(.system(size: 12))
+                        .font(.system(size: AppStyle.fontBody))
                         .foregroundStyle(
                             transfer.isCancelled ? .orange : (transfer.isComplete ? .green : .blue)
                         )
 
                     Text(transfer.filename)
-                        .font(.system(size: 11))
+                        .font(.system(size: AppStyle.fontSmall))
                         .lineLimit(1)
 
                     if transfer.isActive {
@@ -222,7 +222,7 @@ struct SFTPWindowView: View {
 
                     if let error = transfer.error {
                         Text(error)
-                            .font(.system(size: 10))
+                            .font(.system(size: AppStyle.fontCaption))
                             .foregroundStyle(.red)
                     }
 
@@ -232,7 +232,7 @@ struct SFTPWindowView: View {
                             sftp.cancelTransfer(transfer.id)
                         } label: {
                             Image(systemName: "xmark.circle")
-                                .font(.system(size: 12))
+                                .font(.system(size: AppStyle.fontBody))
                                 .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
@@ -244,7 +244,7 @@ struct SFTPWindowView: View {
                             sftp.removeTransfer(transfer.id)
                         } label: {
                             Image(systemName: "xmark.circle")
-                                .font(.system(size: 12))
+                                .font(.system(size: AppStyle.fontBody))
                                 .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
@@ -252,8 +252,8 @@ struct SFTPWindowView: View {
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, AppStyle.spacingL)
+        .padding(.vertical, AppStyle.spacingM)
         .frame(maxWidth: .infinity)
         .background(Color(nsColor: .controlBackgroundColor))
     }

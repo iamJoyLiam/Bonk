@@ -52,12 +52,12 @@ struct KeyRecorderView: View {
                             .foregroundStyle(.tertiary)
                     }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                .padding(.horizontal, AppStyle.spacingM)
+                .padding(.vertical, AppStyle.spacingXS)
                 .frame(minWidth: 120)
                 .background {
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(isRecording ? Color.accentColor.opacity(0.1) : Color.secondary.opacity(0.1))
+                        .fill(isRecording ? Color.accentColor.opacity(AppStyle.opacityOverlaySubtle) : Color.secondary.opacity(AppStyle.opacityOverlaySubtle))
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: 4)
@@ -85,10 +85,10 @@ struct KeyRecorderView: View {
         HStack(spacing: 2) {
             ForEach(shortcut.modifierSymbols, id: \.self) { symbol in
                 Text(symbol)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: AppStyle.fontSmall, weight: .medium))
             }
             Text(shortcut.keyDisplay)
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: AppStyle.fontSmall, weight: .medium))
         }
     }
 

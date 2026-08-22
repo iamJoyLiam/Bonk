@@ -56,13 +56,13 @@ struct PaneTerminalView: View {
                     if let progress = uploadManager.uploadProgress {
                         ProgressView(value: progress)
                             .progressViewStyle(.linear)
-                            .frame(maxWidth: 200)
+                            .frame(maxWidth: AppStyle.size200)
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.horizontal, AppStyle.spacingL)
+                .padding(.vertical, AppStyle.spacingS)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
-                .padding(.bottom, 12)
+                .padding(.bottom, AppStyle.spacingL)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -144,9 +144,9 @@ struct PaneTerminalView: View {
                     .overlay(alignment: .bottomTrailing) {
                         Label(i18n.t(.linked), systemImage: "link")
                             .font(.caption2)
-                            .padding(4)
+                            .padding(AppStyle.spacingXS)
                             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 4))
-                            .padding(4)
+                            .padding(AppStyle.spacingXS)
                     }
                 }
             }
@@ -220,9 +220,9 @@ struct PaneTerminalView: View {
             .buttonStyle(.plain)
             .help(i18n.t(.closePane))
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background(isActive ? Color(nsColor: .controlBackgroundColor).opacity(0.5) : Color.clear)
+        .padding(.horizontal, AppStyle.spacingML)
+        .padding(.vertical, AppStyle.spacingXS)
+        .background(isActive ? Color(nsColor: .controlBackgroundColor).opacity(AppStyle.opacityDisabled) : Color.clear)
     }
 
     private var paneTitleIcon: String {

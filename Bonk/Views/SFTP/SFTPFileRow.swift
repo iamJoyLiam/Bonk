@@ -12,29 +12,29 @@ struct SFTPFileRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 14))
+                .font(.system(size: AppStyle.fontMedium))
                 .foregroundStyle(iconColor)
-                .frame(width: 20)
+                .frame(width: AppStyle.iconDisplay)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(entry.name)
-                    .font(.system(size: 12))
+                    .font(.system(size: AppStyle.fontBody))
                     .lineLimit(1)
 
                 HStack(spacing: 8) {
                     Text(entry.permissionsString)
-                        .font(.system(size: 9).monospaced())
+                        .font(.system(size: AppStyle.fontSmallest).monospaced())
                         .foregroundStyle(.tertiary)
 
                     if !entry.isDirectory {
                         Text(entry.sizeFormatted)
-                            .font(.system(size: 9))
+                            .font(.system(size: AppStyle.fontSmallest))
                             .foregroundStyle(.tertiary)
                     }
 
                     if let date = entry.modifiedAt {
                         Text(Self.dateFormatter.string(from: date))
-                            .font(.system(size: 9))
+                            .font(.system(size: AppStyle.fontSmallest))
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
                     }
@@ -43,7 +43,7 @@ struct SFTPFileRow: View {
 
             Spacer()
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, AppStyle.spacingXXS)
     }
 
     private var icon: String {

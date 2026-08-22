@@ -36,27 +36,27 @@ extension MarkdownUI.Theme {
                     )
                 }
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, AppStyle.spacingM)
         }
 
         // Lists with proper indentation and spacing
         theme.list = BlockStyle<BlockConfiguration> { configuration in
             configuration.label
-                .padding(.leading, 8)
-                .padding(.vertical, 4)
+                .padding(.leading, AppStyle.spacingM)
+                .padding(.vertical, AppStyle.spacingXS)
         }
 
         // List items with spacing between them
         theme.listItem = BlockStyle<BlockConfiguration> { configuration in
             configuration.label
-                .padding(.vertical, 2)
+                .padding(.vertical, AppStyle.spacingXXS)
         }
 
         // Paragraphs with line spacing
         theme.paragraph = BlockStyle<BlockConfiguration> { configuration in
             configuration.label
                 .lineSpacing(4)
-                .padding(.vertical, 4)
+                .padding(.vertical, AppStyle.spacingXS)
         }
 
         // Headings — sized by level, tight margins, no heavy decoration.
@@ -69,13 +69,13 @@ extension MarkdownUI.Theme {
         theme.blockquote = BlockStyle<BlockConfiguration> { configuration in
             HStack(spacing: 8) {
                 Rectangle()
-                    .fill(Color.accentColor.opacity(0.5))
-                    .frame(width: 3)
+                    .fill(Color.accentColor.opacity(AppStyle.opacityDisabled))
+                    .frame(width: AppStyle.indicatorMedium)
                 configuration.label
                     .italic()
                     .foregroundStyle(.secondary)
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, AppStyle.spacingXS)
         }
 
         // Tables — card background, readable header. Horizontally scrollable
@@ -84,11 +84,11 @@ extension MarkdownUI.Theme {
         theme.table = BlockStyle<BlockConfiguration> { configuration in
             ScrollView(.horizontal, showsIndicators: false) {
                 configuration.label
-                    .padding(8)
-                    .background(Color(nsColor: .controlColor).opacity(0.35))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .padding(AppStyle.spacingM)
+                    .background(Color(nsColor: .controlColor).opacity(AppStyle.opacityOverlayStrong))
+                    .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall))
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, AppStyle.spacingXS)
         }
 
         return theme
@@ -98,8 +98,8 @@ extension MarkdownUI.Theme {
         BlockStyle<BlockConfiguration> { configuration in
             configuration.label
                 .font(.system(size: size, weight: .semibold))
-                .padding(.top, 8)
-                .padding(.bottom, 3)
+                .padding(.top, AppStyle.spacingM)
+                .padding(.bottom, AppStyle.indicatorMedium)
         }
     }
 }
@@ -117,11 +117,11 @@ struct CodeBlockView: View {
             HStack(spacing: 6) {
                 if let lang = language, !lang.isEmpty {
                     Text(lang.lowercased())
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .font(.system(size: AppStyle.fontSmallest, weight: .bold, design: .monospaced))
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.accentColor.opacity(0.12))
+                        .padding(.horizontal, AppStyle.spacingS)
+                        .padding(.vertical, AppStyle.spacingXXS)
+                        .background(Color.accentColor.opacity(AppStyle.opacityBackgroundStrong))
                         .clipShape(Capsule())
                 }
                 Spacer()
@@ -132,19 +132,19 @@ struct CodeBlockView: View {
                     Task { @MainActor in try? await Task.sleep(for: .seconds(2)); copied = false }
                 } label: {
                     Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 10))
+                        .font(.system(size: AppStyle.fontCaption))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Color(nsColor: .controlColor).opacity(0.5))
+            .padding(.horizontal, AppStyle.spacingML)
+            .padding(.vertical, AppStyle.spacingSPlus)
+            .background(Color(nsColor: .controlColor).opacity(AppStyle.opacityDisabled))
 
             // Code content
             HighlightedCodeLines(code: code)
         }
-        .background(Color(nsColor: .controlColor).opacity(0.25))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .background(Color(nsColor: .controlColor).opacity(AppStyle.opacityOverlayDim))
+        .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall))
     }
 }

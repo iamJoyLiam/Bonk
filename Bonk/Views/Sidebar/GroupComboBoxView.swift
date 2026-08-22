@@ -42,7 +42,7 @@ struct GroupComboBoxView: View {
             if !group.isEmpty {
                 Button { group = "" } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 11))
+                        .font(.system(size: AppStyle.fontSmall))
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
@@ -50,7 +50,7 @@ struct GroupComboBoxView: View {
 
             Button { showDropdown.toggle() } label: {
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 10))
+                    .font(.system(size: AppStyle.fontCaption))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
@@ -72,7 +72,7 @@ struct GroupComboBoxView: View {
                 Text(i18n.t(.noGroups))
                     .font(.caption)
                     .foregroundStyle(.tertiary)
-                    .padding(12)
+                    .padding(AppStyle.spacingL)
             } else {
                 ScrollView {
                     VStack(spacing: 0) {
@@ -94,16 +94,16 @@ struct GroupComboBoxView: View {
                         Image(systemName: "plus.circle")
                             .foregroundStyle(Color.accentColor)
                         Text(input)
-                            .font(.system(size: 12))
+                            .font(.system(size: AppStyle.fontBody))
                             .lineLimit(1)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, AppStyle.spacingM)
+                    .padding(.vertical, AppStyle.spacingS)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, AppStyle.spacingXS)
     }
 
     private func groupRow(_ hostGroup: HostGroup) -> some View {
@@ -114,16 +114,16 @@ struct GroupComboBoxView: View {
             HStack(spacing: 6) {
                 GroupIndicator(group: hostGroup)
                 Text(hostGroup.name)
-                    .font(.system(size: 12))
+                    .font(.system(size: AppStyle.fontBody))
                     .lineLimit(1)
                 if hostGroup.name == group {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 10))
+                        .font(.system(size: AppStyle.fontCaption))
                         .foregroundStyle(Color.accentColor)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, AppStyle.spacingM)
+            .padding(.vertical, AppStyle.spacingXS)
         }
         .buttonStyle(.plain)
     }
@@ -146,11 +146,11 @@ struct GroupIndicator: View {
             if let color = group.resolvedColor {
                 Circle()
                     .fill(color)
-                    .frame(width: 8, height: 8)
+                    .frame(width: AppStyle.statusDotMedium, height: AppStyle.statusDotMedium)
             }
             if let icon = group.icon, !icon.isEmpty {
                 Image(systemName: icon)
-                    .font(.system(size: 10))
+                    .font(.system(size: AppStyle.fontCaption))
                     .foregroundStyle(.secondary)
             }
         }

@@ -6,7 +6,7 @@ extension AIChatSidebarView {
             if conversations.isEmpty {
                 Text(i18n.t(.aiNoHistory))
                     .font(.caption).foregroundStyle(.tertiary)
-                    .padding(16)
+                    .padding(AppStyle.spacingXL)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 2) {
@@ -19,12 +19,12 @@ extension AIChatSidebarView {
                                 } label: {
                                     HStack {
                                         Text(conversation.title)
-                                            .font(.system(size: 12))
+                                            .font(.system(size: AppStyle.fontBody))
                                             .lineLimit(1)
                                         Spacer()
                                         if currentConversation?.id == conversation.id {
                                             Image(systemName: "checkmark")
-                                                .font(.system(size: 10))
+                                                .font(.system(size: AppStyle.fontCaption))
                                                 .foregroundStyle(Color.accentColor)
                                         }
                                     }
@@ -36,19 +36,19 @@ extension AIChatSidebarView {
                                     pendingDeleteConversation = conversation.id
                                 } label: {
                                     Image(systemName: "xmark")
-                                        .font(.system(size: 9, weight: .medium))
+                                        .font(.system(size: AppStyle.fontSmallest, weight: .medium))
                                         .foregroundStyle(.tertiary)
                                 }
                                 .buttonStyle(.plain)
                             }
-                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .padding(.horizontal, AppStyle.spacingL).padding(.vertical, AppStyle.spacingS)
                         }
                     }
                 }
                 .frame(maxHeight: 200)
             }
         }
-        .frame(width: 220)
+        .frame(width: AppStyle.size220)
         .alert(i18n.t(.aiDeleteConversation), isPresented: Binding(
             get: { pendingDeleteConversation != nil },
             set: { if !$0 { pendingDeleteConversation = nil } }

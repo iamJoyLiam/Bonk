@@ -20,7 +20,7 @@ struct GroupSettingsView: View {
                 Spacer()
                 Button { showAddSheet = true } label: { Label(i18n.t(.addGroup), systemImage: "plus") }
             }
-            .padding(12)
+            .padding(AppStyle.spacingL)
         }
         .sheet(isPresented: $showAddSheet) { GroupEditSheet(group: nil, existingNames: groups.map(\.name)) }
         .sheet(item: $editingGroup) { GroupEditSheet(group: $0, existingNames: groups.map(\.name)) }
@@ -43,7 +43,7 @@ struct GroupSettingsView: View {
     private var emptyState: some View {
         VStack(spacing: 8) {
             Spacer()
-            Image(systemName: "folder.badge.plus").font(.system(size: 36)).foregroundStyle(.tertiary)
+            Image(systemName: "folder.badge.plus").font(.system(size: AppStyle.fontHero)).foregroundStyle(.tertiary)
             Text(i18n.t(.noGroups)).font(.headline).foregroundStyle(.secondary)
             Text(i18n.t(.noGroupsHint)).font(.caption).foregroundStyle(.tertiary).multilineTextAlignment(.center)
             Spacer()
@@ -74,10 +74,10 @@ struct GroupSettingsView: View {
                         }
                     } label: {
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: AppStyle.fontSmallest, weight: .semibold))
                             .foregroundStyle(.tertiary)
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                            .frame(width: 16, height: 16)
+                            .frame(width: AppStyle.iconXXL, height: AppStyle.iconXXL)
                     }
                     .buttonStyle(.plain)
 
@@ -87,26 +87,26 @@ struct GroupSettingsView: View {
                     hostCountBadge(group.name)
                     HStack(spacing: 8) {
                         Image(systemName: "pencil.circle")
-                            .font(.system(size: 14))
+                            .font(.system(size: AppStyle.fontMedium))
                             .foregroundStyle(.secondary)
                             .onTapGesture { editingGroup = group }
                         Image(systemName: "trash")
-                            .font(.system(size: 12))
+                            .font(.system(size: AppStyle.fontBody))
                             .foregroundStyle(.tertiary)
                             .onTapGesture { pendingDelete = group }
                     }
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, AppStyle.spacingXS)
 
                 // Expanded host list
                 if isExpanded {
                     ForEach(hosts) { host in
                         HStack(spacing: 8) {
                             Image(systemName: "line.3.horizontal")
-                                .font(.system(size: 9))
+                                .font(.system(size: AppStyle.fontSmallest))
                                 .foregroundStyle(.quaternary)
                             Image(systemName: "desktopcomputer")
-                                .font(.system(size: 11))
+                                .font(.system(size: AppStyle.fontSmall))
                                 .foregroundStyle(.secondary)
                             Text(host.name).font(.subheadline)
                             Spacer()
@@ -114,8 +114,8 @@ struct GroupSettingsView: View {
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
                         }
-                        .padding(.vertical, 4)
-                        .padding(.leading, 32)
+                        .padding(.vertical, AppStyle.spacingXS)
+                        .padding(.leading, AppStyle.spacingIndent)
                     }
                     .onMove { from, destination in moveHosts(in: group, from: from, to: destination) }
                 }
@@ -146,9 +146,9 @@ struct GroupSettingsView: View {
         let count = group?.hosts.count ?? 0
         if count > 0 {
             Text("\(count)")
-                .font(.system(size: 10)).foregroundStyle(.tertiary)
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(Color(nsColor: .tertiaryLabelColor).opacity(0.15))
+                .font(.system(size: AppStyle.fontCaption)).foregroundStyle(.tertiary)
+                .padding(.horizontal, AppStyle.spacingS).padding(.vertical, AppStyle.spacingXXS)
+                .background(Color(nsColor: .tertiaryLabelColor).opacity(AppStyle.opacityBackgroundLight))
                 .clipShape(Capsule())
         }
     }
@@ -197,7 +197,7 @@ struct GroupEditSheet: View {
             Section(i18n.t(.groupIcon)) { iconPicker }
         }
         .formStyle(.grouped)
-        .frame(minWidth: 400, minHeight: 440)
+        .frame(minWidth: AppStyle.quickConnectWidth, minHeight: AppStyle.dialogHeightLarge)
         .navigationTitle(isEditing ? i18n.t(.editGroup) : i18n.t(.addGroup))
         .toolbar {
             ToolbarItem(placement: .cancellationAction) { Button(i18n.t(.cancel)) { dismiss() } }
@@ -216,17 +216,17 @@ struct GroupEditSheet: View {
         LazyVGrid(columns: Array(repeating: GridItem(.fixed(32), spacing: 8), count: 10), spacing: 8) {
             ForEach(HostGroup.presetColors, id: \.self) { hex in
                 Circle()
-                    .fill(Color(hex: hex)).frame(width: 28, height: 28)
+                    .fill(Color(hex: hex)).frame(width: AppStyle.buttonMedium, height: AppStyle.buttonMedium)
                     .overlay(Circle().stroke(selectedColor == hex ? Color.accentColor : .clear, lineWidth: 3))
                     .onTapGesture { selectedColor = selectedColor == hex ? nil : hex }
             }
             ColorPicker("", selection: $customColor, supportsOpacity: false)
-                .labelsHidden().frame(width: 28, height: 28)
+                .labelsHidden().frame(width: AppStyle.buttonMedium, height: AppStyle.buttonMedium)
                 .onChange(of: customColor) { _, newColor in
                     selectedColor = newColor.hexString
                 }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, AppStyle.spacingXS)
     }
 
     // MARK: - Icon Picker
@@ -235,13 +235,13 @@ struct GroupEditSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 if let icon = selectedIcon, !icon.isEmpty {
-                    Image(systemName: icon).font(.system(size: 16)).frame(width: 24)
+                    Image(systemName: icon).font(.system(size: AppStyle.fontLarge)).frame(width: AppStyle.iconHero)
                     Text(icon).font(.caption).foregroundStyle(.secondary)
                 } else {
                     Image(systemName: "slash.circle")
-                        .font(.system(size: 16))
+                        .font(.system(size: AppStyle.fontLarge))
                         .foregroundStyle(.tertiary)
-                        .frame(width: 24)
+                        .frame(width: AppStyle.iconHero)
                     Text(i18n.t(.noIcon)).font(.caption).foregroundStyle(.tertiary)
                 }
                 Spacer()
@@ -255,7 +255,7 @@ struct GroupEditSheet: View {
                     Image(systemName: "magnifyingglass").foregroundStyle(.tertiary).font(.caption)
                     TextField("SF Symbols", text: $iconSearch).textFieldStyle(.plain).font(.caption)
                 }
-                .padding(6).background(Color(nsColor: .controlBackgroundColor)).clipShape(.rect(cornerRadius: 6))
+                .padding(AppStyle.spacingS).background(Color(nsColor: .controlBackgroundColor)).clipShape(.rect(cornerRadius: AppStyle.cornerRadiusSmall))
 
                 ScrollView {
                     LazyVGrid(columns: Array(repeating: GridItem(.fixed(32), spacing: 6), count: 10), spacing: 6) {
@@ -274,9 +274,9 @@ struct GroupEditSheet: View {
             if icon != nil { showIconPicker = false }
         } label: {
             Image(systemName: icon ?? "slash.circle")
-                .font(.system(size: 16)).frame(width: 32, height: 32)
-                .background(selectedIcon == icon ? Color.accentColor.opacity(0.15) : .clear)
-                .clipShape(.rect(cornerRadius: 6))
+                .font(.system(size: AppStyle.fontLarge)).frame(width: AppStyle.spacingIndent, height: 32)
+                .background(selectedIcon == icon ? Color.accentColor.opacity(AppStyle.opacityBackgroundLight) : .clear)
+                .clipShape(.rect(cornerRadius: AppStyle.cornerRadiusSmall))
                 .foregroundStyle(icon == nil ? .tertiary : .primary)
         }
         .buttonStyle(.plain)

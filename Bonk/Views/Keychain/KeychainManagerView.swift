@@ -37,7 +37,7 @@ struct KeychainManagerView: View {
                 listView
             }
         }
-        .frame(minWidth: 420, minHeight: 300, idealHeight: isEditing ? 500 : nil, maxHeight: isEditing ? 600 : nil)
+        .frame(minWidth: AppStyle.panelWidthMedium, minHeight: AppStyle.panelWidthSmall, idealHeight: isEditing ? 500 : nil, maxHeight: isEditing ? 600 : nil)
         .navigationTitle(isEditing ? (isAdding ? i18n.t(.addCredential) : i18n.t(.editCredential)) : i18n.t(.keychain))
         .toolbar {
             if isEditing {
@@ -96,7 +96,7 @@ struct KeychainManagerView: View {
                 List {
                     ForEach(credentials) { cred in
                         HStack(spacing: 10) {
-                            Image(systemName: cred.type.symbolName).foregroundStyle(.secondary).frame(width: 24)
+                            Image(systemName: cred.type.symbolName).foregroundStyle(.secondary).frame(width: AppStyle.iconHero)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(cred.name).lineLimit(1)
                                 Text(cred.type.displayName(i18n)).font(.caption).foregroundStyle(.secondary)
@@ -121,8 +121,8 @@ struct KeychainManagerView: View {
                 }
                 Spacer()
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.horizontal, AppStyle.spacingXL)
+            .padding(.vertical, AppStyle.spacingML)
         }
     }
 
@@ -161,7 +161,7 @@ struct KeychainManagerView: View {
                             showPassword.toggle()
                         } label: {
                             Image(systemName: showPassword ? "eye.slash" : "eye")
-                                .font(.system(size: 12))
+                                .font(.system(size: AppStyle.fontBody))
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)

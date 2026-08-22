@@ -95,10 +95,10 @@ extension AIChatSidebarView {
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(targetDisplayName)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: AppStyle.fontSmall, weight: .medium))
                     .lineLimit(1)
                 Text(targetStateText)
-                    .font(.system(size: 10))
+                    .font(.system(size: AppStyle.fontCaption))
                     .foregroundStyle(targetStateColor)
             }
 
@@ -106,9 +106,9 @@ extension AIChatSidebarView {
 
             targetActionButton
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(Color(nsColor: .controlColor).opacity(0.5))
+        .padding(.horizontal, AppStyle.spacingL)
+        .padding(.vertical, AppStyle.spacingS)
+        .background(Color(nsColor: .controlColor).opacity(AppStyle.opacityDisabled))
     }
 
     private var targetMenu: some View {
@@ -131,9 +131,9 @@ extension AIChatSidebarView {
             }
         } label: {
             Image(systemName: "chevron.up.chevron.down")
-                .font(.system(size: 10))
+                .font(.system(size: AppStyle.fontCaption))
                 .foregroundStyle(.secondary)
-                .frame(width: 18, height: 18)
+                .frame(width: AppStyle.iconHuge, height: AppStyle.iconHuge)
         }
         .menuStyle(.borderlessButton)
         .disabled(engine.isProcessing)
@@ -148,7 +148,7 @@ extension AIChatSidebarView {
                     Task { await sessionManager.connectTab(tab) }
                 } label: {
                     Label(i18n.t(.connect), systemImage: "link")
-                        .font(.system(size: 10))
+                        .font(.system(size: AppStyle.fontCaption))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
@@ -159,7 +159,7 @@ extension AIChatSidebarView {
                     Task { await connectionService.disconnect() }
                 } label: {
                     Label(i18n.t(.disconnect), systemImage: "xmark.circle")
-                        .font(.system(size: 10))
+                        .font(.system(size: AppStyle.fontCaption))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -172,7 +172,7 @@ extension AIChatSidebarView {
                     }
                 } label: {
                     Label(i18n.t(.connect), systemImage: "link")
-                        .font(.system(size: 10))
+                        .font(.system(size: AppStyle.fontCaption))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)

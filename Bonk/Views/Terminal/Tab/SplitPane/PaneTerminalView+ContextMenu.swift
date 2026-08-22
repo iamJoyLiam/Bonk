@@ -118,7 +118,7 @@ extension PaneTerminalView {
                 // Icon
                 VStack(spacing: 8) {
                     Image(systemName: "plus.rectangle.on.rectangle")
-                        .font(.system(size: 24))
+                        .font(.system(size: AppStyle.fontXL))
                     Text(i18n.t(.dropToSplit))
                         .font(.caption)
                 }

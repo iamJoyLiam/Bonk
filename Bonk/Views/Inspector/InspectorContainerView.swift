@@ -60,8 +60,8 @@ struct InspectorContainerView: View {
                 Text(i18n.t(.commandHistory)).tag(WorkspaceManager.SnippetsHistoryTab.history)
             }
             .pickerStyle(.segmented)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, AppStyle.spacingL)
+            .padding(.vertical, AppStyle.spacingM)
 
             Divider()
 

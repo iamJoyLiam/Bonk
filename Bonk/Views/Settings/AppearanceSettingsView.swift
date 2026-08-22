@@ -25,7 +25,7 @@ struct AppearanceSettingsView: View {
                         themeCard(theme)
                     }
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, AppStyle.spacingXS)
             }
 
             // Extra themes
@@ -40,7 +40,7 @@ struct AppearanceSettingsView: View {
                             themeCard(theme)
                         }
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, AppStyle.spacingXS)
                 }
             }
 
@@ -89,15 +89,15 @@ struct AppearanceSettingsView: View {
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(height: 36)
+                    RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
+                        .fill(Color.gray.opacity(AppStyle.opacityOverlayLight))
+                        .frame(height: AppStyle.fontHero)
                         .overlay(
                             HStack(spacing: 0) {
-                                Color.white.frame(width: 18)
-                                Color.black.frame(width: 18)
+                                Color.white.frame(width: AppStyle.iconHuge)
+                                Color.black.frame(width: AppStyle.iconHuge)
                             }
-                            .clipShape(.rect(cornerRadius: 6))
+                            .clipShape(.rect(cornerRadius: AppStyle.cornerRadiusSmall))
                         )
                 }
                 HStack {
@@ -109,10 +109,10 @@ struct AppearanceSettingsView: View {
                     }
                 }
             }
-            .padding(6)
+            .padding(AppStyle.spacingS)
             .background {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(.quaternary.opacity(0.3))
+                    .fill(.quaternary.opacity(AppStyle.opacityOverlay))
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -138,15 +138,15 @@ struct AppearanceSettingsView: View {
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(bgColor).frame(height: 36)
+                    RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
+                        .fill(bgColor).frame(height: AppStyle.fontHero)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .strokeBorder(.primary.opacity(0.1), lineWidth: 0.5)
+                            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
+                                .strokeBorder(.primary.opacity(AppStyle.opacityOverlaySubtle), lineWidth: 0.5)
                         )
                     HStack(spacing: 2) {
                         strip(color0); strip(color1); strip(color2); strip(color3)
-                    }.padding(.leading, 6)
+                    }.padding(.leading, AppStyle.spacingS)
                 }
                 HStack {
                     Text(theme.name).font(.caption2).lineLimit(1)
@@ -157,10 +157,10 @@ struct AppearanceSettingsView: View {
                     }
                 }
             }
-            .padding(6)
+            .padding(AppStyle.spacingS)
             .background {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(.quaternary.opacity(0.3))
+                    .fill(.quaternary.opacity(AppStyle.opacityOverlay))
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -171,7 +171,7 @@ struct AppearanceSettingsView: View {
     }
 
     private func strip(_ color: Color) -> some View {
-        RoundedRectangle(cornerRadius: 1, style: .continuous).fill(color).frame(width: 16, height: 3)
+        RoundedRectangle(cornerRadius: 1, style: .continuous).fill(color).frame(width: AppStyle.iconXXL, height: 3)
     }
 
     private func sendFontChange() {

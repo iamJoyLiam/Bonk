@@ -20,12 +20,12 @@ struct TerminalSearchBar: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-                .font(.system(size: 12))
+                .font(.system(size: AppStyle.fontBody))
 
             TextField(i18n.t(.search), text: $searchText)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13))
-                .frame(width: 200)
+                .font(.system(size: AppStyle.fontRegular))
+                .frame(width: AppStyle.size200)
                 .focused($isFocused)
                 .onSubmit {
                     if matchCount > 0 { onNext() }
@@ -33,21 +33,21 @@ struct TerminalSearchBar: View {
 
             if !searchText.isEmpty {
                 Text("\(currentMatch)/\(matchCount)")
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: AppStyle.fontSmall, design: .monospaced))
                     .foregroundStyle(.secondary)
-                    .frame(minWidth: 40)
+                    .frame(minWidth: AppStyle.size40)
             }
 
             Button(action: onPrevious) {
                 Image(systemName: "chevron.up")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: AppStyle.fontCaption, weight: .medium))
             }
             .buttonStyle(.plain)
             .disabled(searchText.isEmpty || matchCount == 0)
 
             Button(action: onNext) {
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: AppStyle.fontCaption, weight: .medium))
             }
             .buttonStyle(.plain)
             .disabled(searchText.isEmpty || matchCount == 0)
@@ -57,17 +57,17 @@ struct TerminalSearchBar: View {
                 isPresented = false
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: AppStyle.fontCaption, weight: .medium))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.escape, modifiers: [])
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, AppStyle.spacingL)
+        .padding(.vertical, AppStyle.spacingS)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 8))
-        .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
+        .shadow(color: .black.opacity(AppStyle.opacityBackgroundLight), radius: 8, y: 4)
         .onAppear {
             // Small delay so the TextField exists before focusing.
             Task { @MainActor in

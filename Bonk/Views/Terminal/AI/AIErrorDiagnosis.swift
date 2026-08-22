@@ -25,12 +25,12 @@ struct AIErrorDiagnosis: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(selectedText)
-                .font(.system(size: 11, design: .monospaced))
+                .font(.system(size: AppStyle.fontSmall, design: .monospaced))
                 .lineLimit(3)
-                .padding(8)
+                .padding(AppStyle.spacingM)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(nsColor: .controlColor))
-                .clipShape(.rect(cornerRadius: 6))
+                .clipShape(.rect(cornerRadius: AppStyle.cornerRadiusSmall))
 
             if isProcessing {
                 HStack {
@@ -42,12 +42,12 @@ struct AIErrorDiagnosis: View {
                 }
             } else if let diagnosis {
                 MarkdownTextView(content: diagnosis)
-                    .font(.system(size: 12))
+                    .font(.system(size: AppStyle.fontBody))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(8)
+                    .padding(AppStyle.spacingM)
                     .background(Color(nsColor: .controlColor))
-                    .clipShape(.rect(cornerRadius: 6))
+                    .clipShape(.rect(cornerRadius: AppStyle.cornerRadiusSmall))
 
                 HStack(spacing: 12) {
                     Button {
@@ -73,12 +73,12 @@ struct AIErrorDiagnosis: View {
                 }
             }
         }
-        .padding(14)
+        .padding(AppStyle.spacingXLPlus)
         .frame(width: AppStyle.aiPanelWidth)
         .background(
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusLarge)
                 .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 4)
+                .shadow(color: .black.opacity(AppStyle.opacityBackgroundStrong), radius: 12, x: 0, y: 4)
         )
         .offset(offset)
         .gesture(

@@ -40,7 +40,7 @@ struct GeneralSettingsView: View {
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                        .frame(maxWidth: 200)
+                        .frame(maxWidth: AppStyle.size200)
                     Button(i18n.t(.browse)) {
                         let panel = NSOpenPanel()
                         panel.canChooseDirectories = true

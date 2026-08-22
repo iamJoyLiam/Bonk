@@ -12,7 +12,7 @@ extension TerminalTabView {
     var tabBar: some View {
         ViewThatFits(in: .horizontal) {
             // Fits: tabs + plus inline — leading, not centered
-            HStack(spacing: 6) {
+            HStack(spacing: AppStyle.tabSpacing) {
                 ForEach(sessionManager.tabs) { tab in
                     tabCapsule(tab)
                         .matchedGeometryEffect(id: tab.id, in: tabNamespace)
@@ -22,13 +22,13 @@ extension TerminalTabView {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .animation(.smooth(duration: 0.22, extraBounce: 0), value: sessionManager.tabs.map(\.id))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, AppStyle.spacingL)
+            .padding(.vertical, AppStyle.tabBarHPadding)
 
             // Overflow: scroll tabs, plus固定右端
             HStack(spacing: 0) {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
+                    HStack(spacing: AppStyle.tabSpacing) {
                         ForEach(sessionManager.tabs) { tab in
                             tabCapsule(tab)
                                 .matchedGeometryEffect(id: tab.id, in: tabNamespace)
@@ -36,7 +36,7 @@ extension TerminalTabView {
                         }
                         if sessionManager.tabs.count > 1 {
                             Color.clear
-                                .frame(width: sessionManager.draggingTabID != nil ? 12 : 0, height: 24)
+                                .frame(width: sessionManager.draggingTabID != nil ? AppStyle.spacingL : 0, height: AppStyle.buttonSmall)
                                 .contentShape(Rectangle())
                                 .dropDestination(for: String.self) { items, _ in
                                     guard let draggedIDString = items.first,
@@ -53,16 +53,16 @@ extension TerminalTabView {
                         }
                     }
                     .animation(.smooth(duration: 0.22, extraBounce: 0), value: sessionManager.tabs.map(\.id))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, AppStyle.tabBarHPadding)
+                    .padding(.vertical, AppStyle.tabBarHPadding)
                 }
-                Divider().frame(height: 24).padding(.horizontal, 4)
+                Divider().frame(height: AppStyle.buttonSmall).padding(.horizontal, AppStyle.spacingXS)
                 plusButton
-                    .padding(.trailing, 6)
+                    .padding(.trailing, AppStyle.spacingS)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: 44)
+        .frame(height: AppStyle.tabBarHeight)
         .background {
             Rectangle()
                 .fill(.bar)
@@ -83,14 +83,14 @@ extension TerminalTabView {
             showQuickConnect = true
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: AppStyle.fontBody, weight: .medium))
                 .foregroundStyle(isHoverPlus ? .primary : .secondary)
-                .frame(width: 28, height: 28)
+                .frame(width: AppStyle.buttonMedium, height: AppStyle.buttonMedium)
                 .background {
                     if isHoverPlus {
-                        Circle().fill(Color.primary.opacity(0.10))
+                        Circle().fill(Color.primary.opacity(AppStyle.opacityBackgroundHover))
                     } else {
-                        Circle().fill(Color.primary.opacity(0.06))
+                        Circle().fill(Color.primary.opacity(AppStyle.opacityBackgroundSubtle))
                     }
                 }
                 .contentShape(Circle())
@@ -139,7 +139,7 @@ extension TerminalTabView {
             ForEach(TerminalTab.colorLabels, id: \.name) { label in
                 Button { tab.colorLabel = label.name } label: {
                     HStack {
-                        Circle().fill(label.color).frame(width: 10, height: 10)
+                        Circle().fill(label.color).frame(width: AppStyle.iconMedium, height: AppStyle.iconMedium)
                         Text(label.name.capitalized)
                         if tab.colorLabel == label.name { Image(systemName: "checkmark") }
                     }

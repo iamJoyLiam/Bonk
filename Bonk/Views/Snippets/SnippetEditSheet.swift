@@ -39,7 +39,7 @@ struct SnippetEditSheet: View {
 
                 Section(i18n.t(.command)) {
                     TextEditor(text: $command)
-                        .font(.system(size: 13, design: .monospaced))
+                        .font(.system(size: AppStyle.fontRegular, design: .monospaced))
                         .frame(minHeight: 80)
                 }
 
@@ -49,7 +49,7 @@ struct SnippetEditSheet: View {
                             TextField(i18n.t(.snippetCategory), text: $customCategory)
                             Button { useCustomCategory = false } label: {
                                 Image(systemName: "chevron.down")
-                                    .font(.system(size: 12))
+                                    .font(.system(size: AppStyle.fontBody))
                             }
                             .buttonStyle(.plain)
                         }
@@ -102,7 +102,7 @@ struct SnippetEditSheet: View {
                 }
             }
         }
-        .frame(width: 480)
+        .frame(width: AppStyle.dialogWidth)
     }
 
     private func save() {

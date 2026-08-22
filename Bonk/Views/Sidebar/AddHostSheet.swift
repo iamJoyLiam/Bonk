@@ -272,7 +272,7 @@ struct AddHostSheet: View {
                                         .buttonStyle(.bordered)
                                         .controlSize(.small)
                                     }
-                                    .padding(8)
+                                    .padding(AppStyle.spacingM)
                                 }
                             } else {
                                 // Key selection
@@ -353,9 +353,9 @@ struct AddHostSheet: View {
                     Toggle(isOn: $forceCompatibilityToggle) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(i18n.t(.sshAlwaysCompatibility))
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.system(size: AppStyle.fontBody, weight: .medium))
                             Text(i18n.t(.sshAlwaysCompatibilityDesc))
-                                .font(.system(size: 10))
+                                .font(.system(size: AppStyle.fontCaption))
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -363,7 +363,7 @@ struct AddHostSheet: View {
             }
         }
         .formStyle(.grouped)
-        .frame(minWidth: 420, minHeight: 480)
+        .frame(minWidth: AppStyle.panelWidthMedium, minHeight: AppStyle.dialogWidth)
         .navigationTitle(
             existingHost == nil
                 ? i18n.t(.addHost)
@@ -520,8 +520,8 @@ struct AddHostSheet: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(8)
-                .background(.quaternary.opacity(0.5))
+                .padding(AppStyle.spacingM)
+                .background(.quaternary.opacity(AppStyle.opacityDisabled))
                 .cornerRadius(6)
             } else {
                 Button {
@@ -546,8 +546,8 @@ struct AddHostSheet: View {
                         Text(placeholder)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(8)
-                    .background(.quaternary.opacity(0.5))
+                    .padding(AppStyle.spacingM)
+                    .background(.quaternary.opacity(AppStyle.opacityDisabled))
                     .cornerRadius(6)
                 }
                 .buttonStyle(.plain)

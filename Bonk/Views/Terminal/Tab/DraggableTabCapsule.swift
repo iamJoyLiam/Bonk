@@ -23,26 +23,26 @@ struct DraggableTabCapsule: View {
     @State private var isHoverCapsule = false
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: AppStyle.tabSpacing) {
             Circle()
                 .fill(statusDotColor)
-                .frame(width: 6, height: 6)
+                .frame(width: AppStyle.statusDotSmall, height: AppStyle.statusDotSmall)
 
             Text(tab.title)
-                .font(.system(size: 11, weight: isActive ? .semibold : .regular))
+                .font(.system(size: AppStyle.fontSmall, weight: isActive ? .semibold : .regular))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
 
             Button(action: onClose) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.system(size: AppStyle.tabIconClose, weight: .semibold))
                     .foregroundStyle(isHoverClose ? .primary : .secondary)
-                    .frame(width: 16, height: 16)
+                    .frame(width: AppStyle.tabCloseSize, height: AppStyle.tabCloseSize)
                     .background {
                         if isHoverClose {
-                            Circle().fill(Color.primary.opacity(0.12))
+                            Circle().fill(Color.primary.opacity(AppStyle.opacityBackgroundStrong))
                         } else if isActive {
-                            Circle().fill(Color.primary.opacity(0.06))
+                            Circle().fill(Color.primary.opacity(AppStyle.opacityBackgroundSubtle))
                         }
                     }
                     .contentShape(Circle())
@@ -51,9 +51,9 @@ struct DraggableTabCapsule: View {
             .help("Close")
             .onHover { isHoverClose = $0 }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .frame(minWidth: 80, maxWidth: 160)
+        .padding(.horizontal, AppStyle.tabHPadding)
+        .padding(.vertical, AppStyle.tabVPadding)
+        .frame(minWidth: AppStyle.tabMinWidth, maxWidth: AppStyle.tabMaxWidth)
         .background { capsuleBackground }
         .overlay(alignment: .bottom) {
             if isActive {
@@ -64,24 +64,24 @@ struct DraggableTabCapsule: View {
             if isDragOver {
                 Capsule()
                     .fill(Color.accentColor)
-                    .frame(width: 2)
-                    .padding(.vertical, 4)
+                    .frame(width: AppStyle.spacingXXS)
+                    .padding(.vertical, AppStyle.spacingXS)
             }
         }
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: AppStyle.tabCornerRadius, style: .continuous))
         .onTapGesture { onSelect() }
         .onHover { isHoverCapsule = $0 }
         .animation(.easeInOut(duration: 0.12), value: isDragOver)
         .animation(.easeInOut(duration: 0.12), value: isHoverCapsule)
         .draggable(isDragEnabled ? tab.id.uuidString : "") {
-            HStack(spacing: 6) {
-                Circle().fill(statusDotColor).frame(width: 6, height: 6)
-                Text(tab.title).font(.system(size: 11, weight: .semibold)).lineLimit(1)
+            HStack(spacing: AppStyle.tabSpacing) {
+                Circle().fill(statusDotColor).frame(width: AppStyle.statusDotSmall, height: AppStyle.statusDotSmall)
+                Text(tab.title).font(.system(size: AppStyle.fontSmall, weight: .semibold)).lineLimit(1)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(nsColor: .windowBackgroundColor)).shadow(color: .black.opacity(0.15), radius: 6, y: 2))
-            .contentShape(RoundedRectangle(cornerRadius: 16))
+            .padding(.horizontal, AppStyle.spacingL)
+            .padding(.vertical, AppStyle.spacingS)
+            .background(RoundedRectangle(cornerRadius: AppStyle.tabCornerRadius, style: .continuous).fill(Color(nsColor: .windowBackgroundColor)).shadow(color: .black.opacity(AppStyle.opacityBackgroundLight), radius: 6, y: 2))
+            .contentShape(RoundedRectangle(cornerRadius: AppStyle.tabCornerRadius))
         }
         .dropDestination(for: String.self) { items, _ in
             guard isDragEnabled,
@@ -101,31 +101,31 @@ struct DraggableTabCapsule: View {
     // MARK: - Subviews
 
     private var capsuleBackground: some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
+        RoundedRectangle(cornerRadius: AppStyle.tabCornerRadius, style: .continuous)
             .fill(capsuleFill)
             .overlay {
                 if isActive {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: AppStyle.tabCornerRadius, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(AppStyle.opacityStroke), lineWidth: 1)
                 }
             }
     }
 
     private var capsuleFill: Color {
         if let labelColor = tab.resolvedColor {
-            return isActive ? labelColor.opacity(0.28) : labelColor.opacity(0.12)
+            return isActive ? labelColor.opacity(AppStyle.opacityTintActive) : labelColor.opacity(AppStyle.opacityTintIdle)
         }
         if isHoverCapsule && !isActive {
-            return Color.primary.opacity(0.06)
+            return Color.primary.opacity(AppStyle.opacityBackgroundSubtle)
         }
-        return isActive ? Color.primary.opacity(0.10) : Color.clear
+        return isActive ? Color.primary.opacity(AppStyle.opacityBackgroundHover) : Color.clear
     }
 
     private var capsuleUnderline: some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .fill(tab.resolvedColor ?? Color.primary.opacity(0.5))
-            .frame(height: 2)
-            .padding(.horizontal, 8)
+        RoundedRectangle(cornerRadius: AppStyle.tabCornerRadius, style: .continuous)
+            .fill(tab.resolvedColor ?? Color.primary.opacity(AppStyle.opacityDisabled))
+            .frame(height: AppStyle.spacingXXS)
+            .padding(.horizontal, AppStyle.tabHPadding)
             .offset(y: 1)
     }
 

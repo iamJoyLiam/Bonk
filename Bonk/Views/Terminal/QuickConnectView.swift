@@ -72,7 +72,7 @@ struct QuickConnectView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(12)
+            .padding(AppStyle.spacingL)
 
             Divider()
 
@@ -96,8 +96,8 @@ struct QuickConnectView: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
+                                .padding(.horizontal, AppStyle.spacingXL)
+                                .padding(.vertical, AppStyle.spacingL)
                             }
                             .buttonStyle(.plain)
                         } else {
@@ -138,7 +138,7 @@ struct QuickConnectView: View {
                 }
             }
         }
-        .frame(width: 400, height: 500)
+        .frame(width: AppStyle.quickConnectWidth, height: 500)
         .background(Color(nsColor: .windowBackgroundColor))
         .onKeyPress(.upArrow) {
             if selectedIndex > 0 {
@@ -173,17 +173,17 @@ struct QuickConnectView: View {
         let isOpen = sessionManager.tabs.contains(where: { $0.hostItem.id == host.id })
         return HStack(spacing: 10) {
             Circle()
-                .fill(isOpen ? Color.green : Color.secondary.opacity(0.3))
-                .frame(width: 8, height: 8)
+                .fill(isOpen ? Color.green : Color.secondary.opacity(AppStyle.opacityOverlay))
+                .frame(width: AppStyle.statusDotMedium, height: AppStyle.statusDotMedium)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(host.name)
-                    .font(.system(size: 13))
+                    .font(.system(size: AppStyle.fontRegular))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
                 Text("\(host.username)@\(host.host):\(host.port)")
-                    .font(.system(size: 11))
+                    .font(.system(size: AppStyle.fontSmall))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -196,9 +196,9 @@ struct QuickConnectView: View {
                     .foregroundStyle(.green)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
+        .padding(.horizontal, AppStyle.spacingXL)
+        .padding(.vertical, AppStyle.spacingML)
+        .background(isSelected ? Color.accentColor.opacity(AppStyle.opacityOverlayLight) : Color.clear)
         .contentShape(Rectangle())
     }
 
@@ -212,9 +212,9 @@ struct QuickConnectView: View {
                 .textCase(.uppercase)
             Spacer()
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+        .padding(.horizontal, AppStyle.spacingXL)
+        .padding(.vertical, AppStyle.spacingM)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(AppStyle.opacityDisabled))
     }
 
     // MARK: - Actions

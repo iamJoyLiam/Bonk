@@ -123,14 +123,14 @@ struct TerminalAIPanel: View {
     private var inputBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "apple.intelligence")
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: AppStyle.fontMedium, weight: .medium))
                 .foregroundStyle(
                     isInputFocused ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.secondary)
                 )
 
             TextField(i18n.t(.terminalAssistant), text: $inputText)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13))
+                .font(.system(size: AppStyle.fontRegular))
                 .focused($isInputFocused)
                 .onSubmit { submit() }
 
@@ -139,7 +139,7 @@ struct TerminalAIPanel: View {
                     cancel()
                 } label: {
                     Image(systemName: "stop.circle.fill")
-                        .font(.system(size: 13))
+                        .font(.system(size: AppStyle.fontRegular))
                         .foregroundStyle(.red)
                 }
                 .buttonStyle(.plain)
@@ -147,7 +147,7 @@ struct TerminalAIPanel: View {
                 modeMenu
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, AppStyle.spacingXL)
         .frame(width: AppStyle.aiPanelWidth, height: 44)
         .background(.regularMaterial, in: Capsule())
         .background(
@@ -165,7 +165,7 @@ struct TerminalAIPanel: View {
         )
         .overlay(
             Capsule()
-                .strokeBorder(Color.white.opacity(0.4), lineWidth: 1)
+                .strokeBorder(Color.white.opacity(AppStyle.opacityOverlayGhost), lineWidth: 1)
                 .opacity(isInputFocused ? 1 : 0)
         )
     }
@@ -180,9 +180,9 @@ struct TerminalAIPanel: View {
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: selectedMode.icon)
-                    .font(.system(size: 11))
+                    .font(.system(size: AppStyle.fontSmall))
                 Text(selectedMode.localizedName)
-                    .font(.system(size: 11))
+                    .font(.system(size: AppStyle.fontSmall))
             }
             .foregroundStyle(.secondary)
         }
@@ -208,17 +208,17 @@ struct TerminalAIPanel: View {
                         content: engine.streamingResponse,
                         onRun: { code in onRun(code) }
                     )
-                        .font(.system(size: 12))
+                        .font(.system(size: AppStyle.fontBody))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(maxHeight: 240)
             }
         }
-        .padding(12)
+        .padding(AppStyle.spacingL)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(Color(nsColor: .controlColor))
-        .clipShape(.rect(cornerRadius: 10))
+        .clipShape(.rect(cornerRadius: AppStyle.cornerRadiusMedium))
     }
 
     private func responseBubble(_ response: String) -> some View {
@@ -228,7 +228,7 @@ struct TerminalAIPanel: View {
                     content: response,
                     onRun: { code in onRun(code) }
                 )
-                    .font(.system(size: 12))
+                    .font(.system(size: AppStyle.fontBody))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -266,20 +266,20 @@ struct TerminalAIPanel: View {
                 .foregroundStyle(Color.accentColor)
             }
         }
-        .padding(12)
+        .padding(AppStyle.spacingL)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlColor))
-        .clipShape(.rect(cornerRadius: 10))
+        .clipShape(.rect(cornerRadius: AppStyle.cornerRadiusMedium))
     }
 
     private func errorBubble(_ error: String) -> some View {
         Text(error)
-            .font(.system(size: 12))
+            .font(.system(size: AppStyle.fontBody))
             .foregroundStyle(.secondary)
-            .padding(12)
+            .padding(AppStyle.spacingL)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(nsColor: .controlColor))
-            .clipShape(.rect(cornerRadius: 10))
+            .clipShape(.rect(cornerRadius: AppStyle.cornerRadiusMedium))
     }
 
     // MARK: - Actions

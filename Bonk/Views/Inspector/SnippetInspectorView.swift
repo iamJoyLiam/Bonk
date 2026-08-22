@@ -43,14 +43,14 @@ struct SnippetInspectorView: View {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                    .font(.system(size: 12))
+                    .font(.system(size: AppStyle.fontBody))
                 TextField(i18n.t(.search), text: $searchText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 13))
+                    .font(.system(size: AppStyle.fontRegular))
                 Spacer()
                 Button { showAddSheet = true } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 12))
+                        .font(.system(size: AppStyle.fontBody))
                 }
                 .buttonStyle(.plain)
                 .help(i18n.t(.addSnippet))
@@ -61,7 +61,7 @@ struct SnippetInspectorView: View {
                     }
                 } label: {
                     Image(systemName: "sparkles")
-                        .font(.system(size: 12))
+                        .font(.system(size: AppStyle.fontBody))
                         .foregroundStyle(aiIsGenerating ? .orange : .secondary)
                 }
                 .buttonStyle(.plain)
@@ -72,8 +72,8 @@ struct SnippetInspectorView: View {
                         : i18n.t(.aiAssistant)
                 )
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, AppStyle.spacingL)
+            .padding(.vertical, AppStyle.spacingM)
 
             Divider()
 
@@ -81,7 +81,7 @@ struct SnippetInspectorView: View {
             if filteredSnippets.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "text.badge.plus")
-                        .font(.system(size: 36))
+                        .font(.system(size: AppStyle.fontHero))
                         .foregroundStyle(.secondary)
                     Text(i18n.t(.noSnippets))
                         .font(.headline)
@@ -100,13 +100,13 @@ struct SnippetInspectorView: View {
                             // Category header
                             HStack {
                                 Text(category)
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.system(size: AppStyle.fontSmall, weight: .semibold))
                                     .foregroundStyle(.secondary)
                                 Spacer()
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.top, 10)
-                            .padding(.bottom, 4)
+                            .padding(.horizontal, AppStyle.spacingL)
+                            .padding(.top, AppStyle.spacingML)
+                            .padding(.bottom, AppStyle.spacingXS)
 
                             ForEach(items) { snippet in
                                 snippetRow(snippet)
@@ -170,11 +170,11 @@ struct SnippetInspectorView: View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(snippet.name)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: AppStyle.fontBody, weight: .medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Text(snippet.command)
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.system(size: AppStyle.fontCaption, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -184,7 +184,7 @@ struct SnippetInspectorView: View {
             // Insert button
             Button { insertSnippet(snippet) } label: {
                 Image(systemName: "arrow.right.circle")
-                    .font(.system(size: 14))
+                    .font(.system(size: AppStyle.fontMedium))
                     .foregroundStyle(.blue)
             }
             .buttonStyle(.plain)
@@ -193,14 +193,14 @@ struct SnippetInspectorView: View {
             // Edit button
             Button { editingSnippet = snippet } label: {
                 Image(systemName: "pencil")
-                    .font(.system(size: 11))
+                    .font(.system(size: AppStyle.fontSmall))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             .help(i18n.t(.editSnippet))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, AppStyle.spacingL)
+        .padding(.vertical, AppStyle.spacingS)
         .contentShape(Rectangle())
         .contextMenu {
             Button { insertSnippet(snippet) } label: {
@@ -267,11 +267,11 @@ struct AIGenerateSheet: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Text(generatedCommand)
-                            .font(.system(size: 13, design: .monospaced))
-                            .padding(8)
+                            .font(.system(size: AppStyle.fontRegular, design: .monospaced))
+                            .padding(AppStyle.spacingM)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color(nsColor: .controlBackgroundColor))
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall))
                     }
                 }
 
@@ -307,7 +307,7 @@ struct AIGenerateSheet: View {
                 Button(i18n.t(.ok)) {}
             }
         }
-        .frame(width: 420, height: 320)
+        .frame(width: AppStyle.panelWidthMedium, height: 320)
     }
 
     private func generate() async {

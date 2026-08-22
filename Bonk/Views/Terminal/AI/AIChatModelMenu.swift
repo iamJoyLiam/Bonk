@@ -15,15 +15,15 @@ struct ModelPickerButton: View {
 
         HStack(spacing: 4) {
             Text(displayName)
-                .font(.system(size: 11))
+                .font(.system(size: AppStyle.fontSmall))
                 .lineLimit(1)
                 .truncationMode(.tail)
             Image(systemName: "chevron.down")
-                .font(.system(size: 7))
+                .font(.system(size: AppStyle.fontMicro))
         }
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
+        .padding(.horizontal, AppStyle.spacingS)
+        .padding(.vertical, AppStyle.spacingXS)
         .contentShape(Capsule())
         .onTapGesture { isOpen.toggle() }
         .popover(isPresented: $isOpen, arrowEdge: .bottom) {
@@ -34,7 +34,7 @@ struct ModelPickerButton: View {
             ScrollView(.vertical) {
                 modelList
             }
-            .frame(width: 220, height: height)
+            .frame(width: AppStyle.size220, height: height)
                 .onAppear {
                     if let provider = store.activeProvider,
                        store.cachedModels[provider.id] == nil
@@ -48,7 +48,7 @@ struct ModelPickerButton: View {
     private var modelList: some View {
         // Only the ACTIVE provider's models belong in this menu.
         guard let provider = store.activeProvider else {
-            return AnyView(Text("—").font(.system(size: 12)).foregroundStyle(.secondary).padding(8))
+            return AnyView(Text("—").font(.system(size: AppStyle.fontBody)).foregroundStyle(.secondary).padding(AppStyle.spacingM))
         }
         let selectedModel = provider.model
         let models = store.cachedModels[provider.id] ?? []
@@ -64,13 +64,13 @@ struct ModelPickerButton: View {
                         isOpen = false
                     } label: {
                         HStack {
-                            Text(model).font(.system(size: 12)).lineLimit(1)
+                            Text(model).font(.system(size: AppStyle.fontBody)).lineLimit(1)
                             Spacer()
                             if model == selectedModel {
-                                Image(systemName: "checkmark").font(.system(size: 10))
+                                Image(systemName: "checkmark").font(.system(size: AppStyle.fontCaption))
                             }
                         }
-                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .padding(.horizontal, AppStyle.spacingML).padding(.vertical, AppStyle.spacingSPlus)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -82,19 +82,19 @@ struct ModelPickerButton: View {
                     isOpen = false
                 } label: {
                     HStack {
-                        Text(selectedModel).font(.system(size: 12)).lineLimit(1)
+                        Text(selectedModel).font(.system(size: AppStyle.fontBody)).lineLimit(1)
                         Spacer()
-                        Image(systemName: "checkmark").font(.system(size: 10))
+                        Image(systemName: "checkmark").font(.system(size: AppStyle.fontCaption))
                     }
-                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .padding(.horizontal, AppStyle.spacingML).padding(.vertical, AppStyle.spacingSPlus)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             } else {
-                Text("—").font(.system(size: 12)).foregroundStyle(.secondary).padding(8)
+                Text("—").font(.system(size: AppStyle.fontBody)).foregroundStyle(.secondary).padding(AppStyle.spacingM)
             }
         }
-        .padding(.vertical, 6))
+        .padding(.vertical, AppStyle.spacingS))
     }
 }
 

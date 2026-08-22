@@ -42,7 +42,7 @@ struct SettingsView: View {
                 .tabItem { Label(i18n.t(.ai), systemImage: "sparkles") }
                 .tag("ai")
         }
-        .frame(width: 720, height: 500)
+        .frame(width: AppStyle.settingsWindowWidth, height: 500)
         .environment(\.locale, Locale(identifier: i18n.lang))
         .onAppear {
             // Account settings tab was removed — drop any stale selection.

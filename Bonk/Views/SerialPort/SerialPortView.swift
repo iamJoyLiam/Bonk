@@ -31,13 +31,13 @@ struct SerialPortView: View {
                     scanPorts()
                 } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 12))
+                        .font(.system(size: AppStyle.fontBody))
                 }
                 .help(i18n.t(.scanPorts))
                 .disabled(isScanning)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.horizontal, AppStyle.spacingXL)
+            .padding(.vertical, AppStyle.spacingML)
 
             Divider()
 
@@ -121,10 +121,10 @@ struct SerialPortView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(config.path.isEmpty)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.horizontal, AppStyle.spacingXL)
+            .padding(.vertical, AppStyle.spacingML)
         }
-        .frame(width: 450, height: 500)
+        .frame(width: AppStyle.serialPortWidth, height: 500)
         .onAppear {
             SerialPortService.shared.startMonitoring()
             scanPorts()

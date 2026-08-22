@@ -408,30 +408,30 @@ struct ContentView: View {
                     if let tab = sessionManager.activeTab {
                         Circle()
                             .fill(statusColor(for: tab))
-                            .frame(width: 8, height: 8)
-                            .shadow(color: statusColor(for: tab).opacity(0.5), radius: 2)
+                            .frame(width: AppStyle.statusDotMedium, height: AppStyle.statusDotMedium)
+                            .shadow(color: statusColor(for: tab).opacity(AppStyle.opacityDisabled), radius: 2)
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text(tab.title)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.system(size: AppStyle.fontBody, weight: .semibold))
                             Text(tab.hostItem.host)
-                                .font(.system(size: 10))
+                                .font(.system(size: AppStyle.fontCaption))
                                 .foregroundStyle(.secondary)
                         }
                     } else {
                         Image(systemName: "terminal")
-                            .font(.system(size: 14))
+                            .font(.system(size: AppStyle.fontMedium))
                             .foregroundStyle(.secondary)
 
                         Text(i18n.t(.noActiveSession))
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: AppStyle.fontBody, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
 
                     Spacer()
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
+                .padding(.horizontal, AppStyle.spacingXL)
+                .padding(.vertical, AppStyle.spacingML)
                 .background(.ultraThinMaterial)
 
                 // Terminal content - shares the same tab
@@ -459,20 +459,20 @@ struct ContentView: View {
                 } else {
                     VStack(spacing: 16) {
                         Image(systemName: "terminal")
-                            .font(.system(size: 48))
+                            .font(.system(size: AppStyle.fontDisplay))
                             .foregroundStyle(.tertiary)
                         Text(i18n.t(.noActiveSession))
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.system(size: AppStyle.fontMedium, weight: .medium))
                         Text(i18n.t(.connectFromMainWindow))
-                            .font(.system(size: 12))
+                            .font(.system(size: AppStyle.fontBody))
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(.ultraThinMaterial)
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .frame(minWidth: 600, minHeight: 400)
+            .clipShape(RoundedRectangle(cornerRadius: AppStyle.tabCornerRadius, style: .continuous))
+            .frame(minWidth: AppStyle.quakeMinWidth, minHeight: AppStyle.quickConnectWidth)
         }
 
         private func statusColor(for tab: TerminalTab) -> Color {

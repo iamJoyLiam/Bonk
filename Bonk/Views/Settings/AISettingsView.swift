@@ -138,7 +138,7 @@ struct AISettingsView: View {
                         .font(.callout)
                     Spacer()
                 }
-                .padding(.vertical, 6)
+                .padding(.vertical, AppStyle.spacingS)
             } else {
                 ForEach(store.providers) { provider in
                     providerRow(provider)
@@ -170,11 +170,11 @@ struct AISettingsView: View {
                         .foregroundStyle(Color.accentColor)
                 }
             }
-            .frame(width: 14)
+            .frame(width: AppStyle.iconXL)
 
             Image(systemName: provider.type.symbolName)
                 .foregroundStyle(.secondary)
-                .frame(width: 20)
+                .frame(width: AppStyle.iconDisplay)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(provider.displayName)
@@ -190,7 +190,7 @@ struct AISettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, AppStyle.spacingXXS)
     }
 
     private func providerStatusText(_ provider: AIProviderConfig) -> String {

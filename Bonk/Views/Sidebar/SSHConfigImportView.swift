@@ -45,7 +45,7 @@ struct SSHConfigImportView: View {
             // Footer
             footerSection
         }
-        .frame(minWidth: 500, minHeight: 400)
+        .frame(minWidth: AppStyle.settingsWindowHeight, minHeight: AppStyle.quickConnectWidth)
         .onAppear {
             loadExistingHosts()
             // Parse SSH config entries
@@ -97,7 +97,7 @@ struct SSHConfigImportView: View {
     private var emptyState: some View {
         VStack(spacing: 16) {
             Image(systemName: "doc.text")
-                .font(.system(size: 48))
+                .font(.system(size: AppStyle.fontDisplay))
                 .foregroundStyle(.secondary)
             Text(i18n.t(.noSSHConfigEntries))
                 .font(.headline)
@@ -138,9 +138,9 @@ struct SSHConfigImportView: View {
                     if existingHosts.contains(entry.alias) {
                         Text(i18n.t(.duplicate))
                             .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.orange.opacity(0.2))
+                            .padding(.horizontal, AppStyle.spacingS)
+                            .padding(.vertical, AppStyle.spacingXXS)
+                            .background(.orange.opacity(AppStyle.opacityOverlayLight))
                             .cornerRadius(4)
                     }
                 }
@@ -171,17 +171,17 @@ struct SSHConfigImportView: View {
                         ForEach(entry.localForwards, id: \.localPort) { fwd in
                             Text("L:\(fwd.localPort)→\(fwd.remoteHost):\(fwd.remotePort)")
                                 .font(.caption2)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 2)
-                                .background(.blue.opacity(0.1))
+                                .padding(.horizontal, AppStyle.spacingXS)
+                                .padding(.vertical, AppStyle.spacingXXS)
+                                .background(.blue.opacity(AppStyle.opacityOverlaySubtle))
                                 .cornerRadius(3)
                         }
                         ForEach(entry.remoteForwards, id: \.localPort) { fwd in
                             Text("R:\(fwd.remotePort)→\(fwd.remoteHost):\(fwd.localPort)")
                                 .font(.caption2)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 2)
-                                .background(.green.opacity(0.1))
+                                .padding(.horizontal, AppStyle.spacingXS)
+                                .padding(.vertical, AppStyle.spacingXXS)
+                                .background(.green.opacity(AppStyle.opacityOverlaySubtle))
                                 .cornerRadius(3)
                         }
                     }

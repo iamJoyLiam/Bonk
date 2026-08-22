@@ -18,14 +18,14 @@ struct HighlightedCodeLines: View {
                         Text("\(index + 1)")
                             .font(.system(size: fontSize - 1, design: .monospaced))
                             .foregroundStyle(.tertiary)
-                            .frame(minWidth: 30, alignment: .trailing)
+                            .frame(minWidth: AppStyle.editorColumnSmall, alignment: .trailing)
                             .selectionDisabled(true)
                         Text(ShellSyntaxHighlighter.highlight(line, fontSize: fontSize))
                             .textSelection(.enabled)
                     }
                 }
             }
-            .padding(10)
+            .padding(AppStyle.spacingML)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(nsColor: .textBackgroundColor))

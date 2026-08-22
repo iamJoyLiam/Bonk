@@ -56,7 +56,7 @@ struct EditorSettingsView: View {
                     Text(i18n.t(.scrollbackLines))
                     Spacer()
                     TextField("", value: $preferences.scrollbackLines, format: .number)
-                        .frame(width: 80)
+                        .frame(width: AppStyle.editorColumnMedium)
                         .multilineTextAlignment(.trailing)
                         .textFieldStyle(.roundedBorder)
                 }
@@ -67,9 +67,9 @@ struct EditorSettingsView: View {
                     Text(i18n.t(.scrollSensitivity))
                     Spacer()
                     Slider(value: scrollSensitivityBinding, in: 0.1...2.0, step: 0.1)
-                        .frame(width: 150)
+                        .frame(width: AppStyle.editorColumnLarge)
                     Text(String(format: "%.1f", preferences.scrollSensitivity ?? 1.0))
-                        .frame(width: 30, alignment: .trailing)
+                        .frame(width: AppStyle.editorColumnSmall, alignment: .trailing)
                         .monospacedDigit()
                 }
             }

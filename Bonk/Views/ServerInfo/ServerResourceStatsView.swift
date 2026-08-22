@@ -273,11 +273,11 @@ struct ServerResourceDetailView: View {
                     Text(i18n.t(.disconnected))
                         .foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: .infinity, minHeight: 40)
+                .frame(maxWidth: .infinity, minHeight: AppStyle.size40)
             }
         }
-        .padding(16)
-        .frame(width: 300)
+        .padding(AppStyle.spacingXL)
+        .frame(width: AppStyle.panelWidthSmall)
     }
 
     private func header(_ info: ServerInfo) -> some View {
@@ -396,7 +396,7 @@ struct ServerResourceDetailView: View {
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .frame(width: 52, alignment: .leading)
+                .frame(width: AppStyle.statsLabelWidth, alignment: .leading)
             Text(value)
                 .font(.caption.monospaced())
                 .lineLimit(1)
