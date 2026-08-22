@@ -175,6 +175,10 @@ import SwiftUI
 
             if let oldID = oldTabID, let oldCached = TerminalViewCache.shared.retrieve(oldID) {
                 oldCached.view.removeFromSuperview()
+                if let oldCoord = oldCached.coordinator as? ContainerTerminalCoordinator {
+                    oldCoord.removeCopyOnSelectMonitor()
+                    oldCoord.removeInlineCompletionMonitor()
+                }
             }
 
             let cached: CachedTerminalView
@@ -187,6 +191,10 @@ import SwiftUI
 
             cached.view.translatesAutoresizingMaskIntoConstraints = false
             nsView.addSubview(cached.view)
+            if let coord = cached.coordinator as? ContainerTerminalCoordinator {
+                coord.installCopyOnSelectMonitor()
+                coord.installInlineCompletionMonitor()
+            }
 
             NSLayoutConstraint.deactivate(cached.constraints)
 

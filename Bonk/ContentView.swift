@@ -7,7 +7,7 @@ struct ContentView: View {
     @Query private var allPreferences: [UserPreferences]
     @StateObject private var themeManager = TerminalThemeManager.shared
 
-    @State private var appStore = AppStore.shared
+    @Bindable private var appStore = AppStore.shared
     #if os(macOS)
         @State private var quakeController = QuakeController()
         @State private var showTerminalSearch = false

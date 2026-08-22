@@ -165,6 +165,11 @@ enum AppStyle {
     static let tabCloseSize: CGFloat = 16
     static let tabIconClose: CGFloat = 8
 
+    // MARK: - Code Block
+
+    static let codeBlockBackground = Color(nsColor: .controlBackgroundColor)
+    static let codeBlockCornerRadius: CGFloat = cornerRadiusSmall
+
     // MARK: - AI Panel
 
     static let aiPanelWidth: CGFloat = 320

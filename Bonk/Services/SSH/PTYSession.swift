@@ -18,8 +18,8 @@ import os
 /// receive terminal output without losing history on tab switch.
 public final nonisolated class PTYSession: @unchecked Sendable {
     /// Output buffer — stores recent lines for replay to new consumers.
-    private let outputBuffer = NIOLockedValueBox<[String]>([])
-    private let bufferByteCount = NIOLockedValueBox<Int>(0)
+    private let outputBuffer = OSAllocatedUnfairLock<[String]>(uncheckedState: [])
+    private let bufferByteCount = OSAllocatedUnfairLock<Int>(uncheckedState: 0)
     private static let maxBufferSize = 10000
     private static let maxBufferBytes = 10 * 1024 * 1024 // 10 MB
     private static let maxChunkBytes = 64 * 1024 // 64 KB per chunk
@@ -111,7 +111,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// tracking stays accurate. When pending bytes exceed the high watermark,
     /// the producer skips this consumer until it catches up.
     public func makeOutputStream() -> (stream: AsyncStream<String>, onBytesProcessed: @Sendable (Int) -> Void) {
-        let buffer = outputBuffer.withLockedValue { $0 }
+        let buffer = outputBuffer.withLock { $0 }
         let consumerID = UUID()
 
         Log.ssh.info("[PTY] Creating output stream for consumer \(consumerID.uuidString.prefix(8)), replaying \(buffer.count) buffered lines")
@@ -176,18 +176,18 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         // (recentOutput), replay filtering, and copy paths all carry
         // injected SGR codes. The display feed below gets the colored text.
         let chunkBytes = text.utf8.count
-        outputBuffer.withLockedValue { buf in
+        outputBuffer.withLock { buf in
             buf.append(text)
-            bufferByteCount.withLockedValue { $0 += chunkBytes }
+            bufferByteCount.withLock { $0 += chunkBytes }
             // Trim by line count
             if buf.count > Self.maxBufferSize {
                 let removed = buf.count - Self.maxBufferSize
                 buf.removeFirst(removed)
             }
             // Trim by byte count
-            while bufferByteCount.withLockedValue({ $0 }) > Self.maxBufferBytes, buf.count > 1 {
+            while bufferByteCount.withLock({ $0 }) > Self.maxBufferBytes, buf.count > 1 {
                 if let first = buf.first {
-                    bufferByteCount.withLockedValue { $0 -= first.utf8.count }
+                    bufferByteCount.withLock { $0 -= first.utf8.count }
                     buf.removeFirst()
                 }
             }
@@ -476,7 +476,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// Return the most recent buffered output lines (OSC/DCS stripped, ANSI intact).
     /// Used as LLM context for inline completion.
     public func recentOutput(maxLines: Int) -> String {
-        let lines = outputBuffer.withLockedValue { $0 }
+        let lines = outputBuffer.withLock { $0 }
         return Array(lines.suffix(maxLines)).joined(separator: "")
     }
 
