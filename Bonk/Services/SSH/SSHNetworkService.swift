@@ -89,6 +89,10 @@ public actor SSHNetworkService {
         stateContinuation = cont
     }
 
+    deinit {
+        stateContinuation.finish()
+    }
+
     /// Consume the pending PTY session (from reconnect). Returns nil if none.
     public func consumePendingPTY() -> PTYSession? {
         let session = pendingPTYSession

@@ -46,6 +46,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
     private let writerBox = NIOLockedValueBox<TTYStdinWriter?>(nil)
     private let readerTaskBox = NIOLockedValueBox<Task<Void, Never>?>(nil)
+    private let inboundTaskBox = NIOLockedValueBox<Task<Void, Never>?>(nil)
     /// Serial port file descriptor. -1 when the session is not backed by a serial port.
     private let serialFDBox = NIOLockedValueBox<Int32>(-1)
     /// Whether the fd is owned by this session (serial) or by an external
@@ -261,7 +262,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                         }
                     }
 
-                    _ = Task {
+                    let inboundTask = Task {
                         do {
                             for try await data in inbound {
                                 if Task.isCancelled { break }
@@ -282,6 +283,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                         self.liveContinuations.withLock { $0 }.values.forEach { $0.finish() }
                         endCont.finish()
                     }
+                    self.inboundTaskBox.withLockedValue { $0 = inboundTask }
 
                     for await _ in endStream {}
                 }
@@ -503,6 +505,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         // genuinely unexpected disconnects should surface as errors.
         userClosedBox.withLockedValue { $0 = true }
         readerTaskBox.withLockedValue { $0?.cancel(); $0 = nil }
+        inboundTaskBox.withLockedValue { $0?.cancel(); $0 = nil }
         writerBox.withLockedValue { $0 = nil }
         let fileDescriptor = serialFDBox.withLockedValue { current in
             let value = current

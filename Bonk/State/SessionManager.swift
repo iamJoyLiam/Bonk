@@ -38,6 +38,8 @@ final class SessionManager {
     private enum AuthRetryState { case idle, dialogShown, cleanupDone }
     private var authRetryState: AuthRetryState = .idle
     private var authRetryTabID: UUID?
+    private var isShowingAuthDialog = false
+    private var connectTasks: [UUID: Task<Void, Never>] = [:]
 
     // VNext — Hybrid SSH coordinator (T1.4+). Used for routing decision logging in T2.1,
     // full native-first wiring lands in T2.2.
@@ -72,7 +74,8 @@ final class SessionManager {
         let session = sessionStore.session(for: tab)
         tab.session = session
 
-        Task { await connectTab(tab) }
+        let task = Task { await connectTab(tab) }
+        connectTasks[tab.id] = task
     }
 
     /// Open a host, dispatching to serial or SSH based on host type.
@@ -105,7 +108,8 @@ final class SessionManager {
         tab.session = sessionStore.session(for: tab)
         syncBroadcastTargets()
 
-        Task { await connectSerialTab(tab, promptSave: true) }
+        let task = Task { await connectSerialTab(tab, promptSave: true) }
+        connectTasks[tab.id] = task
     }
 
     func selectTab(_ id: UUID) {
@@ -130,6 +134,8 @@ final class SessionManager {
     }
 
     func closeTab(_ id: UUID) async {
+        connectTasks[id]?.cancel()
+        connectTasks[id] = nil
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
         await disconnectTab(id)
         // Clean up all pane views
@@ -181,6 +187,7 @@ final class SessionManager {
         }
         sessionStore.markConnecting(tab.id)
         defer { sessionStore.markConnected(tab.id) }
+        defer { connectTasks[tab.id] = nil }
 
         let session = sessionStore.session(for: tab)
         tab.session = session
@@ -514,6 +521,12 @@ final class SessionManager {
                         Log.session.error("[AUTH] not an auth failure, no dialog")
                         return
                     }
+                    guard !self.isShowingAuthDialog else {
+                        Log.session.warning("[AUTH] dialog already showing, ignoring duplicate failure")
+                        return
+                    }
+                    self.isShowingAuthDialog = true
+                    defer { self.isShowingAuthDialog = false }
                     // State machine: at most dialog -> reconnect -> (fail) ->
                     // cleanup+reconnect -> (fail) -> STOP.
                     if self.authRetryState == .dialogShown, self.authRetryTabID == tab.id {
@@ -565,10 +578,12 @@ final class SessionManager {
 
         // Post-PTY-setup: sync real terminal dimensions to override the 80x24 default
         // This is done after SSH channel is established to ensure resize doesn't get dropped
-        Task { @MainActor [weak tab] in
+        Task { @MainActor [weak self, weak tab, weak pane] in
             // Wait for one RunLoop cycle to ensure SwiftTerm has calculated real dimensions
             try? await Task.sleep(for: .milliseconds(100))
-            guard let tab, let paneID = tab.activePaneID,
+            guard let self, let tab, self.tabs.contains(where: { $0.id == tab.id }),
+                  let pane, pane.ptySession === ptySession,
+                  let paneID = tab.activePaneID,
                   let cached = TerminalViewCache.shared.retrieve(paneID) else { return }
             let cols = cached.view.terminal.cols
             let rows = cached.view.terminal.rows
@@ -599,10 +614,15 @@ final class SessionManager {
     /// laid out, overriding the 80x24 default.
     private func syncPTYSize(for paneID: UUID?, ptySession: PTYSession) {
         guard let paneID else { return }
-        Task { @MainActor [weak ptySession] in
+        Task { @MainActor [weak self, weak ptySession] in
             // Wait for one RunLoop cycle to ensure SwiftTerm has calculated real dimensions
             try? await Task.sleep(for: .milliseconds(100))
-            guard let ptySession else { return }
+            guard let self, let ptySession else { return }
+            // Ensure pane still exists and is still bound to this PTY session
+            let stillValid = self.tabs.contains { tab in
+                tab.layout.findPane(id: paneID)?.ptySession === ptySession
+            }
+            guard stillValid else { return }
             guard let cached = TerminalViewCache.shared.retrieve(paneID) else { return }
             let cols = cached.view.terminal.cols
             let rows = cached.view.terminal.rows
@@ -694,6 +714,7 @@ final class SessionManager {
         guard !sessionStore.isConnecting(tab.id) else { return }
         sessionStore.markConnecting(tab.id)
         defer { sessionStore.markConnected(tab.id) }
+        defer { connectTasks[tab.id] = nil }
 
         let session = sessionStore.session(for: tab)
         tab.session = session

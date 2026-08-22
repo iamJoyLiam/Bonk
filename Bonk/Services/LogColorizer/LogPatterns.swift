@@ -22,7 +22,13 @@ struct LogFieldPattern: Sendable {
 
     init(_ name: String, _ pattern: String, _ ansiCode: String, _ priority: Int = 50) {
         self.name = name
-        self.regex = try! NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+        if let r = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) {
+            self.regex = r
+        } else {
+            assertionFailure("Invalid log pattern \(name): \(pattern)")
+            // Fallback to never-match to keep app alive in Release (a^ is always valid)
+            self.regex = try! NSRegularExpression(pattern: "a^", options: [])
+        }
         self.ansiCode = ansiCode
         self.priority = priority
     }

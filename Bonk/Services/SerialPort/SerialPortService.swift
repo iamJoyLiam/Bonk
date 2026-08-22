@@ -75,10 +75,24 @@ final class SerialPortService {
 
     private let logger = Logger(subsystem: "com.bonk", category: "SerialPort")
 
-    private var notificationPort: OpaquePointer?
-    private var matchedIterator: io_iterator_t = 0
-    private var removedIterator: io_iterator_t = 0
-    private var isMonitoring = false
+    nonisolated(unsafe) private var notificationPort: OpaquePointer?
+    nonisolated(unsafe) private var runLoopSource: CFRunLoopSource?
+    nonisolated(unsafe) private var matchedIterator: io_iterator_t = 0
+    nonisolated(unsafe) private var removedIterator: io_iterator_t = 0
+    nonisolated(unsafe) private var isMonitoring = false
+
+    deinit {
+        // Ensure IOKit resources are released even if stopMonitoring was not called.
+        // SerialPortService is a long-lived singleton, but deinit handles unit-test teardown.
+        if isMonitoring {
+            if let source = runLoopSource {
+                CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .defaultMode)
+            }
+            if matchedIterator != 0 { IOObjectRelease(matchedIterator) }
+            if removedIterator != 0 { IOObjectRelease(removedIterator) }
+            if let port = notificationPort { IONotificationPortDestroy(port) }
+        }
+    }
 
     /// IOSSIOSPEED request codes from `IOKit/serial/ioss.h` — Swift cannot
     /// import these macros. The 8-byte variant matches `speed_t` on LP64;
@@ -155,8 +169,9 @@ final class SerialPortService {
 
         isMonitoring = true
         notificationPort = port
-        let runLoopSource = IONotificationPortGetRunLoopSource(port).takeUnretainedValue()
-        CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .defaultMode)
+        let source = IONotificationPortGetRunLoopSource(port).takeUnretainedValue()
+        runLoopSource = source
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
 
         let matchedMatching = IOServiceMatching("IOSerialBSDClient")
         IOServiceAddMatchingNotification(
@@ -186,6 +201,10 @@ final class SerialPortService {
         guard isMonitoring else { return }
         isMonitoring = false
 
+        if let source = runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .defaultMode)
+            runLoopSource = nil
+        }
         if matchedIterator != 0 {
             IOObjectRelease(matchedIterator)
             matchedIterator = 0

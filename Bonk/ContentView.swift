@@ -66,16 +66,8 @@ struct ContentView: View {
                 toolbarCoordinator.sessionManager = sessionManager
                 toolbarCoordinator.i18n = i18n
                 toolbarCoordinator.modelContext = modelContext
-                // Setup Quake terminal - create ModelContainer with same schema/config
-                let schema = Schema([HostItem.self, UserPreferences.self, Credential.self, HostGroup.self, AIConversationRecord.self, AIMessageRecord.self, AIProviderRecord.self, Snippet.self, PortForward.self, JumpHost.self, InlineSuggestionRecord.self, SSHBackendProfile.self])
-                #if DEBUG
-                    let config = ModelConfiguration("Bonk-Dev", schema: schema, isStoredInMemoryOnly: false)
-                #else
-                    let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-                #endif
-                if let quakeModelContainer = try? ModelContainer(for: schema, configurations: [config]) {
-                    setupQuakeTerminal(with: quakeController, sessionManager: sessionManager, i18n: i18n, modelContainer: quakeModelContainer)
-                }
+                // Setup Quake terminal - reuse main container (AGENTS.md: never change storeName, single container)
+                setupQuakeTerminal(with: quakeController, sessionManager: sessionManager, i18n: i18n, modelContainer: modelContext.container)
             }
             .alert(i18n.t(.connectionError), isPresented: $sessionManager.showError) {
                 Button(i18n.t(.ok)) {}

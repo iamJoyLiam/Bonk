@@ -800,7 +800,9 @@ final class SFTPService {
         sftpClient = nil
         entries = []
         // Cancel any in-flight transfers
-        for t in transfers where !t.isComplete { transfers[transfers.firstIndex(where: { $0.id == t.id })!].isCancelled = true }
+        for t in transfers where !t.isComplete {
+            if let idx = transfers.firstIndex(where: { $0.id == t.id }) { transfers[idx].isCancelled = true }
+        }
     }
 
     private func pathJoin(_ base: String, _ component: String) -> String {
