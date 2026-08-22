@@ -80,6 +80,7 @@ enum AppStyle {
     static let animationNormal: Animation = .easeInOut(duration: 0.2)
     static let animationSlow: Animation = .easeInOut(duration: 0.3)
     static let animationSpring: Animation = .spring(duration: 0.3)
+    static let animationTab: Animation = .smooth(duration: 0.22, extraBounce: 0)
 
     // MARK: - Opacity
 

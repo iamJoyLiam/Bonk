@@ -209,12 +209,10 @@ final class MainSplitViewController: NSSplitViewController {
         withObservationTracking {
             _ = workspace.activeRightPanel
         } onChange: { [weak self] in
-            MainActor.assumeIsolated {
-                // withObservationTracking fires before the property write is
-                // visible, so defer the read to the next runloop turn.
-                Task { @MainActor [weak self] in
-                    self?.updateInspectorVisibility(animated: true)
-                }
+            // withObservationTracking fires before the write is committed — defer
+            // both the UI update and the re-registration to the next runloop.
+            Task { @MainActor [weak self] in
+                self?.updateInspectorVisibility(animated: true)
                 self?.observeActiveRightPanel()
             }
         }

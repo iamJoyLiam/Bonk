@@ -123,11 +123,14 @@ final class SFTPService {
             let requestID = self.beginListRequest()
             var result = try await channel.listDirectory(at: targetPath)
             guard requestID == self.listRequestSequence else { return }
-            result.sort {
-                if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
-                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-            }
-            entries = result
+            let sorted = await Task.detached(priority: .userInitiated) {
+                result.sorted {
+                    if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
+                    return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                }
+            }.value
+            guard requestID == self.listRequestSequence else { return }
+            entries = sorted
             currentPath = targetPath
             return
         }
@@ -147,11 +150,14 @@ final class SFTPService {
                 let requestID = self.beginListRequest()
                 var result = try await sftp.listDirectory(at: targetPath)
                 guard requestID == self.listRequestSequence else { return }
-                result.sort {
-                    if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
-                    return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-                }
-                entries = result
+                let sorted = await Task.detached(priority: .userInitiated) {
+                    result.sorted {
+                        if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
+                        return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                    }
+                }.value
+                guard requestID == self.listRequestSequence else { return }
+                entries = sorted
                 currentPath = targetPath
                 return
             }
@@ -198,14 +204,16 @@ final class SFTPService {
             }
         }
 
-        // Sort: directories first, then by name
-        result.sort {
-            if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
-            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-        }
+        // Sort off MainActor for large directories (10k entries)
+        let sorted = await Task.detached(priority: .userInitiated) {
+            result.sorted {
+                if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
+                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+        }.value
         guard requestID == listRequestSequence else { return }
 
-        entries = result
+        entries = sorted
         currentPath = targetPath
     }
 

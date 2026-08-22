@@ -261,20 +261,26 @@ struct SFTPWindowView: View {
     // MARK: - Helpers
 
     private func loadLocalFiles() {
-        let fileManager = FileManager.default
-        guard let contents = try? fileManager.contentsOfDirectory(atPath: localPath) else { return }
-
-        localFiles = contents.compactMap { name -> LocalFileEntry? in
-            let path = (localPath as NSString).appendingPathComponent(name)
-            guard let attrs = try? fileManager.attributesOfItem(atPath: path) else { return nil }
-            let isDir = attrs[.type] as? FileAttributeType == .typeDirectory
-            let size = attrs[.size] as? UInt64 ?? 0
-            let mtime = attrs[.modificationDate] as? Date
-            return LocalFileEntry(name: name, path: path, isDirectory: isDir, size: size, modifiedAt: mtime)
-        }
-        .sorted { lhs, rhs in
-            if lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory }
-            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        let path = localPath
+        Task { @MainActor in
+            let sorted: [LocalFileEntry] = await Task.detached(priority: .userInitiated) {
+                let fm = FileManager.default
+                guard let contents = try? fm.contentsOfDirectory(atPath: path) else { return [] }
+                let files: [LocalFileEntry] = contents.compactMap { name -> LocalFileEntry? in
+                    let fullPath = (path as NSString).appendingPathComponent(name)
+                    guard let attrs = try? fm.attributesOfItem(atPath: fullPath) else { return nil }
+                    let isDir = attrs[.type] as? FileAttributeType == .typeDirectory
+                    let size = attrs[.size] as? UInt64 ?? 0
+                    let mtime = attrs[.modificationDate] as? Date
+                    return LocalFileEntry(name: name, path: fullPath, isDirectory: isDir, size: size, modifiedAt: mtime)
+                }
+                return files.sorted { lhs, rhs in
+                    if lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory }
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+            }.value
+            guard self.localPath == path else { return }
+            self.localFiles = sorted
         }
     }
 

@@ -21,7 +21,8 @@ extension TerminalTabView {
                 plusButton
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .animation(.smooth(duration: 0.22, extraBounce: 0), value: sessionManager.tabs.map(\.id))
+            .animation(AppStyle.animationTab, value: sessionManager.tabs.count)
+            .animation(AppStyle.animationTab, value: sessionManager.activeTabID)
             .padding(.horizontal, AppStyle.spacingL)
             .padding(.vertical, AppStyle.tabBarHPadding)
 
@@ -52,7 +53,8 @@ extension TerminalTabView {
                                 }
                         }
                     }
-                    .animation(.smooth(duration: 0.22, extraBounce: 0), value: sessionManager.tabs.map(\.id))
+                    .animation(AppStyle.animationTab, value: sessionManager.tabs.count)
+                    .animation(AppStyle.animationTab, value: sessionManager.activeTabID)
                     .padding(.horizontal, AppStyle.tabBarHPadding)
                     .padding(.vertical, AppStyle.tabBarHPadding)
                 }

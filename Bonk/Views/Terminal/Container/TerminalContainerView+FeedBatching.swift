@@ -28,7 +28,7 @@ import SwiftTerm
                     Log.ui.warning("[Feed] Self deallocated, exiting")
                     return
                 }
-                try? await Task.sleep(for: .milliseconds(50)) // Reduced from 150ms to 50ms
+                // No initial delay — replayed buffer should paint immediately on tab switch
                 Log.ui.info("[Feed] Feed task started, waiting for data")
                 for await text in stream {
                     guard !Task.isCancelled else {
@@ -64,7 +64,7 @@ import SwiftTerm
             }
             guard !alreadyScheduled else { return }
             Task { [weak self] in
-                try? await Task.sleep(for: .milliseconds(16))
+                try? await Task.sleep(for: .milliseconds(5))
                 self?.flushBatch(onBytesProcessed: onBytesProcessed)
             }
         }
