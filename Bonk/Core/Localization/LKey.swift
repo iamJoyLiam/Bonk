@@ -525,4 +525,21 @@ enum LKey: String, CaseIterable {
     case escKeyBehavior = "esc_key_behavior"
     case quakeTerminal = "quake_terminal"
     case connectFromMainWindow = "connect_from_main_window"
+
+    // Recording (asciicast v2)
+    case recording = "recording"
+    case startRecording = "start_recording"
+    case stopRecording = "stop_recording"
+    case showRecordings = "show_recordings"
+    case recordings = "recordings"
+    case noRecordings = "no_recordings"
+    case noRecordingsHint = "no_recordings_hint"
+    case play = "play"
+    case replay = "replay"
+    case pause = "pause"
+    case share = "share"
+    case deleteRecording = "delete_recording"
+    case showLess = "show_less"
+    case showAll = "show_all"
+    case rec = "rec"
 }

@@ -61,6 +61,20 @@ extension PaneTerminalView {
 
         Divider()
 
+        // Recording (asciicast v2)
+        Menu {
+            Button { Task { await toggleRecording() } } label: {
+                Label(recordingLabel, systemImage: isRecording ? "record.circle.fill" : "record.circle")
+            }
+            Button { showRecordings() } label: {
+                Label(i18n.t(.showRecordings), systemImage: "recordingtape")
+            }
+        } label: {
+            Label(isRecording ? "● \(i18n.t(.recording))" : i18n.t(.recording), systemImage: isRecording ? "record.circle.fill" : "record.circle")
+        }
+
+        Divider()
+
         // Zmodem file transfer
         Menu {
             Button {
@@ -220,4 +234,40 @@ extension PaneTerminalView {
             sessionManager.startZmodemSend(tabID: tab.id, paneID: paneState.id, files: files)
         }
     }
+
+    // MARK: - Recording
+
+    var recordingLabel: String { isRecording ? i18n.t(.stopRecording) : i18n.t(.startRecording) }
+
+    func toggleRecording() async {
+        let currently = await SessionRecordingService.shared.isRecording(paneID: paneState.id)
+        if currently {
+            await SessionRecordingService.shared.stop(paneID: paneState.id)
+            paneState.ptySession?.recordingPaneID = nil
+            isRecording = false
+        } else {
+            // use actual terminal size if available, fallback 80x24
+            let cols = 80, rows = 24
+            do {
+                _ = try await SessionRecordingService.shared.start(host: tab.hostItem.name, tabID: tab.id, paneID: paneState.id, cols: cols, rows: rows)
+                paneState.ptySession?.recordingPaneID = paneState.id
+                isRecording = true
+            } catch {
+                sessionManager.lastError = error.localizedDescription; sessionManager.showError = true
+            }
+        }
+    }
+
+    func showRecordings() {
+        let view = RecordingListView().environment(i18n)
+        let hosting = NSHostingController(rootView: view)
+        let window = NSWindow(contentViewController: hosting)
+        window.title = i18n.t(.recordings)
+        window.setContentSize(NSSize(width: 600, height: 400))
+        window.styleMask.insert(.resizable)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
 }

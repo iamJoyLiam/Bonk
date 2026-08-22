@@ -206,12 +206,33 @@ struct BonkApp: App {
                 }
                 .keyboardShortcut(sftpBrowserShortcut.key, modifiers: sftpBrowserShortcut.modifiers)
                 Divider()
+                Button(i18n.t(.recording)) {
+                    Task { @MainActor in await ViewMenuCommands.toggleRecording(coordinator: BonkAppDelegate.shared?.coordinator) }
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+                Button(i18n.t(.showRecordings)) {
+                    Task { @MainActor in BonkAppDelegate.shared?.coordinator?.showRecordings = true }
+                }
+                Divider()
                 Menu(i18n.t(.theme)) {
                     Button(i18n.t(.system)) { Task { @MainActor in TerminalThemeManager.shared.setActive("system") } }
                     ForEach(ThemeRegistry.all, id: \.id) { theme in
                         Button(theme.name) { Task { @MainActor in TerminalThemeManager.shared.setActive(theme.id) } }
                     }
                 }
+            }
+        }
+        @MainActor static func toggleRecording(coordinator: ToolbarCoordinator?) async {
+            guard let coordinator, let tab = coordinator.sessionManager.activeTab else { return }
+            let paneID: UUID = FocusManager.shared.focusedPaneID ?? tab.activePaneID ?? tab.layout.activePaneID
+            guard let pane = tab.layout.findPane(id: paneID) else { return }
+            let isRec = await SessionRecordingService.shared.isRecording(paneID: paneID)
+            if isRec {
+                await SessionRecordingService.shared.stop(paneID: paneID)
+                pane.ptySession?.recordingPaneID = nil
+            } else {
+                _ = try? await SessionRecordingService.shared.start(host: tab.hostItem.name, tabID: tab.id, paneID: paneID)
+                pane.ptySession?.recordingPaneID = paneID
             }
         }
     }

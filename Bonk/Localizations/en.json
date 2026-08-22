@@ -488,5 +488,20 @@
   "ssh_algorithms": "Algorithms",
   "ssh_profile_valid": "Valid",
   "ssh_profile_expired": "Expired",
-  "ssh_policy_no_expiry": "Policy (no expiry)"
+  "ssh_policy_no_expiry": "Policy (no expiry)",
+  "recording": "Recording",
+  "start_recording": "Start Recording",
+  "stop_recording": "Stop Recording",
+  "show_recordings": "Show Recordings",
+  "recordings": "Recordings",
+  "no_recordings": "No recordings",
+  "no_recordings_hint": "No recordings yet. Start recording from the terminal pane menu.",
+  "play": "Play",
+  "replay": "Replay",
+  "pause": "Pause",
+  "share": "Share",
+  "delete_recording": "Delete",
+  "show_less": "Show less",
+  "show_all": "Show all (%@)",
+  "rec": "REC"
 }

@@ -488,5 +488,20 @@
   "ssh_algorithms": "算法",
   "ssh_profile_valid": "有效",
   "ssh_profile_expired": "已过期",
-  "ssh_policy_no_expiry": "策略（永不过期）"
+  "ssh_policy_no_expiry": "策略（永不过期）",
+  "recording": "录制",
+  "start_recording": "开始录制",
+  "stop_recording": "停止录制",
+  "show_recordings": "查看录制",
+  "recordings": "录制",
+  "no_recordings": "暂无录制",
+  "no_recordings_hint": "暂无录制，请在终端窗格菜单中开始录制。",
+  "play": "播放",
+  "replay": "重播",
+  "pause": "暂停",
+  "share": "分享",
+  "delete_recording": "删除",
+  "show_less": "收起",
+  "show_all": "展开全部 (%@)",
+  "rec": "录制中"
 }

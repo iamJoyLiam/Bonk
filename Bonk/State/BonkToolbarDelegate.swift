@@ -28,6 +28,7 @@ extension NSToolbarItem.Identifier {
     static let workspaces = NSToolbarItem.Identifier("com.bonk.toolbar.workspaces")
     static let sshImport = NSToolbarItem.Identifier("com.bonk.toolbar.sshImport")
     static let sftp = NSToolbarItem.Identifier("com.bonk.toolbar.sftp")
+    static let recording = NSToolbarItem.Identifier("com.bonk.toolbar.recording")
 }
 
 // MARK: - BonkToolbarDelegate
@@ -53,7 +54,7 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
          .sidebarTrackingSeparator,
          .serverCPU, .serverMemory, .serverDisk,   // 服务器资源：球形百分比
          .space,
-         .broadcast, .sftp, .workspaces,    // 常用：广播、SFTP、工作区
+         .broadcast, .sftp, .workspaces,    // 常用：广播、SFTP、工作区（录制仅自定义）
          .flexibleSpace,
          .ai, .snippets]
     }
@@ -63,7 +64,7 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [.addHost, .toggleSidebar,
          .serverCPU, .serverMemory, .serverDisk,
-         .broadcast, .sftp, .workspaces,
+         .broadcast, .sftp, .workspaces, .recording,
          .serialPort, .portForward,         // 不常用：保留在自定义中
          .keyGenerator, .sshImport,
          .ai, .snippets,
@@ -194,6 +195,28 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
                 self?.coordinator.workspace.toggleSFTPWindow()
             }
 
+        case .recording:
+            let label = coordinator.i18n.t(.recording)
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = label; item.paletteLabel = label; item.toolTip = "\(coordinator.i18n.t(.startRecording))/\(coordinator.i18n.t(.stopRecording))"
+            if let img = NSImage(systemSymbolName: "record.circle", accessibilityDescription: label) {
+                img.isTemplate = true
+                item.image = img
+            }
+            let target = RecordingToolbarItemTarget(
+                coordinator: coordinator,
+                label: label
+            )
+            objc_setAssociatedObject(item, "recordingTarget", target, .OBJC_ASSOCIATION_RETAIN)
+            item.target = target; item.action = #selector(RecordingToolbarItemTarget.invoke)
+            item.menuFormRepresentation = NSMenuItem(title: label, action: #selector(RecordingToolbarItemTarget.invoke), keyEquivalent: "")
+            item.menuFormRepresentation?.target = target
+            if let mImg = NSImage(systemSymbolName: "record.circle", accessibilityDescription: label) {
+                mImg.isTemplate = true
+                item.menuFormRepresentation?.image = mImg
+            }
+            return item
+
         case .ai:
             return makeItem(
                 id: itemIdentifier,
@@ -323,6 +346,65 @@ private final class BroadcastToolbarItemTarget: NSObject, NSToolbarItemValidatio
             } else {
                 item.image = symbol
             }
+        }
+        return true
+    }
+}
+
+@MainActor
+private final class RecordingToolbarItemTarget: NSObject, NSToolbarItemValidation {
+    private let coordinator: ToolbarCoordinator
+    private let label: String
+    init(coordinator: ToolbarCoordinator, label: String) { self.coordinator = coordinator; self.label = label; super.init() }
+
+    @objc func invoke() {
+        Task { @MainActor in await toggle() }
+    }
+    @objc func showList() {
+        coordinator.showRecordings = true
+        // fallback window if no sheet observer
+        let view = RecordingListView().environment(coordinator.i18n)
+        let hosting = NSHostingController(rootView: view)
+        let w = NSWindow(contentViewController: hosting)
+        w.title = coordinator.i18n.t(.recordings); w.setContentSize(NSSize(width: 600, height: 400)); w.styleMask.insert(.resizable); w.center(); w.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func toggle() async {
+        guard let tab = coordinator.sessionManager.activeTab else {
+            coordinator.showRecordings = true; return
+        }
+        let paneID: UUID = FocusManager.shared.focusedPaneID ?? tab.activePaneID ?? tab.layout.activePaneID
+        guard let pane = tab.layout.findPane(id: paneID) else {
+            coordinator.showRecordings = true; return
+        }
+        let isRec = await SessionRecordingService.shared.isRecording(paneID: paneID)
+        if isRec {
+            await SessionRecordingService.shared.stop(paneID: paneID)
+            pane.ptySession?.recordingPaneID = nil
+        } else {
+            do {
+                _ = try await SessionRecordingService.shared.start(host: tab.hostItem.name, tabID: tab.id, paneID: paneID, cols: 80, rows: 24)
+                pane.ptySession?.recordingPaneID = paneID
+            } catch {
+                coordinator.sessionManager.lastError = error.localizedDescription; coordinator.sessionManager.showError = true
+            }
+        }
+    }
+
+    nonisolated func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        MainActor.assumeIsolated {
+            // optimistic: check if any pane is recording, tint red
+            var anyRecording = false
+            for tab in coordinator.sessionManager.tabs {
+                for pid in tab.paneIDs {
+                    // synchronous check would need await, so we use pane's ptySession flag as proxy
+                    if tab.layout.findPane(id: pid)?.ptySession?.recordingPaneID != nil { anyRecording = true; break }
+                }
+            }
+            let symbol = NSImage(systemSymbolName: anyRecording ? "record.circle.fill" : "record.circle", accessibilityDescription: label)
+            item.image = anyRecording ? symbol?.withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [.systemRed])) : symbol
+            item.label = anyRecording ? "● \(coordinator.i18n.t(.rec))" : label
+            item.toolTip = anyRecording ? coordinator.i18n.t(.stopRecording) : coordinator.i18n.t(.startRecording)
         }
         return true
     }

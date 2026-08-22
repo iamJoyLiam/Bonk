@@ -74,6 +74,13 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         set { inputTapBox.withLockedValue { $0 = newValue } }
     }
 
+    /// Recording paneID — when set, output+input are mirrored to SessionRecordingService (asciicast v2).
+    private let recordingPaneIDBox = NIOLockedValueBox<UUID?>(nil)
+    public var recordingPaneID: UUID? {
+        get { recordingPaneIDBox.withLockedValue { $0 } }
+        set { recordingPaneIDBox.withLockedValue { $0 = newValue } }
+    }
+
     /// OSC 7 CWD detector — intercepts escape sequences to track directory changes.
     let osc7Detector = PTYOSC7Detector()
 
@@ -161,6 +168,15 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// Yield output to all consumers (buffer + live streams).
     private func yieldOutput(_ text: String) {
         // text is already chunked to safe size by chunkByteBuffer()
+        let filtered = Self.filterOSCSequences(text)
+        if let pid = recordingPaneIDBox.withLockedValue({ $0 }) {
+            // OSC title `\u{1B}]0;...\u{07}` is display noise — don't record empty OSC-only chunks
+            if !filtered.isEmpty {
+                Task { await SessionRecordingService.shared.recordOutput(paneID: pid, text: filtered) }
+            } else if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, filtered.isEmpty {
+                // pure OSC, skip recording
+            }
+        }
 
         // Process through OSC 7 detector for CWD tracking
         osc7Detector.process(text)
@@ -299,6 +315,10 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// Write keyboard input to the remote shell's stdin.
     public func sendInput(_ bytes: ArraySlice<UInt8>) async throws {
         inputTapBox.withLockedValue { $0 }?(bytes)
+        if let pid = recordingPaneIDBox.withLockedValue({ $0 }) {
+            let copy = Array(bytes)
+            Task { await SessionRecordingService.shared.recordInput(paneID: pid, bytes: copy[...]) }
+        }
 
         if let writer = writerBox.withLockedValue({ $0 }) {
             var buffer = ByteBuffer()
@@ -500,6 +520,10 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
     /// Gracefully close the PTY session.
     public func close() {
+        if let pid = recordingPaneIDBox.withLockedValue({ $0 }) {
+            Task { await SessionRecordingService.shared.stop(paneID: pid) }
+            recordingPaneIDBox.withLockedValue { $0 = nil }
+        }
         // Mark user-initiated FIRST so the reader task (cancelled below) does
         // not fire onUnexpectedClose when it notices the fd is gone. Only
         // genuinely unexpected disconnects should surface as errors.
@@ -759,7 +783,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         case 0x5B: return .csi // [ → CSI (keep)
         case 0x5D: return .oscString // ] → OSC (strip)
         case 0x50: return .dcsEntry // P → DCS (strip)
-        case 0x28, 0x29, 0x2A, 0x2B: // charset selectors
+        case 0x28, 0x29, 0x2A, 0x2B: // charset selectors (kept for normal use; binary filter strips 0)
             result.append(0x1B); result.append(byte)
             return .ground
         default:

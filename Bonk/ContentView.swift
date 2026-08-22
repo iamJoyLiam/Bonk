@@ -159,6 +159,9 @@ struct ContentView: View {
             .sheet(isPresented: $toolbarCoordinator.showWorkspaces) {
                 WorkspaceListView(sessionManager: sessionManager)
             }
+            .sheet(isPresented: $toolbarCoordinator.showRecordings) {
+                RecordingListView()
+            }
         }
     #endif
 

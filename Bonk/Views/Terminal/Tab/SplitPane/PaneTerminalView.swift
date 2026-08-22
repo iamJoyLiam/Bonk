@@ -23,6 +23,7 @@ struct PaneTerminalView: View {
     @State var isDragOver = false
     @State var dropPosition: DropPosition = .right
     @State var terminalNSView: NSView?
+    @State var isRecording = false
 
     // Upload state
     let uploadManager = UploadManager.shared
@@ -95,6 +96,8 @@ struct PaneTerminalView: View {
         .contextMenu {
             contextMenuContent
         }
+        .task { await refreshRecordingState() }
+        .onChange(of: paneState.ptySession?.recordingPaneID) { _, _ in Task { await refreshRecordingState() } }
     }
 
     // MARK: - Pane Content
@@ -181,6 +184,16 @@ struct PaneTerminalView: View {
 
             Spacer()
 
+            if isRecording {
+                HStack(spacing: 4) {
+                    Circle().fill(Color.red).frame(width: 6, height: 6)
+                    Text(i18n.t(.rec)).font(.caption2).foregroundStyle(.red)
+                }
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(Color.red.opacity(0.12), in: Capsule())
+                .help(i18n.t(.stopRecording))
+            }
+
             // Broadcast toggle button
             Button {
                 sessionManager.toggleTabBroadcast(tab.id)
@@ -230,5 +243,9 @@ struct PaneTerminalView: View {
         case .independent: "terminal"
         case .linked: "link"
         }
+    }
+
+    func refreshRecordingState() async {
+        isRecording = await SessionRecordingService.shared.isRecording(paneID: paneState.id)
     }
 }
