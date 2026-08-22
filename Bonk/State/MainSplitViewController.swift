@@ -146,6 +146,20 @@ final class MainSplitViewController: NSSplitViewController {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshSidebarAppearance() }
         })
+        // Theme changes (View → Theme) update NSApp.appearance; the window was
+        // made explicit to fix toolbar ring vibrancy bleed, so it no longer
+        // inherits automatically — re-sync here.
+        observers.append(NotificationCenter.default.addObserver(
+            forName: .terminalThemeDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshSidebarAppearance() }
+        })
+        // System appearance toggles when theme is "system" (NSApp.appearance=nil).
+        observers.append(NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshSidebarAppearance() }
+        })
     }
 
     private func refreshSidebarAppearance() {
