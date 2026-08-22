@@ -45,8 +45,6 @@ struct SettingsView: View {
         .frame(width: AppStyle.settingsWindowWidth, height: 500)
         .environment(\.locale, Locale(identifier: i18n.lang))
         .onAppear {
-            // Account settings tab was removed — drop any stale selection.
-            if selectedTab == "account" { selectedTab = "general" }
             updateWindowTitle()
         }
         .onChange(of: selectedTab) { _, _ in updateWindowTitle() }
@@ -56,9 +54,7 @@ struct SettingsView: View {
     private func updateWindowTitle() {
         #if os(macOS)
             DispatchQueue.main.async {
-                // Account settings tab was removed — fall back to General.
-                let tag = selectedTab == "account" ? "general" : selectedTab
-                NSApplication.shared.keyWindow?.title = i18n.t(LKey(rawValue: tag) ?? .settings)
+                NSApplication.shared.keyWindow?.title = i18n.t(LKey(rawValue: selectedTab) ?? .settings)
             }
         #endif
     }

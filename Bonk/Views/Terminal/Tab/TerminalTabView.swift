@@ -309,12 +309,6 @@ extension TerminalTabView {
         currentMatch = summary.index
     }
 
-    // MARK: - Other
-
-    private func handleTerminalDrop(url: URL, tab: TerminalTab) async {
-        await uploadManager.performUpload(url, tab: tab, i18n: i18n)
-    }
-
     func copySelection() {
         guard let activeTab = sessionManager.activeTab,
               let cached = TerminalViewCache.shared.retrieve(activeTab.id) else { return }

@@ -61,4 +61,18 @@ enum TerminalStateViews {
                 .font(.headline).foregroundStyle(.secondary)
         }
     }
+
+    @ViewBuilder
+    static func fallbackingView(for phase: SSHConnectionPhase, host: String, username: String, port: Int, i18n: I18n) -> some View {
+        if case .fallbacking(let to) = phase {
+            VStack(spacing: 8) {
+                connectingView(host: host, username: username, port: port, i18n: i18n)
+                Text(to == .compatibility ? "检测到较旧 SSH 算法，正在切换兼容模式…" : "正在切换引擎…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            connectingView(host: host, username: username, port: port, i18n: i18n)
+        }
+    }
 }

@@ -96,7 +96,6 @@ enum AppStyle {
     static let opacityTintActive: Double = 0.28
     static let opacityTintIdle: Double = 0.12
     static let opacityStroke: Double = 0.08
-    static let opacityGhost: Double = 0.5 // alias disabled
     static let opacityOverlayFaint: Double = 0.07
     static let opacityOverlaySubtle: Double = 0.10
     static let opacityOverlayLight: Double = 0.20
@@ -130,7 +129,7 @@ enum AppStyle {
     static let quakeMinWidth: CGFloat = 600
     static let quakeMinHeight: CGFloat = 400
     static let serialPortWidth: CGFloat = 450
-    static let width450: CGFloat = 450
+    static let width450: CGFloat = serialPortWidth
     static let sizeHairline: CGFloat = 1
     static let size22: CGFloat = 22
     static let size26: CGFloat = 26

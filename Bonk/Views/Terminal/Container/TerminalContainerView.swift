@@ -37,7 +37,7 @@ import SwiftUI
                 case .idle, .failed:
                     disconnectedView
                 case .resolving, .connectingTransport, .negotiatingSSH, .authenticating, .fallbacking, .openingChannel:
-                    fallbackingView(for: phase)
+                    TerminalStateViews.fallbackingView(for: phase, host: activeTab.hostItem.host, username: activeTab.hostItem.username, port: activeTab.hostItem.port, i18n: i18n)
                 case .ready:
                     if activeTab.session?.terminalState == .ready {
                         MacTerminalContainerBridge(
@@ -117,20 +117,6 @@ import SwiftUI
                 port: activeTab.hostItem.port,
                 i18n: i18n
             )
-        }
-
-        @ViewBuilder
-        private func fallbackingView(for phase: SSHConnectionPhase) -> some View {
-            if case .fallbacking(let to) = phase {
-                VStack(spacing: 8) {
-                    connectingView
-                    Text(to == .compatibility ? "检测到较旧 SSH 算法，正在切换兼容模式…" : "正在切换引擎…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            } else {
-                connectingView
-            }
         }
 
         private var disconnectedView: some View {

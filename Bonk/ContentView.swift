@@ -173,12 +173,6 @@ struct ContentView: View {
         toolbarCoordinator.showAddHostSheet = true
     }
 
-    private func toggleSFTPWindow() {
-        #if os(macOS)
-            workspace.toggleSFTPWindow()
-        #endif
-    }
-
     private func openSFTPWindow() {
         #if os(macOS)
             if let window = sftpWindow, window.isVisible {

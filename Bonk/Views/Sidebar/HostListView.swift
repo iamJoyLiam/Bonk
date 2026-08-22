@@ -384,21 +384,8 @@ struct HostListView: View {
     }
 
     private func badgeText(for profile: SSHBackendProfile, isNative: Bool) -> String {
-        // User wants yellow badge to say OpenSSH, not "兼容·强制"
-        if !isNative {
-            // All Compatibility shows as OpenSSH (yellow)
-            if profile.reasonRaw == SSHBackendReason.forcedCompatibility.rawValue { return "OpenSSH" }
-            if profile.reasonRaw == SSHBackendReason.jumpHost.rawValue { return "OpenSSH·Jump" }
-            if profile.reasonRaw == SSHBackendReason.hostKeyMismatch.rawValue { return "OpenSSH" }
-            // Keep short suffix for debug, but base is OpenSSH
-            switch profile.reasonRaw {
-            case SSHBackendReason.kexMismatch.rawValue: return "OpenSSH"
-            case SSHBackendReason.cipherMismatch.rawValue: return "OpenSSH"
-            case SSHBackendReason.noKbdInteractive.rawValue: return "OpenSSH"
-            default: return "OpenSSH"
-            }
-        }
-        return "Native"
+        if isNative { return "Native" }
+        return profile.reasonRaw == SSHBackendReason.jumpHost.rawValue ? "OpenSSH·Jump" : "OpenSSH"
     }
 
     private func badgeHelp(for profile: SSHBackendProfile) -> String {
