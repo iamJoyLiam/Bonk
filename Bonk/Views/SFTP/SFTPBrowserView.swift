@@ -19,6 +19,10 @@ struct SFTPBrowserView: View {
     @State private var pendingDeleteEntry: SFTPFileEntry?
     @State private var selection: Set<String> = []
     @State private var pendingDeleteIDs: Set<String> = []
+    @State private var isEditingPath = false
+    @State private var editingPath = ""
+    @FocusState private var isPathFocused: Bool
+    @State private var toast: String?
 
     private var sftpService: SFTPService? {
         tab.session?.sftpService
@@ -101,6 +105,18 @@ struct SFTPBrowserView: View {
             // Transfer progress 已移至 SFTPWindowView 统一显示
         }
         .frame(minWidth: 240)
+        .overlay(alignment: .top) {
+            if let msg = toast {
+                Text(msg)
+                    .font(.system(size: 11))
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .shadow(radius: 4)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: toast)
         .alert(i18n.t(.newFolder), isPresented: $showNewFolder) {
             TextField(i18n.t(.newFolder), text: $newFolderName)
             Button(i18n.t(.create)) {
@@ -231,10 +247,10 @@ struct SFTPBrowserView: View {
         .padding(.vertical, 8)
     }
 
-    // MARK: - Path Bar
+    // MARK: - Path Bar — single TextField, whole middle tappable, adaptive
 
     private var pathBar: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
             Button {
                 Task {
                     do { try await sftpService?.goUp() } catch {
@@ -246,18 +262,51 @@ struct SFTPBrowserView: View {
                     .font(.system(size: 11, weight: .medium))
             }
             .buttonStyle(.plain)
-            .disabled(sftpService?.currentPath == "/")
+            .disabled(sftpService?.currentPath == "/" || isEditingPath)
 
-            Text(sftpService?.currentPath ?? "/")
+            TextField("", text: $editingPath, prompt: Text(sftpService?.currentPath ?? "/").font(.system(size: 11).monospaced()))
                 .font(.system(size: 11).monospaced())
-                .lineLimit(1)
-                .truncationMode(.middle)
+                .textFieldStyle(.plain)
+                .focused($isPathFocused)
+                .disabled(!isEditingPath)
+                .onChange(of: sftpService?.currentPath ?? "/") { _, n in if !isEditingPath { editingPath = n } }
+                .onAppear { editingPath = sftpService?.currentPath ?? "/" }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { guard !isEditingPath else { return }; editingPath = sftpService?.currentPath ?? "/"; isEditingPath = true; isPathFocused = true }
+                .onSubmit { commitPath() }
+                .onExitCommand { isEditingPath = false }
 
-            Spacer()
+            Button {
+                if isEditingPath { commitPath() } else { editingPath = sftpService?.currentPath ?? "/"; isEditingPath = true; isPathFocused = true }
+            } label: {
+                Image(systemName: isEditingPath ? "arrow.right.circle.fill" : "arrow.right.circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(isEditingPath ? .blue : .secondary)
+            }
+            .buttonStyle(.plain)
+            .help(isEditingPath ? "Go" : "Edit")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(.quaternary.opacity(0.3))
+    }
+
+    private func commitPath() {
+        let t = editingPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { isEditingPath = false; return }
+        // immediately clear garbage, keep root visible
+        editingPath = sftpService?.currentPath ?? "/"
+        isEditingPath = false; isPathFocused = false
+        Task {
+            do {
+                try await sftpService?.listDirectory(t)
+            } catch {
+                withAnimation { toast = "No such file or directory: \(t)" }
+                try? await Task.sleep(for: .seconds(2))
+                withAnimation { toast = nil }
+            }
+        }
     }
 
     // MARK: - File List — native List with system multi-select (Shift/Cmd) + double-click

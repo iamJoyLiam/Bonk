@@ -17,6 +17,9 @@ struct SFTPWindowView: View {
     @State private var localFiles: [LocalFileEntry] = []
     @State private var selectedRemote: SFTPFileEntry?
     @State private var localSelection: Set<UUID> = []
+    @State private var isEditingLocal = false
+    @State private var editingLocal = ""
+    @FocusState private var isLocalFocused: Bool
     // Overwrite dialog state
     @State private var pendingUploadURL: URL?
     @State private var showOverwriteAlert = false
@@ -115,21 +118,36 @@ struct SFTPWindowView: View {
 
             Divider()
 
-            // Path bar — matches SFTPBrowserView.pathBar
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 Button { goUpLocal() } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 11, weight: .medium))
                 }
                 .buttonStyle(.plain)
-                .disabled(localPath == "/")
+                .disabled(localPath == "/" || isEditingLocal)
 
-                Text(localPath)
+                TextField("", text: $editingLocal, prompt: Text(localPath).font(.system(size: 11).monospaced()))
                     .font(.system(size: 11).monospaced())
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                    .textFieldStyle(.plain)
+                    .focused($isLocalFocused)
+                    .disabled(!isEditingLocal)
+                    .onChange(of: localPath) { _, n in if !isEditingLocal { editingLocal = n } }
+                    .onAppear { editingLocal = localPath }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { guard !isEditingLocal else { return }; editingLocal = localPath; isEditingLocal = true; isLocalFocused = true }
+                    .onSubmit { commitLocal() }
+                    .onExitCommand { isEditingLocal = false }
 
-                Spacer()
+                Button {
+                    if isEditingLocal { commitLocal() } else { editingLocal = localPath; isEditingLocal = true; isLocalFocused = true }
+                } label: {
+                    Image(systemName: isEditingLocal ? "arrow.right.circle.fill" : "arrow.right.circle")
+                        .font(.system(size: 14))
+                        .foregroundStyle(isEditingLocal ? .blue : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(isEditingLocal ? "Go" : "Edit")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -261,7 +279,23 @@ struct SFTPWindowView: View {
     }
 
     private func goUpLocal() {
-        localPath = (localPath as NSString).deletingLastPathComponent
+        let p = (localPath as NSString).deletingLastPathComponent
+        localPath = p.isEmpty ? "/" : p
+        loadLocalFiles()
+    }
+
+    private func commitLocal() {
+        let t = editingLocal.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { isEditingLocal = false; return }
+        let e = (t as NSString).expandingTildeInPath
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: e, isDirectory: &isDir), isDir.boolValue else {
+            // keep at current, stay editing for correction
+            isLocalFocused = true
+            return
+        }
+        isEditingLocal = false; isLocalFocused = false
+        localPath = e
         loadLocalFiles()
     }
 
