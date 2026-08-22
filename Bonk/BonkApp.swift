@@ -111,26 +111,45 @@ struct BonkApp: App {
     }
 }
 
-// MARK: - Menu Commands (FocusedValue)
+// MARK: - Menu Commands (Direct — not FocusedValue; main window is AppKit-owned)
+
+// AppKit-owned main window (BonkAppDelegate) hosts SwiftUI via NSHostingController,
+// so FocusedValue providers in ContentView are not resolved by SwiftUI's Scene
+// focus system (Settings is the only SwiftUI Scene). Commands that depend on
+// @FocusedValue appear disabled. These commands call the shared managers directly
+// and are always enabled — the focused providers remain as a fallback.
 
 #if os(macOS)
     private struct FileMenuCommands: Commands {
         let i18n: I18n
         let shortcutManager: ShortcutManager
-        @FocusedValue(\.menuNewTerminal) private var newTerminal
-        @FocusedValue(\.menuCloseTab) private var closeTab
-        @FocusedValue(\.menuShowWorkspaces) private var showWorkspaces
         var body: some Commands {
             let newTerminalShortcut = shortcutManager.shortcut(for: .newTerminal)
             let closeTabShortcut = shortcutManager.shortcut(for: .closeTab)
             CommandGroup(after: .newItem) {
-                Button(i18n.t(.newTerminal)) { newTerminal?() }
-                    .keyboardShortcut(newTerminalShortcut.key, modifiers: newTerminalShortcut.modifiers)
-                Button(i18n.t(.closeTab)) { closeTab?() }
-                    .keyboardShortcut(closeTabShortcut.key, modifiers: closeTabShortcut.modifiers)
+                Button(i18n.t(.newTerminal)) {
+                    Task { @MainActor in
+                        if let c = BonkAppDelegate.shared?.coordinator { c.showAddHostSheet = true }
+                        else { NotificationCenter.default.post(name: .terminalNewTab, object: nil) }
+                    }
+                }
+                .keyboardShortcut(newTerminalShortcut.key, modifiers: newTerminalShortcut.modifiers)
+                Button(i18n.t(.closeTab)) {
+                    Task { @MainActor in
+                        if let sm = BonkAppDelegate.shared?.sessionManager, let id = sm.activeTabID {
+                            await sm.closeTab(id)
+                        } else {
+                            // Fallback via focused provider if AppKit bridge not ready (e.g. preview)
+                            NotificationCenter.default.post(name: .init("BonkCloseTab"), object: nil)
+                        }
+                    }
+                }
+                .keyboardShortcut(closeTabShortcut.key, modifiers: closeTabShortcut.modifiers)
                 Divider()
-                Button(i18n.t(.workspaces) + "...") { showWorkspaces?() }
-                    .keyboardShortcut("s", modifiers: [.command, .option])
+                Button(i18n.t(.workspaces) + "...") {
+                    Task { @MainActor in BonkAppDelegate.shared?.coordinator?.showWorkspaces = true }
+                }
+                .keyboardShortcut("s", modifiers: [.command, .option])
             }
         }
     }
@@ -138,13 +157,18 @@ struct BonkApp: App {
     private struct EditMenuCommands: Commands {
         let i18n: I18n
         let shortcutManager: ShortcutManager
-        @FocusedValue(\.menuFind) private var find
         var body: some Commands {
             let findShortcut = shortcutManager.shortcut(for: .find)
             CommandGroup(after: .pasteboard) {
                 Divider()
-                Button(i18n.t(.find)) { find?() }
-                    .keyboardShortcut(findShortcut.key, modifiers: findShortcut.modifiers)
+                Button(i18n.t(.find)) {
+                    Task { @MainActor in
+                        AppStore.shared.toggleSearch()
+                        // ContentView keeps a local @State showTerminalSearch; keep it in sync via notification
+                        NotificationCenter.default.post(name: .init("BonkToggleFind"), object: nil, userInfo: ["show": AppStore.shared.showSearch])
+                    }
+                }
+                .keyboardShortcut(findShortcut.key, modifiers: findShortcut.modifiers)
             }
         }
     }
@@ -152,30 +176,38 @@ struct BonkApp: App {
     private struct ViewMenuCommands: Commands {
         let i18n: I18n
         let shortcutManager: ShortcutManager
-        @FocusedValue(\.menuSplitHorizontal) private var splitHorizontal
-        @FocusedValue(\.menuSplitVertical) private var splitVertical
-        @FocusedValue(\.menuClosePane) private var closePane
-        @FocusedValue(\.menuToggleSFTP) private var toggleSFTP
-        @FocusedValue(\.menuChangeTheme) private var changeTheme
         var body: some Commands {
             let splitHorizontalShortcut = shortcutManager.shortcut(for: .splitHorizontal)
             let splitVerticalShortcut = shortcutManager.shortcut(for: .splitVertical)
             let closePaneShortcut = shortcutManager.shortcut(for: .closePane)
             let sftpBrowserShortcut = shortcutManager.shortcut(for: .sftpBrowser)
             CommandMenu(i18n.t(.menuView)) {
-                Button(i18n.t(.splitHorizontal)) { splitHorizontal?() }
-                    .keyboardShortcut(splitHorizontalShortcut.key, modifiers: splitHorizontalShortcut.modifiers)
-                Button(i18n.t(.splitVertical)) { splitVertical?() }
-                    .keyboardShortcut(splitVerticalShortcut.key, modifiers: splitVerticalShortcut.modifiers)
-                Button(i18n.t(.closePane)) { closePane?() }
-                    .keyboardShortcut(closePaneShortcut.key, modifiers: closePaneShortcut.modifiers)
+                Button(i18n.t(.splitHorizontal)) {
+                    Task { @MainActor in BonkAppDelegate.shared?.sessionManager?.splitHorizontal() }
+                }
+                .keyboardShortcut(splitHorizontalShortcut.key, modifiers: splitHorizontalShortcut.modifiers)
+                Button(i18n.t(.splitVertical)) {
+                    Task { @MainActor in BonkAppDelegate.shared?.sessionManager?.splitVertical() }
+                }
+                .keyboardShortcut(splitVerticalShortcut.key, modifiers: splitVerticalShortcut.modifiers)
+                Button(i18n.t(.closePane)) {
+                    Task { @MainActor in BonkAppDelegate.shared?.sessionManager?.closePane() }
+                }
+                .keyboardShortcut(closePaneShortcut.key, modifiers: closePaneShortcut.modifiers)
                 Divider()
-                Button(i18n.t(.sftpBrowser)) { toggleSFTP?() }
-                    .keyboardShortcut(sftpBrowserShortcut.key, modifiers: sftpBrowserShortcut.modifiers)
+                Button(i18n.t(.sftpBrowser)) {
+                    Task { @MainActor in
+                        if let ws = BonkAppDelegate.shared?.workspace { ws.toggleSFTPWindow() }
+                        else { NotificationCenter.default.post(name: .toggleSFTP, object: nil) }
+                    }
+                }
+                .keyboardShortcut(sftpBrowserShortcut.key, modifiers: sftpBrowserShortcut.modifiers)
                 Divider()
                 Menu(i18n.t(.theme)) {
-                    Button(i18n.t(.system)) { changeTheme?("system") }
-                    ForEach(ThemeRegistry.all, id: \.id) { theme in Button(theme.name) { changeTheme?(theme.id) } }
+                    Button(i18n.t(.system)) { Task { @MainActor in TerminalThemeManager.shared.setActive("system") } }
+                    ForEach(ThemeRegistry.all, id: \.id) { theme in
+                        Button(theme.name) { Task { @MainActor in TerminalThemeManager.shared.setActive(theme.id) } }
+                    }
                 }
             }
         }
@@ -184,26 +216,45 @@ struct BonkApp: App {
     private struct ConnectionMenuCommands: Commands {
         let i18n: I18n
         let shortcutManager: ShortcutManager
-        @FocusedValue(\.menuConnect) private var connect
-        @FocusedValue(\.menuDisconnect) private var disconnect
-        @FocusedValue(\.menuReconnect) private var reconnect
-        @FocusedValue(\.menuShowSnippets) private var showSnippets
-        @FocusedValue(\.menuShowCommandHistory) private var showCommandHistory
-        @FocusedValue(\.menuShowPortForwarding) private var showPortForwarding
-        @FocusedValue(\.menuShowSerialPort) private var showSerialPort
         var body: some Commands {
             let reconnectShortcut = shortcutManager.shortcut(for: .reconnect)
             CommandMenu(i18n.t(.menuConnection)) {
-                Button(i18n.t(.connect)) { connect?() }
-                Button(i18n.t(.disconnect)) { disconnect?() }
-                Button(i18n.t(.reconnect)) { reconnect?() }
-                    .keyboardShortcut(reconnectShortcut.key, modifiers: reconnectShortcut.modifiers)
+                Button(i18n.t(.connect)) {
+                    Task { @MainActor in BonkAppDelegate.shared?.coordinator?.showAddHostSheet = true }
+                }
+                Button(i18n.t(.disconnect)) {
+                    Task { @MainActor in
+                        if let sm = BonkAppDelegate.shared?.sessionManager, let id = sm.activeTabID { await sm.disconnectTab(id) }
+                    }
+                }
+                Button(i18n.t(.reconnect)) {
+                    Task { @MainActor in
+                        if let sm = BonkAppDelegate.shared?.sessionManager, let id = sm.activeTabID { await sm.reconnectTab(id) }
+                    }
+                }
+                .keyboardShortcut(reconnectShortcut.key, modifiers: reconnectShortcut.modifiers)
                 Divider()
-                Button(i18n.t(.snippets)) { showSnippets?() }
-                Button(i18n.t(.commandHistory)) { showCommandHistory?() }
+                Button(i18n.t(.snippets)) {
+                    Task { @MainActor in
+                        if let c = BonkAppDelegate.shared?.coordinator { c.showSnippets() }
+                        else { NotificationCenter.default.post(name: .init("BonkShowSnippets"), object: nil) }
+                    }
+                }
+                Button(i18n.t(.commandHistory)) {
+                    Task { @MainActor in
+                        if let ws = BonkAppDelegate.shared?.workspace {
+                            ws.snippetsHistoryTab = .history
+                            ws.activeRightPanel = .snippetsHistory
+                        }
+                    }
+                }
                 Divider()
-                Button(i18n.t(.portForwarding)) { showPortForwarding?() }
-                Button(i18n.t(.serialPort)) { showSerialPort?() }
+                Button(i18n.t(.portForwarding)) {
+                    Task { @MainActor in BonkAppDelegate.shared?.workspace?.isPortForwardingPresented = true }
+                }
+                Button(i18n.t(.serialPort)) {
+                    Task { @MainActor in BonkAppDelegate.shared?.workspace?.isSerialPortPresented = true }
+                }
             }
         }
     }
@@ -211,12 +262,16 @@ struct BonkApp: App {
     private struct AIMenuCommands: Commands {
         let i18n: I18n
         let shortcutManager: ShortcutManager
-        @FocusedValue(\.menuToggleAITerminal) private var toggleAITerminal
         var body: some Commands {
             let aiAssistantShortcut = shortcutManager.shortcut(for: .aiAssistant)
             CommandMenu(i18n.t(.menuAI)) {
-                Button(i18n.t(.aiAssistant)) { toggleAITerminal?() }
-                    .keyboardShortcut(aiAssistantShortcut.key, modifiers: aiAssistantShortcut.modifiers)
+                Button(i18n.t(.aiAssistant)) {
+                    Task { @MainActor in
+                        if let ws = BonkAppDelegate.shared?.workspace { ws.toggleRightPanel(.ai) }
+                        else { NotificationCenter.default.post(name: .toggleAIChat, object: nil) }
+                    }
+                }
+                .keyboardShortcut(aiAssistantShortcut.key, modifiers: aiAssistantShortcut.modifiers)
             }
         }
     }

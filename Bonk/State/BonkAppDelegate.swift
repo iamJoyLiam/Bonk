@@ -21,15 +21,19 @@ import SwiftUI
 
 @MainActor
 final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    static weak var shared: BonkAppDelegate?
     private var mainWindow: NSWindow?
     private var toolbarDelegate: BonkToolbarDelegate?
     private var toolbar: NSToolbar?
     private var toolbarObservation: NSKeyValueObservation?
-    private var sessionManager: SessionManager?
+    var sessionManager: SessionManager?
+    var workspace: WorkspaceManager?
+    var coordinator: ToolbarCoordinator?
 
     // MARK: - Launch
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Self.shared = self
         CrashReporter.install()
         // Reclaim PTYs held by orphaned bonk-ssh mux processes from a
         // previous crashed/killed session (no live connections exist yet).
@@ -42,11 +46,13 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let workspace = WorkspaceManager()
         let sessionManager = SessionManager()
         self.sessionManager = sessionManager
+        self.workspace = workspace
         let coordinator = ToolbarCoordinator(
             workspace: workspace,
             sessionManager: sessionManager,
             i18n: i18n
         )
+        self.coordinator = coordinator
         toolbarDelegate = BonkToolbarDelegate(coordinator: coordinator)
 
         let window = NSWindow(

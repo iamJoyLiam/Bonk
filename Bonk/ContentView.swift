@@ -120,6 +120,15 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .terminalNewTab)) { _ in
                 handleNewTabShortcut()
             }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("BonkToggleFind"))) { note in
+                if let show = note.userInfo?["show"] as? Bool { showTerminalSearch = show }
+                else { showTerminalSearch.toggle() }
+                // Keep AppStore in sync if this was triggered elsewhere
+                AppStore.shared.showSearch = showTerminalSearch
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("BonkCloseTab"))) { _ in
+                if let id = sessionManager.activeTabID { Task { await sessionManager.closeTab(id) } }
+            }
             // Sheets
             .sheet(isPresented: $toolbarCoordinator.showAddHostSheet) {
                 NavigationStack {
