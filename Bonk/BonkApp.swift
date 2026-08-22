@@ -29,8 +29,22 @@ struct BonkApp: App {
             Snippet.self, PortForward.self, JumpHost.self, InlineSuggestionRecord.self,
             SSHBackendProfile.self,
         ])
-        // AGENTS.md: never change storeName — always use default (no explicit name).
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        // AGENTS.md: never change storeName — always use default. DEBUG uses in-memory store to avoid touching real DB (Xcode runs).
+        #if DEBUG
+            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        #else
+            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        #endif
+        func deleteDevStore() {
+            let fm = FileManager.default
+            if let url = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+                let base = url.appendingPathComponent("Bonk-Dev.store")
+                for ext in ["", "-shm", "-wal"] {
+                    let file = URL(fileURLWithPath: base.path + ext)
+                    try? fm.removeItem(at: file)
+                }
+            }
+        }
         func isSchemaMismatch(_ error: Error) -> Bool {
             let msg = error.localizedDescription + " " + String(describing: error)
             return msg.contains("no such table") || msg.contains("no such column")
@@ -45,12 +59,29 @@ struct BonkApp: App {
                 _ = try ctx.fetch(FetchDescriptor<HostItem>())
             } catch {
                 if isSchemaMismatch(error) {
-                    Log.app.error("Schema mismatch detected after init: \(error) — needs migration, not deletion")
+                    #if DEBUG
+                        Log.app.error("Schema mismatch detected after init, deleting Dev store and retrying: \(error)")
+                        deleteDevStore()
+                        return try ModelContainer(for: schema, configurations: [config])
+                    #else
+                        Log.app.error("Schema mismatch detected after init: \(error) — needs migration, not deletion")
+                    #endif
                 }
                 throw error
             }
             return container
         } catch {
+            #if DEBUG
+                if isSchemaMismatch(error) {
+                    Log.app.error("ModelContainer missing table/column, deleting Dev store and retrying: \(error)")
+                    deleteDevStore()
+                    do {
+                        return try ModelContainer(for: schema, configurations: [config])
+                    } catch {
+                        Log.app.error("Retry failed: \(error)")
+                    }
+                }
+            #endif
             Log.app.error("ModelContainer failed: \(error.localizedDescription)")
             fatalError("Database initialization failed: \(error)")
         }
