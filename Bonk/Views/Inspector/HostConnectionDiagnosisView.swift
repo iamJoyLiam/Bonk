@@ -98,7 +98,7 @@ struct HostConnectionDiagnosisView: View {
                 .font(.system(size: AppStyle.fontCaption, design: .monospaced))
                 .foregroundStyle(.secondary)
 
-            // Timestamps
+            // Timestamps + Adaptive TTL
             HStack(spacing: 12) {
                 Label(dateString(profile.detectedAt), systemImage: "clock")
                 if !profile.isPolicyReason {
@@ -107,6 +107,39 @@ struct HostConnectionDiagnosisView: View {
             }
             .font(.system(size: AppStyle.fontCaption))
             .foregroundStyle(.secondary)
+
+            // Adaptive TTL detail (M4 Full画像)
+            HStack(spacing: 8) {
+                Label("hit \(profile.effectiveHitCount) · TTL \(ttlLabel(profile))", systemImage: "arrow.triangle.2.circlepath")
+                if let last = profile.lastHitAt {
+                    Text("· last \(dateString(last))")
+                }
+                if profile.isPolicyReason {
+                    Text("· policy永不过期")
+                }
+            }
+            .font(.system(size: AppStyle.fontCaption, design: .monospaced))
+            .foregroundStyle(.secondary)
+            if !profile.isPolicyReason {
+                let remaining = max(0, profile.expiresAt.timeIntervalSinceNow)
+                let total = profile.adaptiveTTL
+                let progress = total > 0 ? max(0, min(1, 1 - remaining / total)) : 0
+                ProgressView(value: progress)
+                    .progressViewStyle(.linear)
+                    .tint(profile.isValid ? Color.green : Color.orange)
+            }
+
+            // Negotiated (full画像) — nil when not yet captured
+            if profile.negotiatedKEX != nil || profile.negotiatedHostKey != nil || profile.negotiatedCipher != nil || profile.negotiatedMAC != nil {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Negotiated").font(.system(size: AppStyle.fontCaption, weight: .medium))
+                    if let v = profile.negotiatedKEX { Text("KEX: \(v)").font(.system(size: AppStyle.fontCaption, design: .monospaced)) }
+                    if let v = profile.negotiatedHostKey { Text("HostKey: \(v)").font(.system(size: AppStyle.fontCaption, design: .monospaced)) }
+                    if let v = profile.negotiatedCipher { Text("Cipher: \(v)").font(.system(size: AppStyle.fontCaption, design: .monospaced)) }
+                    if let v = profile.negotiatedMAC { Text("MAC: \(v)").font(.system(size: AppStyle.fontCaption, design: .monospaced)) }
+                }
+                .foregroundStyle(.secondary)
+            }
 
             // Algorithms
             let algos = profile.algorithmRequirements
@@ -146,6 +179,15 @@ struct HostConnectionDiagnosisView: View {
         formatter.dateStyle = .short
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+
+    private func ttlLabel(_ profile: SSHBackendProfile) -> String {
+        if profile.isPolicyReason { return "policy" }
+        switch profile.effectiveHitCount {
+        case 1: return "1d"
+        case 2: return "7d"
+        default: return "30d"
+        }
     }
 
     private func reload() {

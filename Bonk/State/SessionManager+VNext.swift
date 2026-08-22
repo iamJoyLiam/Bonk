@@ -46,9 +46,9 @@ extension SessionManager {
                 Log.session.info("[VNext] Forced compatibility for \(config.host):\(config.port) (host toggle)")
                 return SSHSessionCoordinator.CachedProfile(backend: .compatibility, reason: .forcedCompatibility, isValid: true, algorithms: nil)
             }
-            guard let profile = vnextProfileStore?.profile(for: req), profile.isValid,
+            guard let profile = vnextProfileStore?.profile(for: req),
                   let backend = profile.backendType, let reason = profile.reason else { return nil }
-            Log.session.info("[VNext] Cache hit: \(profile.backendRaw)/\(profile.reasonRaw) — \(profile.host):\(profile.port)")
+            Log.session.info("[VNext] Cache hit[\(profile.effectiveHitCount)] TTL \(Int(profile.adaptiveTTL/3600/24))d: \(profile.backendRaw)/\(profile.reasonRaw) — \(profile.host):\(profile.port)")
             return SSHSessionCoordinator.CachedProfile(backend: backend, reason: reason, isValid: true, algorithms: profile.algorithmRequirements)
         }()
         let decision: SSHConnectionDecision

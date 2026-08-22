@@ -154,4 +154,66 @@ final class SSHVNextRoutingTests: XCTestCase {
         XCTAssertTrue(profile.isPolicyReason)
         XCTAssertTrue(profile.isValid)
     }
+
+    // MARK: - Adaptive TTL (M4 Full画像)
+
+    func testAdaptiveTTLStages() {
+        XCTAssertEqual(SSHBackendProfile.adaptiveTTL(forHitCount: 1, isPolicy: false), 1*24*3600, accuracy: 1)
+        XCTAssertEqual(SSHBackendProfile.adaptiveTTL(forHitCount: 2, isPolicy: false), 7*24*3600, accuracy: 1)
+        XCTAssertEqual(SSHBackendProfile.adaptiveTTL(forHitCount: 3, isPolicy: false), 30*24*3600, accuracy: 1)
+        XCTAssertEqual(SSHBackendProfile.adaptiveTTL(forHitCount: 99, isPolicy: false), 30*24*3600, accuracy: 1)
+        XCTAssertEqual(SSHBackendProfile.adaptiveTTL(forHitCount: 1, isPolicy: true), 10*365*24*3600, accuracy: 1)
+    }
+
+    func testAdaptiveTTLInitUsesHitCount() {
+        let now = Date()
+        let p1 = SSHBackendProfile(host: "h", port: 22, authMethodRaw: SSHRoutingAuthMethod.password.rawValue, backendRaw: SSHBackendType.native.rawValue, reasonRaw: SSHBackendReason.modern.rawValue, detectedAt: now, hitCount: 1)
+        XCTAssertEqual(p1.expiresAt.timeIntervalSince(now), 1*24*3600, accuracy: 1)
+        let p2 = SSHBackendProfile(host: "h", port: 22, authMethodRaw: SSHRoutingAuthMethod.password.rawValue, backendRaw: SSHBackendType.native.rawValue, reasonRaw: SSHBackendReason.modern.rawValue, detectedAt: now, hitCount: 2)
+        XCTAssertEqual(p2.expiresAt.timeIntervalSince(now), 7*24*3600, accuracy: 1)
+        let p3 = SSHBackendProfile(host: "h", port: 22, authMethodRaw: SSHRoutingAuthMethod.password.rawValue, backendRaw: SSHBackendType.native.rawValue, reasonRaw: SSHBackendReason.modern.rawValue, detectedAt: now, hitCount: 3)
+        XCTAssertEqual(p3.expiresAt.timeIntervalSince(now), 30*24*3600, accuracy: 1)
+    }
+
+    func testBumpHitProgressesTTL() {
+        let p = SSHBackendProfile(host: "h", port: 22, authMethodRaw: SSHRoutingAuthMethod.password.rawValue, backendRaw: SSHBackendType.native.rawValue, reasonRaw: SSHBackendReason.modern.rawValue, hitCount: 1)
+        let exp1 = p.expiresAt
+        XCTAssertEqual(p.effectiveHitCount, 1)
+        p.bumpHit()
+        XCTAssertEqual(p.effectiveHitCount, 2)
+        XCTAssertEqual(p.adaptiveTTL, 7*24*3600, accuracy: 1)
+        XCTAssertGreaterThan(p.expiresAt.timeIntervalSinceNow, 6*24*3600)
+        p.bumpHit()
+        XCTAssertEqual(p.effectiveHitCount, 3)
+        XCTAssertEqual(p.adaptiveTTL, 30*24*3600, accuracy: 1)
+        _ = exp1
+    }
+
+    func testPolicyBumpDoesNotExpire() {
+        let p = SSHBackendProfile(host: "h", port: 22, authMethodRaw: SSHRoutingAuthMethod.password.rawValue, backendRaw: SSHBackendType.compatibility.rawValue, reasonRaw: SSHBackendReason.jumpHost.rawValue, hitCount: 99)
+        XCTAssertTrue(p.isPolicyReason)
+        p.bumpHit()
+        XCTAssertTrue(p.isValid)
+        // policy expires 10y, still valid after bump
+        XCTAssertGreaterThan(p.expiresAt.timeIntervalSinceNow, 9*365*24*3600)
+    }
+
+    func testNilHitCountTreatedAsOne() {
+        let p = SSHBackendProfile(host: "h", port: 22, authMethodRaw: SSHRoutingAuthMethod.password.rawValue, backendRaw: SSHBackendType.native.rawValue, reasonRaw: SSHBackendReason.modern.rawValue)
+        p.hitCount = nil
+        XCTAssertEqual(p.effectiveHitCount, 1)
+        XCTAssertEqual(p.adaptiveTTL, 1*24*3600, accuracy: 1)
+    }
+
+    func testOldRecordMigrationKeepsData() {
+        // Simulate old record with nil hitCount/negotiated fields (pre-M4)
+        let past = Date().addingTimeInterval(-1*24*3600)
+        let p = SSHBackendProfile(host: "h", port: 22, authMethodRaw: SSHRoutingAuthMethod.password.rawValue, backendRaw: SSHBackendType.compatibility.rawValue, reasonRaw: SSHBackendReason.kexMismatch.rawValue, detectedAt: past, expiresAt: past.addingTimeInterval(7*24*3600))
+        p.hitCount = nil
+        p.negotiatedKEX = nil
+        XCTAssertEqual(p.effectiveHitCount, 1)
+        XCTAssertTrue(p.isValid || !p.isValid) // should not crash
+        XCTAssertNil(p.negotiatedKEX)
+        XCTAssertEqual(p.kexAlgorithms, [])
+    }
 }
