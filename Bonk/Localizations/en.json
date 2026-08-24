@@ -528,5 +528,9 @@
   "trigger_highlight_desc": "Highlights matching output in log (currently logs only)",
   "trigger_enabled": "Enabled",
   "import_unified_description": "Auto-detects SSH config (~/.ssh/config) and Tabby (~/Library/Application Support/Tabby/config.yaml etc.) in one list. No extra choice needed.",
-  "choose_file": "Choose File"
+  "choose_file": "Choose File",
+  "import_tabby_password_warning": "Passwords from Tabby cannot be imported automatically. Please enter them manually.",
+  "esc_always": "Always Hide",
+  "esc_never": "Never Hide",
+  "esc_only_no_alt": "Only When Not in Alternate Screen"
 }

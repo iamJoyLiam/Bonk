@@ -528,5 +528,9 @@
   "trigger_highlight_desc": "高亮匹配的输出（当前仅日志）",
   "trigger_enabled": "启用",
   "import_unified_description": "自动识别 ~/.ssh/config 与 Tabby 配置（多路径扫描），一单合并展示，无需二次选择。",
-  "choose_file": "选择文件"
+  "choose_file": "选择文件",
+  "import_tabby_password_warning": "Tabby 配置中的密码无法自动导入，需手动填写",
+  "esc_always": "始终隐藏",
+  "esc_never": "从不隐藏",
+  "esc_only_no_alt": "仅普通终端时"
 }

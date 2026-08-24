@@ -200,6 +200,8 @@ struct WorkspaceListView: View {
             Button(i18n.t(.saveCurrentAsWorkspace)) { showSaveSheet = true }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
+                .disabled(sessionManager.tabs.isEmpty)
+                .help(sessionManager.tabs.isEmpty ? i18n.t(.noTerminal) : "")
         }
         .padding()
     }
@@ -228,7 +230,7 @@ struct WorkspaceListView: View {
                     Button(i18n.t(.save)) {
                         saveWorkspace(); showSaveSheet = false; newWorkspaceName = ""; newWorkspaceIsTemplate = false
                     }
-                    .disabled(newWorkspaceName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(newWorkspaceName.trimmingCharacters(in: .whitespaces).isEmpty || sessionManager.tabs.isEmpty)
                     .keyboardShortcut(.defaultAction)
                 }
             }

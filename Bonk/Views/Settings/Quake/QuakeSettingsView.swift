@@ -103,7 +103,7 @@ struct QuakeSettingsView: View {
 
                     Picker(i18n.t(.escKeyBehavior), selection: $escBehavior) {
                         ForEach(EscBehavior.allCases, id: \.self) { behavior in
-                            Text(behavior.displayName).tag(behavior)
+                            Text(behavior.localizedName(i18n)).tag(behavior)
                         }
                     }
                     .onChange(of: escBehavior) { _, newValue in

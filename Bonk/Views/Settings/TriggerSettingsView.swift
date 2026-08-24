@@ -14,58 +14,90 @@ struct TriggerSettingsView: View {
     @Query(sort: \TriggerRule.createdAt, order: .reverse) private var rules: [TriggerRule]
     @State private var showAddSheet = false
     @State private var editingRule: TriggerRule?
+    @State private var hoveredRuleID: UUID?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label(i18n.t(.triggers), systemImage: "bolt.trianglebadge.exclamationmark")
-                    .font(.headline)
-                Spacer()
-                Button { showAddSheet = true } label: { Label(i18n.t(.add), systemImage: "plus") }
-                    .buttonStyle(.borderedProminent).controlSize(.small)
-            }
-            Text(i18n.t(.triggersDescription))
-                .font(.caption).foregroundStyle(.secondary)
+        VStack(spacing: 0) {
+            PanelHeaderView(
+                icon: "bolt.trianglebadge.exclamationmark",
+                title: i18n.t(.triggers),
+                count: rules.isEmpty ? nil : rules.count,
+                trailing: AnyView(
+                    PanelAddButton(help: i18n.t(.addTrigger)) { showAddSheet = true }
+                )
+            )
             Divider()
             if rules.isEmpty {
-                ContentUnavailableView(i18n.t(.noTriggers), systemImage: "bolt.slash", description: Text(i18n.t(.noTriggersDescription)))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                PanelEmptyView(
+                    icon: "bolt.slash",
+                    title: i18n.t(.noTriggers),
+                    hint: i18n.t(.noTriggersDescription)
+                )
             } else {
-                List {
-                    ForEach(rules) { rule in
-                        triggerRow(rule)
-                            .contentShape(Rectangle())
-                            .onTapGesture { editingRule = rule }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) { delete(rule) } label: { Label(i18n.t(.delete), systemImage: "trash") }
-                            }
+                ScrollView {
+                    LazyVStack(spacing: AppStyle.spacingS) {
+                        ForEach(rules) { rule in
+                            triggerRow(rule)
+                        }
                     }
+                    .padding(AppStyle.spacingL)
                 }
-                .listStyle(.inset)
+                .background(Color(nsColor: .windowBackgroundColor))
             }
         }
-        .padding()
+        .frame(minWidth: 520, minHeight: 380)
+        .background(Color(nsColor: .windowBackgroundColor))
         .sheet(isPresented: $showAddSheet) { TriggerEditSheet(rule: nil) }
         .sheet(item: $editingRule) { rule in TriggerEditSheet(rule: rule) }
     }
 
     private func triggerRow(_ rule: TriggerRule) -> some View {
-        HStack {
+        let isHovered = hoveredRuleID == rule.id
+        return HStack(spacing: AppStyle.spacingL) {
+            Circle().fill(rule.isEnabled ? Color.green : Color.gray).frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Circle().fill(rule.isEnabled ? Color.green : Color.gray).frame(width: 8, height: 8)
-                    Text(rule.name).font(.body.weight(.medium)).lineLimit(1)
+                    Text(rule.name).font(.system(size: AppStyle.fontRegular, weight: .medium)).lineLimit(1)
                     Text(rule.actionType.displayName(i18n: i18n)).font(.caption2).padding(.horizontal, 6).padding(.vertical, 2).background(Color.secondary.opacity(0.15)).cornerRadius(4)
                 }
-                Text(rule.pattern).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
+                Text(rule.pattern).font(.system(size: AppStyle.fontSmall, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1)
                 if let payload = rule.actionPayload, !payload.isEmpty {
                     Text(payload).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
                 }
             }
-            Spacer()
+            Spacer(minLength: AppStyle.spacingM)
             Toggle("", isOn: Binding(get: { rule.isEnabled }, set: { rule.isEnabled = $0; try? modelContext.save() }))
                 .labelsHidden()
-        }.padding(.vertical, 4)
+            Image(systemName: "pencil")
+                .font(.system(size: AppStyle.fontSmall, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: AppStyle.buttonMedium, height: AppStyle.buttonMedium)
+                .background(Circle().fill(Color(nsColor: .controlBackgroundColor)))
+                .overlay(Circle().strokeBorder(Color.primary.opacity(AppStyle.opacityStroke), lineWidth: 1))
+                .onTapGesture { editingRule = rule }
+        }
+        .padding(.horizontal, AppStyle.spacingL)
+        .padding(.vertical, AppStyle.spacingML)
+        .background(
+            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
+                .fill(Color(nsColor: .textBackgroundColor))
+        )
+        .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous))
+        .shadow(color: Color.black.opacity(isHovered ? 0.07 : 0.03), radius: isHovered ? 8 : 4, y: isHovered ? 3 : 1)
+        .overlay(
+            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
+                .strokeBorder(Color.primary.opacity(isHovered ? 0.08 : 0.06), lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) { hoveredRuleID = hovering ? rule.id : nil }
+        }
+        .onTapGesture { editingRule = rule }
+        .contextMenu {
+            Button { editingRule = rule } label: { Label(i18n.t(.edit), systemImage: "pencil") }
+            Divider()
+            Button(role: .destructive) { delete(rule) } label: { Label(i18n.t(.delete), systemImage: "trash") }
+        }
     }
 
     private func delete(_ rule: TriggerRule) {

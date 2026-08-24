@@ -111,6 +111,10 @@ final class WorkspacePersistenceManager {
         existingWorkspaceID: UUID? = nil,
         isTemplate: Bool = false
     ) -> WorkspaceData? {
+        guard !sessionManager.tabs.isEmpty else {
+            logger.warning("Cannot save workspace: no tabs open")
+            return nil
+        }
         var workspaceTabs: [WorkspaceTabData] = []
 
         for (index, tab) in sessionManager.tabs.enumerated() {

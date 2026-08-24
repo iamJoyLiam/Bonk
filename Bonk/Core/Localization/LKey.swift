@@ -565,5 +565,9 @@ enum LKey: String, CaseIterable {
     case triggerHighlightDesc = "trigger_highlight_desc"
     case triggerEnabled = "trigger_enabled"
     case importUnifiedDescription = "import_unified_description"
+    case importTabbyPasswordWarning = "import_tabby_password_warning"
+    case escAlways = "esc_always"
+    case escNever = "esc_never"
+    case escOnlyNoAlt = "esc_only_no_alt"
     case chooseFile = "choose_file"
 }

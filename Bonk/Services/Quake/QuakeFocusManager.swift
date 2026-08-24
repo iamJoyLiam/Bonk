@@ -16,11 +16,20 @@ enum EscBehavior: String, Sendable, CaseIterable {
     case never = "never"
     case onlyWhenNoAlternateScreen = "alternate_screen"
 
+    // Legacy non-i18n fallback (kept for non-SwiftUI contexts)
     var displayName: String {
         switch self {
         case .always: "Always Hide"
         case .never: "Never Hide"
-        case .onlyWhenNoAlternateScreen: "Only When No Alternate Screen"
+        case .onlyWhenNoAlternateScreen: "Only When Not in Alternate Screen"
+        }
+    }
+
+    func localizedName(_ i18n: I18n) -> String {
+        switch self {
+        case .always: i18n.t(.escAlways)
+        case .never: i18n.t(.escNever)
+        case .onlyWhenNoAlternateScreen: i18n.t(.escOnlyNoAlt)
         }
     }
 }

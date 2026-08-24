@@ -29,7 +29,7 @@ struct ImportRowView: View {
                     if isDuplicate {
                         Text(i18n.t(.duplicate)).font(.caption2)
                             .padding(.horizontal, 6).padding(.vertical, 3)
-                            .background(Color.orange.opacity(0.18)).cornerRadius(4)
+                            .background(Color.secondary.opacity(0.12)).cornerRadius(4)
                     }
                 }
                 HStack(spacing: 10) {

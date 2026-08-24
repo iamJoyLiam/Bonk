@@ -56,15 +56,10 @@ struct UnifiedImportView: View {
                 Spacer()
                 Text("\(selectedCount)/\(totalCount)").font(.caption).foregroundStyle(.secondary)
             }
-            Text(i18n.t(.importUnifiedDescription))
-                .font(.caption).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if let url = tabbySourceURL {
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).font(.caption)
-                    Text("Tabby: \(url.lastPathComponent) — \(url.path)").font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
-                }.frame(maxWidth: .infinity, alignment: .leading)
-            }
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.caption)
+                Text(i18n.t(.importTabbyPasswordWarning)).font(.caption).foregroundStyle(.orange)
+            }.frame(maxWidth: .infinity, alignment: .leading)
         }.padding()
     }
 
@@ -76,32 +71,65 @@ struct UnifiedImportView: View {
             if let err = tabbyError {
                 Text(err).font(.caption2).foregroundStyle(.orange)
             }
-            Button(i18n.t(.chooseFile)) { promptForTabbyFile() }.buttonStyle(.borderedProminent)
         }.frame(maxWidth: .infinity, maxHeight: .infinity).padding()
+    }
+
+    // Single merged list — auto-detected SSH config + Tabby (multi-path scan), no section split
+    private struct MergedEntry: Identifiable {
+        let id: UUID
+        let title: String
+        let hostname: String
+        let port: Int
+        let username: String
+        let isSSH: Bool
+        let isDuplicate: Bool
+    }
+
+    private var mergedEntries: [MergedEntry] {
+        var list: [MergedEntry] = []
+        for entry in sshEntries {
+            list.append(MergedEntry(
+                id: entry.id,
+                title: entry.alias,
+                hostname: entry.hostname ?? entry.alias,
+                port: entry.port.map { Int($0) } ?? SSHConstants.defaultPort,
+                username: entry.user ?? "",
+                isSSH: true,
+                isDuplicate: existingNames.contains(entry.alias)
+            ))
+        }
+        for hostItem in tabbyHosts {
+            list.append(MergedEntry(
+                id: hostItem.id,
+                title: hostItem.name,
+                hostname: hostItem.host,
+                port: hostItem.port,
+                username: hostItem.username,
+                isSSH: false,
+                isDuplicate: existingNames.contains(hostItem.name)
+            ))
+        }
+        return list.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
     private var list: some View {
         ScrollView {
-            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                if !sshEntries.isEmpty {
-                    Section {
-                        ForEach(sshEntries) { entry in
-                            sshRow(entry)
-                            if entry.id != sshEntries.last?.id { Divider().padding(.leading, 44) }
+            LazyVStack(spacing: 0) {
+                ForEach(mergedEntries) { entry in
+                    ImportRowView(
+                        title: entry.title,
+                        hostname: entry.hostname,
+                        port: entry.port,
+                        username: entry.username,
+                        isSelected: entry.isSSH ? selectedSSH.contains(entry.id) : selectedTabby.contains(entry.id),
+                        isDuplicate: entry.isDuplicate,
+                        badgeTitle: entry.isSSH ? "SSH" : "Tabby",
+                        badgeColor: .secondary,
+                        onToggle: {
+                            if entry.isSSH { toggleSSH(entry.id) } else { toggleTabby(entry.id) }
                         }
-                    } header: {
-                        sectionHeader(title: "\(i18n.t(.importSSHConfig)) — \(sshEntries.count) \(i18n.t(.hostsFound))")
-                    }
-                }
-                if !tabbyHosts.isEmpty {
-                    Section {
-                        ForEach(tabbyHosts, id: \.id) { host in
-                            tabbyRow(host)
-                            if host.id != tabbyHosts.last?.id { Divider().padding(.leading, 44) }
-                        }
-                    } header: {
-                        sectionHeader(title: "\(i18n.t(.importTabby)) — \(tabbyHosts.count) \(i18n.t(.hostsFound))")
-                    }
+                    )
+                    if entry.id != mergedEntries.last?.id { Divider().padding(.leading, 44) }
                 }
             }.padding(.vertical, 8)
         }
@@ -142,7 +170,7 @@ struct UnifiedImportView: View {
             isSelected: selectedTabby.contains(hostItem.id),
             isDuplicate: existingNames.contains(hostItem.name),
             badgeTitle: "Tabby",
-            badgeColor: .orange,
+            badgeColor: .secondary,
             onToggle: { toggleTabby(hostItem.id) }
         )
     }
@@ -157,7 +185,6 @@ struct UnifiedImportView: View {
                 }
             }.disabled(totalCount == 0)
             Spacer()
-            Button(i18n.t(.chooseFile)) { promptForTabbyFile() }
             Button(i18n.t(.cancel)) { dismiss() }.keyboardShortcut(.cancelAction)
             Button {
                 performImport()

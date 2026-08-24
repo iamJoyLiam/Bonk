@@ -16,6 +16,7 @@ struct SnippetInspectorView: View {
     @State private var searchText = ""
     @State private var showAddSheet = false
     @State private var showAIGenerate = false
+    @State private var showAIEnableAlert = false
     @State private var aiPrompt = ""
     @State private var aiGeneratedCommand = ""
     @State private var aiIsGenerating = false
@@ -56,7 +57,9 @@ struct SnippetInspectorView: View {
                 .help(i18n.t(.addSnippet))
 
                 Button {
-                    if AIProviderStore.shared.activeProvider != nil {
+                    if AIProviderStore.shared.activeProvider == nil {
+                        showAIEnableAlert = true
+                    } else {
                         aiPrompt = ""; aiGeneratedCommand = ""; showAIGenerate = true
                     }
                 } label: {
@@ -65,7 +68,7 @@ struct SnippetInspectorView: View {
                         .foregroundStyle(aiIsGenerating ? .orange : .secondary)
                 }
                 .buttonStyle(.plain)
-                .disabled(aiIsGenerating || AIProviderStore.shared.activeProvider == nil)
+                .disabled(aiIsGenerating)
                 .help(
                     AIProviderStore.shared.activeProvider == nil
                         ? i18n.t(.configureProviderHint)
@@ -162,6 +165,7 @@ struct SnippetInspectorView: View {
             )
             .environment(i18n)
         }
+        .aiEnableAlert(i18n: i18n, isPresented: $showAIEnableAlert)
     }
 
     // MARK: - Snippet Row
