@@ -6,6 +6,37 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.2.1</title>
+            <pubDate>Mon, 25 Aug 2026 10:00:00 +0800</pubDate>
+            <sparkle:version>20262001</sparkle:version>
+            <sparkle:shortVersionString>2026.2.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- 密钥生成闭环：passphrase 透传、保存到 Vault 凭据（类型/指纹/公钥）、落盘 chmod 600
+- SSH Config 自动同步：~/.ssh/config + Include 监听，变更自动弹出统一导入
+- 工作区：Focus Mode（主窗 + 侧栏窗格列表，Cmd+Opt+F）、模板克隆为新工作区、All/Templates 过滤
+- 触发器列表样式统一：plain 列表 + 分隔线，与工作区/跳板一致
+- 修复工作区分屏恢复后单窗只剩光标：移除 300ms 硬编码、等待 sshService、按首窗过滤、Pane 未就绪显示连接中
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.1/Bonk-2026.2.1-arm64.dmg"
+                length="25032929"
+                type="application/octet-stream"
+                sparkle:edSignature="qc9q+m2FW7wDhPXxrpcL+iuClRcY7n73vpgTzYwl+ARtY16vGZdlb6pfUa/KfPawWquUWmjsAdJmhponY7P7BQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.1/Bonk-2026.2.1-x86_64.dmg"
+                length="26023043"
+                type="application/octet-stream"
+                sparkle:edSignature="PvxAwgbRD4c9cVjq+Qduvzz9sBbdICQOh3rU+dhzH0oLRtUNCp4IGJR0sUj1xYznP3IBVjgrOJSOAbitUlREAQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.2.0</title>
             <pubDate>Mon, 24 Aug 2026 12:00:00 +0800</pubDate>
             <sparkle:version>20262000</sparkle:version>
