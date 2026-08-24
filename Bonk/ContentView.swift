@@ -62,6 +62,9 @@ struct ContentView: View {
                     sessionManager.activeTabID
                 }
                 TriggerManager.shared.configure(modelContext: modelContext)
+                if preferences.autoSyncSSHConfig == true {
+                    SSHConfigWatcher.shared.start()
+                }
                 // Sync coordinator with actual state
                 toolbarCoordinator.workspace = workspace
                 toolbarCoordinator.sessionManager = sessionManager
@@ -121,6 +124,14 @@ struct ContentView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("BonkCloseTab"))) { _ in
                 if let id = sessionManager.activeTabID { Task { await sessionManager.closeTab(id) } }
+            }
+            .onChange(of: preferences.autoSyncSSHConfig) { _, isOn in
+                if isOn == true { SSHConfigWatcher.shared.start() } else { SSHConfigWatcher.shared.stop() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: SSHConfigWatcher.didChangeNotification)) { _ in
+                if preferences.autoSyncSSHConfig == true {
+                    toolbarCoordinator.showUnifiedImport = true
+                }
             }
             // Sheets
             .sheet(isPresented: $toolbarCoordinator.showAddHostSheet) {
