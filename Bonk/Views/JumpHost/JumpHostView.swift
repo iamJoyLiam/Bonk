@@ -95,12 +95,13 @@ struct JumpHostView: View {
         .padding(.vertical, AppStyle.spacingML)
         .background(
             RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-                .shadow(color: Color.black.opacity(isHovered ? 0.06 : 0.03), radius: isHovered ? 8 : 4, y: 2)
+                .fill(Color(nsColor: .textBackgroundColor))
         )
+        .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous))
+        .shadow(color: Color.black.opacity(isHovered ? 0.07 : 0.03), radius: isHovered ? 8 : 4, y: isHovered ? 3 : 1)
         .overlay(
             RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
-                .strokeBorder(Color.primary.opacity(isHovered ? 0.08 : 0.04), lineWidth: 1)
+                .strokeBorder(Color.primary.opacity(isHovered ? 0.08 : 0.06), lineWidth: 1)
         )
         .contentShape(Rectangle())
         .onHover { hovering in

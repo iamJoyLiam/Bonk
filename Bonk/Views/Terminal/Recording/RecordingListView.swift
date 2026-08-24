@@ -3,38 +3,19 @@ import SwiftUI
 struct RecordingListView: View {
     @Environment(I18n.self) var i18n
     @State private var urls: [URL] = []
-    @State private var hoveredURL: URL?
     @State private var pendingDelete: URL?
 
     var body: some View {
         VStack(spacing: 0) {
-            PanelHeaderView(
-                icon: "recordingtape",
-                title: i18n.t(.recordings),
-                count: urls.count,
-                countLabel: i18n.tr(.workspaceCount, args: urls.count)
-            )
+            headerSection
             Divider()
             if urls.isEmpty {
-                PanelEmptyView(
-                    icon: "recordingtape",
-                    title: i18n.t(.noRecordings),
-                    hint: i18n.t(.noRecordingsHint)
-                )
+                emptyStateView
             } else {
-                ScrollView {
-                    LazyVStack(spacing: AppStyle.spacingS) {
-                        ForEach(urls, id: \.self) { url in
-                            recordingCard(url)
-                        }
-                    }
-                    .padding(AppStyle.spacingL)
-                }
-                .background(Color(nsColor: .windowBackgroundColor))
+                recordingList
             }
         }
         .frame(minWidth: 560, minHeight: 380)
-        .background(Color(nsColor: .windowBackgroundColor))
         .onAppear { reload() }
         .alert(i18n.t(.delete), isPresented: Binding(
             get: { pendingDelete != nil },
@@ -52,37 +33,82 @@ struct RecordingListView: View {
         }
     }
 
-    // MARK: - Card
+    // MARK: - Header — same plain style as workspace
 
-    private func recordingCard(_ url: URL) -> some View {
-        let isHovered = hoveredURL == url
-        return HStack(spacing: AppStyle.spacingL) {
-            Image(systemName: "play.circle.fill")
-                .font(.system(size: AppStyle.fontLarge))
+    private var headerSection: some View {
+        HStack {
+            Image(systemName: "recordingtape")
+                .font(.title2)
                 .foregroundStyle(.blue)
-                .frame(width: AppStyle.buttonLarge, height: AppStyle.buttonLarge)
+            Text(i18n.t(.recordings))
+                .font(.headline)
+            Spacer()
+            Text(i18n.tr(.workspaceCount, args: urls.count))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+    }
+
+    private var emptyStateView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "recordingtape")
+                .font(.system(size: AppStyle.fontDisplay))
+                .foregroundStyle(.tertiary)
+            Text(i18n.t(.noRecordings))
+                .font(.title3)
+                .foregroundStyle(.secondary)
+            Text(i18n.t(.noRecordingsHint))
+                .font(.body)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: AppStyle.panelWidthSmall)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - List — plain rows (not cards), native icon buttons
+
+    private var recordingList: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(urls, id: \.self) { url in
+                    recordingRow(url)
+                    if url != urls.last {
+                        Divider()
+                            .padding(.leading, AppStyle.spacingSidebar)
+                    }
+                }
+            }
+        }
+    }
+
+    private func recordingRow(_ url: URL) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "recordingtape")
+                .foregroundStyle(.blue)
+                .frame(width: AppStyle.buttonMedium)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(playbackDisplayName(for: url))
-                    .font(.system(size: AppStyle.fontRegular, weight: .medium))
+                    .font(.system(size: 13, weight: .medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text(fileInfo(url))
-                    .font(.system(size: AppStyle.fontCaption, design: .monospaced))
+                    .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
 
-            Spacer(minLength: AppStyle.spacingM)
+            Spacer(minLength: 12)
 
-            HStack(spacing: AppStyle.spacingS) {
+            HStack(spacing: AppStyle.spacingXS) {
                 Button { openPlayback(url) } label: {
                     Image(systemName: "play.fill")
                         .font(.system(size: AppStyle.fontSmall, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(width: AppStyle.buttonMedium, height: AppStyle.buttonMedium)
                         .background(Circle().fill(Color.accentColor))
-                        .shadow(color: Color.accentColor.opacity(0.25), radius: isHovered ? 6 : 0, y: 2)
                 }
                 .buttonStyle(.plain)
                 .help(i18n.t(.play))
@@ -109,25 +135,10 @@ struct RecordingListView: View {
                 .buttonStyle(.plain)
                 .help(i18n.t(.delete))
             }
-            .opacity(isHovered ? 1 : 0.92)
         }
         .padding(.horizontal, AppStyle.spacingL)
         .padding(.vertical, AppStyle.spacingML)
-        .background(
-            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-                .shadow(color: Color.black.opacity(isHovered ? 0.06 : 0.03), radius: isHovered ? 8 : 4, y: 2)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
-                .strokeBorder(Color.primary.opacity(isHovered ? 0.08 : 0.04), lineWidth: 1)
-        )
         .contentShape(Rectangle())
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.12)) {
-                hoveredURL = hovering ? url : nil
-            }
-        }
         .onTapGesture(count: 2) { openPlayback(url) }
         .contextMenu {
             Button { openPlayback(url) } label: { Label(i18n.t(.play), systemImage: "play.circle") }
@@ -137,7 +148,7 @@ struct RecordingListView: View {
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Helpers — keep human-readable naming fix
 
     private func fileInfo(_ url: URL) -> String {
         let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
@@ -161,13 +172,36 @@ struct RecordingListView: View {
     }
 
     private func playbackDisplayName(for url: URL) -> String {
-        let name = url.deletingPathExtension().lastPathComponent
-        let parts = name.split(separator: "_")
-        guard parts.count >= 4 else { return name }
-        let host = String(parts[0])
-        let ts = parts.suffix(1).first.map(String.init) ?? ""
-        let date = ts.replacingOccurrences(of: "-", with: ":").prefix(16)
-        return "\(host) · \(date)"
+        let raw = url.deletingPathExtension().lastPathComponent
+        if let range = raw.range(of: "_\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}", options: .regularExpression) {
+            return String(raw[..<range.lowerBound])
+        }
+        if let range = raw.range(of: "_\\d{4}-\\d{2}-\\d{2}T", options: .regularExpression) {
+            let prefix = String(raw[..<range.lowerBound])
+            if let first = prefix.firstIndex(of: "_") {
+                return String(prefix[..<first])
+            }
+            return prefix
+        }
+        if let idx = raw.firstIndex(of: "_") {
+            return String(raw[..<idx])
+        }
+        return raw
+    }
+
+    private static func formattedLegacyDate(_ ts: String) -> String? {
+        guard let tIdx = ts.firstIndex(of: "T") else { return nil }
+        let datePart = String(ts[..<tIdx])
+        var timePart = String(ts[ts.index(after: tIdx)...])
+        let hasZ = timePart.hasSuffix("Z")
+        if hasZ { timePart = String(timePart.dropLast()) }
+        timePart = timePart.replacingOccurrences(of: "-", with: ":")
+        let iso = "\(datePart)T\(timePart)\(hasZ ? "Z" : "")"
+        if let date = ISO8601DateFormatter().date(from: iso) {
+            let df = DateFormatter(); df.dateStyle = .medium; df.timeStyle = .short
+            return df.string(from: date)
+        }
+        return nil
     }
 
     private func openPlayback(_ url: URL) {

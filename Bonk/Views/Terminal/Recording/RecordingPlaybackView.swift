@@ -2,6 +2,8 @@ import AppKit
 import SwiftTerm
 import SwiftUI
 
+struct PlaybackEvent: Sendable { let time: Double; let data: String }
+
 struct RecordingPlaybackView: View {
     @Environment(I18n.self) var i18n
     let url: URL
@@ -13,21 +15,21 @@ struct RecordingPlaybackView: View {
     @State private var headerTitle: String = ""
     @State private var hasStarted = false
     @State private var isHoveringControls = false
+    @State private var cachedEvents: [PlaybackEvent]?
+    @State private var totalDuration: Double = 1
+    @State private var nextIndex = 0
+    @State private var lastEventTime: Double = 0
 
     var body: some View {
         VStack(spacing: 0) {
             // ── Top bar ──
             HStack(spacing: AppStyle.spacingL) {
-                // Left: icon + title
-                HStack(spacing: AppStyle.spacingML) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
-                            .fill(Color.blue.opacity(0.12))
-                            .frame(width: AppStyle.buttonLarge, height: AppStyle.buttonLarge)
-                        Image(systemName: "play.circle.fill")
-                            .font(.system(size: AppStyle.fontLarge))
-                            .foregroundStyle(.blue)
-                    }
+                // Left: icon + title — plain hero icon (no rounded-rect background, matches PanelHeaderView)
+                HStack(spacing: AppStyle.spacingM) {
+                    Image(systemName: "recordingtape")
+                        .font(.system(size: AppStyle.fontMedium, weight: .semibold))
+                        .foregroundStyle(.blue)
+                        .frame(width: AppStyle.iconHero, height: AppStyle.iconHero)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(playbackDisplayName)
                             .font(.system(size: AppStyle.fontRegular, weight: .semibold))
@@ -85,14 +87,29 @@ struct RecordingPlaybackView: View {
                         .overlay(Capsule().strokeBorder(Color.primary.opacity(AppStyle.opacityStroke), lineWidth: 1))
                 )
 
-                // Play / Pause — prominent capsule
+                // Play / Pause — supports pause/resume (not just replay)
                 Button {
-                    if isPlaying { task?.cancel(); isPlaying = false } else { play() }
+                    if isPlaying {
+                        task?.cancel()
+                        isPlaying = false
+                    } else {
+                        if progress >= 1 {
+                            // finished -> replay from start
+                            nextIndex = 0
+                            lastEventTime = 0
+                            progress = 0
+                            terminalView?.terminal.resetToInitialState()
+                            terminalView?.clearScrollback()
+                        }
+                        play()
+                    }
                 } label: {
+                    let isFinished = progress >= 1
+                    let isResume = !isPlaying && hasStarted && !isFinished && nextIndex > 0
                     HStack(spacing: AppStyle.spacingXS) {
-                        Image(systemName: isPlaying ? "pause.fill" : (hasStarted ? "arrow.counterclockwise" : "play.fill"))
+                        Image(systemName: isPlaying ? "pause.fill" : (isFinished ? "arrow.counterclockwise" : "play.fill"))
                             .font(.system(size: AppStyle.fontSmall, weight: .semibold))
-                        Text(isPlaying ? i18n.t(.pause) : (hasStarted ? i18n.t(.replay) : i18n.t(.play)))
+                        Text(isPlaying ? i18n.t(.pause) : (isFinished ? i18n.t(.replay) : i18n.t(.play)))
                             .font(.system(size: AppStyle.fontSmall, weight: .semibold))
                     }
                     .foregroundStyle(.white)
@@ -165,13 +182,36 @@ struct RecordingPlaybackView: View {
     }
 
     private var playbackDisplayName: String {
-        let name = url.deletingPathExtension().lastPathComponent
-        let parts = name.split(separator: "_")
-        guard parts.count >= 4 else { return name }
-        let host = String(parts[0])
-        let timestamp = parts.suffix(1).first.map(String.init) ?? ""
-        let date = timestamp.replacingOccurrences(of: "-", with: ":").prefix(16)
-        return "\(host) · \(date)"
+        let raw = url.deletingPathExtension().lastPathComponent
+        if let range = raw.range(of: "_\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}", options: .regularExpression) {
+            return String(raw[..<range.lowerBound])
+        }
+        if let range = raw.range(of: "_\\d{4}-\\d{2}-\\d{2}T", options: .regularExpression) {
+            let prefix = String(raw[..<range.lowerBound])
+            if let first = prefix.firstIndex(of: "_") {
+                return String(prefix[..<first])
+            }
+            return prefix
+        }
+        if let idx = raw.firstIndex(of: "_") {
+            return String(raw[..<idx])
+        }
+        return raw
+    }
+
+    private static func formattedLegacyDate(_ ts: String) -> String? {
+        guard let tIdx = ts.firstIndex(of: "T") else { return nil }
+        let datePart = String(ts[..<tIdx])
+        var timePart = String(ts[ts.index(after: tIdx)...])
+        let hasZ = timePart.hasSuffix("Z")
+        if hasZ { timePart = String(timePart.dropLast()) }
+        timePart = timePart.replacingOccurrences(of: "-", with: ":")
+        let iso = "\(datePart)T\(timePart)\(hasZ ? "Z" : "")"
+        if let date = ISO8601DateFormatter().date(from: iso) {
+            let df = DateFormatter(); df.dateStyle = .medium; df.timeStyle = .short
+            return df.string(from: date)
+        }
+        return nil
     }
 
     private func parseHeader() {
@@ -192,43 +232,63 @@ struct RecordingPlaybackView: View {
         task?.cancel()
         hasStarted = true
         isPlaying = true
-        progress = 0
-        targetTerminal.terminal.resetToInitialState()
-        targetTerminal.clearScrollback()
+
+        let shouldReset = nextIndex == 0 && progress == 0
+        if shouldReset {
+            progress = 0
+            targetTerminal.terminal.resetToInitialState()
+            targetTerminal.clearScrollback()
+        }
 
         task = Task {
-            struct PlaybackEvent { let time: Double; let data: String }
             let captureURL = url
-            let parsed: (events: [PlaybackEvent], total: Double)? = await Task
-                .detached(priority: .userInitiated) { () -> (events: [PlaybackEvent], total: Double)? in
-                    guard let content = try? String(contentsOf: captureURL, encoding: .utf8) else { return nil }
-                    let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
-                    guard lines.count > 1 else { return nil }
-                    var events: [PlaybackEvent] = []
-                    events.reserveCapacity(lines.count - 1)
-                    for line in lines.dropFirst() {
-                        if line.isEmpty { continue }
-                        guard let data = line.data(using: .utf8),
-                              let array = try? JSONSerialization.jsonObject(with: data) as? [Any],
-                              array.count == 3,
-                              let timestamp = array[0] as? Double,
-                              let kind = array[1] as? String, kind == "o",
-                              let payload = array[2] as? String
-                        else { continue }
-                        events.append(PlaybackEvent(time: timestamp, data: payload))
-                    }
-                    let total = events.last?.time ?? 1
-                    return (events, total)
-                }.value
-            guard let parsed else {
-                await MainActor.run { isPlaying = false }
-                return
+            // Parse once and cache
+            let events: [PlaybackEvent]
+            let total: Double
+            let cached = await MainActor.run { self.cachedEvents }
+            if let cached, !cached.isEmpty {
+                events = cached
+                total = await MainActor.run { self.totalDuration }
+            } else {
+                let parsed: (events: [PlaybackEvent], total: Double)? = await Task
+                    .detached(priority: .userInitiated) { () -> (events: [PlaybackEvent], total: Double)? in
+                        guard let content = try? String(contentsOf: captureURL, encoding: .utf8) else { return nil }
+                        let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
+                        guard lines.count > 1 else { return nil }
+                        var evs: [PlaybackEvent] = []
+                        evs.reserveCapacity(lines.count - 1)
+                        for line in lines.dropFirst() {
+                            if line.isEmpty { continue }
+                            guard let data = line.data(using: .utf8),
+                                  let array = try? JSONSerialization.jsonObject(with: data) as? [Any],
+                                  array.count == 3,
+                                  let timestamp = array[0] as? Double,
+                                  let kind = array[1] as? String, kind == "o",
+                                  let payload = array[2] as? String
+                            else { continue }
+                            evs.append(PlaybackEvent(time: timestamp, data: payload))
+                        }
+                        let t = evs.last?.time ?? 1
+                        return (evs, t)
+                    }.value
+                guard let parsed else {
+                    await MainActor.run { isPlaying = false }
+                    return
+                }
+                events = parsed.events
+                total = parsed.total
+                await MainActor.run {
+                    self.cachedEvents = events
+                    self.totalDuration = total
+                }
             }
-            let events = parsed.events
-            let total = parsed.total
-            var lastTime: Double = 0
-            for event in events {
+            var lastTime: Double = await MainActor.run { self.lastEventTime }
+            var idx: Int = await MainActor.run { self.nextIndex }
+            // Clamp in case of reload
+            if idx >= events.count { idx = 0; lastTime = 0 }
+            for i in idx..<events.count {
                 if Task.isCancelled { break }
+                let event = events[i]
                 let currentSpeed = await MainActor.run { speed }
                 let denom = max(currentSpeed, 0.05)
                 let delta = (event.time - lastTime) / denom
@@ -238,12 +298,18 @@ struct RecordingPlaybackView: View {
                 await MainActor.run {
                     targetTerminal.feed(text: event.data)
                     progress = total > 0 ? min(1, event.time / total) : 1
+                    nextIndex = i + 1
+                    lastEventTime = event.time
                 }
                 lastTime = event.time
             }
+            let wasCancelled = Task.isCancelled
             await MainActor.run {
                 isPlaying = false
-                progress = 1
+                if !wasCancelled {
+                    progress = 1
+                    // keep nextIndex at end so next play triggers replay
+                }
             }
         }
     }
@@ -260,6 +326,12 @@ private struct PlaybackTerminalBridge: NSViewRepresentable {
             frame: NSRect(x: 0, y: 0, width: 740, height: 420),
             font: font
         )
+        // Apply current app theme so playback is white in light mode (not black default)
+        terminal.configureNativeColors()
+        let scheme = TerminalThemeManager.shared.resolve()
+        applyColorScheme(to: terminal, scheme: scheme)
+        // Keep in sync when user switches theme while playback window is open
+        context.coordinator.observe(terminal: terminal)
         let scroll = NSScrollView()
         scroll.documentView = terminal
         scroll.hasVerticalScroller = true
@@ -267,12 +339,43 @@ private struct PlaybackTerminalBridge: NSViewRepresentable {
         scroll.autohidesScrollers = false
         scroll.borderType = .noBorder
         scroll.drawsBackground = false
+        // Inset content so text never kisses the rounded border (was 貼邊)
+        scroll.contentInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+        scroll.automaticallyAdjustsContentInsets = false
+        // Match scrollView background to terminal so no dark gutter shows
+        scroll.backgroundColor = scheme.background.nsColor
         DispatchQueue.main.async { terminalView = terminal }
         return scroll
     }
 
-    func updateNSView(_ nsView: NSScrollView, context: Context) {}
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        guard let terminal = nsView.documentView as? SwiftTerm.TerminalView else { return }
+        let scheme = TerminalThemeManager.shared.resolve()
+        // Re-apply on every SwiftUI update — cheap and keeps light/dark in sync
+        applyColorScheme(to: terminal, scheme: scheme)
+        nsView.backgroundColor = scheme.background.nsColor
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
-    final class Coordinator: NSObject {}
+    final class Coordinator: NSObject {
+        private var observer: NSObjectProtocol?
+        private weak var terminal: SwiftTerm.TerminalView?
+        func observe(terminal: SwiftTerm.TerminalView) {
+            self.terminal = terminal
+            observer = NotificationCenter.default.addObserver(forName: .terminalThemeDidChange, object: nil, queue: .main) { [weak self] note in
+                guard let self, let tv = self.terminal else { return }
+                if let scheme = note.object as? TerminalColorScheme {
+                    applyColorScheme(to: tv, scheme: scheme)
+                    (tv.enclosingScrollView as? NSScrollView)?.backgroundColor = scheme.background.nsColor
+                } else {
+                    let scheme = TerminalThemeManager.shared.resolve()
+                    applyColorScheme(to: tv, scheme: scheme)
+                    (tv.enclosingScrollView as? NSScrollView)?.backgroundColor = scheme.background.nsColor
+                }
+            }
+        }
+        deinit {
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+        }
+    }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftTerm
 import os.log
 
 /// Asciicast v2 recorder — per-pane, file-per-session.
@@ -54,12 +55,22 @@ actor SessionRecordingService {
 
     func activeRecording(for paneID: UUID) -> Recording? { active[paneID]?.recording }
 
-    func start(host: String, tabID: UUID, paneID: UUID, cols: Int = 80, rows: Int = 24) throws -> Recording {
+    func start(host: String, tabID: UUID, paneID: UUID, cols: Int = 80, rows: Int = 24) async throws -> Recording {
         if active[paneID] != nil { throw RecordingError.alreadyRecording }
         let safeHost = host.replacingOccurrences(of: "[^a-zA-Z0-9-_]", with: "_", options: .regularExpression)
-        let ts = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-        let name = "\(safeHost)_\(tabID.uuidString.prefix(8))_\(paneID.uuidString.prefix(8))_\(ts).cast"
-        let url = recordingsDir.appendingPathComponent(name)
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let ts = df.string(from: Date())
+        var name = "\(safeHost)_\(ts).cast"
+        var url = recordingsDir.appendingPathComponent(name)
+        // Ensure uniqueness when two recordings start in the same second
+        var counter = 1
+        while FileManager.default.fileExists(atPath: url.path) {
+            name = "\(safeHost)_\(ts)_\(counter).cast"
+            url = recordingsDir.appendingPathComponent(name)
+            counter += 1
+        }
         FileManager.default.createFile(atPath: url.path, contents: nil)
         guard let fh = try? FileHandle(forWritingTo: url) else { throw RecordingError.cannotCreateFile }
         let header: [String: Any] = [
@@ -74,10 +85,43 @@ actor SessionRecordingService {
            let line = String(data: data, encoding: .utf8) {
             try? fh.write(contentsOf: (line + "\n").data(using: .utf8)!)
         }
-        let rec = Recording(id: UUID(), url: url, host: host, tabID: tabID, paneID: paneID, startDate: Date())
-        active[paneID] = ActiveRecording(recording: rec, startTime: CFAbsoluteTimeGetCurrent(), fileHandle: fh)
+        let startTime = CFAbsoluteTimeGetCurrent()
+        var activeRec = ActiveRecording(recording: Recording(id: UUID(), url: url, host: host, tabID: tabID, paneID: paneID, startDate: Date()), startTime: startTime, fileHandle: fh)
+        // Capture initial prompt line only — previous 4000-char tail caused huge blank gap + duplicated prompts
+        let snapshot: String? = await MainActor.run {
+            guard let cached = TerminalViewCache.shared.retrieve(paneID) else { return nil }
+            guard let t = cached.view.terminal, t.cols > 0, t.rows > 0 else { return nil }
+            // Prefer the current cursor line (the prompt) — trimRight false keeps "[root@...]# " spacing
+            let (x, y) = t.getCursorLocation()
+            if y >= 0, y < t.rows, let line = t.getLine(row: y) {
+                let str = line.translateToString(trimRight: false)
+                let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    // Return the prompt line as-is (no extra blank lines)
+                    return str
+                }
+            }
+            // Fallback: last non-empty line of buffer
+            let data = t.getBufferAsData()
+            guard let str = String(data: data, encoding: .utf8) else { return nil }
+            let lines = str.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            for line in lines.reversed() {
+                if !line.trimmingCharacters(in: .whitespaces).isEmpty {
+                    return line
+                }
+            }
+            return nil
+        }
+        if let snap = snapshot, !snap.isEmpty {
+            let line = Self.jsonLine(time: 0.0, kind: "o", data: snap)
+            let data = Data(line.utf8)
+            activeRec.bytesWritten += data.count
+            // Write synchronously before any future recordOutput (ioQueue is serial)
+            try? fh.write(contentsOf: data)
+        }
+        active[paneID] = activeRec
         os_log("[REC] start %@ pane %@", log: OSLog(subsystem: "com.bonk", category: "recording"), type: .info, url.lastPathComponent, paneID.uuidString)
-        return rec
+        return activeRec.recording
     }
 
     func stop(paneID: UUID) {
