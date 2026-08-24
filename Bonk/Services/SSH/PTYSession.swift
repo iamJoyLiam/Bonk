@@ -87,6 +87,17 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// Zmodem handler for file transfer support.
     private(set) var zmodemHandler: ZmodemHandler?
 
+    /// Shell integration tracker (OSC 133)
+    let shellIntegration = ShellIntegration()
+
+    /// Command blocks (Warp-style) — grouped per PTY session.
+    private let commandBlocks = OSAllocatedUnfairLock<[CommandBlock]>(uncheckedState: [])
+    private let activeCommandBlock = NIOLockedValueBox<CommandBlock?>(nil)
+    private static let maxCommandBlocks = 120
+    private static let maxBlockOutputBytes = 256 * 1024
+    func allCommandBlocks() -> [CommandBlock] { commandBlocks.withLock { $0 } }
+    func clearCommandBlocks() { commandBlocks.withLock { $0.removeAll() } }
+
     /// One-shot output observers for command-response patterns (e.g., getCWD).
     private typealias ObserverClosure = @Sendable (String) -> Void
     private let outputObservers = OSAllocatedUnfairLock<[UUID: ObserverClosure]>(uncheckedState: [:])
@@ -186,6 +197,48 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             handler.processRawData(Data(text.utf8))
         }
 
+        // Shell integration OSC 133 — capture Warp-style blocks
+        let shellEvents = shellIntegration.process(text: text, lineCount: outputBuffer.withLock { $0.count })
+        for ev in shellEvents {
+            switch ev {
+            case .commandStart(let range):
+                let block = CommandBlock(
+                    id: range.id,
+                    command: range.command,
+                    output: "",
+                    startTime: range.startTime,
+                    endTime: nil,
+                    exitCode: nil,
+                    startChunkIndex: range.startLine,
+                    endChunkIndex: nil
+                )
+                activeCommandBlock.withLockedValue { $0 = block }
+            case .commandEnd(let range, let exitCode):
+                if var active = activeCommandBlock.withLockedValue({ $0 }), active.id == range.id {
+                    // Output slice will be filled after buffering this chunk; defer to after buffer append.
+                    active.exitCode = exitCode
+                    active.endTime = Date()
+                    active.endChunkIndex = outputBuffer.withLock { $0.count } + 1 // include current chunk after it is appended
+                    // Store pending; will finalize with output after buffer write
+                    activeCommandBlock.withLockedValue { $0 = active }
+                } else {
+                    // No matching start — create minimal block for completion
+                    let block = CommandBlock(
+                        id: range.id,
+                        command: range.command,
+                        output: "",
+                        startTime: range.startTime,
+                        endTime: Date(),
+                        exitCode: exitCode,
+                        startChunkIndex: range.startLine,
+                        endChunkIndex: range.endLine
+                    )
+                    activeCommandBlock.withLockedValue { $0 = block }
+                }
+            default: break
+            }
+        }
+
         // Trigger evaluation (throttled, MainActor)
         let triggerText = text
         let triggerSession = self
@@ -220,6 +273,28 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                     buf.removeFirst()
                 }
             }
+        }
+        // Finalize command block after buffer append so output slice includes this chunk
+        if let pending = activeCommandBlock.withLockedValue({ $0 }), pending.endTime != nil {
+            let snapshot = outputBuffer.withLock { $0 }
+            let s = min(max(pending.startChunkIndex, 0), max(0, snapshot.count - 1))
+            let e = min(pending.endChunkIndex ?? snapshot.count, snapshot.count)
+            var output = ""
+            if s < e { output = snapshot[s..<e].joined() }
+            // Strip OSC sequences and trim
+            output = output.replacingOccurrences(of: "\u{1B}]133;[^\u{07}]*\u{07}", with: "", options: .regularExpression)
+            if output.utf8.count > Self.maxBlockOutputBytes {
+                output = String(output.prefix(Self.maxBlockOutputBytes)) + "\n… truncated"
+            }
+            var mutable = pending
+            mutable.output = output.trimmingCharacters(in: .whitespacesAndNewlines)
+            let finishedBlock = mutable
+            commandBlocks.withLock { blocks in
+                blocks.append(finishedBlock)
+                if blocks.count > Self.maxCommandBlocks { blocks.removeFirst(blocks.count - Self.maxCommandBlocks) }
+            }
+            NotificationCenter.default.post(name: .commandBlockDidAdd, object: nil, userInfo: ["block": finishedBlock])
+            activeCommandBlock.withLockedValue { $0 = nil }
         }
         // Colorize for display only.
         let displayText = LogColorizer.colorize(text)
@@ -340,6 +415,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
     /// Write keyboard input to the remote shell's stdin.
     public func sendInput(_ bytes: ArraySlice<UInt8>) async throws {
+        if let str = String(bytes: bytes, encoding: .utf8) { shellIntegration.appendInput(str) }
         inputTapBox.withLockedValue { $0 }?(bytes)
         if let pid = recordingPaneIDBox.withLockedValue({ $0 }) {
             let copy = Array(bytes)

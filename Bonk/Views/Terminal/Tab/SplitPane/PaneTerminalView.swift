@@ -24,6 +24,7 @@ struct PaneTerminalView: View {
     @State var dropPosition: DropPosition = .right
     @State var terminalNSView: NSView?
     @State var isRecording = false
+    @State private var showBlocks = false
 
     // Upload state
     let uploadManager = UploadManager.shared
@@ -163,6 +164,42 @@ struct PaneTerminalView: View {
                 onDragStateChange: handleDragStateChange
             )
             .allowsHitTesting(true)
+
+            // Command blocks drawer (Warp-style)
+            if showBlocks {
+                HStack { Spacer() 
+                    CommandBlocksPanel(paneID: paneState.id, ptySession: paneState.ptySession, isPresented: $showBlocks)
+                        .frame(maxHeight: .infinity)
+                        .padding(8)
+                        .shadow(radius: 8)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+                .background(Color.black.opacity(0.15).allowsHitTesting(true).onTapGesture { withAnimation { showBlocks = false } })
+            }
+
+            // Floating blocks button for single-pane (title bar hidden)
+            if tab.layout.root.paneCount == 1 {
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button { withAnimation { showBlocks.toggle() } } label: {
+                            let count = paneState.ptySession?.allCommandBlocks().count ?? 0
+                            HStack(spacing: 3) {
+                                Image(systemName: "rectangle.grid.1x2").font(.caption)
+                                if count > 0 { Text("\(count)").font(.caption2) }
+                            }
+                            .padding(.horizontal, 6).padding(.vertical, 4)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .foregroundStyle(showBlocks ? Color.blue : Color.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Command Blocks")
+                        .padding(.top, 6).padding(.trailing, 8)
+                    }
+                    Spacer()
+                }
+                .allowsHitTesting(true)
+            }
         }
         .onAppear {
             // Get terminal view reference for event forwarding
@@ -221,6 +258,18 @@ struct PaneTerminalView: View {
                 .buttonStyle(.plain)
                 .help("Unsplit (move to new tab)")
             }
+
+            // Command blocks toggle (Warp-style)
+            Button { withAnimation { showBlocks.toggle() } } label: {
+                let count = paneState.ptySession?.allCommandBlocks().count ?? 0
+                HStack(spacing: 3) {
+                    Image(systemName: "rectangle.grid.1x2").font(.caption)
+                    if count > 0 { Text("\(count)").font(.caption2) }
+                }
+                .foregroundStyle(showBlocks ? Color.blue : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Command Blocks")
 
             // Close pane button
             Button {
