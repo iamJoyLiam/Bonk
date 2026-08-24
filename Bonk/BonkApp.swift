@@ -111,6 +111,7 @@ struct BonkApp: App {
                 ViewMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
                 ConnectionMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
                 AIMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
+                TeamMenuCommands(i18n: i18n)
             }
         #endif
     }
@@ -307,6 +308,20 @@ struct BonkApp: App {
                     }
                 }
                 .keyboardShortcut(aiAssistantShortcut.key, modifiers: aiAssistantShortcut.modifiers)
+            }
+        }
+    }
+
+    private struct TeamMenuCommands: Commands {
+        let i18n: I18n
+        var body: some Commands {
+            CommandMenu("Team") {
+                Button("Host Session…") {
+                    Task { @MainActor in BonkAppDelegate.shared?.coordinator?.showTeamHost = true }
+                }
+                Button("Join Session…") {
+                    Task { @MainActor in BonkAppDelegate.shared?.coordinator?.showTeamGuest = true }
+                }
             }
         }
     }

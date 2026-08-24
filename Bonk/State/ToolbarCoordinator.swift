@@ -26,6 +26,8 @@ final class ToolbarCoordinator {
     var showRecordings = false
     var showJumpHosts = false
     var showTriggers = false
+    var showTeamHost = false
+    var showTeamGuest = false
 
     init(workspace: WorkspaceManager, sessionManager: SessionManager, i18n: I18n) {
         self.workspace = workspace
