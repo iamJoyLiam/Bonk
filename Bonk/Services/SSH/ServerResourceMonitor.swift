@@ -23,13 +23,15 @@ final class ServerResourceMonitor {
     static let shared = ServerResourceMonitor()
 
     private(set) var snapshot: ServerResourceSnapshot?
+    /// All connected hosts' latest info, keyed by tabID. Enables sidebar "all hosts" view.
+    private(set) var allSnapshots: [UUID: ServerInfo] = [:]
 
     private var pollTask: Task<Void, Never>?
     private weak var sessionManager: SessionManager?
     private var lastPollKey: (UUID?, Bool)?
     private var lastFetchDate = Date.distantPast
-    private var lastNetworkSample: (rx: UInt64, tx: UInt64, at: Date)?
-    private var lastDiskSample: (read: UInt64, write: UInt64, at: Date)?
+    private var lastNetworkSamples: [UUID: (rx: UInt64, tx: UInt64, at: Date)] = [:]
+    private var lastDiskSamples: [UUID: (read: UInt64, write: UInt64, at: Date)] = [:]
 
     private init() {}
 
@@ -50,8 +52,11 @@ final class ServerResourceMonitor {
         pollTask = nil
         sessionManager = nil
         snapshot = nil
+        allSnapshots = [:]
         lastPollKey = nil
         lastFetchDate = .distantPast
+        lastNetworkSamples = [:]
+        lastDiskSamples = [:]
     }
 
     /// Force an immediate refresh (toolbar right-click).
@@ -64,75 +69,131 @@ final class ServerResourceMonitor {
 
     private func tickIfNeeded() async {
         guard let manager = sessionManager else { return }
-        let tab = manager.activeTab
-        let key: (UUID?, Bool) = (tab?.id, tab?.session?.isConnected ?? false)
-
-        // Refresh immediately on tab/connection change, otherwise at most
-        // once every 10 seconds.
+        let tabs = manager.tabs
+        let activeID = manager.activeTabID
+        let isActiveConnected = manager.activeTab?.session?.isConnected ?? false
+        let key: (UUID?, Bool) = (activeID, isActiveConnected)
         let keyChanged: Bool = if let lastPollKey { key != lastPollKey } else { true }
-        guard keyChanged || Date().timeIntervalSince(lastFetchDate) >= 10 else {
-            return
-        }
+        guard keyChanged || Date().timeIntervalSince(lastFetchDate) >= 10 else { return }
         lastPollKey = key
-
-        // New tab/connection → old counters are meaningless; drop them so the
-        // first sample never computes a rate across two different hosts.
         if keyChanged {
-            lastNetworkSample = nil
-            lastDiskSample = nil
+            // New active tab → drop its old counters so first sample never crosses hosts
+            if let aid = activeID {
+                lastNetworkSamples[aid] = nil
+                lastDiskSamples[aid] = nil
+            }
         }
 
-        guard let tab,
-              let session = tab.session,
-              session.isConnected,
-              let service = session.sshService
-        else {
+        // Build list of connected tabs that have a service
+        let candidates: [(tab: TerminalTab, service: SSHNetworkService)] = tabs.compactMap { tab in
+            guard let session = tab.session, session.isConnected, let svc = session.sshService else { return nil }
+            return (tab, svc)
+        }
+        if candidates.isEmpty {
             snapshot = nil
+            // Prune allSnapshots for disconnected tabs
+            allSnapshots = [:]
+            lastFetchDate = Date()
             return
         }
 
         let startedFetch = Date()
-        if let info = await ServerInfoFetcher.fetch(using: service) {
-            let withRates = applyingRates(to: info)
-            session.serverInfo = withRates
-            snapshot = ServerResourceSnapshot(tabID: tab.id, info: withRates)
+        var results: [(UUID, ServerInfo)] = []
+        await withTaskGroup(of: (UUID, ServerInfo)?.self) { group in
+            for (tab, service) in candidates {
+                group.addTask {
+                    if let info = await ServerInfoFetcher.fetch(using: service) {
+                        return (tab.id, info)
+                    }
+                    return nil
+                }
+            }
+            for await res in group {
+                if let pair = res { results.append(pair) }
+            }
         }
-        // Record the attempt time even on failure, otherwise a dead
-        // connection retries the exec channel every loop tick (1s storm).
+
+        for (tabID, info) in results {
+            let withRates = applyingRates(to: info, for: tabID)
+            // Update per-tab session.serverInfo
+            if let tab = tabs.first(where: { $0.id == tabID }) {
+                tab.session?.serverInfo = withRates
+            }
+            allSnapshots[tabID] = withRates
+            if tabID == activeID {
+                snapshot = ServerResourceSnapshot(tabID: tabID, info: withRates)
+            }
+        }
+        // Prune snapshots for tabs that are no longer connected
+        let liveIDs = Set(candidates.map { $0.tab.id })
+        for key in allSnapshots.keys where !liveIDs.contains(key) {
+            allSnapshots.removeValue(forKey: key)
+            lastNetworkSamples.removeValue(forKey: key)
+            lastDiskSamples.removeValue(forKey: key)
+        }
+        // If active tab is disconnected, clear its snapshot
+        if let aid = activeID, !liveIDs.contains(aid) {
+            snapshot = nil
+        }
         lastFetchDate = startedFetch
     }
 
-    /// Turn cumulative interface/disk counters into per-second rates.
-    private func applyingRates(to info: ServerInfo) -> ServerInfo {
+    /// Per-tab rates
+    private func applyingRates(to info: ServerInfo, for tabID: UUID) -> ServerInfo {
         var result = info
         let now = Date()
-
         if let rx = info.networkRXBytes, let tx = info.networkTXBytes {
-            if let last = lastNetworkSample {
+            if let last = lastNetworkSamples[tabID] {
                 let elapsed = now.timeIntervalSince(last.at)
                 if elapsed >= 1, rx >= last.rx, tx >= last.tx {
                     result.networkRXRateBps = Double(rx - last.rx) / elapsed
                     result.networkTXRateBps = Double(tx - last.tx) / elapsed
                 }
             }
-            lastNetworkSample = (rx, tx, now)
+            lastNetworkSamples[tabID] = (rx, tx, now)
         } else {
-            lastNetworkSample = nil
+            lastNetworkSamples[tabID] = nil
         }
-
         if let read = info.diskReadBytes, let write = info.diskWriteBytes {
-            if let last = lastDiskSample {
+            if let last = lastDiskSamples[tabID] {
                 let elapsed = now.timeIntervalSince(last.at)
                 if elapsed >= 1, read >= last.read, write >= last.write {
                     result.diskReadRateBps = Double(read - last.read) / elapsed
                     result.diskWriteRateBps = Double(write - last.write) / elapsed
                 }
             }
-            lastDiskSample = (read, write, now)
+            lastDiskSamples[tabID] = (read, write, now)
         } else {
-            lastDiskSample = nil
+            lastDiskSamples[tabID] = nil
         }
+        return result
+    }
 
+    // Legacy single-sample helper kept for tests that call applyingRates directly
+    private func applyingRates(to info: ServerInfo) -> ServerInfo {
+        // Fallback to active tab's samples if available, else global
+        if let aid = sessionManager?.activeTabID { return applyingRates(to: info, for: aid) }
+        var result = info
+        let now = Date()
+        // Use first sample if any
+        if let rx = info.networkRXBytes, let tx = info.networkTXBytes {
+            if let last = lastNetworkSamples.values.first {
+                let elapsed = now.timeIntervalSince(last.at)
+                if elapsed >= 1, rx >= last.rx, tx >= last.tx {
+                    result.networkRXRateBps = Double(rx - last.rx) / elapsed
+                    result.networkTXRateBps = Double(tx - last.tx) / elapsed
+                }
+            }
+        }
+        if let read = info.diskReadBytes, let write = info.diskWriteBytes {
+            if let last = lastDiskSamples.values.first {
+                let elapsed = now.timeIntervalSince(last.at)
+                if elapsed >= 1, read >= last.read, write >= last.write {
+                    result.diskReadRateBps = Double(read - last.read) / elapsed
+                    result.diskWriteRateBps = Double(write - last.write) / elapsed
+                }
+            }
+        }
         return result
     }
 }
