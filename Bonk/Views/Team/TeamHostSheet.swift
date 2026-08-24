@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct TeamHostSheet: View {
+    @Environment(I18n.self) private var i18n
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var relay: TeamRelay
     @State private var displayName = Host.current().localizedName ?? "Mac"
@@ -28,7 +29,7 @@ struct TeamHostSheet: View {
             Image(systemName: "person.2.fill")
                 .font(.title2)
                 .foregroundStyle(.blue)
-            Text("Host Team Session")
+            Text(i18n.t(.hostSession))
                 .font(.headline)
             Spacer()
         }
@@ -41,11 +42,11 @@ struct TeamHostSheet: View {
             Button {
                 relay.startHosting(displayName: displayName)
             } label: {
-                Label("Start Hosting", systemImage: "antenna.radiowaves.left.and.right")
+                Label(i18n.t(.startHosting), systemImage: "antenna.radiowaves.left.and.right")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            Text("Shares current terminal tab with LAN peers. Guest connects via Bonjour or IP:port + PIN.")
+            Text(i18n.t(.teamHostHint))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -68,15 +69,15 @@ struct TeamHostSheet: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Button(role: .destructive) { relay.stopHosting() } label: {
-                Label("Stop Hosting", systemImage: "stop.circle")
+                Label(i18n.t(.stopHosting), systemImage: "stop.circle")
             }
         }
     }
 
     private var peersSection: some View {
-        GroupBox("Connected") {
+        GroupBox(i18n.t(.connectedPeers)) {
             if relay.connectedPeers.isEmpty {
-                Text("No guests yet")
+                Text(i18n.t(.noGuests))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -89,10 +90,10 @@ struct TeamHostSheet: View {
                             if relay.driverPeerID == peer.id {
                                 Text("Driver").font(.caption2).foregroundStyle(.green)
                             } else {
-                                Button("Grant Control") { relay.grantControl(to: peer.id) }
+                                Button(i18n.t(.grantControl)) { relay.grantControl(to: peer.id) }
                                     .font(.caption)
                             }
-                            Button("Revoke") { relay.revokeControl(from: peer.id) }
+                            Button(i18n.t(.revokeControl)) { relay.revokeControl(from: peer.id) }
                                 .font(.caption)
                         }
                     }
@@ -103,7 +104,7 @@ struct TeamHostSheet: View {
 
     private var footerSection: some View {
         HStack {
-            Button("Done") { dismiss() }
+            Button(i18n.t(.ok)) { dismiss() }
                 .keyboardShortcut(.cancelAction)
             Spacer()
         }

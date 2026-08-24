@@ -28,6 +28,7 @@ extension NSToolbarItem.Identifier {
     static let workspaces = NSToolbarItem.Identifier("com.bonk.toolbar.workspaces")
     static let importSessions = NSToolbarItem.Identifier("com.bonk.toolbar.importSessions")
     static let triggers = NSToolbarItem.Identifier("com.bonk.toolbar.triggers")
+    static let team = NSToolbarItem.Identifier("com.bonk.toolbar.team")
     // legacy: kept for toolbar migration, now merged into importSessions
     static let sshImport = NSToolbarItem.Identifier("com.bonk.toolbar.sshImport")
     static let tabbyImport = NSToolbarItem.Identifier("com.bonk.toolbar.tabbyImport")
@@ -71,7 +72,7 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
          .serverCPU, .serverMemory, .serverDisk,
          .broadcast, .sftp, .workspaces, .recording, .jumpHosts,
          .serialPort, .portForward,         // 不常用：保留在自定义中
-         .keyGenerator, .importSessions, .triggers,
+         .keyGenerator, .importSessions, .triggers, .team,
          .ai, .snippets,
          .space, .flexibleSpace]
     }
@@ -193,6 +194,28 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
             ) { [weak self] in
                 self?.coordinator.showTriggers = true
             }
+
+        case .team:
+            let item = makeItem(
+                id: itemIdentifier,
+                label: coordinator.i18n.t(.team),
+                icon: "person.2.fill"
+            ) { [weak self] in
+                self?.coordinator.showTeamHost = true
+            }
+            // Menu form shows both Host/Join when used as menu
+            let menu = NSMenu()
+            let hostTitle = coordinator.i18n.t(.hostSession)
+            let joinTitle = coordinator.i18n.t(.joinSession)
+            let hostItem = NSMenuItem(title: hostTitle, action: #selector(TeamToolbarTarget.host), keyEquivalent: "")
+            let joinItem = NSMenuItem(title: joinTitle, action: #selector(TeamToolbarTarget.join), keyEquivalent: "")
+            let target = TeamToolbarTarget(coordinator: coordinator)
+            objc_setAssociatedObject(item, "teamTarget", target, .OBJC_ASSOCIATION_RETAIN)
+            hostItem.target = target; joinItem.target = target
+            menu.addItem(hostItem); menu.addItem(joinItem)
+            item.menuFormRepresentation = NSMenuItem(title: coordinator.i18n.t(.team), action: nil, keyEquivalent: "")
+            item.menuFormRepresentation?.submenu = menu
+            return item
 
         case .sftp:
             return makeItem(
@@ -474,4 +497,12 @@ private final class RecordingToolbarItemTarget: NSObject, NSToolbarItemValidatio
         }
         return true
     }
+}
+
+@MainActor
+private final class TeamToolbarTarget: NSObject {
+    private let coordinator: ToolbarCoordinator
+    init(coordinator: ToolbarCoordinator) { self.coordinator = coordinator; super.init() }
+    @objc func host() { coordinator.showTeamHost = true }
+    @objc func join() { coordinator.showTeamGuest = true }
 }

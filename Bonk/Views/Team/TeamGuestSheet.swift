@@ -2,6 +2,7 @@ import SwiftUI
 import Network
 
 struct TeamGuestSheet: View {
+    @Environment(I18n.self) private var i18n
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var discovery: TeamDiscoveryService
     @ObservedObject var relay: TeamRelay
@@ -24,9 +25,9 @@ struct TeamGuestSheet: View {
             pinSection
             if relay.isConnected {
                 Divider()
-                GroupBox("Live Terminal") {
+                GroupBox(i18n.t(.liveTerminal)) {
                     ScrollView {
-                        Text(guestOutput.isEmpty ? "Waiting for output…" : guestOutput)
+                        Text(guestOutput.isEmpty ? i18n.t(.waitingForOutput) : guestOutput)
                             .font(.system(.caption, design: .monospaced))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .textSelection(.enabled)
@@ -36,11 +37,11 @@ struct TeamGuestSheet: View {
                     .cornerRadius(6)
                 }
                 HStack(spacing: 8) {
-                    Button("Request Control") {
+                    Button(i18n.t(.requestControl)) {
                         relay.sendControlRequest(displayName: displayName, peerID: UUID())
                     }
                     Spacer()
-                    Text(relay.driverPeerID == nil ? "Host controls" : "Driver: \(relay.driverPeerID?.uuidString.prefix(4) ?? "")")
+                    Text(relay.driverPeerID == nil ? i18n.t(.hostControls) : "Driver: \(relay.driverPeerID?.uuidString.prefix(4) ?? "")")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -66,11 +67,11 @@ struct TeamGuestSheet: View {
             Image(systemName: "antenna.radiowaves.left.and.right")
                 .font(.title2)
                 .foregroundStyle(.green)
-            Text("Join Team Session")
+            Text(i18n.t(.joinSession))
                 .font(.headline)
             Spacer()
             if relay.isConnected {
-                Text("Connected")
+                Text(i18n.t(.connected))
                     .font(.caption)
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Color.green.opacity(0.15))
@@ -80,9 +81,9 @@ struct TeamGuestSheet: View {
     }
 
     private var discoveredSection: some View {
-        GroupBox("Discovered (Bonjour)") {
+        GroupBox(i18n.t(.discovered)) {
             if discovery.discoveredHosts.isEmpty {
-                Text("No hosts found on LAN")
+                Text(i18n.t(.noHostsFound))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
@@ -91,7 +92,7 @@ struct TeamGuestSheet: View {
                         HStack {
                             Text(host.displayName).lineLimit(1)
                             Spacer()
-                            Button(selectedHost?.id == host.id ? "Selected" : "Select") {
+                            Button(selectedHost?.id == host.id ? i18n.t(.connected) : i18n.t(.selectHost)) {
                                 selectedHost = host
                                 manualHost = ""
                                 manualPort = ""
@@ -106,11 +107,11 @@ struct TeamGuestSheet: View {
     }
 
     private var manualSection: some View {
-        GroupBox("Manual IP") {
+        GroupBox(i18n.t(.manualIP)) {
             HStack(spacing: 8) {
                 TextField("192.168.1.10", text: $manualHost)
                     .textFieldStyle(.roundedBorder)
-                TextField("port", text: $manualPort)
+                TextField(i18n.t(.port), text: $manualPort)
                     .frame(width: 80)
                     .textFieldStyle(.roundedBorder)
             }
@@ -119,9 +120,9 @@ struct TeamGuestSheet: View {
     }
 
     private var pinSection: some View {
-        GroupBox("Join") {
+        GroupBox(i18n.t(.joinSession)) {
             VStack(spacing: 8) {
-                TextField("Display name", text: $displayName)
+                TextField(i18n.t(.displayName), text: $displayName)
                     .textFieldStyle(.roundedBorder)
                 HStack(spacing: 8) {
                     TextField("6-digit PIN", text: $pinInput)
@@ -130,13 +131,13 @@ struct TeamGuestSheet: View {
                     Button {
                         joinSelectedHost()
                     } label: {
-                        Label("Join", systemImage: "arrow.right.circle.fill")
+                        Label(i18n.t(.joinSession), systemImage: "arrow.right.circle.fill")
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(!canJoin)
                 }
                 if relay.isConnected {
-                    Button("Disconnect", role: .destructive) { relay.disconnectGuest() }
+                    Button(i18n.t(.disconnect), role: .destructive) { relay.disconnectGuest() }
                 }
             }
         }
@@ -144,7 +145,7 @@ struct TeamGuestSheet: View {
 
     private var footerSection: some View {
         HStack {
-            Button("Done") { dismiss() }
+            Button(i18n.t(.ok)) { dismiss() }
                 .keyboardShortcut(.cancelAction)
             Spacer()
         }
@@ -167,15 +168,16 @@ struct TeamGuestSheet: View {
 }
 
 private struct GuestInputBar: View {
+    @Environment(I18n.self) private var i18n
     @ObservedObject var relay: TeamRelay
     @State private var inputText = ""
 
     var body: some View {
         HStack(spacing: 8) {
-            TextField("Type command…", text: $inputText)
+            TextField(i18n.t(.typeCommand), text: $inputText)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { sendInput() }
-            Button("Send") { sendInput() }
+            Button(i18n.t(.send)) { sendInput() }
                 .disabled(inputText.isEmpty)
         }
     }

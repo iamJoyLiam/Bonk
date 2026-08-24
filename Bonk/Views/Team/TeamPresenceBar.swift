@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct TeamPresenceBar: View {
+    @Environment(I18n.self) private var i18n
     var snapshot: TeamPresenceSnapshot?
 
     var body: some View {
@@ -12,7 +13,7 @@ struct TeamPresenceBar: View {
                 }
                 if let driverID = snapshot.driverPeerID,
                    let driver = snapshot.allPeers.first(where: { $0.id == driverID }) {
-                    Text("● \(driver.displayName) controls")
+                    Text("● \(driver.displayName) \(i18n.t(.hostControls))")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -33,7 +34,7 @@ struct TeamPresenceBar: View {
                 .font(.caption)
                 .lineLimit(1)
             if isHost {
-                Text("Host")
+                Text(i18n.t(.hostSession))
                     .font(.caption2)
                     .padding(.horizontal, 4).padding(.vertical, 1)
                     .background(Color.blue.opacity(0.15))

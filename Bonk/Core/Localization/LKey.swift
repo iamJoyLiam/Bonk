@@ -570,4 +570,25 @@ enum LKey: String, CaseIterable {
     case escNever = "esc_never"
     case escOnlyNoAlt = "esc_only_no_alt"
     case chooseFile = "choose_file"
+
+    // Team
+    case team
+    case hostSession = "host_session"
+    case joinSession = "join_session"
+    case startHosting = "start_hosting"
+    case stopHosting = "stop_hosting"
+    case noGuests = "no_guests"
+    case grantControl = "grant_control"
+    case revokeControl = "revoke_control"
+    case discovered = "discovered"
+    case noHostsFound = "no_hosts_found"
+    case manualIP = "manual_ip"
+    case liveTerminal = "live_terminal"
+    case waitingForOutput = "waiting_for_output"
+    case requestControl = "request_control"
+    case typeCommand = "type_command"
+    case send = "send"
+    case connectedPeers = "connected_peers"
+    case hostControls = "host_controls"
+    case teamHostHint = "team_host_hint"
 }
