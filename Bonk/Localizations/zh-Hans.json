@@ -390,6 +390,7 @@
   "fingerprint": "指纹",
   "public_key": "公钥",
   "private_key_warning": "切勿分享私钥或将其提交到代码仓库",
+  "private_key_overwrite_warning": "私钥 PEM 内容 — 覆盖将替换用于认证的密钥",
   "copy_public_key": "复制公钥",
   "copy_private_key": "复制私钥",
   "save_to_file": "保存到文件",

@@ -32,12 +32,12 @@ struct KeychainManagerView: View {
     var body: some View {
         Group {
             if isEditing {
-                editForm
+                editForm.fixedSize(horizontal: false, vertical: true)
             } else {
                 listView
             }
         }
-        .frame(minWidth: AppStyle.panelWidthMedium, minHeight: AppStyle.panelWidthSmall, idealHeight: isEditing ? 500 : nil, maxHeight: isEditing ? 600 : nil)
+        .frame(minWidth: AppStyle.panelWidthMedium)
         .navigationTitle(isEditing ? (isAdding ? i18n.t(.addCredential) : i18n.t(.editCredential)) : i18n.t(.keychain))
         .toolbar {
             if isEditing {
@@ -130,42 +130,44 @@ struct KeychainManagerView: View {
 
     private var editForm: some View {
         Form {
-            Section(i18n.t(.name)) {
-                TextField(i18n.t(.name), text: $editName)
+            Section(i18n.t(.hostInformation)) {
+                TextField(i18n.t(.displayName), text: $editName)
+                if editType == .password {
+                    TextField(i18n.t(.username), text: $editUsername).autocorrectionDisabled()
+                }
             }
-            Section(i18n.t(.credential)) {
+            Section(i18n.t(.authentication)) {
                 Picker(i18n.t(.credential), selection: $editType) {
                     ForEach(CredentialType.allCases, id: \.self) {
                         Label($0.displayName(i18n), systemImage: $0.symbolName)
                     }
                 }
                 .pickerStyle(.segmented)
-                if editType == .password {
-                    TextField(i18n.t(.username), text: $editUsername).autocorrectionDisabled()
-                }
-            }
-            Section(editType == .privateKey ? i18n.t(.privateKey) : i18n.t(.password)) {
                 if editType == .privateKey {
                     TextEditor(text: $editPrivateKey).font(.system(.caption, design: .monospaced)).frame(minHeight: 120)
-                    Label("Private key PEM content — overwriting replaces the key used for authentication", systemImage: "exclamationmark.triangle.fill")
+                    Label(i18n.t(.privateKeyOverwriteWarning), systemImage: "exclamationmark.triangle.fill")
                         .font(.caption2)
                         .foregroundStyle(.orange)
                 } else {
-                    HStack(spacing: 6) {
-                        if showPassword {
-                            TextField(i18n.t(.password), text: $editPassword)
-                        } else {
-                            SecureField(i18n.t(.password), text: $editPassword)
+                    LabeledContent(i18n.t(.password)) {
+                        HStack(spacing: 6) {
+                            if showPassword {
+                                AutoEnglishPlainField(text: $editPassword, placeholder: "")
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
+                            } else {
+                                AutoEnglishSecureField(text: $editPassword, placeholder: "")
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
+                            }
+                            Button {
+                                showPassword.toggle()
+                            } label: {
+                                Image(systemName: showPassword ? "eye.slash" : "eye")
+                                    .font(.system(size: AppStyle.fontBody))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                            .help(i18n.t(.password))
                         }
-                        Button {
-                            showPassword.toggle()
-                        } label: {
-                            Image(systemName: showPassword ? "eye.slash" : "eye")
-                                .font(.system(size: AppStyle.fontBody))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .help(i18n.t(.password))
                     }
                 }
             }

@@ -390,6 +390,7 @@
   "fingerprint": "Fingerprint",
   "public_key": "Public Key",
   "private_key_warning": "Never share your private key or commit it to a repository",
+  "private_key_overwrite_warning": "Private key PEM content — overwriting replaces the key used for authentication",
   "copy_public_key": "Copy Public Key",
   "copy_private_key": "Copy Private Key",
   "save_to_file": "Save to File",

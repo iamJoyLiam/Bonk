@@ -94,11 +94,13 @@ struct SSHKeyGeneratorView: View {
             }
 
             Section(i18n.t(.passphraseOptional)) {
-                HStack {
+                HStack(spacing: 6) {
                     if showPassphrase {
-                        TextField(i18n.t(.passphraseOptional), text: $passphrase)
+                        AutoEnglishPlainField(text: $passphrase, placeholder: i18n.t(.passphraseOptional))
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                     } else {
-                        SecureField(i18n.t(.passphraseOptional), text: $passphrase)
+                        AutoEnglishSecureField(text: $passphrase, placeholder: i18n.t(.passphraseOptional))
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     Button {
                         showPassphrase.toggle()

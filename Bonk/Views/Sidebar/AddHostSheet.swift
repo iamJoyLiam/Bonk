@@ -153,25 +153,23 @@ struct AddHostSheet: View {
 
                     switch authType {
                     case .password:
-                        HStack {
-                            if showPassword {
-                                TextField(
-                                    i18n.t(.password),
-                                    text: $password
-                                )
-                            } else {
-                                SecureField(
-                                    i18n.t(.password),
-                                    text: $password
-                                )
+                        LabeledContent(i18n.t(.password)) {
+                            HStack(spacing: 6) {
+                                if showPassword {
+                                    AutoEnglishPlainField(text: $password, placeholder: "")
+                                        .frame(maxWidth: .infinity, alignment: .trailing)
+                                } else {
+                                    AutoEnglishSecureField(text: $password, placeholder: "")
+                                        .frame(maxWidth: .infinity, alignment: .trailing)
+                                }
+                                Button { showPassword.toggle() } label: {
+                                    Image(systemName: showPassword
+                                        ? "eye.slash"
+                                        : "eye")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            Button { showPassword.toggle() } label: {
-                                Image(systemName: showPassword
-                                    ? "eye.slash"
-                                    : "eye")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
                         }
                     case .privateKey:
                         Text(i18n.t(.pastePemKey))
@@ -363,7 +361,8 @@ struct AddHostSheet: View {
             }
         }
         .formStyle(.grouped)
-        .frame(minWidth: AppStyle.panelWidthMedium, minHeight: AppStyle.dialogWidth)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: AppStyle.panelWidthMedium)
         .navigationTitle(
             existingHost == nil
                 ? i18n.t(.addHost)

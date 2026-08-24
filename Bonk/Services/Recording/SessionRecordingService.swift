@@ -4,6 +4,21 @@ import os.log
 /// Asciicast v2 recorder — per-pane, file-per-session.
 /// Hooks into PTYSession yieldOutput + sendInput, writes `[time, "o"/"i", data]` stream.
 /// Storage: `~/Library/Application Support/Bonk/Recordings/<host>_<tab>_<pane>_<timestamp>.cast`
+///
+/// ## Design — byte-first, zero transform
+/// * Recording branch writes the **raw** terminal bytes as UTF-8 text, with no
+///   `filterOSC` / `stripCharset` / trimming / backspace simulation. TheVT
+///   renderer (SwiftTerm) is responsible for interpreting escape sequences;
+///   the recorder must preserve `ESC ( 0` line-drawing, H3C charset switches,
+///   full-width "—", bare `\r` / `\b`, etc. verbatim.
+/// * File format is asciinema `.cast` v2 (NDJSON): first line is the header
+///   JSON object, every following line is a single JSON array `[time, "o"/"i", data]`.
+/// * Writes are **streaming**: a dedicated serial `ioQueue` drains `FileHandle`
+///   writes off the actor, so a 100 MB / ~1500-event burst never blocks the
+///   feed's `Task` nor the main thread. JSON is built by hand (no
+///   `JSONSerialization` per event) to avoid per-event allocations.
+/// * `stop` flushes the queue synchronously before closing the handle, so no
+///   tail loss on pane close.
 actor SessionRecordingService {
     struct Recording: Sendable {
         let id: UUID
@@ -16,8 +31,9 @@ actor SessionRecordingService {
 
     static let shared = SessionRecordingService()
 
-    private var active: [UUID: ActiveRecording] = [:] // paneID -> recording
-    private var fileHandles: [UUID: FileHandle] = [:]
+    private var active: [UUID: ActiveRecording] = [:]
+    // Serial I/O queue —  never on MainActor, drains FileHandle writes.
+    private let ioQueue = DispatchQueue(label: "com.bonk.recording.io", qos: .utility)
 
     private struct ActiveRecording {
         let recording: Recording
@@ -52,7 +68,7 @@ actor SessionRecordingService {
             "height": rows,
             "timestamp": Int(Date().timeIntervalSince1970),
             "env": ["TERM": "xterm-256color", "SHELL": "/bin/zsh"],
-            "title": "Bonk \(host) \(tabID.uuidString.prefix(8))"
+            "title": "Bonk \(host) \(tabID.uuidString.prefix(8))",
         ]
         if let data = try? JSONSerialization.data(withJSONObject: header, options: []),
            let line = String(data: data, encoding: .utf8) {
@@ -66,23 +82,31 @@ actor SessionRecordingService {
 
     func stop(paneID: UUID) {
         guard let a = active.removeValue(forKey: paneID) else { return }
+        // Drain any pending async writes before closing.
+        ioQueue.sync {}
         try? a.fileHandle.close()
         os_log("[REC] stop %@ bytes %d", log: OSLog(subsystem: "com.bonk", category: "recording"), type: .info, a.recording.url.lastPathComponent, a.bytesWritten)
     }
 
+    // MARK: - Record (raw, no transform, streaming)
+
+    /// Record a raw output chunk. **No** OSC/DCS filtering, no charset stripping,
+    /// no trimming or backspace simulation — bytes are written verbatim so
+    /// `ESC ( 0` line-drawing and other VT sequences survive for faithful replay
+    /// via SwiftTerm.
     func recordOutput(paneID: UUID, text: String) {
         guard var a = active[paneID] else { return }
         guard !text.isEmpty else { return }
         if a.bytesWritten > ActiveRecording.maxBytes { return }
         let elapsed = CFAbsoluteTimeGetCurrent() - a.startTime
-        // asciicast v2: [time, "o", data] single JSON line
-        let event: [Any] = [elapsed, "o", text]
-        if let data = try? JSONSerialization.data(withJSONObject: event, options: []),
-           let line = String(data: data, encoding: .utf8) {
-            let bytes = (line + "\n").data(using: .utf8)!
-            try? a.fileHandle.write(contentsOf: bytes)
-            a.bytesWritten += bytes.count
-            active[paneID] = a
+        let line = Self.jsonLine(time: elapsed, kind: "o", data: text)
+        let data = Data(line.utf8)
+        let fh = a.fileHandle
+        a.bytesWritten += data.count
+        active[paneID] = a
+        // Off-actor serial queue — no await back-pressure, no main-thread block.
+        ioQueue.async {
+            try? fh.write(contentsOf: data)
         }
     }
 
@@ -90,16 +114,19 @@ actor SessionRecordingService {
         guard var a = active[paneID] else { return }
         let text = String(bytes: bytes, encoding: .utf8) ?? ""
         guard !text.isEmpty else { return }
+        if a.bytesWritten > ActiveRecording.maxBytes { return }
         let elapsed = CFAbsoluteTimeGetCurrent() - a.startTime
-        let event: [Any] = [elapsed, "i", text]
-        if let data = try? JSONSerialization.data(withJSONObject: event, options: []),
-           let line = String(data: data, encoding: .utf8) {
-            let b = (line + "\n").data(using: .utf8)!
-            try? a.fileHandle.write(contentsOf: b)
-            a.bytesWritten += b.count
-            active[paneID] = a
+        let line = Self.jsonLine(time: elapsed, kind: "i", data: text)
+        let data = Data(line.utf8)
+        let fh = a.fileHandle
+        a.bytesWritten += data.count
+        active[paneID] = a
+        ioQueue.async {
+            try? fh.write(contentsOf: data)
         }
     }
+
+    // MARK: - File helpers
 
     func listRecordings() -> [URL] {
         let dir = recordingsDir
@@ -108,6 +135,41 @@ actor SessionRecordingService {
     }
 
     func delete(url: URL) throws { try FileManager.default.removeItem(at: url) }
+
+    // MARK: - Manual JSON (asciicast v2 event = [time, "o"/"i", data])
+
+    /// Build a single NDJSON line without `JSONSerialization`.
+    /// `data` is JSON-escaped so control chars, quotes, backslashes and
+    /// non-ASCII survive the round-trip and can be `JSONSerialization`-decoded
+    /// on playback.
+    private static func jsonLine(time: Double, kind: String, data: String) -> String {
+        // Keep 6 decimals — enough to preserve inter-event timing while staying
+        // compatible with asciinema players; JSON numbers don't need quoting.
+        let t = String(format: "%.6f", time)
+        return "[\(t),\"\(kind)\",\"\(escapeJSONString(data))\"]\n"
+    }
+
+    /// Escape a string for JSON string literal (RFC 8259 §7).
+    private static func escapeJSONString(_ s: String) -> String {
+        var out = ""
+        out.reserveCapacity(s.utf8.count)
+        for scalar in s.unicodeScalars {
+            switch scalar.value {
+            case 0x22: out += "\\\""
+            case 0x5C: out += "\\\\"
+            case 0x08: out += "\\b"
+            case 0x0C: out += "\\f"
+            case 0x0A: out += "\\n"
+            case 0x0D: out += "\\r"
+            case 0x09: out += "\\t"
+            case 0x00 ... 0x1F:
+                out += String(format: "\\u%04x", scalar.value)
+            default:
+                out.append(Character(scalar))
+            }
+        }
+        return out
+    }
 }
 
 private extension URL {

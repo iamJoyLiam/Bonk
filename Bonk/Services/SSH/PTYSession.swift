@@ -166,16 +166,16 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     }
 
     /// Yield output to all consumers (buffer + live streams).
+    ///
+    /// Recording branch is **byte-first, zero-transform**: the raw `text` (UTF-8
+    /// decoded from the PTY) is handed to the recorder verbatim. No OSC/DCS
+    /// stripping, no charset handling — SwiftTerm owns VT interpretation on the
+    /// rendering branch, the recorder must preserve `ESC ( 0` line-drawing, H3C
+    /// charset switches, full-width chars, bare `\b` / `\r`, etc.
     private func yieldOutput(_ text: String) {
-        // text is already chunked to safe size by chunkByteBuffer()
-        let filtered = Self.filterOSCSequences(text)
         if let pid = recordingPaneIDBox.withLockedValue({ $0 }) {
-            // OSC title `\u{1B}]0;...\u{07}` is display noise — don't record empty OSC-only chunks
-            if !filtered.isEmpty {
-                Task { await SessionRecordingService.shared.recordOutput(paneID: pid, text: filtered) }
-            } else if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, filtered.isEmpty {
-                // pure OSC, skip recording
-            }
+            let raw = text
+            Task { await SessionRecordingService.shared.recordOutput(paneID: pid, text: raw) }
         }
 
         // Process through OSC 7 detector for CWD tracking

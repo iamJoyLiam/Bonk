@@ -444,6 +444,7 @@ enum LKey: String, CaseIterable {
     case fingerprint = "fingerprint"
     case publicKey = "public_key"
     case privateKeyWarning = "private_key_warning"
+    case privateKeyOverwriteWarning = "private_key_overwrite_warning"
     case copyPublicKey = "copy_public_key"
     case copyPrivateKey = "copy_private_key"
     case saveToFile = "save_to_file"

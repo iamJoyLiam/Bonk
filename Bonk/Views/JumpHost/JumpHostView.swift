@@ -258,18 +258,22 @@ struct JumpHostEditSheet: View {
 
                     switch authStyle {
                     case .password:
-                        HStack(spacing: 6) {
-                            if showPassword {
-                                TextField(i18n.t(.password), text: $password)
-                            } else {
-                                SecureField(i18n.t(.password), text: $password)
+                        LabeledContent(i18n.t(.password)) {
+                            HStack(spacing: 6) {
+                                if showPassword {
+                                    AutoEnglishPlainField(text: $password, placeholder: "")
+                                        .frame(maxWidth: .infinity, alignment: .trailing)
+                                } else {
+                                    AutoEnglishSecureField(text: $password, placeholder: "")
+                                        .frame(maxWidth: .infinity, alignment: .trailing)
+                                }
+                                Button { showPassword.toggle() } label: {
+                                    Image(systemName: showPassword ? "eye.slash" : "eye")
+                                        .font(.system(size: AppStyle.fontBody))
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.secondary)
                             }
-                            Button { showPassword.toggle() } label: {
-                                Image(systemName: showPassword ? "eye.slash" : "eye")
-                                    .font(.system(size: AppStyle.fontBody))
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
                         }
                     case .privateKey:
                         HStack {
@@ -390,8 +394,9 @@ struct JumpHostEditSheet: View {
                     }
                 }
             }
+            .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(width: AppStyle.dialogWidth, height: 480)
+        .frame(minWidth: AppStyle.panelWidthMedium)
     }
 
     private var canBuildAuth: Bool {

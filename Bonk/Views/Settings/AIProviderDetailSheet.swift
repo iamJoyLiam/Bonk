@@ -119,12 +119,15 @@ struct AIProviderDetailSheet: View {
 
     private var apiKeyAuthSection: some View {
         Section(i18n.t(.authentication)) {
-            SecureField(i18n.t(.apiKey), text: $apiKeyInput)
-                .onChange(of: apiKeyInput) { _, newValue in
-                    draft.apiKey = newValue
-                    testResult = nil
-                    scheduleFetchModels()
-                }
+            LabeledContent(i18n.t(.apiKey)) {
+                AutoEnglishSecureField(text: $apiKeyInput, placeholder: "")
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .onChange(of: apiKeyInput) { _, newValue in
+                draft.apiKey = newValue
+                testResult = nil
+                scheduleFetchModels()
+            }
 
             HStack {
                 Spacer()
