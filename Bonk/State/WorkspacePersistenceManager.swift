@@ -207,6 +207,32 @@ final class WorkspacePersistenceManager {
         }
     }
 
+    // MARK: - Instantiate Template
+
+    /// Clone a template into a regular workspace and return the new workspace.
+    func instantiateTemplate(id: UUID) -> WorkspaceData? {
+        guard var template = loadWorkspace(id: id), template.isTemplate == true else { return nil }
+        let clone = WorkspaceData(
+            id: UUID(),
+            name: "\(template.name) copy",
+            createdAt: Date(),
+            updatedAt: Date(),
+            activeTabIndex: template.activeTabIndex,
+            tabs: template.tabs,
+            isTemplate: nil
+        )
+        let fileURL = workspacesDirectory.appendingPathComponent("\(clone.id.uuidString).plist")
+        do {
+            let data = try PropertyListEncoder().encode(clone)
+            try data.write(to: fileURL)
+            logger.info("Template '\(template.name)' instantiated as '\(clone.name)'")
+            return clone
+        } catch {
+            logger.error("Failed to instantiate template: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     // MARK: - Rename
 
     /// Rename a workspace.

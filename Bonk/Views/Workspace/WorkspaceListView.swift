@@ -23,8 +23,14 @@ struct WorkspaceListView: View {
     @State private var workspaceToDelete: WorkspacePersistenceManager.WorkspaceData?
     @State private var workspaceToRename: WorkspacePersistenceManager.WorkspaceData?
     @State private var renameName = ""
+    @State private var filter: String = "all"
 
     private let persistence = WorkspacePersistenceManager.shared
+
+    private var filteredWorkspaces: [WorkspacePersistenceManager.WorkspaceData] {
+        if filter == "templates" { return workspaces.filter { $0.isTemplate == true } }
+        return workspaces
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -76,16 +82,24 @@ struct WorkspaceListView: View {
     // MARK: - Header — exactly as screenshot: blue icon + headline, right count caption
 
     private var headerSection: some View {
-        HStack {
-            Image(systemName: "square.stack.3d.up")
-                .font(.title2)
-                .foregroundStyle(.blue)
-            Text(i18n.t(.workspaces))
-                .font(.headline)
-            Spacer()
-            Text(i18n.tr(.workspaceCount, args: workspaces.count))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        VStack(spacing: 8) {
+            HStack {
+                Image(systemName: "square.stack.3d.up")
+                    .font(.title2)
+                    .foregroundStyle(.blue)
+                Text(i18n.t(.workspaces))
+                    .font(.headline)
+                Spacer()
+                Text(i18n.tr(.workspaceCount, args: workspaces.count))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Picker("", selection: $filter) {
+                Text("All").tag("all")
+                Text("Templates").tag("templates")
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
         }
         .padding()
     }
@@ -114,9 +128,9 @@ struct WorkspaceListView: View {
     private var workspaceList: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                ForEach(workspaces) { workspace in
+                ForEach(filteredWorkspaces) { workspace in
                     workspaceRow(workspace)
-                    if workspace.id != workspaces.last?.id {
+                    if workspace.id != filteredWorkspaces.last?.id {
                         Divider()
                             .padding(.leading, AppStyle.spacingSidebar)
                     }
@@ -154,15 +168,29 @@ struct WorkspaceListView: View {
             Spacer()
 
             HStack(spacing: 4) {
-                Button { loadWorkspace(workspace) } label: {
-                    Image(systemName: "arrow.right.circle.fill")
-                        .font(.system(size: AppStyle.fontSubtitle))
-                        .foregroundStyle(.blue)
+                if workspace.isTemplate == true {
+                    Button { instantiateTemplate(workspace) } label: {
+                        Image(systemName: "doc.on.doc.fill")
+                            .font(.system(size: AppStyle.fontSubtitle))
+                            .foregroundStyle(.orange)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Use Template")
+                } else {
+                    Button { loadWorkspace(workspace) } label: {
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.system(size: AppStyle.fontSubtitle))
+                            .foregroundStyle(.blue)
+                    }
+                    .buttonStyle(.plain)
+                    .help(i18n.t(.loadWorkspace))
                 }
-                .buttonStyle(.plain)
-                .help(i18n.t(.loadWorkspace))
 
                 Menu {
+                    if workspace.isTemplate == true {
+                        Button { instantiateTemplate(workspace) } label: { Label("Use Template", systemImage: "doc.on.doc") }
+                        Divider()
+                    }
                     Button {
                         workspaceToRename = workspace
                         renameName = workspace.name
@@ -181,9 +209,15 @@ struct WorkspaceListView: View {
         .padding(.horizontal, AppStyle.spacingL)
         .padding(.vertical, AppStyle.spacingML)
         .contentShape(Rectangle())
-        .onTapGesture { loadWorkspace(workspace) }
+        .onTapGesture {
+            if workspace.isTemplate == true { instantiateTemplate(workspace) } else { loadWorkspace(workspace) }
+        }
         .contextMenu {
-            Button { loadWorkspace(workspace) } label: { Label(i18n.t(.loadWorkspace), systemImage: "arrow.right.circle") }
+            if workspace.isTemplate == true {
+                Button { instantiateTemplate(workspace) } label: { Label("Use Template", systemImage: "doc.on.doc") }
+            } else {
+                Button { loadWorkspace(workspace) } label: { Label(i18n.t(.loadWorkspace), systemImage: "arrow.right.circle") }
+            }
             Button { workspaceToRename = workspace; renameName = workspace.name } label: { Label(i18n.t(.rename), systemImage: "pencil") }
             Divider()
             Button(role: .destructive) { workspaceToDelete = workspace } label: { Label(i18n.t(.delete), systemImage: "trash") }
@@ -272,6 +306,14 @@ struct WorkspaceListView: View {
     private func deleteWorkspace(_ workspace: WorkspacePersistenceManager.WorkspaceData) {
         persistence.deleteWorkspace(id: workspace.id)
         loadWorkspaces()
+    }
+
+    private func instantiateTemplate(_ workspace: WorkspacePersistenceManager.WorkspaceData) {
+        guard let clone = persistence.instantiateTemplate(id: workspace.id) else { return }
+        Task {
+            await persistence.restoreWorkspace(clone, sessionManager: sessionManager, modelContext: modelContext)
+            dismiss()
+        }
     }
 }
 
