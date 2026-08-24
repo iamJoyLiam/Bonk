@@ -14,7 +14,6 @@ struct TriggerSettingsView: View {
     @Query(sort: \TriggerRule.createdAt, order: .reverse) private var rules: [TriggerRule]
     @State private var showAddSheet = false
     @State private var editingRule: TriggerRule?
-    @State private var hoveredRuleID: UUID?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,12 +34,15 @@ struct TriggerSettingsView: View {
                 )
             } else {
                 ScrollView {
-                    LazyVStack(spacing: AppStyle.spacingS) {
+                    LazyVStack(spacing: 0) {
                         ForEach(rules) { rule in
                             triggerRow(rule)
+                            if rule.id != rules.last?.id {
+                                Divider().padding(.leading, 52)
+                            }
                         }
                     }
-                    .padding(AppStyle.spacingL)
+                    .padding(.vertical, 4)
                 }
                 .background(Color(nsColor: .windowBackgroundColor))
             }
@@ -52,10 +54,12 @@ struct TriggerSettingsView: View {
     }
 
     private func triggerRow(_ rule: TriggerRule) -> some View {
-        let isHovered = hoveredRuleID == rule.id
-        return HStack(spacing: AppStyle.spacingL) {
-            Circle().fill(rule.isEnabled ? Color.green : Color.gray).frame(width: 8, height: 8)
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 12) {
+            Image(systemName: "bolt.trianglebadge.exclamationmark")
+                .font(.system(size: AppStyle.fontMedium))
+                .foregroundStyle(rule.isEnabled ? .orange : .secondary)
+                .frame(width: AppStyle.buttonLarge, height: AppStyle.buttonLarge)
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(rule.name).font(.system(size: AppStyle.fontRegular, weight: .medium)).lineLimit(1)
                     Text(rule.actionType.displayName(i18n: i18n)).font(.caption2).padding(.horizontal, 6).padding(.vertical, 2).background(Color.secondary.opacity(0.15)).cornerRadius(4)
@@ -68,30 +72,11 @@ struct TriggerSettingsView: View {
             Spacer(minLength: AppStyle.spacingM)
             Toggle("", isOn: Binding(get: { rule.isEnabled }, set: { rule.isEnabled = $0; try? modelContext.save() }))
                 .labelsHidden()
-            Image(systemName: "pencil")
-                .font(.system(size: AppStyle.fontSmall, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: AppStyle.buttonMedium, height: AppStyle.buttonMedium)
-                .background(Circle().fill(Color(nsColor: .controlBackgroundColor)))
-                .overlay(Circle().strokeBorder(Color.primary.opacity(AppStyle.opacityStroke), lineWidth: 1))
-                .onTapGesture { editingRule = rule }
+                .controlSize(.small)
         }
         .padding(.horizontal, AppStyle.spacingL)
         .padding(.vertical, AppStyle.spacingML)
-        .background(
-            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
-                .fill(Color(nsColor: .textBackgroundColor))
-        )
-        .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous))
-        .shadow(color: Color.black.opacity(isHovered ? 0.07 : 0.03), radius: isHovered ? 8 : 4, y: isHovered ? 3 : 1)
-        .overlay(
-            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
-                .strokeBorder(Color.primary.opacity(isHovered ? 0.08 : 0.06), lineWidth: 1)
-        )
         .contentShape(Rectangle())
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.12)) { hoveredRuleID = hovering ? rule.id : nil }
-        }
         .onTapGesture { editingRule = rule }
         .contextMenu {
             Button { editingRule = rule } label: { Label(i18n.t(.edit), systemImage: "pencil") }
