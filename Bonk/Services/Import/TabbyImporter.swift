@@ -78,19 +78,19 @@ struct TabbyImporter: SessionImporter {
         var authType: AuthType = .password
         var pem: String?
         var pwd: String?
-        if let pk = privateKeyField, !pk.isEmpty {
-            if pk.hasPrefix("-----BEGIN") {
-                pem = pk
+        if let privateKey = privateKeyField, !privateKey.isEmpty {
+            if privateKey.hasPrefix("-----BEGIN") {
+                pem = privateKey
                 authType = .privateKey
             } else {
                 // Treat as file path
-                let expanded = (pk as NSString).expandingTildeInPath
+                let expanded = (privateKey as NSString).expandingTildeInPath
                 if let content = try? String(contentsOfFile: expanded, encoding: .utf8), content.contains("BEGIN") {
                     pem = content
                     authType = .privateKey
                 } else {
                     // Fallback: store path as-is (user can fix)
-                    pem = pk
+                    pem = privateKey
                     authType = .privateKey
                 }
             }
@@ -121,10 +121,10 @@ struct TabbyImporter: SessionImporter {
         var currentKey: String?
 
         func flush() {
-            if let h = currentHost, !h.isEmpty {
-                let name = currentName ?? h
+            if let host = currentHost, !host.isEmpty {
+                let name = currentName ?? host
                 let authType: AuthType = (currentKey != nil) ? .privateKey : .password
-                let item = HostItem(name: name, host: h, port: currentPort, username: currentUser.isEmpty ? "root" : currentUser, authType: authType, password: currentPassword, privateKeyPEM: currentKey)
+                let item = HostItem(name: name, host: host, port: currentPort, username: currentUser.isEmpty ? "root" : currentUser, authType: authType, password: currentPassword, privateKeyPEM: currentKey)
                 hosts.append(item)
             }
             currentName = nil; currentHost = nil; currentPort = 22; currentUser = ""; currentPassword = nil; currentKey = nil

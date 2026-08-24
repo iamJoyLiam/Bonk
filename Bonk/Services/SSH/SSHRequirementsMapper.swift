@@ -65,7 +65,7 @@ enum SSHRequirementsMapper {
     }
 
     private static func route(from jump: SSHJumpHostConfig?) -> SSHRoute {
-        guard let j = jump else { return .direct }
-        return SSHRoute(hops: [SSHEndpoint(host: j.host, port: j.port)])
+        guard let jumpHost = jump else { return .direct }
+        return SSHRoute(hops: [SSHEndpoint(host: jumpHost.host, port: jumpHost.port)])
     }
 }

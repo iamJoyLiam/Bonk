@@ -284,10 +284,10 @@ final class SFTPService {
             let transferID = UUID()
             transfers.append(SFTPTransfer(id: transferID, filename: entry.name, totalBytes: entry.size, transferredBytes: 0, isComplete: false, error: nil))
             do {
-                try await channel.download(entry.path, to: localURL, operationID: transferID, onProgress: { [weak self] p in
+                try await channel.download(entry.path, to: localURL, operationID: transferID, onProgress: { [weak self] progress in
                     Task { @MainActor in
                         guard let self else { return }
-                        let clamped = min(max(p, 0), 1)
+                        let clamped = min(max(progress, 0), 1)
                         if let idx = self.transfers.firstIndex(where: { $0.id == transferID }) {
                             self.transfers[idx].transferredBytes = UInt64(Double(entry.size) * clamped)
                         }
@@ -486,10 +486,10 @@ final class SFTPService {
             let transferID = UUID()
             transfers.append(SFTPTransfer(id: transferID, filename: filename, totalBytes: total, transferredBytes: 0, isComplete: false, error: nil))
             do {
-                try await channel.upload(localURL, to: targetPath, operationID: transferID, onProgress: { [weak self] p in
+                try await channel.upload(localURL, to: targetPath, operationID: transferID, onProgress: { [weak self] progress in
                     Task { @MainActor in
                         guard let self else { return }
-                        let clamped = min(max(p, 0), 1)
+                        let clamped = min(max(progress, 0), 1)
                         if let idx = self.transfers.firstIndex(where: { $0.id == transferID }) {
                             self.transfers[idx].transferredBytes = UInt64(Double(total) * clamped)
                         }
@@ -798,7 +798,7 @@ final class SFTPService {
 
     /// Close the SFTP session.
     func disconnect() async {
-        if let ch = vnextChannel { await ch.close() }
+        if let channel = vnextChannel { await channel.close() }
         vnextChannel = nil
         #if os(macOS)
             openSSHSFTPClient?.close()
@@ -808,8 +808,8 @@ final class SFTPService {
         sftpClient = nil
         entries = []
         // Cancel any in-flight transfers
-        for t in transfers where !t.isComplete {
-            if let idx = transfers.firstIndex(where: { $0.id == t.id }) { transfers[idx].isCancelled = true }
+        for transfer in transfers where !transfer.isComplete {
+            if let idx = transfers.firstIndex(where: { $0.id == transfer.id }) { transfers[idx].isCancelled = true }
         }
     }
 

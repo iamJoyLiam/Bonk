@@ -128,10 +128,10 @@ private final class CitadelSFTPChannel: SFTPChannel {
                 buffer.writeBytes(chunk)
                 try await file.write(buffer, at: offset)
                 offset += UInt64(chunk.count)
-                let p = total > 0 ? Double(offset) / Double(total) : 1.0
-                if p - lastProgress >= 0.01 || p >= 1.0 {
-                    lastProgress = p
-                    onProgress(min(p, 1.0))
+                let progress = total > 0 ? Double(offset) / Double(total) : 1.0
+                if progress - lastProgress >= 0.01 || progress >= 1.0 {
+                    lastProgress = progress
+                    onProgress(min(progress, 1.0))
                 }
             }
             if total == 0 { onProgress(1.0) }
@@ -162,10 +162,10 @@ private final class CitadelSFTPChannel: SFTPChannel {
                 let data = Data(buffer.readableBytesView)
                 handle.write(data)
                 offset += UInt64(data.count)
-                let p: Double = total > 0 ? Double(offset) / Double(total) : (buffer.readableBytes < Int(chunkSize) ? 1.0 : Double(offset) / Double(offset + UInt64(chunkSize)))
-                if p - lastProgress >= 0.01 || p >= 1.0 {
-                    lastProgress = p
-                    onProgress(min(p, 1.0))
+                let progress: Double = total > 0 ? Double(offset) / Double(total) : (buffer.readableBytes < Int(chunkSize) ? 1.0 : Double(offset) / Double(offset + UInt64(chunkSize)))
+                if progress - lastProgress >= 0.01 || progress >= 1.0 {
+                    lastProgress = progress
+                    onProgress(min(progress, 1.0))
                 }
                 if buffer.readableBytes < Int(chunkSize) { break }
             }

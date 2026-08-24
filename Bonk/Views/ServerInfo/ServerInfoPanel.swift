@@ -44,8 +44,8 @@ struct ServerInfoPanel: View {
             Text(displayName)
                 .font(.headline)
                 .lineLimit(1)
-            if let ip = tab?.session?.serverInfo?.serverIP {
-                Text(ip)
+            if let ipAddress = tab?.session?.serverInfo?.serverIP {
+                Text(ipAddress)
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
             }
@@ -164,9 +164,9 @@ struct ServerInfoPanel: View {
                     }
                 }
 
-                if let rx = info.networkRXRateBps, let tx = info.networkTXRateBps {
+                if let received = info.networkRXRateBps, let transmitted = info.networkTXRateBps {
                     infoRow(i18n.t(.network)) {
-                        Text("↓ \(formatRate(rx))  ↑ \(formatRate(tx))")
+                        Text("↓ \(formatRate(received))  ↑ \(formatRate(transmitted))")
                             .font(.callout.monospaced())
                     }
                 }

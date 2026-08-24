@@ -31,7 +31,7 @@ final class ServerResourceMonitor {
     private weak var sessionManager: SessionManager?
     private var lastPollKey: (UUID?, Bool)?
     private var lastFetchDate = Date.distantPast
-    private var lastNetworkSamples: [UUID: (rx: UInt64, tx: UInt64, at: Date)] = [:]
+    private var lastNetworkSamples: [UUID: (receivedBytes: UInt64, transmittedBytes: UInt64, at: Date)] = [:]
     private var lastDiskSamples: [UUID: (read: UInt64, write: UInt64, at: Date)] = [:]
 
     private init() {}
@@ -146,15 +146,15 @@ final class ServerResourceMonitor {
     private func applyingRates(to info: ServerInfo, for tabID: UUID) -> ServerInfo {
         var result = info
         let now = Date()
-        if let rx = info.networkRXBytes, let tx = info.networkTXBytes {
+        if let receivedBytes = info.networkRXBytes, let transmittedBytes = info.networkTXBytes {
             if let last = lastNetworkSamples[tabID] {
                 let elapsed = now.timeIntervalSince(last.at)
-                if elapsed >= 1, rx >= last.rx, tx >= last.tx {
-                    result.networkRXRateBps = Double(rx - last.rx) / elapsed
-                    result.networkTXRateBps = Double(tx - last.tx) / elapsed
+                if elapsed >= 1, receivedBytes >= last.receivedBytes, transmittedBytes >= last.transmittedBytes {
+                    result.networkRXRateBps = Double(receivedBytes - last.receivedBytes) / elapsed
+                    result.networkTXRateBps = Double(transmittedBytes - last.transmittedBytes) / elapsed
                 }
             }
-            lastNetworkSamples[tabID] = (rx, tx, now)
+            lastNetworkSamples[tabID] = (receivedBytes, transmittedBytes, now)
         } else {
             lastNetworkSamples[tabID] = nil
         }
@@ -180,12 +180,12 @@ final class ServerResourceMonitor {
         var result = info
         let now = Date()
         // Use first sample if any
-        if let rx = info.networkRXBytes, let tx = info.networkTXBytes {
+        if let receivedBytes = info.networkRXBytes, let transmittedBytes = info.networkTXBytes {
             if let last = lastNetworkSamples.values.first {
                 let elapsed = now.timeIntervalSince(last.at)
-                if elapsed >= 1, rx >= last.rx, tx >= last.tx {
-                    result.networkRXRateBps = Double(rx - last.rx) / elapsed
-                    result.networkTXRateBps = Double(tx - last.tx) / elapsed
+                if elapsed >= 1, receivedBytes >= last.receivedBytes, transmittedBytes >= last.transmittedBytes {
+                    result.networkRXRateBps = Double(receivedBytes - last.receivedBytes) / elapsed
+                    result.networkTXRateBps = Double(transmittedBytes - last.transmittedBytes) / elapsed
                 }
             }
         }

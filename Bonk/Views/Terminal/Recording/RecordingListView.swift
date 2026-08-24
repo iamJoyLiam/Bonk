@@ -155,8 +155,8 @@ struct RecordingListView: View {
         let size = (attrs?[.size] as? Int) ?? 0
         let date = (attrs?[.creationDate] as? Date) ?? Date()
         let fmt = ByteCountFormatter(); fmt.countStyle = .file
-        let df = DateFormatter(); df.dateStyle = .short; df.timeStyle = .short
-        return "\(fmt.string(fromByteCount: Int64(size))) · \(df.string(from: date))"
+        let dateFormatter = DateFormatter(); dateFormatter.dateStyle = .short; dateFormatter.timeStyle = .short
+        return "\(fmt.string(fromByteCount: Int64(size))) · \(dateFormatter.string(from: date))"
     }
 
     private func reload() {
@@ -194,17 +194,17 @@ struct RecordingListView: View {
         return raw
     }
 
-    private static func formattedLegacyDate(_ ts: String) -> String? {
-        guard let tIdx = ts.firstIndex(of: "T") else { return nil }
-        let datePart = String(ts[..<tIdx])
-        var timePart = String(ts[ts.index(after: tIdx)...])
+    private static func formattedLegacyDate(_ timestamp: String) -> String? {
+        guard let tIdx = timestamp.firstIndex(of: "T") else { return nil }
+        let datePart = String(timestamp[..<tIdx])
+        var timePart = String(timestamp[timestamp.index(after: tIdx)...])
         let hasZ = timePart.hasSuffix("Z")
         if hasZ { timePart = String(timePart.dropLast()) }
         timePart = timePart.replacingOccurrences(of: "-", with: ":")
         let iso = "\(datePart)T\(timePart)\(hasZ ? "Z" : "")"
         if let date = ISO8601DateFormatter().date(from: iso) {
-            let df = DateFormatter(); df.dateStyle = .medium; df.timeStyle = .short
-            return df.string(from: date)
+            let dateFormatter = DateFormatter(); dateFormatter.dateStyle = .medium; dateFormatter.timeStyle = .short
+            return dateFormatter.string(from: date)
         }
         return nil
     }

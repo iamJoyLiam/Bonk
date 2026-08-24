@@ -62,44 +62,44 @@ final class NativePortForward: @unchecked Sendable {
         log.info("[NativeForward] starting listener \(self.localHost):\(self.localPort) → \(self.remoteHost):\(self.remotePort)")
     }
 
-    private func handleIncoming(_ nw: NWConnection) {
-        nw.stateUpdateHandler = { [weak self, weak nw] state in
-            guard let self, let nw else { return }
+    private func handleIncoming(_ nwConnection: NWConnection) {
+        nwConnection.stateUpdateHandler = { [weak self, weak nwConnection] state in
+            guard let self, let nwConnection else { return }
             switch state {
             case .ready:
-                Task { await self.openChannel(for: nw) }
+                Task { await self.openChannel(for: nwConnection) }
             case .failed, .cancelled:
-                nw.cancel()
+                nwConnection.cancel()
             default: break
             }
         }
-        nw.start(queue: .global(qos: .userInitiated))
+        nwConnection.start(queue: .global(qos: .userInitiated))
     }
 
-    private func openChannel(for nw: NWConnection) async {
+    private func openChannel(for nwConnection: NWConnection) async {
         do {
             let originator = try SocketAddress(ipAddress: "127.0.0.1", port: 0)
             let settings = SSHChannelType.DirectTCPIP(targetHost: remoteHost, targetPort: remotePort, originatorAddress: originator)
             // Initialize channel with SSH->NW bridge handler
             let bond: NWSSHForwardBond
             let channel: Channel = try await client.createDirectTCPIPChannel(using: settings) { channel in
-                let handler = SSHToNWHandler(nw: nw)
+                let handler = SSHToNWHandler(nwConnection: nwConnection)
                 return channel.pipeline.addHandler(handler).flatMap {
                     channel.pipeline.addHandler(ErrorHandler())
                 }
             }
-            bond = NWSSHForwardBond(nw: nw, sshChannel: channel, log: log)
+            bond = NWSSHForwardBond(nwConnection: nwConnection, sshChannel: channel, log: log)
             lock.withLock { bonds.append(bond) }
             bond.start()
             log.info("[NativeForward] bond created local:\(self.localPort) → \(self.remoteHost):\(self.remotePort)")
             // Cleanup on close
             channel.closeFuture.whenComplete { [weak self, weak bond] _ in
                 if let bond { self?.removeBond(bond) }
-                nw.cancel()
+                nwConnection.cancel()
             }
         } catch {
             log.error("[NativeForward] createDirectTCPIPChannel failed: \(error.localizedDescription, privacy: .public)")
-            nw.cancel()
+            nwConnection.cancel()
         }
     }
 
@@ -113,7 +113,7 @@ final class NativePortForward: @unchecked Sendable {
         listener?.cancel()
         listener = nil
         let snap = lock.withLock { bonds }
-        for b in snap { b.close() }
+        for bond in snap { bond.close() }
         lock.withLock { bonds.removeAll() }
         log.info("[NativeForward] stopped \(self.localHost):\(self.localPort)")
     }
@@ -124,14 +124,14 @@ final class NativePortForward: @unchecked Sendable {
 // MARK: - Bond (NW ↔ SSH)
 
 private final class NWSSHForwardBond: @unchecked Sendable {
-    let nw: NWConnection
+    let nwConnection: NWConnection
     let sshChannel: Channel
     let log: Logger
     private var closed = false
     private let closeLock = NSLock()
 
-    init(nw: NWConnection, sshChannel: Channel, log: Logger) {
-        self.nw = nw
+    init(nwConnection: NWConnection, sshChannel: Channel, log: Logger) {
+        self.nwConnection = nwConnection
         self.sshChannel = sshChannel
         self.log = log
     }
@@ -145,7 +145,7 @@ private final class NWSSHForwardBond: @unchecked Sendable {
 
     private func receiveNext() {
         guard !closed else { return }
-        nw.receive(minimumIncompleteLength: 1, maximumLength: 32_768) { [weak self] data, _, isComplete, error in
+        nwConnection.receive(minimumIncompleteLength: 1, maximumLength: 32_768) { [weak self] data, _, isComplete, error in
             guard let self else { return }
             if self.closed { return }
             if let error {
@@ -178,7 +178,7 @@ private final class NWSSHForwardBond: @unchecked Sendable {
             return true
         }
         guard shouldClose else { return }
-        nw.cancel()
+        nwConnection.cancel()
         sshChannel.eventLoop.execute { self.sshChannel.close(promise: nil) }
     }
 }
@@ -187,30 +187,30 @@ private final class NWSSHForwardBond: @unchecked Sendable {
 
 private final class SSHToNWHandler: ChannelInboundHandler, RemovableChannelHandler, @unchecked Sendable {
     typealias InboundIn = ByteBuffer
-    private let nw: NWConnection
-    init(nw: NWConnection) { self.nw = nw }
+    private let nwConnection: NWConnection
+    init(nwConnection: NWConnection) { self.nwConnection = nwConnection }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let buf = self.unwrapInboundIn(data)
         let count = buf.readableBytes
         guard count > 0 else { return }
         let data = Data(buf.readableBytesView)
-        nw.send(content: data, completion: .contentProcessed { _ in })
+        nwConnection.send(content: data, completion: .contentProcessed { _ in })
     }
 
     func channelInactive(context: ChannelHandlerContext) {
-        nw.cancel()
+        nwConnection.cancel()
         context.fireChannelInactive()
     }
 
     func errorCaught(context: ChannelHandlerContext, error: Error) {
-        nw.cancel()
+        nwConnection.cancel()
         context.close(promise: nil)
     }
 
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
-        if let ev = event as? ChannelEvent, case .inputClosed = ev {
-            nw.send(content: nil, completion: .contentProcessed { _ in })
+        if let channelEvent = event as? ChannelEvent, case .inputClosed = channelEvent {
+            nwConnection.send(content: nil, completion: .contentProcessed { _ in })
             // half close NW send side: NWConnection doesn't have half-close, just continue
         }
         context.fireUserInboundEventTriggered(event)

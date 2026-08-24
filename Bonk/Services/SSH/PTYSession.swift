@@ -199,8 +199,8 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
         // Shell integration OSC 133 — capture Warp-style blocks
         let shellEvents = shellIntegration.process(text: text, lineCount: outputBuffer.withLock { $0.count })
-        for ev in shellEvents {
-            switch ev {
+        for event in shellEvents {
+            switch event {
             case .commandStart(let range):
                 let block = CommandBlock(
                     id: range.id,
@@ -277,10 +277,10 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         // Finalize command block after buffer append so output slice includes this chunk
         if let pending = activeCommandBlock.withLockedValue({ $0 }), pending.endTime != nil {
             let snapshot = outputBuffer.withLock { $0 }
-            let s = min(max(pending.startChunkIndex, 0), max(0, snapshot.count - 1))
-            let e = min(pending.endChunkIndex ?? snapshot.count, snapshot.count)
+            let startIndex = min(max(pending.startChunkIndex, 0), max(0, snapshot.count - 1))
+            let endIndex = min(pending.endChunkIndex ?? snapshot.count, snapshot.count)
             var output = ""
-            if s < e { output = snapshot[s..<e].joined() }
+            if startIndex < endIndex { output = snapshot[startIndex..<endIndex].joined() }
             // Strip OSC sequences and trim
             output = output.replacingOccurrences(of: "\u{1B}]133;[^\u{07}]*\u{07}", with: "", options: .regularExpression)
             if output.utf8.count > Self.maxBlockOutputBytes {
@@ -943,4 +943,3 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         return .dcsEntry
     }
 }
-

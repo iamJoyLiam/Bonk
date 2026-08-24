@@ -156,6 +156,7 @@ enum SSHConfigParser {
             } else if currentEntries.isEmpty {
                 globalOptions[lowerKey] = value
             } else {
+                // swiftlint:disable:next identifier_name
                 for i in currentEntries.indices {
                     applyOption(to: &currentEntries[i], key: lowerKey, value: value)
                 }
@@ -209,6 +210,7 @@ enum SSHConfigParser {
         }
 
         var paths: [String] = []
+        // swiftlint:disable:next identifier_name
         for i in 0 ..< globResult.gl_pathc {
             if let path = globResult.gl_pathv[i] {
                 let pathString = String(cString: path)

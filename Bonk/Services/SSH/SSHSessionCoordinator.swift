@@ -63,10 +63,10 @@ public actor SSHSessionCoordinator {
         cachedProfile: CachedProfile? = nil
     ) -> SSHConnectionDecision {
         // 1. Cached profile hit (valid, not expired, fingerprint matches)
-        if let p = cachedProfile, p.isValid {
-            switch p.backend {
+        if let profile = cachedProfile, profile.isValid {
+            switch profile.backend {
             case .native: return .native
-            case .compatibility: return .compatibility(reason: p.reason)
+            case .compatibility: return .compatibility(reason: profile.reason)
             }
         }
 

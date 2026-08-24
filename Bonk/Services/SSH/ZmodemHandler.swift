@@ -4,7 +4,7 @@
 //
 //  Zmodem protocol handler for file transfer via terminal.
 //  Implements ZRQINIT/ZRINIT handshake, ZRFILE/ZRPOS/ZDATA/ZEOF.
-//  Covers data-frame sending (previously TODO) + basic receive + CRC16 + ZDLE.
+//  Covers data-frame sending + basic receive + CRC16 + ZDLE.
 //
 
 import Foundation
@@ -135,10 +135,10 @@ class ZmodemHandler {
 
     /// Called by PTYSession for raw file data chunks (when not a header).
     func processRawData(_ data: Data) {
-        guard case .receivingFile = state, let fh = receiveFileHandle else { return }
+        guard case .receivingFile = state, let fileHandle = receiveFileHandle else { return }
         // Ignore if data looks like a header
         if data.count >= 2, data[0] == ZmodemConstants.zpad, data[1] == ZmodemConstants.zpad { return }
-        fh.write(data)
+        fileHandle.write(data)
         receiveBytesWritten += Int64(data.count)
         if receiveFileSize > 0 {
             onProgress?(Double(receiveBytesWritten) / Double(receiveFileSize))
@@ -152,6 +152,7 @@ class ZmodemHandler {
 
     static func containsZmodemHeader(in bytes: [UInt8]) -> Bool {
         guard bytes.count >= 2 else { return false }
+        // swiftlint:disable:next identifier_name
         for i in 0..<(bytes.count - 1) {
             if bytes[i] == ZmodemConstants.zpad, bytes[i + 1] == ZmodemConstants.zpad { return true }
             if bytes[i] == ZmodemConstants.zpad, bytes[i + 1] == 0x18 { return true }
@@ -163,10 +164,12 @@ class ZmodemHandler {
 
     private func findHeader(in data: [UInt8]) -> Int? {
         guard data.count >= 2 else { return nil }
+        // swiftlint:disable:next identifier_name
         for i in 0..<(data.count - 1) {
             if data[i] == ZmodemConstants.zpad, data[i + 1] == ZmodemConstants.zpad { return i }
         }
         // Also match single ZPAD+ZDLE+B pattern (without double pad)
+        // swiftlint:disable:next identifier_name
         for i in 0..<(data.count - 2) {
             if data[i] == ZmodemConstants.zpad, data[i + 1] == 0x18, data[i + 2] == 0x42 { return i }
         }
@@ -276,8 +279,8 @@ class ZmodemHandler {
         }
         state = .receivingFile
         // If we have a file handle, seek to pos (for resume)
-        if let fh = receiveFileHandle, pos != UInt32(receiveBytesWritten) {
-            try? fh.seek(toOffset: UInt64(pos))
+        if let fileHandle = receiveFileHandle, pos != UInt32(receiveBytesWritten) {
+            try? fileHandle.seek(toOffset: UInt64(pos))
             receiveBytesWritten = Int64(pos)
         }
     }
@@ -296,8 +299,8 @@ class ZmodemHandler {
 
     private func sendZrpos(offset: UInt32 = 0) {
         var frame: [UInt8] = [ZmodemConstants.zpad, 0x18, 0x42, ZmodemConstants.zrpos]
-        var le = offset.littleEndian
-        frame.append(contentsOf: withUnsafeBytes(of: &le) { Array($0) })
+        var littleEndian = offset.littleEndian
+        frame.append(contentsOf: withUnsafeBytes(of: &littleEndian) { Array($0) })
         frame.append(0)
         onSendData?(frame)
     }
@@ -340,7 +343,7 @@ class ZmodemHandler {
     }
 
     private func sendNextDataChunk() {
-        guard let fh = sendFileHandle else {
+        guard let fileHandle = sendFileHandle else {
             // No handle -> try opening current file
             guard currentFileIndex < filesToSend.count else { sendZfin(); return }
             let url = filesToSend[currentFileIndex]
@@ -353,11 +356,11 @@ class ZmodemHandler {
             sendNextDataChunk()
             return
         }
-        do { try fh.seek(toOffset: sendOffset) } catch { logger.error("Seek failed: \(error)"); return }
-        let chunk = fh.readData(ofLength: chunkSize)
+        do { try fileHandle.seek(toOffset: sendOffset) } catch { logger.error("Seek failed: \(error)"); return }
+        let chunk = fileHandle.readData(ofLength: chunkSize)
         if chunk.isEmpty {
             // EOF -> ZEOF
-            fh.closeFile()
+            fileHandle.closeFile()
             sendFileHandle = nil
             sendZeof()
             return
@@ -397,8 +400,8 @@ class ZmodemHandler {
 
     private func sendZeof() {
         var frame: [UInt8] = [ZmodemConstants.zpad, 0x18, 0x42, ZmodemConstants.zeof]
-        var le = UInt32(sendOffset).littleEndian
-        frame.append(contentsOf: withUnsafeBytes(of: &le) { Array($0) })
+        var littleEndian = UInt32(sendOffset).littleEndian
+        frame.append(contentsOf: withUnsafeBytes(of: &littleEndian) { Array($0) })
         frame.append(0)
         onSendData?(frame)
         // Advance to next file only after peer ACKs with ZRPOS/ZRINIT; but we also proactively prep
@@ -461,13 +464,13 @@ class ZmodemHandler {
     private func zdleEncode(_ bytes: [UInt8]) -> [UInt8] {
         var out: [UInt8] = []
         out.reserveCapacity(bytes.count * 2)
-        for b in bytes {
-            switch b {
+        for byte in bytes {
+            switch byte {
             case 0x18, 0x10, 0x11, 0x13, 0x90, 0x8D, 0x0D:
                 out.append(0x18)
-                out.append(b ^ 0x40)
+                out.append(byte ^ 0x40)
             default:
-                out.append(b)
+                out.append(byte)
             }
         }
         return out
@@ -475,8 +478,8 @@ class ZmodemHandler {
 
     private static func crc16(_ bytes: [UInt8]) -> UInt16 {
         var crc: UInt16 = 0
-        for b in bytes {
-            crc ^= UInt16(b) << 8
+        for byte in bytes {
+            crc ^= UInt16(byte) << 8
             for _ in 0..<8 {
                 if crc & 0x8000 != 0 { crc = (crc << 1) ^ 0x1021 } else { crc <<= 1 }
             }

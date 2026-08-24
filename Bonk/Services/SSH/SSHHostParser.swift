@@ -20,9 +20,9 @@ enum SSHHostParser {
         var value = input.trimmingCharacters(in: .whitespacesAndNewlines)
         var username: String?
 
-        if let at = value.lastIndex(of: "@") {
-            username = String(value[..<at])
-            value = String(value[value.index(after: at)...])
+        if let atSignIndex = value.lastIndex(of: "@") {
+            username = String(value[..<atSignIndex])
+            value = String(value[value.index(after: atSignIndex)...])
         }
 
         var host = value

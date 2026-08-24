@@ -324,9 +324,9 @@ final class OpenSSHBackend: @unchecked Sendable {
                 .replacingOccurrences(of: "\r", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !line.isEmpty else { continue }
             if line.lowercased().hasPrefix("debug1:") || line.lowercased().hasPrefix("debug2:") || line.lowercased().hasPrefix("debug3:") { continue }
-            let l = line.lowercased()
+            let lowercasedLine = line.lowercased()
             let keywords = ["permission denied", "denied", "refused", "timed out", "administratively prohibited", "no route to host", "unreachable", "connection closed", "closed by remote", "host key verification failed", "unable to negotiate", "too many authentication failures", "ssh_exchange_identification", "no supported authentication methods", "connection reset", "lost connection", "could not resolve hostname", "failed to allocate pty", "kex_exchange_identification", "no such file", "not found"]
-            if keywords.contains(where: { l.contains($0) }) { return line }
+            if keywords.contains(where: { lowercasedLine.contains($0) }) { return line }
         }
         return nil
     }

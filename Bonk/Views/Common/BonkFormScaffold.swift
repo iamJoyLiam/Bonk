@@ -9,7 +9,7 @@ import SwiftUI
 struct BonkFormScaffold<Content: View>: View {
     let title: String
     var minWidth: CGFloat = AppStyle.panelWidthMedium
-    var idealHeight: CGFloat? = nil
+    var idealHeight: CGFloat?
     var content: Content
 
     /// When nil, no toolbar is rendered (caller owns toolbar).

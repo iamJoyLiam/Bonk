@@ -85,9 +85,9 @@ struct UnifiedImportView: View {
             LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                 if !sshEntries.isEmpty {
                     Section {
-                        ForEach(sshEntries) { e in
-                            sshRow(e)
-                            if e.id != sshEntries.last?.id { Divider().padding(.leading, 44) }
+                        ForEach(sshEntries) { entry in
+                            sshRow(entry)
+                            if entry.id != sshEntries.last?.id { Divider().padding(.leading, 44) }
                         }
                     } header: {
                         sectionHeader(title: "\(i18n.t(.importSSHConfig)) — \(sshEntries.count) \(i18n.t(.hostsFound))")
@@ -95,9 +95,9 @@ struct UnifiedImportView: View {
                 }
                 if !tabbyHosts.isEmpty {
                     Section {
-                        ForEach(tabbyHosts, id: \.id) { h in
-                            tabbyRow(h)
-                            if h.id != tabbyHosts.last?.id { Divider().padding(.leading, 44) }
+                        ForEach(tabbyHosts, id: \.id) { host in
+                            tabbyRow(host)
+                            if host.id != tabbyHosts.last?.id { Divider().padding(.leading, 44) }
                         }
                     } header: {
                         sectionHeader(title: "\(i18n.t(.importTabby)) — \(tabbyHosts.count) \(i18n.t(.hostsFound))")
@@ -209,20 +209,20 @@ struct UnifiedImportView: View {
         isImporting = true
         var created = 0, skipped = 0
         // SSH
-        for e in sshEntries where selectedSSH.contains(e.id) {
-            if existingNames.contains(e.alias) { skipped += 1; continue }
-            let host = e.hostname ?? e.alias
-            let port = Int(e.port ?? 22)
-            let user = e.user ?? NSUserName()
-            let item = HostItem(name: e.alias, host: host, port: port, username: user, authType: .privateKey, privateKeyPEM: loadKey(e.identityFile))
+        for entry in sshEntries where selectedSSH.contains(entry.id) {
+            if existingNames.contains(entry.alias) { skipped += 1; continue }
+            let host = entry.hostname ?? entry.alias
+            let port = Int(entry.port ?? 22)
+            let user = entry.user ?? NSUserName()
+            let item = HostItem(name: entry.alias, host: host, port: port, username: user, authType: .privateKey, privateKeyPEM: loadKey(entry.identityFile))
             modelContext.insert(item)
-            existingNames.insert(e.alias); created += 1
+            existingNames.insert(entry.alias); created += 1
         }
         // Tabby
-        for h in tabbyHosts where selectedTabby.contains(h.id) {
-            if existingNames.contains(h.name) { skipped += 1; continue }
-            modelContext.insert(h)
-            existingNames.insert(h.name); created += 1
+        for hostItem in tabbyHosts where selectedTabby.contains(hostItem.id) {
+            if existingNames.contains(hostItem.name) { skipped += 1; continue }
+            modelContext.insert(hostItem)
+            existingNames.insert(hostItem.name); created += 1
         }
         try? modelContext.save()
         resultCreated = created; resultSkipped = skipped
@@ -231,8 +231,8 @@ struct UnifiedImportView: View {
 
     private func loadKey(_ path: String?) -> String? {
         guard let path else { return nil }
-        let p = NSString(string: path).expandingTildeInPath
-        guard let d = FileManager.default.contents(atPath: p), let s = String(data: d, encoding: .utf8) else { return nil }
-        return s
+        let expandedPath = NSString(string: path).expandingTildeInPath
+        guard let fileData = FileManager.default.contents(atPath: expandedPath), let fileContent = String(data: fileData, encoding: .utf8) else { return nil }
+        return fileContent
     }
 }

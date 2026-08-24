@@ -46,11 +46,11 @@ struct WorkspaceListView: View {
         )) {
             Button(i18n.t(.cancel), role: .cancel) { workspaceToDelete = nil }
             Button(i18n.t(.delete), role: .destructive) {
-                if let ws = workspaceToDelete { deleteWorkspace(ws) }
+                if let workspace = workspaceToDelete { deleteWorkspace(workspace) }
             }
         } message: {
-            if let ws = workspaceToDelete {
-                Text(i18n.tr(.deleteWorkspaceConfirm, args: ws.name))
+            if let workspace = workspaceToDelete {
+                Text(i18n.tr(.deleteWorkspaceConfirm, args: workspace.name))
             }
         }
         .alert(i18n.t(.renameWorkspace), isPresented: .init(
@@ -62,8 +62,8 @@ struct WorkspaceListView: View {
                 workspaceToRename = nil; renameName = ""
             }
             Button(i18n.t(.save)) {
-                if let ws = workspaceToRename, !renameName.isEmpty {
-                    renameWorkspace(ws, to: renameName)
+                if let workspace = workspaceToRename, !renameName.isEmpty {
+                    renameWorkspace(workspace, to: renameName)
                 }
                 workspaceToRename = nil; renameName = ""
             }

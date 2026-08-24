@@ -298,8 +298,8 @@ struct ServerResourceDetailView: View {
                 .font(.headline)
                 .lineLimit(1)
             Spacer()
-            if let ip = info.serverIP {
-                Text(ip)
+            if let ipAddress = info.serverIP {
+                Text(ipAddress)
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
             }
@@ -361,8 +361,8 @@ struct ServerResourceDetailView: View {
             {
                 row(i18n.t(.swap), "\(formatBytes(swapUsed))/\(formatBytes(swapTotal))")
             }
-            if let rx = info.networkRXRateBps, let tx = info.networkTXRateBps {
-                row(i18n.t(.network), "↓ \(formatRate(rx))  ↑ \(formatRate(tx))")
+            if let received = info.networkRXRateBps, let transmitted = info.networkTXRateBps {
+                row(i18n.t(.network), "↓ \(formatRate(received))  ↑ \(formatRate(transmitted))")
             }
             if let read = info.diskReadRateBps, let write = info.diskWriteRateBps {
                 row(i18n.t(.diskIO), "R \(formatRate(read))  W \(formatRate(write))")

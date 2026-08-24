@@ -720,8 +720,8 @@ public actor SSHNetworkService {
                 return CompatibilitySSHSession(backend: backend, endpoint: endpoint)
             }
             #endif
-            if let c = client {
-                return NativeSSHSession(client: c, endpoint: endpoint)
+            if let activeClient = client {
+                return NativeSSHSession(client: activeClient, endpoint: endpoint)
             }
             return nil
         }

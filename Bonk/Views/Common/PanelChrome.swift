@@ -12,7 +12,7 @@ struct PanelHeaderView: View {
     let title: String
     let count: Int?
     let countLabel: String?
-    var trailing: AnyView? = nil
+    var trailing: AnyView?
 
     init(icon: String, title: String, count: Int? = nil, countLabel: String? = nil, trailing: AnyView? = nil) {
         self.icon = icon

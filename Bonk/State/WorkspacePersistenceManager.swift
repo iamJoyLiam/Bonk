@@ -56,6 +56,7 @@ final class WorkspacePersistenceManager {
         case horizontal(children: [LayoutNodeData], weights: [Double])
         case vertical(children: [LayoutNodeData], weights: [Double])
 
+        // swiftlint:disable:next nesting
         struct PaneData: Codable {
             let id: UUID
             let hostItemID: UUID?
@@ -233,10 +234,10 @@ final class WorkspacePersistenceManager {
 
         // Collect all host IDs (tab + per-pane)
         var neededIDs = Set(workspace.tabs.map(\.hostItemID))
-        for wt in workspace.tabs {
-            if let layout = wt.layout {
+        for workspaceTab in workspace.tabs {
+            if let layout = workspaceTab.layout {
                 collectHosts(from: layout, into: &neededIDs)
-            } else if let paneIDs = wt.paneIDs {
+            } else if let paneIDs = workspaceTab.paneIDs {
                 // Legacy: paneIDs share tab host, no extra hosts
                 _ = paneIDs
             }

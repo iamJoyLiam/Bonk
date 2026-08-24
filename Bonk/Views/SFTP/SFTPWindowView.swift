@@ -131,7 +131,7 @@ struct SFTPWindowView: View {
                     .textFieldStyle(.plain)
                     .focused($isLocalFocused)
                     .disabled(!isEditingLocal)
-                    .onChange(of: localPath) { _, n in if !isEditingLocal { editingLocal = n } }
+                    .onChange(of: localPath) { _, newPath in if !isEditingLocal { editingLocal = newPath } }
                     .onAppear { editingLocal = localPath }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
@@ -264,11 +264,11 @@ struct SFTPWindowView: View {
         let path = localPath
         Task { @MainActor in
             let sorted: [LocalFileEntry] = await Task.detached(priority: .userInitiated) {
-                let fm = FileManager.default
-                guard let contents = try? fm.contentsOfDirectory(atPath: path) else { return [] }
+                let fileManager = FileManager.default
+                guard let contents = try? fileManager.contentsOfDirectory(atPath: path) else { return [] }
                 let files: [LocalFileEntry] = contents.compactMap { name -> LocalFileEntry? in
                     let fullPath = (path as NSString).appendingPathComponent(name)
-                    guard let attrs = try? fm.attributesOfItem(atPath: fullPath) else { return nil }
+                    guard let attrs = try? fileManager.attributesOfItem(atPath: fullPath) else { return nil }
                     let isDir = attrs[.type] as? FileAttributeType == .typeDirectory
                     let size = attrs[.size] as? UInt64 ?? 0
                     let mtime = attrs[.modificationDate] as? Date
@@ -285,23 +285,23 @@ struct SFTPWindowView: View {
     }
 
     private func goUpLocal() {
-        let p = (localPath as NSString).deletingLastPathComponent
-        localPath = p.isEmpty ? "/" : p
+        let parentPath = (localPath as NSString).deletingLastPathComponent
+        localPath = parentPath.isEmpty ? "/" : parentPath
         loadLocalFiles()
     }
 
     private func commitLocal() {
-        let t = editingLocal.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { isEditingLocal = false; return }
-        let e = (t as NSString).expandingTildeInPath
+        let trimmedText = editingLocal.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else { isEditingLocal = false; return }
+        let expandedPath = (trimmedText as NSString).expandingTildeInPath
         var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: e, isDirectory: &isDir), isDir.boolValue else {
+        guard FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDir), isDir.boolValue else {
             // keep at current, stay editing for correction
             isLocalFocused = true
             return
         }
         isEditingLocal = false; isLocalFocused = false
-        localPath = e
+        localPath = expandedPath
         loadLocalFiles()
     }
 

@@ -132,7 +132,7 @@ public enum SSHConnectionPhase: Sendable, Equatable {
     case connectingTransport
     case negotiatingSSH
     case authenticating
-    case fallbacking(to: SSHBackendType) // Hybrid: Native→Compatibility
+    case fallbacking(destination: SSHBackendType) // Hybrid: Native→Compatibility
     case openingChannel
     case ready // SSH usable, PTY-agnostic (SFTP/Exec may use without PTY)
     case failed(String)

@@ -159,8 +159,8 @@ struct SFTPBrowserView: View {
                     let ids = pendingDeleteIDs
                     Task {
                         for id in ids {
-                            if let e = service.entries.first(where: { $0.id == id }) {
-                                try? await service.delete(e)
+                            if let entry = service.entries.first(where: { $0.id == id }) {
+                                try? await service.delete(entry)
                             }
                         }
                         selection.removeAll()
@@ -269,7 +269,7 @@ struct SFTPBrowserView: View {
                 .textFieldStyle(.plain)
                 .focused($isPathFocused)
                 .disabled(!isEditingPath)
-                .onChange(of: sftpService?.currentPath ?? "/") { _, n in if !isEditingPath { editingPath = n } }
+                .onChange(of: sftpService?.currentPath ?? "/") { _, newPath in if !isEditingPath { editingPath = newPath } }
                 .onAppear { editingPath = sftpService?.currentPath ?? "/" }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
@@ -293,16 +293,16 @@ struct SFTPBrowserView: View {
     }
 
     private func commitPath() {
-        let t = editingPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { isEditingPath = false; return }
+        let trimmed = editingPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { isEditingPath = false; return }
         // immediately clear garbage, keep root visible
         editingPath = sftpService?.currentPath ?? "/"
         isEditingPath = false; isPathFocused = false
         Task {
             do {
-                try await sftpService?.listDirectory(t)
+                try await sftpService?.listDirectory(trimmed)
             } catch {
-                withAnimation { toast = "No such file or directory: \(t)" }
+                withAnimation { toast = "No such file or directory: \(trimmed)" }
                 try? await Task.sleep(for: .seconds(2))
                 withAnimation { toast = nil }
             }

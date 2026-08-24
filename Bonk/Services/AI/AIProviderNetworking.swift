@@ -40,10 +40,8 @@ enum AIProviderNetworking {
         while result.hasSuffix("/") {
             result = String(result.dropLast())
         }
-        for suffix in ["/v1/responses", "/responses", "/v1/chat/completions", "/chat/completions", "/v1"] {
-            if result.hasSuffix(suffix) {
-                result = String(result.dropLast(suffix.count))
-            }
+        for suffix in ["/v1/responses", "/responses", "/v1/chat/completions", "/chat/completions", "/v1"] where result.hasSuffix(suffix) {
+            result = String(result.dropLast(suffix.count))
         }
         while result.hasSuffix("/") {
             result = String(result.dropLast())

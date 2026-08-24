@@ -110,8 +110,8 @@ struct PortForwardView: View {
                 .strokeBorder(Color.primary.opacity(isHovered ? 0.08 : 0.06), lineWidth: 1)
         )
         .contentShape(Rectangle())
-        .onHover { h in
-            withAnimation(.easeOut(duration: 0.12)) { hoveredRuleID = h ? rule.id : nil }
+        .onHover { isHovered in
+            withAnimation(.easeOut(duration: 0.12)) { hoveredRuleID = isHovered ? rule.id : nil }
         }
         .onTapGesture { editingRule = rule }
         .contextMenu {

@@ -92,10 +92,10 @@ enum SSHKeyGenerator {
     // MARK: - System ssh-keygen (correct OpenSSH v1 + passphrase)
 
     private static func generateViaSSHKeygen(type: SSHKeyType, passphrase: String?) throws -> GeneratedSSHKey {
-        let fm = FileManager.default
-        let tmpDir = fm.temporaryDirectory.appendingPathComponent("bonk-keygen-\(UUID().uuidString)", isDirectory: true)
-        try fm.createDirectory(at: tmpDir, withIntermediateDirectories: true)
-        defer { try? fm.removeItem(at: tmpDir) }
+        let fileManager = FileManager.default
+        let tmpDir = fileManager.temporaryDirectory.appendingPathComponent("bonk-keygen-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: tmpDir) }
         let keyPath = tmpDir.appendingPathComponent("key")
         let pubPath = tmpDir.appendingPathComponent("key.pub")
 

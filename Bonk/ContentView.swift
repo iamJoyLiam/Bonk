@@ -388,7 +388,7 @@ struct ContentView: View {
 
             controller.setup(contentView: hostingView)
             controller.focusManager.alternateScreenProvider = { @MainActor [weak sessionManager] in
-                guard let sm = sessionManager, let tab = sm.activeTab else { return false }
+                guard let sessionManager, let tab = sessionManager.activeTab else { return false }
                 return TerminalViewCache.shared.isAnyPaneAlternate(paneIDs: tab.paneIDs)
             }
         }

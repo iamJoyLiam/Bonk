@@ -277,7 +277,7 @@ final class SessionManager {
         switch newPhase {
         case .idle, .failed: session.connectionState = .disconnected
         case .ready: session.connectionState = .connected
-        case .reconnecting(let a, let m): session.connectionState = .reconnecting(attempt: a, maxAttempts: m)
+        case .reconnecting(let attempt, let maxAttempts): session.connectionState = .reconnecting(attempt: attempt, maxAttempts: maxAttempts)
         default: session.connectionState = .connecting
         }
         Log.session.info("[SSH_STATE] host:\(host) engine:\(engine) old:\(old) new:\(String(describing: newPhase)) reason:\(reason)")
@@ -342,9 +342,9 @@ final class SessionManager {
         var globResult = glob_t()
         let flags = GLOB_NOSORT | GLOB_ERR
         if glob(pattern, flags, nil, &globResult) == 0 {
-            for i in 0 ..< globResult.gl_pathc {
-                if let c = globResult.gl_pathv[Int(i)] {
-                    let path = String(cString: c)
+            for index in 0 ..< globResult.gl_pathc {
+                if let pathPointer = globResult.gl_pathv[Int(index)] {
+                    let path = String(cString: pathPointer)
                     try? FileManager.default.removeItem(atPath: path)
                 }
             }

@@ -180,6 +180,7 @@ enum SecureEnclaveKeyManager {
         }
 
         // Get public key
+        // swiftlint:disable:next force_cast
         guard let publicKey = SecKeyCopyPublicKey(privateKey as! SecKey),
               let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, nil) as Data?
         else {
@@ -212,6 +213,7 @@ enum SecureEnclaveKeyManager {
         // Sign the data (this triggers Touch ID / password prompt)
         var signError: Unmanaged<CFError>?
         guard let signature = SecKeyCreateSignature(
+            // swiftlint:disable:next force_cast
             privateKey as! SecKey,
             .ecdsaSignatureMessageX962SHA256,
             data as CFData,
@@ -239,7 +241,7 @@ enum SecureEnclaveKeyManager {
     /// Check if a Secure Enclave key exists for the given tag.
     static func keyExists(tag: String) -> Bool {
         let keyTag = keyTagPrefix + tag
-        
+
         // Query for Secure Enclave keys specifically
         let query: [String: Any] = [
             kSecClass as String: kSecClassKey,
@@ -273,6 +275,7 @@ enum SecureEnclaveKeyManager {
             throw SecureEnclaveKeyError.keyNotFound
         }
 
+        // swiftlint:disable:next force_cast
         guard let publicKey = SecKeyCopyPublicKey(privateKey as! SecKey),
               let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, nil) as Data?
         else {

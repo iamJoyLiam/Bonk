@@ -199,17 +199,17 @@ struct RecordingPlaybackView: View {
         return raw
     }
 
-    private static func formattedLegacyDate(_ ts: String) -> String? {
-        guard let tIdx = ts.firstIndex(of: "T") else { return nil }
-        let datePart = String(ts[..<tIdx])
-        var timePart = String(ts[ts.index(after: tIdx)...])
+    private static func formattedLegacyDate(_ timestamp: String) -> String? {
+        guard let tIdx = timestamp.firstIndex(of: "T") else { return nil }
+        let datePart = String(timestamp[..<tIdx])
+        var timePart = String(timestamp[timestamp.index(after: tIdx)...])
         let hasZ = timePart.hasSuffix("Z")
         if hasZ { timePart = String(timePart.dropLast()) }
         timePart = timePart.replacingOccurrences(of: "-", with: ":")
         let iso = "\(datePart)T\(timePart)\(hasZ ? "Z" : "")"
         if let date = ISO8601DateFormatter().date(from: iso) {
-            let df = DateFormatter(); df.dateStyle = .medium; df.timeStyle = .short
-            return df.string(from: date)
+            let dateFormatter = DateFormatter(); dateFormatter.dateStyle = .medium; dateFormatter.timeStyle = .short
+            return dateFormatter.string(from: date)
         }
         return nil
     }
@@ -268,8 +268,8 @@ struct RecordingPlaybackView: View {
                             else { continue }
                             evs.append(PlaybackEvent(time: timestamp, data: payload))
                         }
-                        let t = evs.last?.time ?? 1
-                        return (evs, t)
+                        let totalTime = evs.last?.time ?? 1
+                        return (evs, totalTime)
                     }.value
                 guard let parsed else {
                     await MainActor.run { isPlaying = false }
@@ -286,9 +286,9 @@ struct RecordingPlaybackView: View {
             var idx: Int = await MainActor.run { self.nextIndex }
             // Clamp in case of reload
             if idx >= events.count { idx = 0; lastTime = 0 }
-            for i in idx..<events.count {
+            for index in idx..<events.count {
                 if Task.isCancelled { break }
-                let event = events[i]
+                let event = events[index]
                 let currentSpeed = await MainActor.run { speed }
                 let denom = max(currentSpeed, 0.05)
                 let delta = (event.time - lastTime) / denom
@@ -298,7 +298,7 @@ struct RecordingPlaybackView: View {
                 await MainActor.run {
                     targetTerminal.feed(text: event.data)
                     progress = total > 0 ? min(1, event.time / total) : 1
-                    nextIndex = i + 1
+                    nextIndex = index + 1
                     lastEventTime = event.time
                 }
                 lastTime = event.time
@@ -363,14 +363,14 @@ private struct PlaybackTerminalBridge: NSViewRepresentable {
         func observe(terminal: SwiftTerm.TerminalView) {
             self.terminal = terminal
             observer = NotificationCenter.default.addObserver(forName: .terminalThemeDidChange, object: nil, queue: .main) { [weak self] note in
-                guard let self, let tv = self.terminal else { return }
+                guard let self, let terminalView = self.terminal else { return }
                 if let scheme = note.object as? TerminalColorScheme {
-                    applyColorScheme(to: tv, scheme: scheme)
-                    (tv.enclosingScrollView as? NSScrollView)?.backgroundColor = scheme.background.nsColor
+                    applyColorScheme(to: terminalView, scheme: scheme)
+                    (terminalView.enclosingScrollView as? NSScrollView)?.backgroundColor = scheme.background.nsColor
                 } else {
                     let scheme = TerminalThemeManager.shared.resolve()
-                    applyColorScheme(to: tv, scheme: scheme)
-                    (tv.enclosingScrollView as? NSScrollView)?.backgroundColor = scheme.background.nsColor
+                    applyColorScheme(to: terminalView, scheme: scheme)
+                    (terminalView.enclosingScrollView as? NSScrollView)?.backgroundColor = scheme.background.nsColor
                 }
             }
         }

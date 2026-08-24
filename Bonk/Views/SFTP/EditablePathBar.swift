@@ -27,7 +27,7 @@ struct EditablePathBar: View {
                 .textFieldStyle(.plain)
                 .focused($isFocused)
                 .disabled(!isEditing)
-                .onChange(of: path) { _, n in if !isEditing { editingText = n } }
+                .onChange(of: path) { _, newPath in if !isEditing { editingText = newPath } }
                 .onAppear { editingText = path }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
@@ -54,9 +54,9 @@ struct EditablePathBar: View {
     }
 
     private func commit() {
-        let t = editingText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { isEditing = false; return }
-        onCommit(t)
+        let trimmedText = editingText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else { isEditing = false; return }
+        onCommit(trimmedText)
         // Caller decides whether to stay editing (error) or exit; default exit
         // is handled by caller via isEditing binding. For immediate clear we
         // sync editingText to path.

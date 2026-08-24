@@ -36,12 +36,12 @@ struct BonkApp: App {
             let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         #endif
         func deleteDevStore() {
-            let fm = FileManager.default
-            if let url = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            let fileManager = FileManager.default
+            if let url = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
                 let base = url.appendingPathComponent("Bonk-Dev.store")
                 for ext in ["", "-shm", "-wal"] {
                     let file = URL(fileURLWithPath: base.path + ext)
-                    try? fm.removeItem(at: file)
+                    try? fileManager.removeItem(at: file)
                 }
             }
         }
@@ -134,15 +134,15 @@ struct BonkApp: App {
             CommandGroup(after: .newItem) {
                 Button(i18n.t(.newTerminal)) {
                     Task { @MainActor in
-                        if let c = BonkAppDelegate.shared?.coordinator { c.showAddHostSheet = true }
+                        if let coordinator = BonkAppDelegate.shared?.coordinator { coordinator.showAddHostSheet = true }
                         else { NotificationCenter.default.post(name: .terminalNewTab, object: nil) }
                     }
                 }
                 .keyboardShortcut(newTerminalShortcut.key, modifiers: newTerminalShortcut.modifiers)
                 Button(i18n.t(.closeTab)) {
                     Task { @MainActor in
-                        if let sm = BonkAppDelegate.shared?.sessionManager, let id = sm.activeTabID {
-                            await sm.closeTab(id)
+                        if let sessionManager = BonkAppDelegate.shared?.sessionManager, let id = sessionManager.activeTabID {
+                            await sessionManager.closeTab(id)
                         } else {
                             // Fallback via focused provider if AppKit bridge not ready (e.g. preview)
                             NotificationCenter.default.post(name: .init("BonkCloseTab"), object: nil)
@@ -206,7 +206,7 @@ struct BonkApp: App {
                 Divider()
                 Button(i18n.t(.sftpBrowser)) {
                     Task { @MainActor in
-                        if let ws = BonkAppDelegate.shared?.workspace { ws.toggleSFTPWindow() }
+                        if let workspace = BonkAppDelegate.shared?.workspace { workspace.toggleSFTPWindow() }
                         else { NotificationCenter.default.post(name: .toggleSFTP, object: nil) }
                     }
                 }
@@ -254,27 +254,27 @@ struct BonkApp: App {
                 }
                 Button(i18n.t(.disconnect)) {
                     Task { @MainActor in
-                        if let sm = BonkAppDelegate.shared?.sessionManager, let id = sm.activeTabID { await sm.disconnectTab(id) }
+                        if let sessionManager = BonkAppDelegate.shared?.sessionManager, let id = sessionManager.activeTabID { await sessionManager.disconnectTab(id) }
                     }
                 }
                 Button(i18n.t(.reconnect)) {
                     Task { @MainActor in
-                        if let sm = BonkAppDelegate.shared?.sessionManager, let id = sm.activeTabID { await sm.reconnectTab(id) }
+                        if let sessionManager = BonkAppDelegate.shared?.sessionManager, let id = sessionManager.activeTabID { await sessionManager.reconnectTab(id) }
                     }
                 }
                 .keyboardShortcut(reconnectShortcut.key, modifiers: reconnectShortcut.modifiers)
                 Divider()
                 Button(i18n.t(.snippets)) {
                     Task { @MainActor in
-                        if let c = BonkAppDelegate.shared?.coordinator { c.showSnippets() }
+                        if let coordinator = BonkAppDelegate.shared?.coordinator { coordinator.showSnippets() }
                         else { NotificationCenter.default.post(name: .init("BonkShowSnippets"), object: nil) }
                     }
                 }
                 Button(i18n.t(.commandHistory)) {
                     Task { @MainActor in
-                        if let ws = BonkAppDelegate.shared?.workspace {
-                            ws.snippetsHistoryTab = .history
-                            ws.activeRightPanel = .snippetsHistory
+                        if let workspace = BonkAppDelegate.shared?.workspace {
+                            workspace.snippetsHistoryTab = .history
+                            workspace.activeRightPanel = .snippetsHistory
                         }
                     }
                 }
@@ -297,7 +297,7 @@ struct BonkApp: App {
             CommandMenu(i18n.t(.menuAI)) {
                 Button(i18n.t(.aiAssistant)) {
                     Task { @MainActor in
-                        if let ws = BonkAppDelegate.shared?.workspace { ws.toggleRightPanel(.ai) }
+                        if let workspace = BonkAppDelegate.shared?.workspace { workspace.toggleRightPanel(.ai) }
                         else { NotificationCenter.default.post(name: .toggleAIChat, object: nil) }
                     }
                 }

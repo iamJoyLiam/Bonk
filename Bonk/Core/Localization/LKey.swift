@@ -366,8 +366,6 @@ enum LKey: String, CaseIterable {
     case pressShortcut = "press_shortcut"
     case notSet = "not_set"
 
-    /// Sessions
-
     // MARK: - New keys for hardcoded string fixes
 
     /// BonkApp menu

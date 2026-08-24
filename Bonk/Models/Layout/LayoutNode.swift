@@ -94,15 +94,15 @@ indirect enum LayoutNode: Identifiable {
         }
         // Two FNV-1a passes with different seeds fill the 128-bit UUID
         // deterministically (28 hash hex digits + fixed version/variant nibble).
-        let h1 = fnv1a(bytes, seed: 0xcbf29ce484222325)
-        let h2 = fnv1a(bytes, seed: 0x84222325cbf29ce4)
+        let firstHash = fnv1a(bytes, seed: 0xcbf29ce484222325)
+        let secondHash = fnv1a(bytes, seed: 0x84222325cbf29ce4)
         let uuidString = String(
             format: "%08x-%04x-%04x-%04x-%012llx",
-            UInt32(truncatingIfNeeded: h1),
-            UInt16(truncatingIfNeeded: h1 >> 32),
-            UInt16(truncatingIfNeeded: h1 >> 48) | 0x4000,
-            UInt16(truncatingIfNeeded: h2),
-            UInt64(truncatingIfNeeded: h2 >> 16)
+            UInt32(truncatingIfNeeded: firstHash),
+            UInt16(truncatingIfNeeded: firstHash >> 32),
+            UInt16(truncatingIfNeeded: firstHash >> 48) | 0x4000,
+            UInt16(truncatingIfNeeded: secondHash),
+            UInt64(truncatingIfNeeded: secondHash >> 16)
         )
         return UUID(uuidString: uuidString) ?? UUID()
     }

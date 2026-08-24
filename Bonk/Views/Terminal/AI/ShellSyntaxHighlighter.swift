@@ -27,11 +27,11 @@ enum ShellSyntaxHighlighter {
         into attributed: inout AttributedString,
         painted: inout [NSRange]
     ) {
-        for ns in nsRanges where ns.length > 0 {
-            guard !painted.contains(where: { NSIntersectionRange($0, ns).length > 0 }) else { continue }
-            guard let range = Range(ns, in: attributed) else { continue }
+        for nsRange in nsRanges where nsRange.length > 0 {
+            guard !painted.contains(where: { NSIntersectionRange($0, nsRange).length > 0 }) else { continue }
+            guard let range = Range(nsRange, in: attributed) else { continue }
             attributed[range].foregroundColor = color
-            painted.append(ns)
+            painted.append(nsRange)
         }
     }
 

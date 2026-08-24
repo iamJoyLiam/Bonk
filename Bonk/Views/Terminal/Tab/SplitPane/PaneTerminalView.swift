@@ -169,7 +169,7 @@ struct PaneTerminalView: View {
 
             // Command blocks drawer (Warp-style)
             if showBlocks {
-                HStack { Spacer() 
+                HStack { Spacer()
                     CommandBlocksPanel(paneID: paneState.id, ptySession: paneState.ptySession, isPresented: $showBlocks)
                         .frame(maxHeight: .infinity)
                         .padding(8)

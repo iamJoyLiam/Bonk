@@ -22,11 +22,12 @@ struct LogFieldPattern: Sendable {
 
     init(_ name: String, _ pattern: String, _ ansiCode: String, _ priority: Int = 50) {
         self.name = name
-        if let r = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) {
-            self.regex = r
+        if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) {
+            self.regex = regex
         } else {
             assertionFailure("Invalid log pattern \(name): \(pattern)")
             // Fallback to never-match to keep app alive in Release (a^ is always valid)
+            // swiftlint:disable:next force_try
             self.regex = try! NSRegularExpression(pattern: "a^", options: [])
         }
         self.ansiCode = ansiCode
@@ -62,19 +63,19 @@ enum LogPatterns {
     // Bold variants for critical levels — visible on both light and dark backgrounds.
 
     static let levelKeywords: [LogFieldPattern] = [
-        LogFieldPattern("emerg",   "\\b(?:EMERG(?:ENCY)?|PANIC)\\b",       "1;41;97", 10),
-        LogFieldPattern("alert",   "\\bALERT\\b",                           "1;41;97", 11),
-        LogFieldPattern("crit",    "\\b(?:CRIT(?:ICAL)?)\\b",              "1;91",    12),
-        LogFieldPattern("fatal",   "\\bFATAL\\b",                           "1;91",    13),
-        LogFieldPattern("error",   "\\b(?:ERR(?:OR)?)\\b",                 "1;31",    14),
-        LogFieldPattern("fail",    "\\b(?:FAIL(?:ED)?|FAILURE)\\b",        "1;31",    15),
-        LogFieldPattern("timeout", "\\bTIMEOUT\\b",                         "1;31",    16),
-        LogFieldPattern("refused", "\\bREFUSED\\b",                         "1;31",    17),
-        LogFieldPattern("warn",    "\\b(?:WARN(?:ING)?)\\b",               "1;33",    20),
-        LogFieldPattern("notice",  "\\bNOTICE\\b",                          "1;32",    25),
-        LogFieldPattern("success", "\\b(?:SUCCESS|COMPLETED|CONNECTED)\\b", "1;32",   26),
-        LogFieldPattern("info",    "\\b(?:INFO(?:RMATIONAL)?)\\b",         "1;34",    30),
-        LogFieldPattern("debug",   "\\b(?:DEBUG|TRACE)\\b",                "2",       35),
+        LogFieldPattern("emerg", "\\b(?:EMERG(?:ENCY)?|PANIC)\\b", "1;41;97", 10),
+        LogFieldPattern("alert", "\\bALERT\\b", "1;41;97", 11),
+        LogFieldPattern("crit", "\\b(?:CRIT(?:ICAL)?)\\b", "1;91", 12),
+        LogFieldPattern("fatal", "\\bFATAL\\b", "1;91", 13),
+        LogFieldPattern("error", "\\b(?:ERR(?:OR)?)\\b", "1;31", 14),
+        LogFieldPattern("fail", "\\b(?:FAIL(?:ED)?|FAILURE)\\b", "1;31", 15),
+        LogFieldPattern("timeout", "\\bTIMEOUT\\b", "1;31", 16),
+        LogFieldPattern("refused", "\\bREFUSED\\b", "1;31", 17),
+        LogFieldPattern("warn", "\\b(?:WARN(?:ING)?)\\b", "1;33", 20),
+        LogFieldPattern("notice", "\\bNOTICE\\b", "1;32", 25),
+        LogFieldPattern("success", "\\b(?:SUCCESS|COMPLETED|CONNECTED)\\b", "1;32", 26),
+        LogFieldPattern("info", "\\b(?:INFO(?:RMATIONAL)?)\\b", "1;34", 30),
+        LogFieldPattern("debug", "\\b(?:DEBUG|TRACE)\\b", "2", 35),
     ]
 
     // MARK: - Inline Fields

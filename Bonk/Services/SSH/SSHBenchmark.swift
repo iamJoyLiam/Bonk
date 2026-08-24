@@ -44,11 +44,11 @@ public struct SSHBenchmarkResult: Sendable {
     public var sftpThroughput = SSHBenchmarkCaseResult()
 
     public var markdownTable: String {
-        func cell(_ r: SSHBenchmarkCaseResult) -> (String, String) {
-            let n = r.nativeMs.map { String(format: "%.0fms", $0) } ?? "—"
-            let c = r.compatMs.map { String(format: "%.0fms", $0) } ?? "—"
-            return (r.nativeExtra.map { "\(n) (\($0))" } ?? n,
-                    r.compatExtra.map { "\(c) (\($0))" } ?? c)
+        func cell(_ caseResult: SSHBenchmarkCaseResult) -> (String, String) {
+            let nativeText = caseResult.nativeMs.map { String(format: "%.0fms", $0) } ?? "—"
+            let compatText = caseResult.compatMs.map { String(format: "%.0fms", $0) } ?? "—"
+            return (caseResult.nativeExtra.map { "\(nativeText) (\($0))" } ?? nativeText,
+                    caseResult.compatExtra.map { "\(compatText) (\($0))" } ?? compatText)
         }
         let rows: [(String, SSHBenchmarkCaseResult)] = [
             ("Connection establishment", connectionEstablishment),
@@ -62,13 +62,13 @@ public struct SSHBenchmarkResult: Sendable {
             ("1000× exec (`echo hi`)", exec1000),
             ("SFTP throughput", sftpThroughput),
         ]
-        var md = "| Test | Native | Compatibility |\n|---|---|---|\n"
-        for (name, r) in rows {
-            let (n, c) = cell(r)
-            md += "| \(name) | \(n) | \(c) |\n"
+        var markdown = "| Test | Native | Compatibility |\n|---|---|---|\n"
+        for (name, caseResult) in rows {
+            let (nativeText, compatText) = cell(caseResult)
+            markdown += "| \(name) | \(nativeText) | \(compatText) |\n"
         }
-        md += "\n*Host: \(host):\(port) — \(ISO8601DateFormatter().string(from: date))*"
-        return md
+        markdown += "\n*Host: \(host):\(port) — \(ISO8601DateFormatter().string(from: date))*"
+        return markdown
     }
 }
 
@@ -96,69 +96,69 @@ public actor SSHBenchmarkRunner {
     // MARK: - Individual measurements
 
     private func measureConnection(factory: SessionFactory, iterations: Int) async -> SSHBenchmarkCaseResult {
-        var r = SSHBenchmarkCaseResult()
-        r.nativeMs = await avgMs(iterations) {
-            let s = try await factory(.native); defer { Task { await s.close() } }
-            _ = try await s.execute("echo ok")
+        var result = SSHBenchmarkCaseResult()
+        result.nativeMs = await avgMs(iterations) {
+            let session = try await factory(.native); defer { Task { await session.close() } }
+            _ = try await session.execute("echo ok")
         }
-        r.compatMs = await avgMs(iterations) {
-            let s = try await factory(.compatibility); defer { Task { await s.close() } }
-            _ = try await s.execute("echo ok")
+        result.compatMs = await avgMs(iterations) {
+            let session = try await factory(.compatibility); defer { Task { await session.close() } }
+            _ = try await session.execute("echo ok")
         }
-        return r
+        return result
     }
 
     private func measureExec1000(factory: SessionFactory) async -> SSHBenchmarkCaseResult {
-        var r = SSHBenchmarkCaseResult()
-        r.nativeMs = await singleMs {
-            let s = try await factory(.native); defer { Task { await s.close() } }
-            for _ in 0..<1000 { _ = try await s.execute("echo hi") }
+        var result = SSHBenchmarkCaseResult()
+        result.nativeMs = await singleMs {
+            let session = try await factory(.native); defer { Task { await session.close() } }
+            for _ in 0..<1000 { _ = try await session.execute("echo hi") }
         }
-        r.compatMs = await singleMs {
-            let s = try await factory(.compatibility); defer { Task { await s.close() } }
-            for _ in 0..<1000 { _ = try await s.execute("echo hi") }
+        result.compatMs = await singleMs {
+            let session = try await factory(.compatibility); defer { Task { await session.close() } }
+            for _ in 0..<1000 { _ = try await session.execute("echo hi") }
         }
-        return r
+        return result
     }
 
     private func measureThroughput(factory: SessionFactory, bytes: Int) async -> SSHBenchmarkCaseResult {
         // Uses `cat` of generated data; server must have `head -c <bytes> /dev/zero | tr '\\0' 'a' | cat`
         let cmd = "head -c \(bytes) /dev/zero | tr '\\0' 'a' | wc -c"
-        var r = SSHBenchmarkCaseResult()
-        r.nativeMs = await singleMs {
-            let s = try await factory(.native); defer { Task { await s.close() } }
-            _ = try await s.execute(cmd)
+        var result = SSHBenchmarkCaseResult()
+        result.nativeMs = await singleMs {
+            let session = try await factory(.native); defer { Task { await session.close() } }
+            _ = try await session.execute(cmd)
         }
-        r.compatMs = await singleMs {
-            let s = try await factory(.compatibility); defer { Task { await s.close() } }
-            _ = try await s.execute(cmd)
+        result.compatMs = await singleMs {
+            let session = try await factory(.compatibility); defer { Task { await session.close() } }
+            _ = try await session.execute(cmd)
         }
-        return r
+        return result
     }
 
     private func measurePTYResize(factory: SessionFactory) async -> SSHBenchmarkCaseResult {
-        var r = SSHBenchmarkCaseResult()
-        r.nativeMs = await singleMs {
-            let s = try await factory(.native); defer { Task { await s.close() } }
-            let pty = try await s.openPTY(size: TerminalSize(cols: 80, rows: 24))
+        var result = SSHBenchmarkCaseResult()
+        result.nativeMs = await singleMs {
+            let session = try await factory(.native); defer { Task { await session.close() } }
+            let pty = try await session.openPTY(size: TerminalSize(cols: 80, rows: 24))
             for cols in stride(from: 80, to: 200, by: 20) { try await pty.resize(cols: cols, rows: 24) }
             await pty.close()
         }
-        r.compatMs = await singleMs {
-            let s = try await factory(.compatibility); defer { Task { await s.close() } }
-            let pty = try await s.openPTY(size: TerminalSize(cols: 80, rows: 24))
+        result.compatMs = await singleMs {
+            let session = try await factory(.compatibility); defer { Task { await session.close() } }
+            let pty = try await session.openPTY(size: TerminalSize(cols: 80, rows: 24))
             for cols in stride(from: 80, to: 200, by: 20) { try await pty.resize(cols: cols, rows: 24) }
             await pty.close()
         }
-        return r
+        return result
     }
 
     private func measureInteractive(factory: SessionFactory) async -> SSHBenchmarkCaseResult {
         // Keypress→echo latency via PTY write/read
-        var r = SSHBenchmarkCaseResult()
-        r.nativeMs = await singleMs {
-            let s = try await factory(.native); defer { Task { await s.close() } }
-            let pty = try await s.openPTY(size: TerminalSize(cols: 80, rows: 24))
+        var result = SSHBenchmarkCaseResult()
+        result.nativeMs = await singleMs {
+            let session = try await factory(.native); defer { Task { await session.close() } }
+            let pty = try await session.openPTY(size: TerminalSize(cols: 80, rows: 24))
             let start = CFAbsoluteTimeGetCurrent()
             try await pty.write(Data("echo latency_test\n".utf8))
             // consume one output chunk
@@ -166,16 +166,16 @@ public actor SSHBenchmarkRunner {
             _ = CFAbsoluteTimeGetCurrent() - start
             await pty.close()
         }
-        r.compatMs = await singleMs {
-            let s = try await factory(.compatibility); defer { Task { await s.close() } }
-            let pty = try await s.openPTY(size: TerminalSize(cols: 80, rows: 24))
+        result.compatMs = await singleMs {
+            let session = try await factory(.compatibility); defer { Task { await session.close() } }
+            let pty = try await session.openPTY(size: TerminalSize(cols: 80, rows: 24))
             let start = CFAbsoluteTimeGetCurrent()
             try await pty.write(Data("echo latency_test\n".utf8))
             for await _ in pty.output { break }
             _ = CFAbsoluteTimeGetCurrent() - start
             await pty.close()
         }
-        return r
+        return result
     }
 
     // MARK: - Helpers
@@ -189,10 +189,10 @@ public actor SSHBenchmarkRunner {
         return (CFAbsoluteTimeGetCurrent() - start) * 1000
     }
 
-    private func avgMs(_ n: Int, _ block: @Sendable () async throws -> Void) async -> Double? {
+    private func avgMs(_ iterationCount: Int, _ block: @Sendable () async throws -> Void) async -> Double? {
         var total: Double = 0; var ok = 0
-        for _ in 0..<n {
-            if let ms = await singleMs(block) { total += ms; ok += 1 }
+        for _ in 0..<iterationCount {
+            if let measuredMs = await singleMs(block) { total += measuredMs; ok += 1 }
         }
         return ok > 0 ? total / Double(ok) : nil
     }

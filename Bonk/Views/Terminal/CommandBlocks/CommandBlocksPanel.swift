@@ -21,8 +21,8 @@ struct CommandBlocksPanel: View {
 
     var filtered: [CommandBlock] {
         if searchText.isEmpty { return blocks.reversed() }
-        let q = searchText.lowercased()
-        return blocks.reversed().filter { $0.command.lowercased().contains(q) || $0.output.lowercased().contains(q) }
+        let query = searchText.lowercased()
+        return blocks.reversed().filter { $0.command.lowercased().contains(query) || $0.output.lowercased().contains(query) }
     }
 
     var body: some View {

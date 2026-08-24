@@ -18,12 +18,12 @@ struct InlineCompletionContext {
     /// Pure user-typed text (no prompt prefix), from the session input buffer.
     var inputBuffer: String
     /// Stable host/session scope. Prevents suggestions leaking across hosts.
-    var hostKey: String? = nil
+    var hostKey: String?
     var currentDirectory: String?
-    var shell: String? = nil
+    var shell: String?
     var recentCommands: [String]
     var recentOutput: String
-    var lastExitCode: Int? = nil
+    var lastExitCode: Int?
     /// Tool-agnostic identifiers extracted from recent output (container
     /// names, file names, branches, pods, ...) — no tool-specific parsing.
     var knownWords: [String]
@@ -608,8 +608,8 @@ final class InlineCompletionService {
     /// numbers and common noise. Works for docker, ls, git, kubectl, systemctl…
     nonisolated static func extractKnownWords(from output: String, limit: Int = 30) -> [String] {
         let cleaned = stripANSI(output)
-        let tokens = cleaned.split { ch in
-            !(ch.isLetter || ch.isNumber || "._/-".contains(ch))
+        let tokens = cleaned.split { character in
+            !(character.isLetter || character.isNumber || "._/-".contains(character))
         }
 
         var seen = Set<String>()

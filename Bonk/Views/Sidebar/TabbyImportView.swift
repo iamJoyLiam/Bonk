@@ -43,7 +43,7 @@ struct TabbyImportView: View {
         .alert("Import", isPresented: $showResult) {
             Button("OK") { dismiss() }
         } message: {
-            if let r = importResult { Text("\(r.created) imported, \(r.skipped) skipped") }
+            if let result = importResult { Text("\(result.created) imported, \(result.skipped) skipped") }
         }
         .alert("Error", isPresented: .constant(errorMessage != nil && hosts.isEmpty)) {
             Button("OK") { errorMessage = nil }
@@ -84,27 +84,27 @@ struct TabbyImportView: View {
 
     private var hostList: some View {
         List(selection: $selectedIDs) {
-            ForEach(hosts, id: \.id) { h in
+            ForEach(hosts, id: \.id) { host in
                 HStack {
-                    Image(systemName: selectedIDs.contains(h.id) ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(selectedIDs.contains(h.id) ? .blue : .secondary)
+                    Image(systemName: selectedIDs.contains(host.id) ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(selectedIDs.contains(host.id) ? .blue : .secondary)
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
-                            Text(h.name).font(.body.weight(.medium))
-                            if existingNames.contains(h.name) {
+                            Text(host.name).font(.body.weight(.medium))
+                            if existingNames.contains(host.name) {
                                 Text("duplicate").font(.caption2).padding(.horizontal, 6).padding(.vertical, 2).background(.orange.opacity(0.2)).cornerRadius(4)
                             }
                         }
                         HStack(spacing: 8) {
-                            Label(h.host, systemImage: "globe").font(.caption).foregroundStyle(.secondary)
-                            Label("\(h.port)", systemImage: "number").font(.caption).foregroundStyle(.secondary)
-                            Label(h.username, systemImage: "person").font(.caption).foregroundStyle(.secondary)
+                            Label(host.host, systemImage: "globe").font(.caption).foregroundStyle(.secondary)
+                            Label("\(host.port)", systemImage: "number").font(.caption).foregroundStyle(.secondary)
+                            Label(host.username, systemImage: "person").font(.caption).foregroundStyle(.secondary)
                         }
                     }
                     Spacer()
                 }.contentShape(Rectangle()).onTapGesture {
-                    if selectedIDs.contains(h.id) { selectedIDs.remove(h.id) } else { selectedIDs.insert(h.id) }
-                }.tag(h.id)
+                    if selectedIDs.contains(host.id) { selectedIDs.remove(host.id) } else { selectedIDs.insert(host.id) }
+                }.tag(host.id)
             }
         }.listStyle(.bordered)
     }
@@ -163,11 +163,11 @@ struct TabbyImportView: View {
     private func performImport() {
         isImporting = true
         var created = 0, skipped = 0
-        for h in hosts where selectedIDs.contains(h.id) {
-            if existingNames.contains(h.name) { skipped += 1; continue }
-            modelContext.insert(h)
+        for host in hosts where selectedIDs.contains(host.id) {
+            if existingNames.contains(host.name) { skipped += 1; continue }
+            modelContext.insert(host)
             // Credentials already stored via HostItem init (Keychain)
-            existingNames.insert(h.name)
+            existingNames.insert(host.name)
             created += 1
         }
         try? modelContext.save()

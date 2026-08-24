@@ -259,7 +259,7 @@ struct AIProviderDetailSheet: View {
     private enum CapabilityChoice: String, CaseIterable, Identifiable {
         case automatic
         case yes
-        case no
+        case none = "no"
 
         var id: String { rawValue }
     }
@@ -334,7 +334,7 @@ struct AIProviderDetailSheet: View {
         Picker(title, selection: binding) {
             Text(i18n.t(.capabilityAuto)).tag(CapabilityChoice.automatic)
             Text(i18n.t(.capabilityYes)).tag(CapabilityChoice.yes)
-            Text(i18n.t(.capabilityNo)).tag(CapabilityChoice.no)
+            Text(i18n.t(.capabilityNo)).tag(CapabilityChoice.none)
         }
     }
 
@@ -345,7 +345,7 @@ struct AIProviderDetailSheet: View {
             get: {
                 switch (draft.capabilityOverride ?? ModelCapabilityOverride())[keyPath: keyPath] {
                 case true: .yes
-                case false: .no
+                case false: .none
                 case nil: .automatic
                 }
             },
@@ -354,7 +354,7 @@ struct AIProviderDetailSheet: View {
                     override[keyPath: keyPath] = switch choice {
                     case .automatic: nil
                     case .yes: true
-                    case .no: false
+                    case .none: false
                     }
                 }
             }

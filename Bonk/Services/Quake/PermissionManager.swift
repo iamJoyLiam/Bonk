@@ -73,10 +73,10 @@ final class PermissionManager: @unchecked Sendable {
             queue: .main
         ) { [weak self] _ in
             // Re-check when active app changes (observer fires on main queue).
-            let pm = self
+            let permissionManager = self
             MainActor.assumeIsolated {
-                pm?.checkAccessibility()
-                pm?.onPermissionChanged?(pm?.isAccessibilityGranted ?? false)
+                permissionManager?.checkAccessibility()
+                permissionManager?.onPermissionChanged?(permissionManager?.isAccessibilityGranted ?? false)
             }
         }
     }

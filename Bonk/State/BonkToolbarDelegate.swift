@@ -462,9 +462,9 @@ private final class RecordingToolbarItemTarget: NSObject, NSToolbarItemValidatio
             // optimistic: check if any pane is recording, tint red
             var anyRecording = false
             for tab in coordinator.sessionManager.tabs {
-                for pid in tab.paneIDs {
-                    // synchronous check would need await, so we use pane's ptySession flag as proxy
-                    if tab.layout.findPane(id: pid)?.ptySession?.recordingPaneID != nil { anyRecording = true; break }
+                for pid in tab.paneIDs where tab.layout.findPane(id: pid)?.ptySession?.recordingPaneID != nil {
+                    anyRecording = true
+                    break
                 }
             }
             let symbol = NSImage(systemSymbolName: anyRecording ? "record.circle.fill" : "record.circle", accessibilityDescription: label)

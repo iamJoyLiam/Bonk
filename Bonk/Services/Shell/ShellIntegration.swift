@@ -48,15 +48,15 @@ final class ShellIntegration {
                 term = esc.lowerBound
                 termLen = 2
             }
-            guard let t = term else { break }
-            let payload = String(after[..<t])
+            guard let terminatorIndex = term else { break }
+            let payload = String(after[..<terminatorIndex])
             let code = payload.first.map(String.init) ?? ""
             let extra = String(payload.dropFirst())
-            if let ev = handleOSC133(code: code, payload: extra) {
-                events.append(ev)
-                onEvent?(ev)
+            if let event = handleOSC133(code: code, payload: extra) {
+                events.append(event)
+                onEvent?(event)
             }
-            let nextStart = after.index(t, offsetBy: termLen)
+            let nextStart = after.index(terminatorIndex, offsetBy: termLen)
             remaining = String(after[nextStart...])
         }
         return events
@@ -85,8 +85,8 @@ final class ShellIntegration {
             current = nil
             let data: [String: Any] = ["command": cur, "exitCode": exitCode as Any]
             NotificationCenter.default.post(name: .shellCommandDidEnd, object: nil, userInfo: data)
-            let ev = ShellEvent.commandEnd(cur, exitCode: exitCode)
-            return ev
+            let event = ShellEvent.commandEnd(cur, exitCode: exitCode)
+            return event
         default:
             return nil
         }
@@ -108,8 +108,8 @@ final class ShellIntegration {
         } else {
             target = sorted.first(where: { $0.startLine > lineCounter }) ?? sorted.first
         }
-        if let t = target {
-            NotificationCenter.default.post(name: .shellJumpToCommand, object: nil, userInfo: ["line": t.startLine, "id": t.id])
+        if let targetRange = target {
+            NotificationCenter.default.post(name: .shellJumpToCommand, object: nil, userInfo: ["line": targetRange.startLine, "id": targetRange.id])
         }
     }
 }

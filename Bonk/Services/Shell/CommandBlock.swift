@@ -25,9 +25,9 @@ struct CommandBlock: Identifiable, Sendable, Equatable {
 
 extension CommandBlock {
     var durationLabel: String {
-        guard let d = duration else { return "" }
-        if d < 1 { return String(format: "%.0fms", d * 1000) }
-        if d < 60 { return String(format: "%.1fs", d) }
-        return String(format: "%.0fm%.0fs", floor(d / 60), d.truncatingRemainder(dividingBy: 60))
+        guard let durationValue = duration else { return "" }
+        if durationValue < 1 { return String(format: "%.0fms", durationValue * 1000) }
+        if durationValue < 60 { return String(format: "%.1fs", durationValue) }
+        return String(format: "%.0fm%.0fs", floor(durationValue / 60), durationValue.truncatingRemainder(dividingBy: 60))
     }
 }

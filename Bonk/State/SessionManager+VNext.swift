@@ -151,7 +151,7 @@ extension SessionManager {
         session.sshService = compatService
         observeStateChanges(for: tab, session: session, service: compatService)
         await attachManualPasswordHandler(to: compatService, tab: tab)
-        setPhase(session, to: .fallbacking(to: .compatibility), host: config.host, engine: "Compatibility", reason: "fallback \(classification.rawValue)")
+        setPhase(session, to: .fallbacking(destination: .compatibility), host: config.host, engine: "Compatibility", reason: "fallback \(classification.rawValue)")
         try await compatService.connect(config: compatConfig)
         return (compatService, compatConfig, inferred, reason)
     }

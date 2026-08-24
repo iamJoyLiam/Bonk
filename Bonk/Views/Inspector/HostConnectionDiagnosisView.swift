@@ -22,7 +22,7 @@ struct HostConnectionDiagnosisView: View {
                         let store = SSHProfileStore(context: modelContext)
                         let forced = store.profiles(forHost: host.host, port: host.port)
                             .filter { $0.reasonRaw == SSHBackendReason.forcedCompatibility.rawValue }
-                        for p in forced { modelContext.delete(p) }
+                        for profile in forced { modelContext.delete(profile) }
                         try? modelContext.save()
                     }
                     reload()
@@ -133,10 +133,10 @@ struct HostConnectionDiagnosisView: View {
             if profile.negotiatedKEX != nil || profile.negotiatedHostKey != nil || profile.negotiatedCipher != nil || profile.negotiatedMAC != nil {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Negotiated").font(.system(size: AppStyle.fontCaption, weight: .medium))
-                    if let v = profile.negotiatedKEX { Text("KEX: \(v)").font(.system(size: AppStyle.fontCaption, design: .monospaced)) }
-                    if let v = profile.negotiatedHostKey { Text("HostKey: \(v)").font(.system(size: AppStyle.fontCaption, design: .monospaced)) }
-                    if let v = profile.negotiatedCipher { Text("Cipher: \(v)").font(.system(size: AppStyle.fontCaption, design: .monospaced)) }
-                    if let v = profile.negotiatedMAC { Text("MAC: \(v)").font(.system(size: AppStyle.fontCaption, design: .monospaced)) }
+                    if let value = profile.negotiatedKEX { Text("KEX: \(value)").font(.system(size: AppStyle.fontCaption, design: .monospaced)) }
+                    if let value = profile.negotiatedHostKey { Text("HostKey: \(value)").font(.system(size: AppStyle.fontCaption, design: .monospaced)) }
+                    if let value = profile.negotiatedCipher { Text("Cipher: \(value)").font(.system(size: AppStyle.fontCaption, design: .monospaced)) }
+                    if let value = profile.negotiatedMAC { Text("MAC: \(value)").font(.system(size: AppStyle.fontCaption, design: .monospaced)) }
                 }
                 .foregroundStyle(.secondary)
             }

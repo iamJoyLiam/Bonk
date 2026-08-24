@@ -81,7 +81,7 @@ final class TerminalViewCache {
                 let cacheCount = self.cache.count
                 let eventMask = source.data
                 Log.ui.info("[Cache] Memory pressure event: cache=\(cacheCount), active=\(activeTabID?.uuidString.prefix(8) ?? "nil"), event=\(eventMask.rawValue)")
-                
+
                 if eventMask.contains(.critical) {
                     // Critical memory pressure: evict non-active tabs to free memory
                     if cacheCount > 1 {
@@ -163,18 +163,18 @@ final class TerminalViewCache {
     /// Evict all cached views except those belonging to the active tab (used on memory pressure).
     func evictAllExceptActive(activeTabID: UUID?) {
         guard let activeTabID else { return }
-        
+
         // Protect all cache entries whose parentTabID matches the active tab
         let protectedIDs = Set(cache.values
             .filter { $0.parentTabID == activeTabID }
             .map { $0.tabID })
-        
+
         let evictedIDs = cache.keys.filter { !protectedIDs.contains($0) }
         for id in evictedIDs {
             // Log the eviction
             evictionLog.append((Date(), "memory_pressure", id))
             if evictionLog.count > 100 { evictionLog.removeFirst(50) }
-            
+
             // Cancel feed task before removing
             if let cached = cache[id] {
                 if let coordinator = cached.coordinator as? ContainerTerminalCoordinator {
@@ -217,12 +217,12 @@ final class TerminalViewCache {
         let protectedIDs = Set(cache.values
             .filter { $0.parentTabID == keepTabID }
             .map { $0.tabID })
-        
+
         while cache.count > maxCachedTabs {
             if let evictID = accessOrder.first(where: { !protectedIDs.contains($0) }) {
                 evictionLog.append((Date(), "lru_overflow", evictID))
                 if evictionLog.count > 100 { evictionLog.removeFirst(50) }
-                
+
                 if let cached = cache[evictID] {
                     if let coordinator = cached.coordinator as? ContainerTerminalCoordinator {
                         coordinator.feedTask?.cancel()

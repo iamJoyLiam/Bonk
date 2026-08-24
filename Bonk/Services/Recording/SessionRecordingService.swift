@@ -58,21 +58,21 @@ actor SessionRecordingService {
     func start(host: String, tabID: UUID, paneID: UUID, cols: Int = 80, rows: Int = 24) async throws -> Recording {
         if active[paneID] != nil { throw RecordingError.alreadyRecording }
         let safeHost = host.replacingOccurrences(of: "[^a-zA-Z0-9-_]", with: "_", options: .regularExpression)
-        let df = DateFormatter()
-        df.locale = Locale(identifier: "en_US_POSIX")
-        df.dateFormat = "yyyy-MM-dd_HH-mm-ss"
-        let ts = df.string(from: Date())
-        var name = "\(safeHost)_\(ts).cast"
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let timestamp = dateFormatter.string(from: Date())
+        var name = "\(safeHost)_\(timestamp).cast"
         var url = recordingsDir.appendingPathComponent(name)
         // Ensure uniqueness when two recordings start in the same second
         var counter = 1
         while FileManager.default.fileExists(atPath: url.path) {
-            name = "\(safeHost)_\(ts)_\(counter).cast"
+            name = "\(safeHost)_\(timestamp)_\(counter).cast"
             url = recordingsDir.appendingPathComponent(name)
             counter += 1
         }
         FileManager.default.createFile(atPath: url.path, contents: nil)
-        guard let fh = try? FileHandle(forWritingTo: url) else { throw RecordingError.cannotCreateFile }
+        guard let fileHandle = try? FileHandle(forWritingTo: url) else { throw RecordingError.cannotCreateFile }
         let header: [String: Any] = [
             "version": 2,
             "width": cols,
@@ -83,17 +83,17 @@ actor SessionRecordingService {
         ]
         if let data = try? JSONSerialization.data(withJSONObject: header, options: []),
            let line = String(data: data, encoding: .utf8) {
-            try? fh.write(contentsOf: (line + "\n").data(using: .utf8)!)
+            try? fileHandle.write(contentsOf: (line + "\n").data(using: .utf8)!)
         }
         let startTime = CFAbsoluteTimeGetCurrent()
-        var activeRec = ActiveRecording(recording: Recording(id: UUID(), url: url, host: host, tabID: tabID, paneID: paneID, startDate: Date()), startTime: startTime, fileHandle: fh)
+        var activeRec = ActiveRecording(recording: Recording(id: UUID(), url: url, host: host, tabID: tabID, paneID: paneID, startDate: Date()), startTime: startTime, fileHandle: fileHandle)
         // Capture initial prompt line only — previous 4000-char tail caused huge blank gap + duplicated prompts
         let snapshot: String? = await MainActor.run {
             guard let cached = TerminalViewCache.shared.retrieve(paneID) else { return nil }
-            guard let t = cached.view.terminal, t.cols > 0, t.rows > 0 else { return nil }
+            guard let terminal = cached.view.terminal, terminal.cols > 0, terminal.rows > 0 else { return nil }
             // Prefer the current cursor line (the prompt) — trimRight false keeps "[root@...]# " spacing
-            let (x, y) = t.getCursorLocation()
-            if y >= 0, y < t.rows, let line = t.getLine(row: y) {
+            let (cursorX, cursorY) = terminal.getCursorLocation()
+            if cursorY >= 0, cursorY < terminal.rows, let line = terminal.getLine(row: cursorY) {
                 let str = line.translateToString(trimRight: false)
                 let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty {
@@ -102,13 +102,11 @@ actor SessionRecordingService {
                 }
             }
             // Fallback: last non-empty line of buffer
-            let data = t.getBufferAsData()
+            let data = terminal.getBufferAsData()
             guard let str = String(data: data, encoding: .utf8) else { return nil }
             let lines = str.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-            for line in lines.reversed() {
-                if !line.trimmingCharacters(in: .whitespaces).isEmpty {
-                    return line
-                }
+            for line in lines.reversed() where !line.trimmingCharacters(in: .whitespaces).isEmpty {
+                return line
             }
             return nil
         }
@@ -117,7 +115,7 @@ actor SessionRecordingService {
             let data = Data(line.utf8)
             activeRec.bytesWritten += data.count
             // Write synchronously before any future recordOutput (ioQueue is serial)
-            try? fh.write(contentsOf: data)
+            try? fileHandle.write(contentsOf: data)
         }
         active[paneID] = activeRec
         os_log("[REC] start %@ pane %@", log: OSLog(subsystem: "com.bonk", category: "recording"), type: .info, url.lastPathComponent, paneID.uuidString)
@@ -125,11 +123,11 @@ actor SessionRecordingService {
     }
 
     func stop(paneID: UUID) {
-        guard let a = active.removeValue(forKey: paneID) else { return }
+        guard let activeRecording = active.removeValue(forKey: paneID) else { return }
         // Drain any pending async writes before closing.
         ioQueue.sync {}
-        try? a.fileHandle.close()
-        os_log("[REC] stop %@ bytes %d", log: OSLog(subsystem: "com.bonk", category: "recording"), type: .info, a.recording.url.lastPathComponent, a.bytesWritten)
+        try? activeRecording.fileHandle.close()
+        os_log("[REC] stop %@ bytes %d", log: OSLog(subsystem: "com.bonk", category: "recording"), type: .info, activeRecording.recording.url.lastPathComponent, activeRecording.bytesWritten)
     }
 
     // MARK: - Record (raw, no transform, streaming)
@@ -139,34 +137,34 @@ actor SessionRecordingService {
     /// `ESC ( 0` line-drawing and other VT sequences survive for faithful replay
     /// via SwiftTerm.
     func recordOutput(paneID: UUID, text: String) {
-        guard var a = active[paneID] else { return }
+        guard var activeRecording = active[paneID] else { return }
         guard !text.isEmpty else { return }
-        if a.bytesWritten > ActiveRecording.maxBytes { return }
-        let elapsed = CFAbsoluteTimeGetCurrent() - a.startTime
+        if activeRecording.bytesWritten > ActiveRecording.maxBytes { return }
+        let elapsed = CFAbsoluteTimeGetCurrent() - activeRecording.startTime
         let line = Self.jsonLine(time: elapsed, kind: "o", data: text)
         let data = Data(line.utf8)
-        let fh = a.fileHandle
-        a.bytesWritten += data.count
-        active[paneID] = a
+        let fileHandle = activeRecording.fileHandle
+        activeRecording.bytesWritten += data.count
+        active[paneID] = activeRecording
         // Off-actor serial queue — no await back-pressure, no main-thread block.
         ioQueue.async {
-            try? fh.write(contentsOf: data)
+            try? fileHandle.write(contentsOf: data)
         }
     }
 
     func recordInput(paneID: UUID, bytes: ArraySlice<UInt8>) {
-        guard var a = active[paneID] else { return }
+        guard var activeRecording = active[paneID] else { return }
         let text = String(bytes: bytes, encoding: .utf8) ?? ""
         guard !text.isEmpty else { return }
-        if a.bytesWritten > ActiveRecording.maxBytes { return }
-        let elapsed = CFAbsoluteTimeGetCurrent() - a.startTime
+        if activeRecording.bytesWritten > ActiveRecording.maxBytes { return }
+        let elapsed = CFAbsoluteTimeGetCurrent() - activeRecording.startTime
         let line = Self.jsonLine(time: elapsed, kind: "i", data: text)
         let data = Data(line.utf8)
-        let fh = a.fileHandle
-        a.bytesWritten += data.count
-        active[paneID] = a
+        let fileHandle = activeRecording.fileHandle
+        activeRecording.bytesWritten += data.count
+        active[paneID] = activeRecording
         ioQueue.async {
-            try? fh.write(contentsOf: data)
+            try? fileHandle.write(contentsOf: data)
         }
     }
 
@@ -189,15 +187,15 @@ actor SessionRecordingService {
     private static func jsonLine(time: Double, kind: String, data: String) -> String {
         // Keep 6 decimals — enough to preserve inter-event timing while staying
         // compatible with asciinema players; JSON numbers don't need quoting.
-        let t = String(format: "%.6f", time)
-        return "[\(t),\"\(kind)\",\"\(escapeJSONString(data))\"]\n"
+        let formattedTime = String(format: "%.6f", time)
+        return "[\(formattedTime),\"\(kind)\",\"\(escapeJSONString(data))\"]\n"
     }
 
     /// Escape a string for JSON string literal (RFC 8259 §7).
-    private static func escapeJSONString(_ s: String) -> String {
+    private static func escapeJSONString(_ string: String) -> String {
         var out = ""
-        out.reserveCapacity(s.utf8.count)
-        for scalar in s.unicodeScalars {
+        out.reserveCapacity(string.utf8.count)
+        for scalar in string.unicodeScalars {
             switch scalar.value {
             case 0x22: out += "\\\""
             case 0x5C: out += "\\\\"

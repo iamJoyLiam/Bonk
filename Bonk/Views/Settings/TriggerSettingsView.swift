@@ -116,7 +116,7 @@ private struct TriggerEditSheet: View {
 
                 Section(i18n.t(.triggerAction)) {
                     Picker(i18n.t(.triggerAction), selection: $actionType) {
-                        ForEach(TriggerActionType.allCases, id: \.self) { t in Text(t.displayName(i18n: i18n)).tag(t) }
+                        ForEach(TriggerActionType.allCases, id: \.self) { action in Text(action.displayName(i18n: i18n)).tag(action) }
                     }.pickerStyle(.segmented)
                     switch actionType {
                     case .highlight:
@@ -142,17 +142,17 @@ private struct TriggerEditSheet: View {
             }
         }
         .onAppear {
-            if let r = rule {
-                name = r.name; pattern = r.pattern; isRegex = r.isRegex; isCaseSensitive = r.isCaseSensitive
-                actionType = r.actionType; payload = r.actionPayload ?? ""; isEnabled = r.isEnabled
+            if let triggerRule = rule {
+                name = triggerRule.name; pattern = triggerRule.pattern; isRegex = triggerRule.isRegex; isCaseSensitive = triggerRule.isCaseSensitive
+                actionType = triggerRule.actionType; payload = triggerRule.actionPayload ?? ""; isEnabled = triggerRule.isEnabled
             }
         }
     }
 
     private func save() {
-        if let r = rule {
-            r.name = name; r.pattern = pattern; r.isRegex = isRegex; r.isCaseSensitive = isCaseSensitive
-            r.actionType = actionType; r.actionPayload = payload.isEmpty ? nil : payload; r.isEnabled = isEnabled
+        if let triggerRule = rule {
+            triggerRule.name = name; triggerRule.pattern = pattern; triggerRule.isRegex = isRegex; triggerRule.isCaseSensitive = isCaseSensitive
+            triggerRule.actionType = actionType; triggerRule.actionPayload = payload.isEmpty ? nil : payload; triggerRule.isEnabled = isEnabled
         } else {
             let new = TriggerRule(name: name, pattern: pattern, isRegex: isRegex, isCaseSensitive: isCaseSensitive, actionType: actionType, actionPayload: payload.isEmpty ? nil : payload, isEnabled: isEnabled)
             modelContext.insert(new)

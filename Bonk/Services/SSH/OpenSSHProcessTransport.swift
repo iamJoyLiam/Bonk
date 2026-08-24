@@ -59,10 +59,10 @@ final class OpenSSHProcessTransport: @unchecked Sendable {
         size.ws_row = UInt16(max(1, min(rows, 200)))
 
         if openpty(&master, &slave, nil, nil, &size) != 0 {
-            let e = errno
+            let errorCode = errno
             // ENXIO(6) or ENOMEM: PTY pool exhausted — often orphaned ControlMaster ssh
             // children holding PTYs after a crash. Reclaim and retry once.
-            if e == ENXIO || e == ENOMEM || e == EMFILE || e == ENFILE {
+            if errorCode == ENXIO || errorCode == ENOMEM || errorCode == EMFILE || errorCode == ENFILE {
                 // Reclaim: kill bonk-ssh muxes that survived a crash and hold PTYs
                 let task = Process()
                 task.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -73,12 +73,12 @@ final class OpenSSHProcessTransport: @unchecked Sendable {
                     // retry succeeded
                 } else {
                     throw SSHServiceError.connectionFailed(
-                        "Pseudo Terminal Setup Error ErrorCode: 7 Errno: \(e) (\(String(cString: strerror(e)))). PTY 耗尽：已自动清理残留的 bonk-ssh 进程，请关闭部分标签页后重试，或重启 App。若频繁出现，检查是否有大量未关闭的 SSH 标签/分屏。"
+                        "Pseudo Terminal Setup Error ErrorCode: 7 Errno: \(errorCode) (\(String(cString: strerror(errorCode)))). PTY 耗尽：已自动清理残留的 bonk-ssh 进程，请关闭部分标签页后重试，或重启 App。若频繁出现，检查是否有大量未关闭的 SSH 标签/分屏。"
                     )
                 }
             } else {
                 throw SSHServiceError.connectionFailed(
-                    "Pseudo Terminal Setup Error ErrorCode: 7 Errno: \(e) (\(String(cString: strerror(e)))). 请重试或重启 App，详情见 Show Details。"
+                    "Pseudo Terminal Setup Error ErrorCode: 7 Errno: \(errorCode) (\(String(cString: strerror(errorCode)))). 请重试或重启 App，详情见 Show Details。"
                 )
             }
         }
@@ -117,8 +117,8 @@ final class OpenSSHProcessTransport: @unchecked Sendable {
 
     /// Write raw bytes to child PTY.
     func write(_ data: Data) throws {
-        let fd = masterFD
-        guard fd >= 0 else {
+        let fileDescriptor = masterFD
+        guard fileDescriptor >= 0 else {
             throw SSHServiceError.connectionFailed("OpenSSH PTY is closed.")
         }
 
@@ -127,7 +127,7 @@ final class OpenSSHProcessTransport: @unchecked Sendable {
             var offset = 0
             while offset < data.count {
                 let written = Darwin.write(
-                    fd,
+                    fileDescriptor,
                     baseAddress.advanced(by: offset),
                     data.count - offset
                 )
@@ -159,12 +159,12 @@ final class OpenSSHProcessTransport: @unchecked Sendable {
     /// Close PTY and terminate child.
     func close() {
         lock.lock()
-        let fd = _masterFD
+        let fileDescriptor = _masterFD
         _masterFD = -1
         let child = pid
         lock.unlock()
 
-        if fd >= 0 { Darwin.close(fd) }
+        if fileDescriptor >= 0 { Darwin.close(fileDescriptor) }
         if child > 0 { kill(child, SIGHUP) }
     }
 

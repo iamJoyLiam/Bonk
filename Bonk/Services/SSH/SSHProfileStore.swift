@@ -13,8 +13,8 @@ final class SSHProfileStore {
         let host = req.endpoint.host
         let port = Int(req.endpoint.port)
         let authRaw = req.authentication.rawValue
-        let predicate = #Predicate<SSHBackendProfile> { p in
-            p.host == host && p.port == port && p.authMethodRaw == authRaw
+        let predicate = #Predicate<SSHBackendProfile> { profile in
+            profile.host == host && profile.port == port && profile.authMethodRaw == authRaw
         }
         let desc = FetchDescriptor<SSHBackendProfile>(predicate: predicate)
         guard let all = try? context.fetch(desc) else { return nil }
@@ -29,8 +29,8 @@ final class SSHProfileStore {
         let host = req.endpoint.host
         let port = Int(req.endpoint.port)
         let authRaw = req.authentication.rawValue
-        let predicate = #Predicate<SSHBackendProfile> { p in
-            p.host == host && p.port == port && p.authMethodRaw == authRaw
+        let predicate = #Predicate<SSHBackendProfile> { profile in
+            profile.host == host && profile.port == port && profile.authMethodRaw == authRaw
         }
         let desc = FetchDescriptor<SSHBackendProfile>(predicate: predicate)
         guard let all = try? context.fetch(desc) else { return nil }
@@ -44,8 +44,8 @@ final class SSHProfileStore {
 
     /// Return all profiles for a host (any auth/route) — for Host Inspector list.
     func profiles(forHost host: String, port: Int) -> [SSHBackendProfile] {
-        let predicate = #Predicate<SSHBackendProfile> { p in
-            p.host == host && p.port == port
+        let predicate = #Predicate<SSHBackendProfile> { profile in
+            profile.host == host && profile.port == port
         }
         let desc = FetchDescriptor<SSHBackendProfile>(predicate: predicate)
         guard let all = try? context.fetch(desc) else { return [] }
@@ -54,12 +54,12 @@ final class SSHProfileStore {
 
     /// Remove all profiles for a host — for Host Inspector "Re-detect" bulk clear.
     func removeAll(forHost host: String, port: Int) {
-        let predicate = #Predicate<SSHBackendProfile> { p in
-            p.host == host && p.port == port
+        let predicate = #Predicate<SSHBackendProfile> { profile in
+            profile.host == host && profile.port == port
         }
         let desc = FetchDescriptor<SSHBackendProfile>(predicate: predicate)
         guard let all = try? context.fetch(desc) else { return }
-        for p in all { context.delete(p) }
+        for profile in all { context.delete(profile) }
         try? context.save()
     }
 
@@ -87,11 +87,11 @@ final class SSHProfileStore {
                 && existing.macAlgorithms == (algorithms?.mac ?? [])
             if sameDecision, existing.isValid {
                 existing.bumpHit()
-                if let v = negotiatedKEX { existing.negotiatedKEX = v }
-                if let v = negotiatedHostKey { existing.negotiatedHostKey = v }
-                if let v = negotiatedCipher { existing.negotiatedCipher = v }
-                if let v = negotiatedMAC { existing.negotiatedMAC = v }
-                if let c = classification?.rawValue { existing.classificationRaw = c }
+                if let value = negotiatedKEX { existing.negotiatedKEX = value }
+                if let value = negotiatedHostKey { existing.negotiatedHostKey = value }
+                if let value = negotiatedCipher { existing.negotiatedCipher = value }
+                if let value = negotiatedMAC { existing.negotiatedMAC = value }
+                if let classificationValue = classification?.rawValue { existing.classificationRaw = classificationValue }
                 try? context.save()
                 return
             } else {
@@ -99,7 +99,7 @@ final class SSHProfileStore {
             }
         }
         let routeData = try? JSONEncoder().encode(req.route)
-        let p = SSHBackendProfile(
+        let profile = SSHBackendProfile(
             host: req.endpoint.host,
             port: Int(req.endpoint.port),
             authMethodRaw: req.authentication.rawValue,
@@ -118,7 +118,7 @@ final class SSHProfileStore {
             negotiatedCipher: negotiatedCipher,
             negotiatedMAC: negotiatedMAC
         )
-        context.insert(p)
+        context.insert(profile)
         try? context.save()
     }
 

@@ -116,8 +116,8 @@ final class SSHBackendProfile {
         if !isPolicyReason, isExpired { return false }
         // Fingerprint check — dependency upgrade invalidates even policy entries
         let current = SSHCapabilityFingerprint.current
-        if let cv = citadelVersion, cv != current.citadelVersion { return false }
-        if let nv = niosshVersion, nv != current.niosshVersion { return false }
+        if let cachedCitadelVersion = citadelVersion, cachedCitadelVersion != current.citadelVersion { return false }
+        if let cachedNIOSSHVersion = niosshVersion, cachedNIOSSHVersion != current.niosshVersion { return false }
         return true
     }
 

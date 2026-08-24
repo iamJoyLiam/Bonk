@@ -281,47 +281,47 @@ public protocol SSHBackend: Sendable {
 
 public extension SSHBackend {
     func supports(_ requirements: SSHConnectionRequirements) -> Bool {
-        let c = capabilities.connection
-        let s = capabilities.service
+        let connectionCaps = capabilities.connection
+        let serviceCaps = capabilities.service
 
         // Authentication
         switch requirements.authentication {
         case .password:
-            guard c.password else { return false }
+            guard connectionCaps.password else { return false }
         case .publicKey:
-            guard c.publicKey else { return false }
+            guard connectionCaps.publicKey else { return false }
             if let algo = requirements.keyAlgorithm {
                 switch algo {
-                case .ed25519: guard c.ed25519 else { return false }
-                case .ecdsa: guard c.ecdsa else { return false }
-                case .rsa: guard c.rsa else { return false }
+                case .ed25519: guard connectionCaps.ed25519 else { return false }
+                case .ecdsa: guard connectionCaps.ecdsa else { return false }
+                case .rsa: guard connectionCaps.rsa else { return false }
                 }
             }
         case .certificate:
-            guard c.certificate else { return false }
+            guard connectionCaps.certificate else { return false }
         case .secureEnclave:
             // Only Native provides Secure Enclave custom auth (see §3.1)
-            guard c.publicKey && type == .native else { return false }
+            guard connectionCaps.publicKey && type == .native else { return false }
         case .keyboardInteractive:
-            guard c.keyboardInteractive else { return false }
+            guard connectionCaps.keyboardInteractive else { return false }
         case .agent:
-            guard c.agent else { return false }
+            guard connectionCaps.agent else { return false }
         }
 
-        if requirements.requiresKeyboardInteractive, !c.keyboardInteractive { return false }
-        if requirements.requiresCertificate, !c.certificate { return false }
-        if requirements.requiresAgent, !c.agent { return false }
+        if requirements.requiresKeyboardInteractive, !connectionCaps.keyboardInteractive { return false }
+        if requirements.requiresCertificate, !connectionCaps.certificate { return false }
+        if requirements.requiresAgent, !connectionCaps.agent { return false }
 
         // Service — v1: compatibility-only services stay on Compatibility
         // (forward/dynamic stays Compatibility by policy even though Native has direct/remote;
         //  policy layer decides, this is pure capability check)
         switch requirements.service {
-        case .terminal: guard s.terminal else { return false }
-        case .exec: guard s.exec else { return false }
-        case .sftp: guard s.sftp else { return false }
+        case .terminal: guard serviceCaps.terminal else { return false }
+        case .exec: guard serviceCaps.exec else { return false }
+        case .sftp: guard serviceCaps.sftp else { return false }
         case .forward:
             // forward requires at least one of direct/reverse/dynamic
-            guard s.directForward || s.reverseForward || s.dynamicForward else { return false }
+            guard serviceCaps.directForward || serviceCaps.reverseForward || serviceCaps.dynamicForward else { return false }
         }
 
         return true

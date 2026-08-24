@@ -102,9 +102,9 @@ enum LogColorizer {
     /// Non-overlapping ranges are all kept.
     private static func mergeAnnotations(_ annotations: [(range: NSRange, code: String, priority: Int)]) -> [(range: NSRange, code: String)] {
         // Sort by location, then by priority
-        let sorted = annotations.sorted { a, b in
-            if a.range.location != b.range.location { return a.range.location < b.range.location }
-            return a.priority < b.priority
+        let sorted = annotations.sorted { patternA, patternB in
+            if patternA.range.location != patternB.range.location { return patternA.range.location < patternB.range.location }
+            return patternA.priority < patternB.priority
         }
 
         var result: [(range: NSRange, code: String)] = []
@@ -153,11 +153,11 @@ enum LogColorizer {
 
     /// Skip shell prompts, cursor control, tab completion noise.
     private static func isShellNoise(_ text: String) -> Bool {
-        let t = text.trimmingCharacters(in: .whitespaces)
-        if t.isEmpty { return true }
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { return true }
         // Prompt patterns
-        if t.range(of: #"^(?:\$\s|>\s|#\s|[%>]\s)"#, options: .regularExpression) != nil { return true }
-        if t.range(of: #"^\w+@[\w.-]+:\S*\s*[#$>]\s*$"#, options: .regularExpression) != nil { return true }
+        if trimmed.range(of: #"^(?:\$\s|>\s|#\s|[%>]\s)"#, options: .regularExpression) != nil { return true }
+        if trimmed.range(of: #"^\w+@[\w.-]+:\S*\s*[#$>]\s*$"#, options: .regularExpression) != nil { return true }
         return false
     }
 }

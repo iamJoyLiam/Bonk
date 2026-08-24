@@ -355,8 +355,8 @@ struct HostListView: View {
 
     private func latestProfile(for host: HostItem) -> SSHBackendProfile? {
         // Direct lookup: host+port; prefer valid, newest first (Query already sorted)
-        for p in backendProfiles where p.host == host.host && p.port == host.port && p.isValid {
-            return p
+        for profile in backendProfiles where profile.host == host.host && profile.port == host.port && profile.isValid {
+            return profile
         }
         // Fallback: any profile for host (even if expired, show stale)
         return backendProfiles.first { $0.host == host.host && $0.port == host.port }
