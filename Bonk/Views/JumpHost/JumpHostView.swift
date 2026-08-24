@@ -171,7 +171,7 @@ struct JumpHostEditSheet: View {
 
     @State private var name = ""
     @State private var hostname = ""
-    @State private var port = "22"
+    @State private var port = "\(SSHConstants.defaultPort)"
     @State private var username = ""
     @State private var authStyle: JumpAuthStyle = .credential
     @State private var password = ""
@@ -416,7 +416,7 @@ struct JumpHostEditSheet: View {
         guard let authMethod = buildAuthMethod(),
               let effectiveUsername = resolvedUsername
         else { return }
-        let portInt = Int(port) ?? 22
+        let portInt = Int(port) ?? SSHConstants.defaultPort
 
         testing = true
         testResult = nil
@@ -447,7 +447,7 @@ struct JumpHostEditSheet: View {
     // FilePickerCard now lives in Bonk/Views/Common/BonkFormFields.swift
 
     private func save() {
-        let portInt = Int(port) ?? 22
+        let portInt = Int(port) ?? SSHConstants.defaultPort
         let effectiveUsername = resolvedUsername ?? username
 
         if let host {

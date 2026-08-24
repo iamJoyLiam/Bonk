@@ -152,7 +152,7 @@ struct SSHConfigImportView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    if let port = entry.port, port != 22 {
+                    if let port = entry.port, port != SSHConstants.defaultPort {
                         Label("\(port)", systemImage: "number")
                             .font(.caption)
                             .foregroundStyle(.secondary)

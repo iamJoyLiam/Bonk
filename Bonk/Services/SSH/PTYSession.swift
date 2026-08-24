@@ -293,7 +293,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                 blocks.append(finishedBlock)
                 if blocks.count > Self.maxCommandBlocks { blocks.removeFirst(blocks.count - Self.maxCommandBlocks) }
             }
-            NotificationCenter.default.post(name: .commandBlockDidAdd, object: nil, userInfo: ["block": finishedBlock])
+            Task { @MainActor in NotificationCenter.default.post(name: .commandBlockDidAdd, object: nil, userInfo: ["block": finishedBlock]) }
             activeCommandBlock.withLockedValue { $0 = nil }
         }
         // Colorize for display only.
@@ -943,3 +943,4 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         return .dcsEntry
     }
 }
+

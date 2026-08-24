@@ -20,6 +20,7 @@ struct ServerResourceSnapshot: Equatable {
 @Observable
 @MainActor
 final class ServerResourceMonitor {
+    private static let maxConcurrentPolls = 3
     static let shared = ServerResourceMonitor()
 
     private(set) var snapshot: ServerResourceSnapshot?
@@ -99,17 +100,20 @@ final class ServerResourceMonitor {
 
         let startedFetch = Date()
         var results: [(UUID, ServerInfo)] = []
-        await withTaskGroup(of: (UUID, ServerInfo)?.self) { group in
-            for (tab, service) in candidates {
-                group.addTask {
-                    if let info = await ServerInfoFetcher.fetch(using: service) {
-                        return (tab.id, info)
+        // Capped concurrency: process candidates in batches of maxConcurrentPolls to avoid thread/NIO explosion
+        for chunk in candidates.chunked(into: Self.maxConcurrentPolls) {
+            await withTaskGroup(of: (UUID, ServerInfo)?.self) { group in
+                for (tab, service) in chunk {
+                    group.addTask {
+                        if let info = await ServerInfoFetcher.fetch(using: service) {
+                            return (tab.id, info)
+                        }
+                        return nil
                     }
-                    return nil
                 }
-            }
-            for await res in group {
-                if let pair = res { results.append(pair) }
+                for await res in group {
+                    if let pair = res { results.append(pair) }
+                }
             }
         }
 
@@ -195,5 +199,12 @@ final class ServerResourceMonitor {
             }
         }
         return result
+    }
+}
+
+private extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0 else { return [self] }
+        return stride(from: 0, to: count, by: size).map { Array(self[$0..<Swift.min($0+size, count)]) }
     }
 }

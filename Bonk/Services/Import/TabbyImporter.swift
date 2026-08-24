@@ -67,7 +67,7 @@ struct TabbyImporter: SessionImporter {
         // Some exports flatten host at top level
         let host = (options["host"] as? String) ?? (dict["host"] as? String) ?? ""
         guard !host.isEmpty else { return nil }
-        let port = (options["port"] as? Int) ?? (dict["port"] as? Int) ?? 22
+        let port = (options["port"] as? Int) ?? (dict["port"] as? Int) ?? SSHConstants.defaultPort
         let user = (options["user"] as? String) ?? (options["username"] as? String) ?? (dict["user"] as? String) ?? ""
 
         // Auth

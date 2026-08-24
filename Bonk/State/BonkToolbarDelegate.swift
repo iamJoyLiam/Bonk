@@ -185,10 +185,6 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
         case .importSessions:
             return makeImportMenuItem(id: itemIdentifier)
 
-        case .sshImport, .tabbyImport:
-            // legacy items: migrated to importSessions, hide from palette
-            return nil
-
         case .triggers:
             return makeItem(
                 id: itemIdentifier,

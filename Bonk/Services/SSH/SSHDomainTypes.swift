@@ -9,13 +9,19 @@
 
 import Foundation
 
+/// Single source of truth for SSH port defaults — replaces scattered `22`/`32,222` literals.
+public enum SSHConstants {
+    public static let defaultPort: Int = 22
+    public static let defaultPortUInt16: UInt16 = 22
+}
+
 // MARK: - Endpoint & Route
 
 public struct SSHEndpoint: Sendable, Hashable, Codable, Equatable {
     public var host: String
     public var port: UInt16
 
-    public init(host: String, port: UInt16 = 22) {
+    public init(host: String, port: UInt16 = UInt16(SSHConstants.defaultPortUInt16)) {
         self.host = host
         self.port = port
     }

@@ -97,7 +97,7 @@ final class HostItem {
     init(
         name: String,
         host: String,
-        port: Int = 22,
+        port: Int = SSHConstants.defaultPort,
         username: String,
         authType: AuthType = .password,
         password: String? = nil,
