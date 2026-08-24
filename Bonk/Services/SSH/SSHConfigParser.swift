@@ -96,86 +96,72 @@ enum SSHConfigParser {
         includedFiles: Set<String> = []
     ) -> [SSHConfigEntry] {
         var entries: [SSHConfigEntry] = []
-        var currentEntry: SSHConfigEntry?
+        var currentEntries: [SSHConfigEntry] = []
         var globalOptions: [String: String] = [:]
 
         let lines = content.components(separatedBy: .newlines)
         let basePathDir = (basePath as NSString).deletingLastPathComponent
 
+        func flushCurrent() {
+            entries.append(contentsOf: currentEntries)
+            currentEntries.removeAll()
+        }
+
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-
-            // Skip empty lines and comments
-            guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else {
-                continue
-            }
-
-            // Parse key-value pair
+            guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
             let (key, value) = parseLine(trimmed)
-
-            guard let key, let value else {
-                continue
-            }
-
+            guard let key, let value else { continue }
             let lowerKey = key.lowercased()
 
-            // Handle Include directive
             if lowerKey == "include" {
-                // Save current entry before processing includes
-                if let entry = currentEntry {
-                    entries.append(entry)
-                    currentEntry = nil
-                }
-
-                // Resolve include path and parse recursively
-                let includePath = resolveIncludePath(value, relativeTo: basePathDir)
-                if let includedEntries = try? parse(
-                    contentsOfFile: includePath,
-                    includedFiles: includedFiles
-                ) {
-                    entries.append(contentsOf: includedEntries)
+                flushCurrent()
+                // Include may contain multiple space-separated patterns with wildcards
+                let patterns = value.split(separator: " ").map(String.init)
+                for pattern in patterns where !pattern.isEmpty {
+                    let raw = resolveIncludePath(pattern, relativeTo: basePathDir)
+                    for expanded in expandGlob(raw) {
+                        if let includedEntries = try? parse(contentsOfFile: expanded, includedFiles: includedFiles) {
+                            entries.append(contentsOf: includedEntries)
+                        }
+                    }
                 }
                 continue
             }
 
-            // Check if this is a new Host directive
             if lowerKey == "host" {
-                // Save previous entry
-                if let entry = currentEntry {
-                    entries.append(entry)
-                }
-
-                // Check if this is a global Host *
+                flushCurrent()
                 if value == "*" {
-                    currentEntry = nil // Use global options for subsequent entries
-                } else {
-                    // Create new entry, inheriting global options
-                    currentEntry = SSHConfigEntry(
-                        alias: value,
-                        hostname: nil,
-                        port: nil,
-                        user: nil,
-                        identityFile: nil,
-                        proxyJump: nil,
-                        localForwards: [],
-                        remoteForwards: []
-                    )
-                    applyOptions(to: &currentEntry!, options: globalOptions)
+                    // Global Host * — subsequent options go to globalOptions
+                    continue
                 }
-            } else if currentEntry == nil {
-                // Global option (before any Host or for Host *)
+                let aliases = value.split(separator: " ").map { String($0) }.filter { !$0.isEmpty && $0 != "*" }
+                // Filter out negated patterns (!host) — not imported
+                let validAliases = aliases.filter { !$0.hasPrefix("!") && !$0.contains("?") && !$0.contains("*") }
+                for alias in validAliases {
+                    var entry = SSHConfigEntry(
+                        alias: alias,
+                        hostname: nil, port: nil, user: nil,
+                        identityFile: nil, proxyJump: nil,
+                        localForwards: [], remoteForwards: []
+                    )
+                    applyOptions(to: &entry, options: globalOptions)
+                    currentEntries.append(entry)
+                }
+                // If all aliases were wildcards/negated, keep empty so globalOptions still applies but no entry
+                if validAliases.isEmpty && !aliases.isEmpty {
+                    // Wildcard host like "Host *.example.com" — treat as global-ish, no concrete entry
+                    currentEntries = []
+                }
+            } else if currentEntries.isEmpty {
                 globalOptions[lowerKey] = value
             } else {
-                // Option for current host
-                applyOption(to: &currentEntry!, key: lowerKey, value: value)
+                for i in currentEntries.indices {
+                    applyOption(to: &currentEntries[i], key: lowerKey, value: value)
+                }
             }
         }
-
-        // Don't forget the last entry
-        if let entry = currentEntry {
-            entries.append(entry)
-        }
-
+        flushCurrent()
         logger.info("Parsed \(entries.count) SSH config entries from \(URL(fileURLWithPath: basePath).lastPathComponent)")
         return entries
     }
@@ -238,29 +224,19 @@ enum SSHConfigParser {
 
     // MARK: - Line Parsing
 
-    /// Parse a single line into key-value pair.
+    /// Parse a single line into key-value pair. Supports both `Key value` and `Key=value` forms.
     private static func parseLine(_ line: String) -> (String?, String?) {
-        // Split by whitespace (first occurrence)
-        let parts = line.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
-
-        guard parts.count >= 2 else {
-            return (nil, nil)
-        }
-
+        // Normalize "=" to space so "Host=foo" and "Port=22" are handled
+        let normalized = line.replacingOccurrences(of: "=", with: " ")
+        let parts = normalized.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        guard parts.count >= 2 else { return (nil, nil) }
         let key = String(parts[0])
-
+        var valuePart = String(parts[1]).trimmingCharacters(in: .whitespaces)
         // Handle quoted values
-        let valuePart = String(parts[1]).trimmingCharacters(in: .whitespaces)
-        let value: String
-
-        if valuePart.hasPrefix("\"") && valuePart.hasSuffix("\"") {
-            // Remove quotes
-            value = String(valuePart.dropFirst().dropLast())
-        } else {
-            value = valuePart
+        if (valuePart.hasPrefix("\"") && valuePart.hasSuffix("\"")) || (valuePart.hasPrefix("'") && valuePart.hasSuffix("'")) {
+            valuePart = String(valuePart.dropFirst().dropLast())
         }
-
-        return (key, value)
+        return (key, valuePart)
     }
 
     // MARK: - Option Application
