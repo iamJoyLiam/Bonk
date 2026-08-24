@@ -156,13 +156,8 @@ struct BonkApp: App {
                 }
                 .keyboardShortcut("s", modifiers: [.command, .option])
                 Divider()
-                Menu("Import") {
-                    Button(i18n.t(.importSSHConfig)) {
-                        Task { @MainActor in BonkAppDelegate.shared?.coordinator?.showSSHConfigImport = true }
-                    }
-                    Button("Import Tabby...") {
-                        Task { @MainActor in BonkAppDelegate.shared?.coordinator?.showTabbyImport = true }
-                    }
+                Button(i18n.t(.importSessions)) {
+                    Task { @MainActor in BonkAppDelegate.shared?.coordinator?.showUnifiedImport = true }
                 }
             }
         }

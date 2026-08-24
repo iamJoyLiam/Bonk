@@ -41,7 +41,7 @@ enum LKey: String, CaseIterable {
     case apiKey = "api_key", apiKeySet = "api_key_set"
     case testConnection = "test_connection", connectionSuccessful = "connection_successful"
     case authentication, connection, endpoint, model, name
-    case save, cancel
+    case save, cancel, add
     case removeProvider = "remove_provider", removeProviderQ = "remove_provider_q"
     case apiKeyDeleted = "api_key_deleted", providerDeletedHint = "provider_deleted_hint"
     case local
@@ -415,6 +415,8 @@ enum LKey: String, CaseIterable {
 
     // SSH Config Import
     case importSSHConfig = "import_ssh_config"
+    case importTabby = "import_tabby"
+    case importSessions = "import_sessions"
     case importSSHConfigDescription = "import_ssh_config_description"
     case hostsFound = "hosts_found"
     case noSSHConfigEntries = "no_ssh_config_entries"
@@ -512,6 +514,9 @@ enum LKey: String, CaseIterable {
     case deleteWorkspaceConfirm = "delete_workspace_confirm"
     case workspaceCount = "workspace_count"
     case ago = "ago"
+    case template = "template"
+    case saveAsTemplate = "save_as_template"
+    case templateDescription = "template_description"
 
     // Quake Terminal
     case quakeEnabled = "quake_enabled"
@@ -543,4 +548,24 @@ enum LKey: String, CaseIterable {
     case showLess = "show_less"
     case showAll = "show_all"
     case rec = "rec"
+
+    // Triggers
+    case triggers = "triggers"
+    case triggersDescription = "triggers_description"
+    case noTriggers = "no_triggers"
+    case noTriggersDescription = "no_triggers_description"
+    case addTrigger = "add_trigger"
+    case editTrigger = "edit_trigger"
+    case triggerName = "trigger_name"
+    case triggerPattern = "trigger_pattern"
+    case triggerRegex = "trigger_regex"
+    case triggerCaseSensitive = "trigger_case_sensitive"
+    case triggerAction = "trigger_action"
+    case triggerHighlight = "trigger_highlight"
+    case triggerNotify = "trigger_notify"
+    case triggerSendText = "trigger_send_text"
+    case triggerHighlightDesc = "trigger_highlight_desc"
+    case triggerEnabled = "trigger_enabled"
+    case importUnifiedDescription = "import_unified_description"
+    case chooseFile = "choose_file"
 }

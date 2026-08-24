@@ -151,6 +151,9 @@ struct ContentView: View {
                 )
                 .environment(i18n)
             }
+            .sheet(isPresented: $toolbarCoordinator.showUnifiedImport) {
+                UnifiedImportView(modelContext: modelContext)
+            }
             .sheet(isPresented: $toolbarCoordinator.showSSHConfigImport) {
                 SSHConfigImportView(modelContext: modelContext)
             }
@@ -170,6 +173,9 @@ struct ContentView: View {
             }
             .sheet(isPresented: $toolbarCoordinator.showJumpHosts) {
                 JumpHostView(isPresented: $toolbarCoordinator.showJumpHosts)
+            }
+            .sheet(isPresented: $toolbarCoordinator.showTriggers) {
+                NavigationStack { TriggerSettingsView().environment(i18n) }
             }
         }
     #endif

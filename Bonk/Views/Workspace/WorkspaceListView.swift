@@ -137,7 +137,7 @@ struct WorkspaceListView: View {
                         .font(.headline)
                         .lineLimit(1)
                     if workspace.isTemplate == true {
-                        Text("Template").font(.caption2).padding(.horizontal, 6).padding(.vertical, 2).background(Color.orange.opacity(0.15)).cornerRadius(4)
+                        Text(i18n.t(.template)).font(.caption2).padding(.horizontal, 6).padding(.vertical, 2).background(Color.orange.opacity(0.15)).cornerRadius(4)
                     }
                 }
                 HStack(spacing: 8) {
@@ -213,8 +213,8 @@ struct WorkspaceListView: View {
                     TextField(i18n.t(.workspaceName), text: $newWorkspaceName)
                 }
                 Section {
-                    Toggle("Save as Template", isOn: $newWorkspaceIsTemplate)
-                    Text("Templates are reusable layouts for new workspaces.").font(.caption).foregroundStyle(.secondary)
+                    Toggle(i18n.t(.saveAsTemplate), isOn: $newWorkspaceIsTemplate)
+                    Text(i18n.t(.templateDescription)).font(.caption).foregroundStyle(.secondary)
                 }
             }
             .formStyle(.grouped)

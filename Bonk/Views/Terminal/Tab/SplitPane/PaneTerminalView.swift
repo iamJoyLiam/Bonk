@@ -125,33 +125,35 @@ struct PaneTerminalView: View {
                     onReconnect: { Task { await sessionManager.reconnectTab(tab.id) } }
                 )
 
-            case let .linked(sourceID):
-                // Linked mode: show indicator that this pane is linked
-                if let sourcePane = tab.layout.findPane(id: sourceID) {
-                    PaneContainerBridge(
-                        paneState: sourcePane,
-                        tab: tab,
-                        colorScheme: colorScheme,
-                        fontSize: preferences.fontSize,
-                        fontFamily: preferences.fontFamily,
-                        lineHeight: preferences.lineHeight,
-                        scrollbackLines: preferences.scrollbackLines,
-                        cursorStyle: cursorStyle,
-                        cursorBlink: cursorBlink,
-                        copyOnSelect: preferences.copyOnSelect,
-                        isActive: isActive,
-                        onSend: { data in Task { @MainActor in sendInput(data) } },
-                        onResize: { cols, rows in Task { @MainActor in resizePTY(cols: cols, rows: rows) } },
-                        onTitleChange: { _ in },
-                        onReconnect: { Task { await sessionManager.reconnectTab(tab.id) } }
-                    )
-                    .overlay(alignment: .bottomTrailing) {
-                        Label(i18n.t(.linked), systemImage: "link")
-                            .font(.caption2)
-                            .padding(AppStyle.spacingXS)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 4))
-                            .padding(AppStyle.spacingXS)
-                    }
+            case .linked:
+                // Linked mode: reuse the same PTY session but keep a separate
+                // TerminalView per pane. Previous code reused sourcePane's cached
+                // NSView (sourcePane.id), which moves the view to the second
+                // container and leaves the source pane blank — exactly the
+                // “single cursor” bug in the screenshot.
+                PaneContainerBridge(
+                    paneState: paneState,
+                    tab: tab,
+                    colorScheme: colorScheme,
+                    fontSize: preferences.fontSize,
+                    fontFamily: preferences.fontFamily,
+                    lineHeight: preferences.lineHeight,
+                    scrollbackLines: preferences.scrollbackLines,
+                    cursorStyle: cursorStyle,
+                    cursorBlink: cursorBlink,
+                    copyOnSelect: preferences.copyOnSelect,
+                    isActive: isActive,
+                    onSend: { data in Task { @MainActor in sendInput(data) } },
+                    onResize: { cols, rows in Task { @MainActor in resizePTY(cols: cols, rows: rows) } },
+                    onTitleChange: { _ in },
+                    onReconnect: { Task { await sessionManager.reconnectTab(tab.id) } }
+                )
+                .overlay(alignment: .bottomTrailing) {
+                    Label(i18n.t(.linked), systemImage: "link")
+                        .font(.caption2)
+                        .padding(AppStyle.spacingXS)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 4))
+                        .padding(AppStyle.spacingXS)
                 }
             }
 

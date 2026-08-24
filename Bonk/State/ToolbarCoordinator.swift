@@ -21,9 +21,11 @@ final class ToolbarCoordinator {
     var showWorkspaces = false
     var showSSHConfigImport = false
     var showTabbyImport = false
+    var showUnifiedImport = false
     var showAddHostSheet = false
     var showRecordings = false
     var showJumpHosts = false
+    var showTriggers = false
 
     init(workspace: WorkspaceManager, sessionManager: SessionManager, i18n: I18n) {
         self.workspace = workspace

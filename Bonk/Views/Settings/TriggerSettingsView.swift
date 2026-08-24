@@ -9,6 +9,7 @@ import SwiftData
 import SwiftUI
 
 struct TriggerSettingsView: View {
+    @Environment(I18n.self) var i18n
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \TriggerRule.createdAt, order: .reverse) private var rules: [TriggerRule]
     @State private var showAddSheet = false
@@ -17,17 +18,17 @@ struct TriggerSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("Triggers", systemImage: "bolt.trianglebadge.exclamationmark")
+                Label(i18n.t(.triggers), systemImage: "bolt.trianglebadge.exclamationmark")
                     .font(.headline)
                 Spacer()
-                Button { showAddSheet = true } label: { Label("Add", systemImage: "plus") }
+                Button { showAddSheet = true } label: { Label(i18n.t(.add), systemImage: "plus") }
                     .buttonStyle(.borderedProminent).controlSize(.small)
             }
-            Text("Match terminal output with regex and auto-highlight, notify, or send text. Throttled to once per second per rule.")
+            Text(i18n.t(.triggersDescription))
                 .font(.caption).foregroundStyle(.secondary)
             Divider()
             if rules.isEmpty {
-                ContentUnavailableView("No Triggers", systemImage: "bolt.slash", description: Text("Create a trigger to monitor output, e.g. pattern \"ERROR\" → Notify"))
+                ContentUnavailableView(i18n.t(.noTriggers), systemImage: "bolt.slash", description: Text(i18n.t(.noTriggersDescription)))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
@@ -36,7 +37,7 @@ struct TriggerSettingsView: View {
                             .contentShape(Rectangle())
                             .onTapGesture { editingRule = rule }
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) { delete(rule) } label: { Label("Delete", systemImage: "trash") }
+                                Button(role: .destructive) { delete(rule) } label: { Label(i18n.t(.delete), systemImage: "trash") }
                             }
                     }
                 }
@@ -54,7 +55,7 @@ struct TriggerSettingsView: View {
                 HStack(spacing: 6) {
                     Circle().fill(rule.isEnabled ? Color.green : Color.gray).frame(width: 8, height: 8)
                     Text(rule.name).font(.body.weight(.medium)).lineLimit(1)
-                    Text(rule.actionType.displayName).font(.caption2).padding(.horizontal, 6).padding(.vertical, 2).background(Color.secondary.opacity(0.15)).cornerRadius(4)
+                    Text(rule.actionType.displayName(i18n: i18n)).font(.caption2).padding(.horizontal, 6).padding(.vertical, 2).background(Color.secondary.opacity(0.15)).cornerRadius(4)
                 }
                 Text(rule.pattern).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
                 if let payload = rule.actionPayload, !payload.isEmpty {
@@ -73,9 +74,10 @@ struct TriggerSettingsView: View {
     }
 }
 
-// MARK: - Edit Sheet
+// MARK: - Edit Sheet — mirrors AddHostSheet template
 
 private struct TriggerEditSheet: View {
+    @Environment(I18n.self) var i18n
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     var rule: TriggerRule?
@@ -89,41 +91,56 @@ private struct TriggerEditSheet: View {
     @State private var isEnabled = true
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            HStack(spacing: AppStyle.spacingM) {
+                Image(systemName: "bolt.trianglebadge.exclamationmark")
+                    .font(.system(size: AppStyle.fontMedium, weight: .semibold))
+                    .foregroundStyle(.orange)
+                    .frame(width: AppStyle.iconHero, height: AppStyle.iconHero)
+                Text(rule == nil ? i18n.t(.addTrigger) : i18n.t(.editTrigger))
+                    .font(.system(size: AppStyle.fontRegular, weight: .semibold))
+                Spacer()
+            }
+            .padding(.horizontal, AppStyle.spacingXL)
+            .padding(.vertical, AppStyle.spacingML)
+            Divider()
             Form {
-                Section("Trigger") {
-                    TextField("Name", text: $name)
-                    TextField("Pattern (regex or text)", text: $pattern)
+                Section(i18n.t(.triggerAction)) {
+                    TextField(i18n.t(.triggerName), text: $name)
+                    TextField(i18n.t(.triggerPattern), text: $pattern)
                         .autocorrectionDisabled()
-                    Toggle("Regex", isOn: $isRegex)
-                    Toggle("Case Sensitive", isOn: $isCaseSensitive)
+                        .textContentType(.none)
+                    Toggle(i18n.t(.triggerRegex), isOn: $isRegex)
+                    Toggle(i18n.t(.triggerCaseSensitive), isOn: $isCaseSensitive)
                 }
-                Section("Action") {
-                    Picker("Action", selection: $actionType) {
-                        ForEach(TriggerActionType.allCases, id: \.self) { t in Text(t.displayName).tag(t) }
+
+                Section(i18n.t(.triggerAction)) {
+                    Picker(i18n.t(.triggerAction), selection: $actionType) {
+                        ForEach(TriggerActionType.allCases, id: \.self) { t in Text(t.displayName(i18n: i18n)).tag(t) }
                     }.pickerStyle(.segmented)
                     switch actionType {
                     case .highlight:
-                        Text("Highlights matching output in log (currently logs only)").font(.caption).foregroundStyle(.secondary)
+                        Text(i18n.t(.triggerHighlightDesc)).font(.caption).foregroundStyle(.secondary)
                     case .notify:
-                        TextField("Notification title (optional)", text: $payload)
+                        TextField(i18n.t(.triggerNotify), text: $payload)
                     case .sendText:
-                        TextField("Text to send + Enter", text: $payload)
+                        TextField(i18n.t(.triggerSendText), text: $payload)
                             .autocorrectionDisabled()
                     }
-                    Toggle("Enabled", isOn: $isEnabled)
+                    Toggle(i18n.t(.triggerEnabled), isOn: $isEnabled)
                 }
             }
             .formStyle(.grouped)
-            .navigationTitle(rule == nil ? "Add Trigger" : "Edit Trigger")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }.disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || pattern.isEmpty)
-                }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: AppStyle.panelWidthMedium)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) { Button(i18n.t(.cancel)) { dismiss() } }
+            ToolbarItem(placement: .confirmationAction) {
+                Button(i18n.t(.save)) { save() }.disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || pattern.isEmpty)
+                    .keyboardShortcut(.defaultAction)
             }
         }
-        .frame(minWidth: 480, minHeight: 380)
         .onAppear {
             if let r = rule {
                 name = r.name; pattern = r.pattern; isRegex = r.isRegex; isCaseSensitive = r.isCaseSensitive

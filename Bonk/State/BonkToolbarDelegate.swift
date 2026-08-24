@@ -26,6 +26,9 @@ extension NSToolbarItem.Identifier {
     static let portForward = NSToolbarItem.Identifier("com.bonk.toolbar.portForward")
     static let keyGenerator = NSToolbarItem.Identifier("com.bonk.toolbar.keyGenerator")
     static let workspaces = NSToolbarItem.Identifier("com.bonk.toolbar.workspaces")
+    static let importSessions = NSToolbarItem.Identifier("com.bonk.toolbar.importSessions")
+    static let triggers = NSToolbarItem.Identifier("com.bonk.toolbar.triggers")
+    // legacy: kept for toolbar migration, now merged into importSessions
     static let sshImport = NSToolbarItem.Identifier("com.bonk.toolbar.sshImport")
     static let tabbyImport = NSToolbarItem.Identifier("com.bonk.toolbar.tabbyImport")
     static let sftp = NSToolbarItem.Identifier("com.bonk.toolbar.sftp")
@@ -68,7 +71,7 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
          .serverCPU, .serverMemory, .serverDisk,
          .broadcast, .sftp, .workspaces, .recording, .jumpHosts,
          .serialPort, .portForward,         // 不常用：保留在自定义中
-         .keyGenerator, .sshImport, .tabbyImport,
+         .keyGenerator, .importSessions, .triggers,
          .ai, .snippets,
          .space, .flexibleSpace]
     }
@@ -179,22 +182,20 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
                 self?.coordinator.showWorkspaces = true
             }
 
-        case .sshImport:
-            return makeItem(
-                id: itemIdentifier,
-                label: coordinator.i18n.t(.importSSHConfig),
-                icon: "square.and.arrow.down"
-            ) { [weak self] in
-                self?.coordinator.showSSHConfigImport = true
-            }
+        case .importSessions:
+            return makeImportMenuItem(id: itemIdentifier)
 
-        case .tabbyImport:
+        case .sshImport, .tabbyImport:
+            // legacy items: migrated to importSessions, hide from palette
+            return nil
+
+        case .triggers:
             return makeItem(
                 id: itemIdentifier,
-                label: "Import Tabby",
-                icon: "square.and.arrow.down.on.square"
+                label: coordinator.i18n.t(.triggers),
+                icon: "bolt.trianglebadge.exclamationmark"
             ) { [weak self] in
-                self?.coordinator.showTabbyImport = true
+                self?.coordinator.showTriggers = true
             }
 
         case .sftp:
@@ -299,6 +300,31 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
         return item
     }
 
+    private func makeImportMenuItem(id: NSToolbarItem.Identifier) -> NSToolbarItem {
+        let label = coordinator.i18n.t(.importSessions)
+        // Single-click auto-detect (SSH config + Tabby), no dropdown per UX feedback
+        let item = NSToolbarItem(itemIdentifier: id)
+        item.label = label
+        item.paletteLabel = label
+        item.toolTip = label
+        if let img = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: label) {
+            img.isTemplate = true
+            item.image = img
+        }
+        let target = ImportMenuTarget(coordinator: coordinator)
+        objc_setAssociatedObject(item, "importTarget", target, .OBJC_ASSOCIATION_RETAIN)
+        item.target = target
+        item.action = #selector(ImportMenuTarget.importUnified)
+        // Keep menu for File menu parity (optional), but toolbar is single-click
+        let menu = NSMenu()
+        let sshTitle = coordinator.i18n.t(.importSSHConfig)
+        let tabbyTitle = coordinator.i18n.t(.importTabby)
+        let sshItem = NSMenuItem(title: sshTitle, action: #selector(ImportMenuTarget.importSSH), keyEquivalent: "")
+        let tabbyItem = NSMenuItem(title: tabbyTitle, action: #selector(ImportMenuTarget.importTabby), keyEquivalent: "")
+        // unified single-click: no dropdown menu on toolbar item itself
+        return item
+    }
+
     private func makeServerRingItem(
         id: NSToolbarItem.Identifier,
         kind: ServerResourceKind,
@@ -316,6 +342,15 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
         ringItemControllers.append(controller)
         return controller.item
     }
+}
+
+@MainActor
+private final class ImportMenuTarget: NSObject {
+    private let coordinator: ToolbarCoordinator
+    init(coordinator: ToolbarCoordinator) { self.coordinator = coordinator; super.init() }
+    @objc func importUnified() { coordinator.showUnifiedImport = true }
+    @objc func importSSH() { coordinator.showSSHConfigImport = true }
+    @objc func importTabby() { coordinator.showTabbyImport = true }
 }
 
 // MARK: - Target for toolbar items

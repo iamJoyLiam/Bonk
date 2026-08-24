@@ -20,6 +20,14 @@ enum TriggerActionType: String, Codable, CaseIterable, Sendable {
         case .sendText: "Send Text"
         }
     }
+
+    func displayName(i18n: I18n) -> String {
+        switch self {
+        case .highlight: i18n.t(.triggerHighlight)
+        case .notify: i18n.t(.triggerNotify)
+        case .sendText: i18n.t(.triggerSendText)
+        }
+    }
 }
 
 @Model
