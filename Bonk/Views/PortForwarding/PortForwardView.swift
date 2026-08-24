@@ -22,50 +22,37 @@ struct PortForwardView: View {
     @State private var editingRule: PortForward?
     @State private var portForwardService = PortForwardService.shared
 
+    @State private var hoveredRuleID: UUID?
+
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack {
-                Image(systemName: "arrow.triangle.branch")
-                    .foregroundStyle(.blue)
-                Text(i18n.t(.portForwarding))
-                    .font(.headline)
-                Spacer()
-                Button {
-                    showAddSheet = true
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .help(i18n.t(.addPortForward))
-            }
-            .padding(.horizontal, AppStyle.spacingXL)
-            .padding(.vertical, AppStyle.spacingML)
-
+            PanelHeaderView(
+                icon: "arrow.triangle.branch",
+                title: i18n.t(.portForwarding),
+                count: rules.isEmpty ? nil : rules.count,
+                trailing: AnyView(
+                    PanelAddButton(help: i18n.t(.addPortForward)) { showAddSheet = true }
+                )
+            )
             Divider()
-
-            // Rules list
             if rules.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "arrow.triangle.branch")
-                        .font(.system(size: AppStyle.fontHero))
-                        .foregroundStyle(.secondary)
-                    Text(i18n.t(.noPortForwards))
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                PanelEmptyView(
+                    icon: "arrow.triangle.branch",
+                    title: i18n.t(.noPortForwards),
+                    hint: nil
+                )
             } else {
-                Form {
-                    Section {
-                        ForEach(rules) { rule in
-                            ruleRow(rule)
-                        }
+                ScrollView {
+                    LazyVStack(spacing: AppStyle.spacingS) {
+                        ForEach(rules) { rule in ruleRow(rule) }
                     }
+                    .padding(AppStyle.spacingL)
                 }
-                .formStyle(.grouped)
+                .background(Color(nsColor: .windowBackgroundColor))
             }
         }
-        .frame(minWidth: AppStyle.quickConnectWidth, minHeight: AppStyle.panelWidthSmall)
+        .frame(minWidth: 520, minHeight: 380)
+        .background(Color(nsColor: .windowBackgroundColor))
         .sheet(isPresented: $showAddSheet) {
             PortForwardEditSheet(rule: nil, modelContext: modelContext)
                 .environment(i18n)
@@ -77,43 +64,55 @@ struct PortForwardView: View {
     }
 
     private func ruleRow(_ rule: PortForward) -> some View {
-        HStack(spacing: 12) {
-            // Type icon
+        let isHovered = hoveredRuleID == rule.id
+        return HStack(spacing: AppStyle.spacingL) {
             Image(systemName: rule.type == .local ? "arrow.right" : "arrow.left")
-                .font(.system(size: AppStyle.fontMedium))
+                .font(.system(size: AppStyle.fontMedium, weight: .medium))
                 .foregroundStyle(rule.isActive ? .green : .secondary)
-                .frame(width: AppStyle.iconDisplay)
-
-            // Info
+                .frame(width: AppStyle.buttonLarge, height: AppStyle.buttonLarge)
             VStack(alignment: .leading, spacing: 2) {
                 Text(rule.name)
                     .font(.system(size: AppStyle.fontRegular, weight: .medium))
+                    .lineLimit(1)
                 Text(rule.displayDescription)
                     .font(.system(size: AppStyle.fontSmall, design: .monospaced))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-
-            Spacer()
-
-            // Type badge
+            Spacer(minLength: AppStyle.spacingM)
             Text(rule.type.displayName)
                 .font(.system(size: AppStyle.fontCaption, weight: .medium))
                 .padding(.horizontal, AppStyle.spacingS)
                 .padding(.vertical, AppStyle.spacingXXS)
                 .background(Color.accentColor.opacity(AppStyle.opacityBackgroundLight))
                 .clipShape(Capsule())
-
-            // Toggle
-            Button {
-                toggleForward(rule)
-            } label: {
+            Button { toggleForward(rule) } label: {
                 Image(systemName: rule.isActive ? "stop.circle.fill" : "play.circle.fill")
                     .font(.system(size: AppStyle.fontSubtitle))
                     .foregroundStyle(rule.isActive ? .red : .green)
+                    .frame(width: AppStyle.buttonMedium, height: AppStyle.buttonMedium)
+                    .background(Circle().fill(Color(nsColor: .controlBackgroundColor)))
+                    .overlay(Circle().strokeBorder(Color.primary.opacity(AppStyle.opacityStroke), lineWidth: 1))
             }
             .buttonStyle(.plain)
+            .help(rule.isActive ? i18n.t(.stop) : i18n.t(.run))
         }
+        .padding(.horizontal, AppStyle.spacingL)
+        .padding(.vertical, AppStyle.spacingML)
+        .background(
+            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+                .shadow(color: Color.black.opacity(isHovered ? 0.06 : 0.03), radius: isHovered ? 8 : 4, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
+                .strokeBorder(Color.primary.opacity(isHovered ? 0.08 : 0.04), lineWidth: 1)
+        )
         .contentShape(Rectangle())
+        .onHover { h in
+            withAnimation(.easeOut(duration: 0.12)) { hoveredRuleID = h ? rule.id : nil }
+        }
+        .onTapGesture { editingRule = rule }
         .contextMenu {
             Button {
                 editingRule = rule

@@ -259,12 +259,22 @@ extension PaneTerminalView {
     }
 
     func showRecordings() {
-        let view = RecordingListView().environment(i18n)
-        let hosting = NSHostingController(rootView: view)
-        let window = NSWindow(contentViewController: hosting)
-        window.title = i18n.t(.recordings)
-        window.setContentSize(NSSize(width: 600, height: 400))
-        window.styleMask.insert(.resizable)
+        let view = NavigationStack { RecordingListView().environment(i18n) }
+        let hostingView = NSHostingView(rootView: view)
+        hostingView.autoresizingMask = [.width, .height]
+        let contentSize = NSSize(width: 600, height: 400)
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: contentSize),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentMinSize = NSSize(width: 520, height: 300)
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isReleasedWhenClosed = false
+        window.contentView = hostingView
+        window.setContentSize(contentSize)
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

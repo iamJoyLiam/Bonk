@@ -32,7 +32,6 @@ struct AddHostSheet: View {
     @State private var privateKeyFileURL: URL?
     @State private var certificateFileURL: URL?
     @State private var group = ""
-    @State private var showPassword = false
     @State private var selectedCredential: Credential?
     @State private var showJumpHost = false
     @State private var selectedJumpHost: JumpHost?
@@ -100,8 +99,21 @@ struct AddHostSheet: View {
     // MARK: - Body
 
     var body: some View {
-        Form {
-            Section(i18n.t(.hostInformation)) {
+        VStack(spacing: 0) {
+            HStack(spacing: AppStyle.spacingM) {
+                Image(systemName: "desktopcomputer")
+                    .font(.system(size: AppStyle.fontMedium, weight: .semibold))
+                    .foregroundStyle(.blue)
+                    .frame(width: AppStyle.iconHero, height: AppStyle.iconHero)
+                Text(existingHost == nil ? i18n.t(.addHost) : i18n.t(.editHost))
+                    .font(.system(size: AppStyle.fontRegular, weight: .semibold))
+                Spacer()
+            }
+            .padding(.horizontal, AppStyle.spacingXL)
+            .padding(.vertical, AppStyle.spacingML)
+            Divider()
+            Form {
+                Section(i18n.t(.hostInformation)) {
                 TextField(i18n.t(.displayName), text: $name)
                 TextField(
                     i18n.t(.hostnameOrIp),
@@ -153,39 +165,13 @@ struct AddHostSheet: View {
 
                     switch authType {
                     case .password:
-                        LabeledContent(i18n.t(.password)) {
-                            HStack(spacing: 6) {
-                                if showPassword {
-                                    AutoEnglishPlainField(text: $password, placeholder: "")
-                                        .frame(maxWidth: .infinity, alignment: .trailing)
-                                } else {
-                                    AutoEnglishSecureField(text: $password, placeholder: "")
-                                        .frame(maxWidth: .infinity, alignment: .trailing)
-                                }
-                                Button { showPassword.toggle() } label: {
-                                    Image(systemName: showPassword
-                                        ? "eye.slash"
-                                        : "eye")
-                                        .foregroundStyle(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
+                        LabeledSecureField(title: i18n.t(.password), text: $password)
                     case .privateKey:
-                        Text(i18n.t(.pastePemKey))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        TextEditor(text: $privateKeyPEM)
-                            .font(.system(
-                                .caption,
-                                design: .monospaced
-                            ))
-                            .frame(minHeight: 120)
-                        if let type = detectedPrivateKeyType {
-                            Text(i18n.tr(.detectedKeyType, args: type))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                        PEMEditorField(
+                            text: $privateKeyPEM,
+                            detectedType: detectedPrivateKeyType.map { i18n.tr(.detectedKeyType, args: $0) },
+                            hint: i18n.t(.pastePemKey)
+                        )
                     case .certificate:
                         // Private Key
                         HStack {
@@ -199,23 +185,18 @@ struct AddHostSheet: View {
                         }
 
                         if useFilePickerForKey {
-                            filePickerField(
+                            FilePickerCard(
                                 url: $privateKeyFileURL,
                                 content: $privateKeyPEM,
                                 placeholder: i18n.t(.selectPrivateKeyFile)
                             )
                         } else {
-                            Text(i18n.t(.pastePemKey))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            TextEditor(text: $privateKeyPEM)
-                                .font(.system(.caption, design: .monospaced))
-                                .frame(minHeight: 100)
-                            if let type = detectedPrivateKeyType {
-                                Text(i18n.tr(.detectedKeyType, args: type))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                            PEMEditorField(
+                                text: $privateKeyPEM,
+                                minHeight: 100,
+                                detectedType: detectedPrivateKeyType.map { i18n.tr(.detectedKeyType, args: $0) },
+                                hint: i18n.t(.pastePemKey)
+                            )
                         }
 
                         // Certificate
@@ -230,18 +211,17 @@ struct AddHostSheet: View {
                         }
 
                         if useFilePickerForCert {
-                            filePickerField(
+                            FilePickerCard(
                                 url: $certificateFileURL,
                                 content: $certificatePEM,
                                 placeholder: i18n.t(.selectCertificateFile)
                             )
                         } else {
-                            Text(i18n.t(.pasteCertificate))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            TextEditor(text: $certificatePEM)
-                                .font(.system(.caption, design: .monospaced))
-                                .frame(minHeight: 100)
+                            PEMEditorField(
+                                text: $certificatePEM,
+                                minHeight: 100,
+                                hint: i18n.t(.pasteCertificate)
+                            )
                         }
                     case .secureEnclave:
                         VStack(alignment: .leading, spacing: 12) {
@@ -359,15 +339,11 @@ struct AddHostSheet: View {
                     }
                 }
             }
+            }
+            .formStyle(.grouped)
         }
-        .formStyle(.grouped)
         .fixedSize(horizontal: false, vertical: true)
         .frame(minWidth: AppStyle.panelWidthMedium)
-        .navigationTitle(
-            existingHost == nil
-                ? i18n.t(.addHost)
-                : i18n.t(.editHost)
-        )
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button(i18n.t(.cancel)) { dismiss() }
@@ -493,66 +469,7 @@ struct AddHostSheet: View {
         dismiss()
     }
 
-    // MARK: - File Picker Field
-
-    @ViewBuilder
-    private func filePickerField(
-        url: Binding<URL?>,
-        content: Binding<String>,
-        placeholder: String
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let fileURL = url.wrappedValue {
-                HStack {
-                    Image(systemName: "doc.fill")
-                        .foregroundStyle(.blue)
-                    Text(fileURL.lastPathComponent)
-                        .font(.caption)
-                        .lineLimit(1)
-                    Spacer()
-                    Button {
-                        url.wrappedValue = nil
-                        content.wrappedValue = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(AppStyle.spacingM)
-                .background(.quaternary.opacity(AppStyle.opacityDisabled))
-                .cornerRadius(6)
-            } else {
-                Button {
-                    let panel = NSOpenPanel()
-                    panel.allowsMultipleSelection = false
-                    panel.canChooseDirectories = false
-                    panel.canChooseFiles = true
-                    panel.allowedContentTypes = [.item]
-
-                    if panel.runModal() == .OK, let selectedURL = panel.url {
-                        url.wrappedValue = selectedURL
-                        // Read file content
-                        if let data = try? Data(contentsOf: selectedURL),
-                           let text = String(data: data, encoding: .utf8)
-                        {
-                            content.wrappedValue = text
-                        }
-                    }
-                } label: {
-                    HStack {
-                        Image(systemName: "folder")
-                        Text(placeholder)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(AppStyle.spacingM)
-                    .background(.quaternary.opacity(AppStyle.opacityDisabled))
-                    .cornerRadius(6)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
+    // FilePickerCard now lives in Bonk/Views/Common/BonkFormFields.swift
 
     // MARK: - Secure Enclave Helpers
 

@@ -29,6 +29,7 @@ extension NSToolbarItem.Identifier {
     static let sshImport = NSToolbarItem.Identifier("com.bonk.toolbar.sshImport")
     static let sftp = NSToolbarItem.Identifier("com.bonk.toolbar.sftp")
     static let recording = NSToolbarItem.Identifier("com.bonk.toolbar.recording")
+    static let jumpHosts = NSToolbarItem.Identifier("com.bonk.toolbar.jumpHosts")
 }
 
 // MARK: - BonkToolbarDelegate
@@ -64,7 +65,7 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [.addHost, .toggleSidebar,
          .serverCPU, .serverMemory, .serverDisk,
-         .broadcast, .sftp, .workspaces, .recording,
+         .broadcast, .sftp, .workspaces, .recording, .jumpHosts,
          .serialPort, .portForward,         // 不常用：保留在自定义中
          .keyGenerator, .sshImport,
          .ai, .snippets,
@@ -217,6 +218,15 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
             }
             return item
 
+        case .jumpHosts:
+            return makeItem(
+                id: itemIdentifier,
+                label: coordinator.i18n.t(.jumpHosts),
+                icon: "arrow.triangle.swap"
+            ) { [weak self] in
+                self?.coordinator.showJumpHosts = true
+            }
+
         case .ai:
             return makeItem(
                 id: itemIdentifier,
@@ -362,11 +372,26 @@ private final class RecordingToolbarItemTarget: NSObject, NSToolbarItemValidatio
     }
     @objc func showList() {
         coordinator.showRecordings = true
-        // fallback window if no sheet observer
-        let view = RecordingListView().environment(coordinator.i18n)
-        let hosting = NSHostingController(rootView: view)
-        let w = NSWindow(contentViewController: hosting)
-        w.title = coordinator.i18n.t(.recordings); w.setContentSize(NSSize(width: 600, height: 400)); w.styleMask.insert(.resizable); w.center(); w.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        // fallback window if no sheet observer — match SFTP/workspace window style
+        let view = NavigationStack { RecordingListView().environment(coordinator.i18n) }
+        let hostingView = NSHostingView(rootView: view)
+        hostingView.autoresizingMask = [.width, .height]
+        let contentSize = NSSize(width: 600, height: 400)
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: contentSize),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentMinSize = NSSize(width: 520, height: 300)
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isReleasedWhenClosed = false
+        window.contentView = hostingView
+        window.setContentSize(contentSize)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func toggle() async {

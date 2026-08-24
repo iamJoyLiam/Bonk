@@ -22,41 +22,49 @@ struct WorkspaceListView: View {
     @State private var workspaceToDelete: WorkspacePersistenceManager.WorkspaceData?
     @State private var workspaceToRename: WorkspacePersistenceManager.WorkspaceData?
     @State private var renameName = ""
+    @State private var hoveredID: UUID?
 
     private let persistence = WorkspacePersistenceManager.shared
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            headerSection
-
+            PanelHeaderView(
+                icon: "square.stack.3d.up",
+                title: i18n.t(.workspaces),
+                count: workspaces.count,
+                countLabel: i18n.tr(.workspaceCount, args: workspaces.count)
+            )
             Divider()
-
-            // Workspace list
             if workspaces.isEmpty {
-                emptyStateView
+                PanelEmptyView(
+                    icon: "square.stack.3d.up",
+                    title: i18n.t(.noWorkspaces),
+                    hint: i18n.t(.noWorkspacesHint)
+                )
             } else {
-                workspaceList
+                ScrollView {
+                    LazyVStack(spacing: AppStyle.spacingS) {
+                        ForEach(workspaces) { ws in
+                            workspaceCard(ws)
+                        }
+                    }
+                    .padding(AppStyle.spacingL)
+                }
+                .background(Color(nsColor: .windowBackgroundColor))
             }
-
             Divider()
-
-            // Footer
             footerSection
         }
-        .frame(minWidth: AppStyle.serialPortWidth, minHeight: AppStyle.newConnectionHeight)
-        .onAppear {
-            loadWorkspaces()
-        }
+        .frame(minWidth: 520, minHeight: 380)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear { loadWorkspaces() }
         .alert(i18n.t(.delete), isPresented: .init(
             get: { workspaceToDelete != nil },
             set: { if !$0 { workspaceToDelete = nil } }
         )) {
             Button(i18n.t(.cancel), role: .cancel) { workspaceToDelete = nil }
             Button(i18n.t(.delete), role: .destructive) {
-                if let ws = workspaceToDelete {
-                    deleteWorkspace(ws)
-                }
+                if let ws = workspaceToDelete { deleteWorkspace(ws) }
             }
         } message: {
             if let ws = workspaceToDelete {
@@ -69,131 +77,72 @@ struct WorkspaceListView: View {
         )) {
             TextField(i18n.t(.workspaceName), text: $renameName)
             Button(i18n.t(.cancel), role: .cancel) {
-                workspaceToRename = nil
-                renameName = ""
+                workspaceToRename = nil; renameName = ""
             }
             Button(i18n.t(.save)) {
                 if let ws = workspaceToRename, !renameName.isEmpty {
                     renameWorkspace(ws, to: renameName)
                 }
-                workspaceToRename = nil
-                renameName = ""
+                workspaceToRename = nil; renameName = ""
             }
         } message: {
             Text(i18n.t(.enterNewName))
         }
-        .sheet(isPresented: $showSaveSheet) {
-            saveWorkspaceSheet
-        }
+        .sheet(isPresented: $showSaveSheet) { saveWorkspaceSheet }
     }
 
-    // MARK: - Header
+    // MARK: - Card
 
-    private var headerSection: some View {
-        HStack {
-            Image(systemName: "square.stack.3d.up")
-                .font(.title2)
-                .foregroundStyle(.blue)
-            Text(i18n.t(.workspaces))
-                .font(.headline)
-            Spacer()
-            Text(i18n.tr(.workspaceCount, args: workspaces.count))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding()
-    }
-
-    // MARK: - Empty State
-
-    private var emptyStateView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "square.stack.3d.up")
-                .font(.system(size: AppStyle.fontDisplay))
-                .foregroundStyle(.tertiary)
-            Text(i18n.t(.noWorkspaces))
-                .font(.title3)
-                .foregroundStyle(.secondary)
-            Text(i18n.t(.noWorkspacesHint))
-                .font(.body)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: AppStyle.panelWidthSmall)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Workspace List
-
-    private var workspaceList: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(workspaces) { workspace in
-                    workspaceRow(workspace)
-
-                    if workspace.id != workspaces.last?.id {
-                        Divider()
-                            .padding(.leading, AppStyle.spacingSidebar)
-                    }
-                }
-            }
-        }
-    }
-
-    private func workspaceRow(_ workspace: WorkspacePersistenceManager.WorkspaceData) -> some View {
-        HStack(spacing: 12) {
-            // Icon
+    private func workspaceCard(_ workspace: WorkspacePersistenceManager.WorkspaceData) -> some View {
+        let isHovered = hoveredID == workspace.id
+        return HStack(spacing: AppStyle.spacingL) {
             Image(systemName: "square.stack.3d.up.fill")
+                .font(.system(size: AppStyle.fontMedium))
                 .foregroundStyle(.blue)
-                .frame(width: AppStyle.buttonMedium)
-
-            // Info
+                .frame(width: AppStyle.buttonLarge, height: AppStyle.buttonLarge)
             VStack(alignment: .leading, spacing: 3) {
                 Text(workspace.name)
-                    .font(.headline)
-                HStack(spacing: 8) {
+                    .font(.system(size: AppStyle.fontRegular, weight: .medium))
+                    .lineLimit(1)
+                HStack(spacing: AppStyle.spacingS) {
                     Label(i18n.tr(.tabsCount, args: workspace.tabs.count), systemImage: "sidebar.left")
-                    Text("•")
+                    Text("•").foregroundStyle(.tertiary)
                     Text(workspace.updatedAt, style: .relative)
                     Text(i18n.t(.ago))
                 }
-                .font(.caption)
+                .font(.system(size: AppStyle.fontCaption))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
             }
-
-            Spacer()
-
-            // Actions
-            HStack(spacing: 4) {
-                // 打开按钮 - 直接点击打开
-                Button {
-                    loadWorkspace(workspace)
-                } label: {
-                    Image(systemName: "arrow.right.circle.fill")
-                        .font(.system(size: AppStyle.fontSubtitle))
-                        .foregroundStyle(.blue)
+            Spacer(minLength: AppStyle.spacingM)
+            HStack(spacing: AppStyle.spacingS) {
+                Button { loadWorkspace(workspace) } label: {
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: AppStyle.fontSmall, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: AppStyle.buttonMedium, height: AppStyle.buttonMedium)
+                        .background(Circle().fill(Color.accentColor))
+                        .shadow(color: Color.accentColor.opacity(isHovered ? 0.25 : 0), radius: 6, y: 2)
                 }
                 .buttonStyle(.plain)
                 .help(i18n.t(.loadWorkspace))
 
-                // "..." 菜单 - 重命名、删除
                 Menu {
                     Button {
                         workspaceToRename = workspace
                         renameName = workspace.name
-                    } label: {
-                        Label(i18n.t(.rename), systemImage: "pencil")
-                    }
-
+                    } label: { Label(i18n.t(.rename), systemImage: "pencil") }
                     Divider()
-
-                    Button(role: .destructive) {
-                        workspaceToDelete = workspace
-                    } label: {
+                    Button(role: .destructive) { workspaceToDelete = workspace } label: {
                         Label(i18n.t(.delete), systemImage: "trash")
                     }
                 } label: {
                     Image(systemName: "ellipsis")
+                        .font(.system(size: AppStyle.fontSmall, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: AppStyle.buttonMedium, height: AppStyle.buttonMedium)
+                        .background(Circle().fill(Color(nsColor: .controlBackgroundColor)))
+                        .overlay(Circle().strokeBorder(Color.primary.opacity(AppStyle.opacityStroke), lineWidth: 1))
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
@@ -202,9 +151,25 @@ struct WorkspaceListView: View {
         }
         .padding(.horizontal, AppStyle.spacingL)
         .padding(.vertical, AppStyle.spacingML)
+        .background(
+            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+                .shadow(color: Color.black.opacity(isHovered ? 0.06 : 0.03), radius: isHovered ? 8 : 4, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
+                .strokeBorder(Color.primary.opacity(isHovered ? 0.08 : 0.04), lineWidth: 1)
+        )
         .contentShape(Rectangle())
-        .onTapGesture {
-            loadWorkspace(workspace)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) { hoveredID = hovering ? workspace.id : nil }
+        }
+        .onTapGesture { loadWorkspace(workspace) }
+        .contextMenu {
+            Button { loadWorkspace(workspace) } label: { Label(i18n.t(.loadWorkspace), systemImage: "arrow.right.circle") }
+            Button { workspaceToRename = workspace; renameName = workspace.name } label: { Label(i18n.t(.rename), systemImage: "pencil") }
+            Divider()
+            Button(role: .destructive) { workspaceToDelete = workspace } label: { Label(i18n.t(.delete), systemImage: "trash") }
         }
     }
 
@@ -212,51 +177,45 @@ struct WorkspaceListView: View {
 
     private var footerSection: some View {
         HStack {
-            Button(i18n.t(.cancel)) {
-                dismiss()
-            }
-            .keyboardShortcut(.cancelAction)
-
+            Button(i18n.t(.cancel)) { dismiss() }
+                .keyboardShortcut(.cancelAction)
             Spacer()
-
-            Button(i18n.t(.saveCurrentAsWorkspace)) {
-                showSaveSheet = true
-            }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.defaultAction)
+            Button(i18n.t(.saveCurrentAsWorkspace)) { showSaveSheet = true }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
         }
-        .padding()
+        .padding(.horizontal, AppStyle.spacingXL)
+        .padding(.vertical, AppStyle.spacingL)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     // MARK: - Save Sheet
 
     private var saveWorkspaceSheet: some View {
-        VStack(spacing: 16) {
-            Text(i18n.t(.saveWorkspace))
-                .font(.headline)
-
-            TextField(i18n.t(.workspaceName), text: $newWorkspaceName)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: AppStyle.panelWidthSmall)
-
-            HStack {
-                Button(i18n.t(.cancel)) {
-                    showSaveSheet = false
-                    newWorkspaceName = ""
+        NavigationStack {
+            Form {
+                Section(i18n.t(.workspaceName)) {
+                    TextField(i18n.t(.workspaceName), text: $newWorkspaceName)
                 }
-                .keyboardShortcut(.cancelAction)
-
-                Button(i18n.t(.save)) {
-                    saveWorkspace()
-                    showSaveSheet = false
-                    newWorkspaceName = ""
+            }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .navigationTitle(i18n.t(.saveWorkspace))
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(i18n.t(.cancel)) { showSaveSheet = false; newWorkspaceName = "" }
                 }
-                .disabled(newWorkspaceName.trimmingCharacters(in: .whitespaces).isEmpty)
-                .keyboardShortcut(.defaultAction)
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(i18n.t(.save)) {
+                        saveWorkspace(); showSaveSheet = false; newWorkspaceName = ""
+                    }
+                    .disabled(newWorkspaceName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .keyboardShortcut(.defaultAction)
+                }
             }
         }
-        .padding()
         .frame(width: AppStyle.quickConnectWidth)
+        .presentationDetents([.medium])
     }
 
     // MARK: - Actions
@@ -268,9 +227,7 @@ struct WorkspaceListView: View {
     private func saveWorkspace() {
         let name = newWorkspaceName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
-
         if let workspace = persistence.saveWorkspace(name: name, sessionManager: sessionManager) {
-            // Check if we updated an existing workspace or created a new one
             if let index = workspaces.firstIndex(where: { $0.id == workspace.id }) {
                 workspaces[index] = workspace
             } else {

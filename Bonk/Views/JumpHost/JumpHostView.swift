@@ -20,54 +20,39 @@ struct JumpHostView: View {
     @State private var jumpHostService = JumpHostService.shared
     @State private var testingHostID: UUID?
     @State private var testResult: Bool?
+    @State private var hoveredHostID: UUID?
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack {
-                Image(systemName: "arrow.triangle.swap")
-                    .foregroundStyle(.blue)
-                Text(i18n.t(.jumpHosts))
-                    .font(.headline)
-                Spacer()
-                Button {
-                    showAddSheet = true
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .help(i18n.t(.addJumpHost))
-            }
-            .padding(.horizontal, AppStyle.spacingXL)
-            .padding(.vertical, AppStyle.spacingML)
-
+            PanelHeaderView(
+                icon: "arrow.triangle.swap",
+                title: i18n.t(.jumpHosts),
+                count: jumpHosts.isEmpty ? nil : jumpHosts.count,
+                trailing: AnyView(
+                    PanelAddButton(help: i18n.t(.addJumpHost)) { showAddSheet = true }
+                )
+            )
             Divider()
-
-            // Hosts list
             if jumpHosts.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "arrow.triangle.swap")
-                        .font(.system(size: AppStyle.fontHero))
-                        .foregroundStyle(.secondary)
-                    Text(i18n.t(.noJumpHosts))
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
-                    Text(i18n.t(.jumpHostHint))
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                PanelEmptyView(
+                    icon: "arrow.triangle.swap",
+                    title: i18n.t(.noJumpHosts),
+                    hint: i18n.t(.jumpHostHint)
+                )
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 0) {
+                    LazyVStack(spacing: AppStyle.spacingS) {
                         ForEach(jumpHosts) { host in
                             hostRow(host)
                         }
                     }
+                    .padding(AppStyle.spacingL)
                 }
+                .background(Color(nsColor: .windowBackgroundColor))
             }
         }
-        .frame(minWidth: AppStyle.quickConnectWidth, minHeight: AppStyle.panelWidthSmall)
+        .frame(minWidth: 520, minHeight: 380)
+        .background(Color(nsColor: .windowBackgroundColor))
         .sheet(isPresented: $showAddSheet) {
             JumpHostEditSheet(host: nil, modelContext: modelContext)
                 .environment(i18n)
@@ -79,37 +64,49 @@ struct JumpHostView: View {
     }
 
     private func hostRow(_ host: JumpHost) -> some View {
-        HStack(spacing: 12) {
-            // Icon
+        let isHovered = hoveredHostID == host.id
+        return HStack(spacing: AppStyle.spacingL) {
             Image(systemName: "arrow.triangle.swap")
                 .font(.system(size: AppStyle.fontMedium))
                 .foregroundStyle(.blue)
-                .frame(width: AppStyle.iconDisplay)
-
-            // Info
+                .frame(width: AppStyle.buttonLarge, height: AppStyle.buttonLarge)
             VStack(alignment: .leading, spacing: 2) {
                 Text(host.name)
                     .font(.system(size: AppStyle.fontRegular, weight: .medium))
+                    .lineLimit(1)
                 Text(host.displayString)
                     .font(.system(size: AppStyle.fontSmall, design: .monospaced))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-
-            Spacer()
-
-            // Edit button
-            Button {
-                editingHost = host
-            } label: {
+            Spacer(minLength: AppStyle.spacingM)
+            Button { editingHost = host } label: {
                 Image(systemName: "pencil")
-                    .font(.system(size: AppStyle.fontBody))
+                    .font(.system(size: AppStyle.fontSmall, weight: .medium))
                     .foregroundStyle(.secondary)
+                    .frame(width: AppStyle.buttonMedium, height: AppStyle.buttonMedium)
+                    .background(Circle().fill(Color(nsColor: .controlBackgroundColor)))
+                    .overlay(Circle().strokeBorder(Color.primary.opacity(AppStyle.opacityStroke), lineWidth: 1))
             }
             .buttonStyle(.plain)
+            .help(i18n.t(.edit))
         }
-        .padding(.horizontal, AppStyle.spacingXL)
+        .padding(.horizontal, AppStyle.spacingL)
         .padding(.vertical, AppStyle.spacingML)
+        .background(
+            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+                .shadow(color: Color.black.opacity(isHovered ? 0.06 : 0.03), radius: isHovered ? 8 : 4, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
+                .strokeBorder(Color.primary.opacity(isHovered ? 0.08 : 0.04), lineWidth: 1)
+        )
         .contentShape(Rectangle())
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) { hoveredHostID = hovering ? host.id : nil }
+        }
+        .onTapGesture { editingHost = host }
         .contextMenu {
             Button {
                 editingHost = host
@@ -178,7 +175,6 @@ struct JumpHostEditSheet: View {
     @State private var authStyle: JumpAuthStyle = .credential
     @State private var password = ""
     @State private var privateKeyPEM = ""
-    @State private var showPassword = false
     @State private var useFilePickerForKey = false
     @State private var selectedCredential: Credential?
     @State private var testing = false
@@ -221,8 +217,21 @@ struct JumpHostEditSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section(i18n.t(.hostInformation)) {
+            VStack(spacing: 0) {
+                HStack(spacing: AppStyle.spacingM) {
+                    Image(systemName: "arrow.triangle.swap")
+                        .font(.system(size: AppStyle.fontMedium, weight: .semibold))
+                        .foregroundStyle(.blue)
+                        .frame(width: AppStyle.iconHero, height: AppStyle.iconHero)
+                    Text(host == nil ? i18n.t(.addJumpHost) : i18n.t(.editJumpHost))
+                        .font(.system(size: AppStyle.fontRegular, weight: .semibold))
+                    Spacer()
+                }
+                .padding(.horizontal, AppStyle.spacingXL)
+                .padding(.vertical, AppStyle.spacingML)
+                Divider()
+                Form {
+                    Section(i18n.t(.hostInformation)) {
                     TextField(i18n.t(.displayName), text: $name)
                     TextField(
                         i18n.t(.hostnameOrIp),
@@ -258,23 +267,7 @@ struct JumpHostEditSheet: View {
 
                     switch authStyle {
                     case .password:
-                        LabeledContent(i18n.t(.password)) {
-                            HStack(spacing: 6) {
-                                if showPassword {
-                                    AutoEnglishPlainField(text: $password, placeholder: "")
-                                        .frame(maxWidth: .infinity, alignment: .trailing)
-                                } else {
-                                    AutoEnglishSecureField(text: $password, placeholder: "")
-                                        .frame(maxWidth: .infinity, alignment: .trailing)
-                                }
-                                Button { showPassword.toggle() } label: {
-                                    Image(systemName: showPassword ? "eye.slash" : "eye")
-                                        .font(.system(size: AppStyle.fontBody))
-                                }
-                                .buttonStyle(.plain)
-                                .foregroundStyle(.secondary)
-                            }
-                        }
+                        LabeledSecureField(title: i18n.t(.password), text: $password)
                     case .privateKey:
                         HStack {
                             Text(i18n.t(.privateKey))
@@ -287,23 +280,17 @@ struct JumpHostEditSheet: View {
                         }
 
                         if useFilePickerForKey {
-                            filePickerField(
+                            FilePickerCard(
                                 url: $privateKeyFileURL,
                                 content: $privateKeyPEM,
                                 placeholder: i18n.t(.selectPrivateKeyFile)
                             )
                         } else {
-                            Text(i18n.t(.pastePemKey))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            TextEditor(text: $privateKeyPEM)
-                                .font(.system(.caption, design: .monospaced))
-                                .frame(minHeight: 120)
-                            if let type = detectedPrivateKeyType {
-                                Text(i18n.tr(.detectedKeyType, args: type))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                            PEMEditorField(
+                                text: $privateKeyPEM,
+                                detectedType: detectedPrivateKeyType.map { i18n.tr(.detectedKeyType, args: $0) },
+                                hint: i18n.t(.pastePemKey)
+                            )
                         }
                     case .credential:
                         Picker(i18n.t(.credential), selection: $selectedCredential) {
@@ -349,9 +336,9 @@ struct JumpHostEditSheet: View {
                         }
                     }
                 }
+                }
+                .formStyle(.grouped)
             }
-            .formStyle(.grouped)
-            .navigationTitle(host == nil ? i18n.t(.addJumpHost) : i18n.t(.editJumpHost))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(i18n.t(.cancel)) { dismiss() }
@@ -456,65 +443,7 @@ struct JumpHostEditSheet: View {
         }
     }
 
-    // MARK: - File Picker Field
-
-    @ViewBuilder
-    private func filePickerField(
-        url: Binding<URL?>,
-        content: Binding<String>,
-        placeholder: String
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let fileURL = url.wrappedValue {
-                HStack {
-                    Image(systemName: "doc.fill")
-                        .foregroundStyle(.blue)
-                    Text(fileURL.lastPathComponent)
-                        .font(.caption)
-                        .lineLimit(1)
-                    Spacer()
-                    Button {
-                        url.wrappedValue = nil
-                        content.wrappedValue = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(AppStyle.spacingM)
-                .background(.quaternary.opacity(AppStyle.opacityDisabled))
-                .cornerRadius(6)
-            } else {
-                Button {
-                    let panel = NSOpenPanel()
-                    panel.allowsMultipleSelection = false
-                    panel.canChooseDirectories = false
-                    panel.canChooseFiles = true
-                    panel.allowedContentTypes = [.item]
-
-                    if panel.runModal() == .OK, let selectedURL = panel.url {
-                        url.wrappedValue = selectedURL
-                        if let data = try? Data(contentsOf: selectedURL),
-                           let text = String(data: data, encoding: .utf8)
-                        {
-                            content.wrappedValue = text
-                        }
-                    }
-                } label: {
-                    HStack {
-                        Image(systemName: "folder")
-                        Text(placeholder)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(AppStyle.spacingM)
-                    .background(.quaternary.opacity(AppStyle.opacityDisabled))
-                    .cornerRadius(6)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
+    // FilePickerCard now lives in Bonk/Views/Common/BonkFormFields.swift
 
     private func save() {
         let portInt = Int(port) ?? 22

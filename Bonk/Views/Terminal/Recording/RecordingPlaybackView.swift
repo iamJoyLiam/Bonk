@@ -12,63 +12,142 @@ struct RecordingPlaybackView: View {
     @State private var terminalView: SwiftTerm.TerminalView?
     @State private var headerTitle: String = ""
     @State private var hasStarted = false
+    @State private var isHoveringControls = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(url.lastPathComponent)
-                        .font(.system(size: AppStyle.fontSmall, design: .monospaced))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    if !headerTitle.isEmpty {
-                        Text(headerTitle)
-                            .font(.system(size: AppStyle.fontCaption))
-                            .foregroundStyle(.secondary)
+        VStack(spacing: 0) {
+            // ── Top bar ──
+            HStack(spacing: AppStyle.spacingL) {
+                // Left: icon + title
+                HStack(spacing: AppStyle.spacingML) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
+                            .fill(Color.blue.opacity(0.12))
+                            .frame(width: AppStyle.buttonLarge, height: AppStyle.buttonLarge)
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: AppStyle.fontLarge))
+                            .foregroundStyle(.blue)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(playbackDisplayName)
+                            .font(.system(size: AppStyle.fontRegular, weight: .semibold))
                             .lineLimit(1)
+                            .truncationMode(.middle)
+                        if !headerTitle.isEmpty {
+                            Text(headerTitle)
+                                .font(.system(size: AppStyle.fontCaption))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        } else {
+                            Text(fileSubtitle)
+                                .font(.system(size: AppStyle.fontCaption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
                 }
+
                 Spacer()
-                HStack(spacing: 6) {
+
+                // Speed pill
+                HStack(spacing: AppStyle.spacingXS) {
+                    Button { speed = max(0.25, speed - 0.25) } label: {
+                        Image(systemName: "minus")
+                            .font(.system(size: AppStyle.fontCaption, weight: .medium))
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .background(Circle().fill(Color(nsColor: .controlBackgroundColor)))
+                    .disabled(speed <= 0.25)
+
                     Text("×\(String(format: "%.2g", speed))")
-                        .font(.system(size: AppStyle.fontCaption, design: .monospaced))
+                        .font(.system(size: AppStyle.fontSmall, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.primary)
+                        .frame(width: 38)
+                        .monospacedDigit()
+
+                    Button { speed = min(5, speed + 0.25) } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: AppStyle.fontCaption, weight: .medium))
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .background(Circle().fill(Color(nsColor: .controlBackgroundColor)))
+                    .disabled(speed >= 5)
+                }
+                .padding(.horizontal, AppStyle.spacingS)
+                .padding(.vertical, AppStyle.spacingXS)
+                .background(
+                    Capsule()
+                        .fill(Color(nsColor: .controlBackgroundColor))
+                        .overlay(Capsule().strokeBorder(Color.primary.opacity(AppStyle.opacityStroke), lineWidth: 1))
+                )
+
+                // Play / Pause — prominent capsule
+                Button {
+                    if isPlaying { task?.cancel(); isPlaying = false } else { play() }
+                } label: {
+                    HStack(spacing: AppStyle.spacingXS) {
+                        Image(systemName: isPlaying ? "pause.fill" : (hasStarted ? "arrow.counterclockwise" : "play.fill"))
+                            .font(.system(size: AppStyle.fontSmall, weight: .semibold))
+                        Text(isPlaying ? i18n.t(.pause) : (hasStarted ? i18n.t(.replay) : i18n.t(.play)))
+                            .font(.system(size: AppStyle.fontSmall, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, AppStyle.spacingXL)
+                    .padding(.vertical, AppStyle.spacingSPlus)
+                    .background(Capsule().fill(isPlaying ? Color.orange : Color.accentColor))
+                    .shadow(color: (isPlaying ? Color.orange : Color.accentColor).opacity(0.25), radius: 6, y: 2)
+                }
+                .buttonStyle(.plain)
+
+                Button { task?.cancel(); NSApp.keyWindow?.close() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: AppStyle.fontSmall, weight: .medium))
                         .foregroundStyle(.secondary)
-                        .frame(width: 32, alignment: .trailing)
-                    Slider(value: $speed, in: 0.25 ... 5, step: 0.25)
-                        .frame(width: 90)
+                        .frame(width: AppStyle.buttonMedium, height: AppStyle.buttonMedium)
+                        .background(Circle().fill(Color(nsColor: .controlBackgroundColor)))
+                        .overlay(Circle().strokeBorder(Color.primary.opacity(AppStyle.opacityStroke), lineWidth: 1))
                 }
-                if isPlaying {
-                    Button(i18n.t(.pause)) { task?.cancel(); isPlaying = false }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                } else {
-                    Button(hasStarted ? i18n.t(.replay) : i18n.t(.play)) { play() }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                }
-                Button(i18n.t(.close)) { task?.cancel(); NSApp.keyWindow?.close() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                .buttonStyle(.plain)
+                .help(i18n.t(.close))
             }
-            ProgressView(value: progress)
-                .progressViewStyle(.linear)
+            .padding(.horizontal, AppStyle.spacingXL)
+            .padding(.vertical, AppStyle.spacingML)
+            .background(Color(nsColor: .windowBackgroundColor))
+
+            Divider()
+
+            // Progress — thin, accent
+            PanelProgressBar(progress: progress)
+                .padding(.horizontal, AppStyle.spacingXL)
+                .padding(.vertical, AppStyle.spacingS)
+
+            // Terminal canvas
             ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
                     .fill(Color(nsColor: .textBackgroundColor))
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(AppStyle.opacityStroke)))
-                // SwiftTerm handles \b, \r, ESC[K, ESC(0, OSC 0, ESC[A etc. natively.
-                // No manual backspace / filterOSC — feed raw bytes directly.
+                    .shadow(color: Color.black.opacity(0.06), radius: 12, y: 4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(AppStyle.opacityStroke), lineWidth: 1)
+                    )
                 PlaybackTerminalBridge(terminalView: $terminalView)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous))
+                    .padding(1)
             }
-            .frame(minHeight: 320)
+            .padding(.horizontal, AppStyle.spacingXL)
+            .padding(.bottom, AppStyle.spacingXL)
+            .frame(minHeight: 360)
+            .background(Color(nsColor: .windowBackgroundColor))
         }
-        .padding(16)
-        .frame(minWidth: 700, minHeight: 480)
+        .frame(minWidth: 760, minHeight: 520)
+        .background(Color(nsColor: .windowBackgroundColor))
         .onDisappear { task?.cancel() }
         .onAppear {
             parseHeader()
-            // Wait one runloop for the TerminalView to be created
             if !hasStarted {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { play() }
             }
@@ -78,6 +157,23 @@ struct RecordingPlaybackView: View {
         }
     }
 
+    private var fileSubtitle: String {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let size = (attrs?[.size] as? Int) ?? 0
+        let fmt = ByteCountFormatter(); fmt.countStyle = .file
+        return fmt.string(fromByteCount: Int64(size))
+    }
+
+    private var playbackDisplayName: String {
+        let name = url.deletingPathExtension().lastPathComponent
+        let parts = name.split(separator: "_")
+        guard parts.count >= 4 else { return name }
+        let host = String(parts[0])
+        let timestamp = parts.suffix(1).first.map(String.init) ?? ""
+        let date = timestamp.replacingOccurrences(of: "-", with: ":").prefix(16)
+        return "\(host) · \(date)"
+    }
+
     private func parseHeader() {
         guard let content = try? String(contentsOf: url, encoding: .utf8) else { return }
         let firstLine = content.split(separator: "\n", omittingEmptySubsequences: false).first
@@ -85,12 +181,11 @@ struct RecordingPlaybackView: View {
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return }
         if let title = obj["title"] as? String { headerTitle = title }
-        // width/height are honoured by the TerminalView's frame once created; no manual cols set needed
     }
 
+    // swiftlint:disable:next function_body_length
     private func play() {
-        guard let tv = terminalView else {
-            // View not ready yet — retry shortly
+        guard let targetTerminal = terminalView else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { play() }
             return
         }
@@ -98,59 +193,53 @@ struct RecordingPlaybackView: View {
         hasStarted = true
         isPlaying = true
         progress = 0
-        // Reset to initial VT state — mirrors SwiftTerm's termcast reset
-        tv.terminal.resetToInitialState()
-        // Clear scrollback so replay starts from a blank screen
-        tv.clearScrollback()
+        targetTerminal.terminal.resetToInitialState()
+        targetTerminal.clearScrollback()
 
         task = Task {
-            struct Ev { let t: Double; let data: String }
+            struct PlaybackEvent { let time: Double; let data: String }
             let captureURL = url
-            let parsed: (events: [Ev], total: Double)? = await Task.detached(priority: .userInitiated) { () -> (events: [Ev], total: Double)? in
-                guard let content = try? String(contentsOf: captureURL, encoding: .utf8) else { return nil }
-                let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
-                guard lines.count > 1 else { return nil }
-                var events: [Ev] = []
-                events.reserveCapacity(lines.count - 1)
-                for line in lines.dropFirst() {
-                    if line.isEmpty { continue }
-                    guard let data = line.data(using: .utf8),
-                          let arr = try? JSONSerialization.jsonObject(with: data) as? [Any],
-                          arr.count == 3,
-                          let t = arr[0] as? Double,
-                          let kind = arr[1] as? String, kind == "o",
-                          let d = arr[2] as? String
-                    else { continue }
-                    // Byte-first, zero transform — keep OSC, CSI, charset, \b, \r verbatim
-                    events.append(Ev(t: t, data: d))
-                }
-                let total = events.last?.t ?? 1
-                return (events, total)
-            }.value
+            let parsed: (events: [PlaybackEvent], total: Double)? = await Task
+                .detached(priority: .userInitiated) { () -> (events: [PlaybackEvent], total: Double)? in
+                    guard let content = try? String(contentsOf: captureURL, encoding: .utf8) else { return nil }
+                    let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
+                    guard lines.count > 1 else { return nil }
+                    var events: [PlaybackEvent] = []
+                    events.reserveCapacity(lines.count - 1)
+                    for line in lines.dropFirst() {
+                        if line.isEmpty { continue }
+                        guard let data = line.data(using: .utf8),
+                              let array = try? JSONSerialization.jsonObject(with: data) as? [Any],
+                              array.count == 3,
+                              let timestamp = array[0] as? Double,
+                              let kind = array[1] as? String, kind == "o",
+                              let payload = array[2] as? String
+                        else { continue }
+                        events.append(PlaybackEvent(time: timestamp, data: payload))
+                    }
+                    let total = events.last?.time ?? 1
+                    return (events, total)
+                }.value
             guard let parsed else {
                 await MainActor.run { isPlaying = false }
                 return
             }
             let events = parsed.events
             let total = parsed.total
-            var lastT: Double = 0
-            for ev in events {
+            var lastTime: Double = 0
+            for event in events {
                 if Task.isCancelled { break }
                 let currentSpeed = await MainActor.run { speed }
                 let denom = max(currentSpeed, 0.05)
-                let dt = (ev.t - lastT) / denom
-                let sleep = min(dt, 1.0 / denom)
+                let delta = (event.time - lastTime) / denom
+                let sleep = min(delta, 1.0 / denom)
                 if sleep > 0.01 { try? await Task.sleep(for: .seconds(sleep)) }
                 if Task.isCancelled { break }
-                // Direct feed — SwiftTerm parses \b as destructive backspace,
-                // \r as carriage return, ESC[K as erase-in-line, ESC(0 as line-drawing charset,
-                // ESC[A as cursor up, and ESC]0;… as title (not rendered), so the
-                // “docker\u{8}[K” sequences that broke the old Text+= path disappear.
                 await MainActor.run {
-                    tv.feed(text: ev.data)
-                    progress = total > 0 ? min(1, ev.t / total) : 1
+                    targetTerminal.feed(text: event.data)
+                    progress = total > 0 ? min(1, event.time / total) : 1
                 }
-                lastT = ev.t
+                lastTime = event.time
             }
             await MainActor.run {
                 isPlaying = false
@@ -167,15 +256,18 @@ private struct PlaybackTerminalBridge: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSScrollView {
         let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        let tv = SwiftTerm.TerminalView(frame: NSRect(x: 0, y: 0, width: 680, height: 400), font: font)
+        let terminal = SwiftTerm.TerminalView(
+            frame: NSRect(x: 0, y: 0, width: 740, height: 420),
+            font: font
+        )
         let scroll = NSScrollView()
-        scroll.documentView = tv
+        scroll.documentView = terminal
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = false
         scroll.autohidesScrollers = false
         scroll.borderType = .noBorder
         scroll.drawsBackground = false
-        DispatchQueue.main.async { terminalView = tv }
+        DispatchQueue.main.async { terminalView = terminal }
         return scroll
     }
 

@@ -6,26 +6,28 @@ import SwiftUI
 
 private enum EnglishInputSource {
     static func englishID() -> String? {
-        guard let list = TISCreateInputSourceList(nil, false)?.takeRetainedValue() as? [TISInputSource] else { return nil }
+        guard let list = TISCreateInputSourceList(nil, false)?
+            .takeRetainedValue() as? [TISInputSource]
+        else { return nil }
         // 1. Exact ABC
         for src in list {
             if let ptr = TISGetInputSourceProperty(src, kTISPropertyInputSourceID) {
-                let id = Unmanaged<CFString>.fromOpaque(ptr).takeUnretainedValue() as String
-                if id == "com.apple.keylayout.ABC" { return id }
+                let identifier = Unmanaged<CFString>.fromOpaque(ptr).takeUnretainedValue() as String
+                if identifier == "com.apple.keylayout.ABC" { return identifier }
             }
         }
         // 2. Any ABC/US
         for src in list {
             if let ptr = TISGetInputSourceProperty(src, kTISPropertyInputSourceID) {
-                let id = Unmanaged<CFString>.fromOpaque(ptr).takeUnretainedValue() as String
-                if id.contains("ABC") || id.contains("US") { return id }
+                let identifier = Unmanaged<CFString>.fromOpaque(ptr).takeUnretainedValue() as String
+                if identifier.contains("ABC") || identifier.contains("US") { return identifier }
             }
         }
         // 3. First ASCII-capable
         for src in list {
             if let ptr = TISGetInputSourceProperty(src, kTISPropertyInputSourceIsASCIICapable) {
-                let v = Unmanaged<CFBoolean>.fromOpaque(ptr).takeUnretainedValue()
-                if CFBooleanGetValue(v),
+                let value = Unmanaged<CFBoolean>.fromOpaque(ptr).takeUnretainedValue()
+                if CFBooleanGetValue(value),
                    let idPtr = TISGetInputSourceProperty(src, kTISPropertyInputSourceID) {
                     return Unmanaged<CFString>.fromOpaque(idPtr).takeUnretainedValue() as String
                 }
@@ -34,12 +36,14 @@ private enum EnglishInputSource {
         return nil
     }
 
+    @MainActor
     static func select(for view: NSView) {
-        guard let id = englishID() else { return }
+        guard let identifier = englishID() else { return }
         // Per-view context (not global TISSelectInputSource)
-        view.inputContext?.selectedKeyboardInputSource = id
-        if let win = view.window, let editor = win.fieldEditor(false, for: view) as? NSTextView {
-            editor.inputContext?.selectedKeyboardInputSource = id
+        view.inputContext?.selectedKeyboardInputSource = identifier
+        if let window = view.window,
+           let editor = window.fieldEditor(false, for: view) as? NSTextView {
+            editor.inputContext?.selectedKeyboardInputSource = identifier
         }
     }
 }
@@ -47,6 +51,7 @@ private enum EnglishInputSource {
 // MARK: - AppKit fields
 
 final class AutoEnglishSecureTextField: NSSecureTextField {
+    @MainActor
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
         if ok { EnglishInputSource.select(for: self) }
@@ -55,6 +60,7 @@ final class AutoEnglishSecureTextField: NSSecureTextField {
 }
 
 final class AutoEnglishTextField: NSTextField {
+    @MainActor
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
         if ok { EnglishInputSource.select(for: self) }
@@ -69,24 +75,26 @@ struct AutoEnglishSecureField: NSViewRepresentable {
     var placeholder: String = ""
 
     func makeNSView(context: Context) -> AutoEnglishSecureTextField {
-        let f = AutoEnglishSecureTextField(string: text)
-        f.placeholderString = placeholder.isEmpty ? nil : placeholder
-        f.delegate = context.coordinator
-        f.isBezeled = false
-        f.isBordered = false
-        f.drawsBackground = false
-        f.focusRingType = .none
-        f.alignment = .right
-        f.cell?.wraps = false
-        f.cell?.isScrollable = true
-        f.lineBreakMode = .byClipping
-        return f
+        let field = AutoEnglishSecureTextField(string: text)
+        field.placeholderString = placeholder.isEmpty ? nil : placeholder
+        field.delegate = context.coordinator
+        field.isBezeled = false
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.alignment = .right
+        field.cell?.wraps = false
+        field.cell?.isScrollable = true
+        field.lineBreakMode = .byClipping
+        return field
     }
 
     func updateNSView(_ nsView: AutoEnglishSecureTextField, context: Context) {
         if nsView.stringValue != text { nsView.stringValue = text }
-        let ph = placeholder.isEmpty ? nil : placeholder
-        if nsView.placeholderString != ph { nsView.placeholderString = ph }
+        let placeholderString = placeholder.isEmpty ? nil : placeholder
+        if nsView.placeholderString != placeholderString {
+            nsView.placeholderString = placeholderString
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -95,8 +103,8 @@ struct AutoEnglishSecureField: NSViewRepresentable {
         var parent: AutoEnglishSecureField
         init(_ parent: AutoEnglishSecureField) { self.parent = parent }
         func controlTextDidChange(_ obj: Notification) {
-            guard let f = obj.object as? NSTextField else { return }
-            if parent.text != f.stringValue { parent.text = f.stringValue }
+            guard let field = obj.object as? NSTextField else { return }
+            if parent.text != field.stringValue { parent.text = field.stringValue }
         }
     }
 }
@@ -106,24 +114,26 @@ struct AutoEnglishPlainField: NSViewRepresentable {
     var placeholder: String = ""
 
     func makeNSView(context: Context) -> AutoEnglishTextField {
-        let f = AutoEnglishTextField(string: text)
-        f.placeholderString = placeholder.isEmpty ? nil : placeholder
-        f.delegate = context.coordinator
-        f.isBezeled = false
-        f.isBordered = false
-        f.drawsBackground = false
-        f.focusRingType = .none
-        f.alignment = .right
-        f.cell?.wraps = false
-        f.cell?.isScrollable = true
-        f.lineBreakMode = .byClipping
-        return f
+        let field = AutoEnglishTextField(string: text)
+        field.placeholderString = placeholder.isEmpty ? nil : placeholder
+        field.delegate = context.coordinator
+        field.isBezeled = false
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.alignment = .right
+        field.cell?.wraps = false
+        field.cell?.isScrollable = true
+        field.lineBreakMode = .byClipping
+        return field
     }
 
     func updateNSView(_ nsView: AutoEnglishTextField, context: Context) {
         if nsView.stringValue != text { nsView.stringValue = text }
-        let ph = placeholder.isEmpty ? nil : placeholder
-        if nsView.placeholderString != ph { nsView.placeholderString = ph }
+        let placeholderString = placeholder.isEmpty ? nil : placeholder
+        if nsView.placeholderString != placeholderString {
+            nsView.placeholderString = placeholderString
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -132,8 +142,8 @@ struct AutoEnglishPlainField: NSViewRepresentable {
         var parent: AutoEnglishPlainField
         init(_ parent: AutoEnglishPlainField) { self.parent = parent }
         func controlTextDidChange(_ obj: Notification) {
-            guard let f = obj.object as? NSTextField else { return }
-            if parent.text != f.stringValue { parent.text = f.stringValue }
+            guard let field = obj.object as? NSTextField else { return }
+            if parent.text != field.stringValue { parent.text = field.stringValue }
         }
     }
 }

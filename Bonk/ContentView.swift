@@ -160,7 +160,12 @@ struct ContentView: View {
                 WorkspaceListView(sessionManager: sessionManager)
             }
             .sheet(isPresented: $toolbarCoordinator.showRecordings) {
-                RecordingListView()
+                NavigationStack {
+                    RecordingListView()
+                }
+            }
+            .sheet(isPresented: $toolbarCoordinator.showJumpHosts) {
+                JumpHostView(isPresented: $toolbarCoordinator.showJumpHosts)
             }
         }
     #endif

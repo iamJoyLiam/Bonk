@@ -17,7 +17,6 @@ struct KeychainManagerView: View {
     @State private var editPassword = ""
     @State private var editPrivateKey = ""
     @State private var editNotes = ""
-    @State private var showPassword = false
     @State private var pendingDelete: Credential?
 
     private var isEditing: Bool {
@@ -30,15 +29,28 @@ struct KeychainManagerView: View {
     }
 
     var body: some View {
-        Group {
-            if isEditing {
-                editForm.fixedSize(horizontal: false, vertical: true)
-            } else {
-                listView
+        VStack(spacing: 0) {
+            HStack(spacing: AppStyle.spacingM) {
+                Image(systemName: "key.fill")
+                    .font(.system(size: AppStyle.fontMedium, weight: .semibold))
+                    .foregroundStyle(.blue)
+                    .frame(width: AppStyle.iconHero, height: AppStyle.iconHero)
+                Text(isEditing ? (isAdding ? i18n.t(.addCredential) : i18n.t(.editCredential)) : i18n.t(.keychain))
+                    .font(.system(size: AppStyle.fontRegular, weight: .semibold))
+                Spacer()
+            }
+            .padding(.horizontal, AppStyle.spacingXL)
+            .padding(.vertical, AppStyle.spacingML)
+            Divider()
+            Group {
+                if isEditing {
+                    editForm.fixedSize(horizontal: false, vertical: true)
+                } else {
+                    listView
+                }
             }
         }
         .frame(minWidth: AppStyle.panelWidthMedium)
-        .navigationTitle(isEditing ? (isAdding ? i18n.t(.addCredential) : i18n.t(.editCredential)) : i18n.t(.keychain))
         .toolbar {
             if isEditing {
                 ToolbarItem(placement: .cancellationAction) {
@@ -144,31 +156,12 @@ struct KeychainManagerView: View {
                 }
                 .pickerStyle(.segmented)
                 if editType == .privateKey {
-                    TextEditor(text: $editPrivateKey).font(.system(.caption, design: .monospaced)).frame(minHeight: 120)
+                    PEMEditorField(text: $editPrivateKey, hint: nil)
                     Label(i18n.t(.privateKeyOverwriteWarning), systemImage: "exclamationmark.triangle.fill")
                         .font(.caption2)
                         .foregroundStyle(.orange)
                 } else {
-                    LabeledContent(i18n.t(.password)) {
-                        HStack(spacing: 6) {
-                            if showPassword {
-                                AutoEnglishPlainField(text: $editPassword, placeholder: "")
-                                    .frame(maxWidth: .infinity, alignment: .trailing)
-                            } else {
-                                AutoEnglishSecureField(text: $editPassword, placeholder: "")
-                                    .frame(maxWidth: .infinity, alignment: .trailing)
-                            }
-                            Button {
-                                showPassword.toggle()
-                            } label: {
-                                Image(systemName: showPassword ? "eye.slash" : "eye")
-                                    .font(.system(size: AppStyle.fontBody))
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
-                            .help(i18n.t(.password))
-                        }
-                    }
+                    LabeledSecureField(title: i18n.t(.password), text: $editPassword)
                 }
             }
             Section(i18n.t(.notes)) {
