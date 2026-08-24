@@ -316,11 +316,8 @@ struct BonkApp: App {
         let i18n: I18n
         var body: some Commands {
             CommandMenu(i18n.t(.team)) {
-                Button(i18n.t(.hostSession)) {
-                    Task { @MainActor in BonkAppDelegate.shared?.coordinator?.showTeamHost = true }
-                }
-                Button(i18n.t(.joinSession)) {
-                    Task { @MainActor in BonkAppDelegate.shared?.coordinator?.showTeamGuest = true }
+                Button(i18n.t(.team)) {
+                    Task { @MainActor in BonkAppDelegate.shared?.coordinator?.showTeam = true }
                 }
             }
         }

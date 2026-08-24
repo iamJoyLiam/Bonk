@@ -188,11 +188,8 @@ struct ContentView: View {
             .sheet(isPresented: $toolbarCoordinator.showTriggers) {
                 NavigationStack { TriggerSettingsView().environment(i18n) }
             }
-            .sheet(isPresented: $toolbarCoordinator.showTeamHost) {
-                TeamHostSheet(relay: TeamRelay.shared)
-            }
-            .sheet(isPresented: $toolbarCoordinator.showTeamGuest) {
-                TeamGuestSheet(discovery: TeamDiscoveryService(), relay: TeamRelay.shared)
+            .sheet(isPresented: $toolbarCoordinator.showTeam) {
+                TeamSheet(relay: TeamRelay.shared, discovery: TeamDiscoveryService())
             }
         }
     #endif

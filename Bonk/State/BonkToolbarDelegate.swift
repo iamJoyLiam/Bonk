@@ -196,26 +196,13 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
             }
 
         case .team:
-            let item = makeItem(
+            return makeItem(
                 id: itemIdentifier,
                 label: coordinator.i18n.t(.team),
                 icon: "person.2.fill"
             ) { [weak self] in
-                self?.coordinator.showTeamHost = true
+                self?.coordinator.showTeam = true
             }
-            // Menu form shows both Host/Join when used as menu
-            let menu = NSMenu()
-            let hostTitle = coordinator.i18n.t(.hostSession)
-            let joinTitle = coordinator.i18n.t(.joinSession)
-            let hostItem = NSMenuItem(title: hostTitle, action: #selector(TeamToolbarTarget.host), keyEquivalent: "")
-            let joinItem = NSMenuItem(title: joinTitle, action: #selector(TeamToolbarTarget.join), keyEquivalent: "")
-            let target = TeamToolbarTarget(coordinator: coordinator)
-            objc_setAssociatedObject(item, "teamTarget", target, .OBJC_ASSOCIATION_RETAIN)
-            hostItem.target = target; joinItem.target = target
-            menu.addItem(hostItem); menu.addItem(joinItem)
-            item.menuFormRepresentation = NSMenuItem(title: coordinator.i18n.t(.team), action: nil, keyEquivalent: "")
-            item.menuFormRepresentation?.submenu = menu
-            return item
 
         case .sftp:
             return makeItem(
@@ -503,6 +490,6 @@ private final class RecordingToolbarItemTarget: NSObject, NSToolbarItemValidatio
 private final class TeamToolbarTarget: NSObject {
     private let coordinator: ToolbarCoordinator
     init(coordinator: ToolbarCoordinator) { self.coordinator = coordinator; super.init() }
-    @objc func host() { coordinator.showTeamHost = true }
-    @objc func join() { coordinator.showTeamGuest = true }
+    @objc func host() { coordinator.showTeam = true }
+    @objc func join() { coordinator.showTeam = true }
 }
