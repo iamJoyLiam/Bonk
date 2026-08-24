@@ -39,14 +39,63 @@ final class WorkspacePersistenceManager {
     }
 
     struct WorkspaceTabData: Codable, Identifiable {
-        let id: UUID // Use tab.id for stable identity
+        let id: UUID
         let hostItemID: UUID
         var title: String
         var colorLabel: String?
         var sortOrder: Int
         var isBroadcastEnabled: Bool
         var activePaneID: UUID?
-        var paneIDs: [UUID]? // For split pane restoration
+        var paneIDs: [UUID]? // legacy, kept for migration
+        var layout: LayoutNodeData? // new: full split tree with weights
+    }
+
+    indirect enum LayoutNodeData: Codable {
+        case pane(PaneData)
+        case horizontal(children: [LayoutNodeData], weights: [Double])
+        case vertical(children: [LayoutNodeData], weights: [Double])
+
+        struct PaneData: Codable {
+            let id: UUID
+            let hostItemID: UUID?
+            let title: String
+        }
+    }
+
+    // MARK: - Layout Conversion
+
+    private func layoutData(from node: LayoutNode, tabHostID: UUID) -> LayoutNodeData {
+        switch node {
+        case let .pane(state):
+            return LayoutNodeData.pane(LayoutNodeData.PaneData(id: state.id, hostItemID: state.hostItem?.id, title: state.title))
+        case let .horizontal(children, weights):
+            return LayoutNodeData.horizontal(children: children.map { layoutData(from: $0, tabHostID: tabHostID) }, weights: weights.map { Double($0) })
+        case let .vertical(children, weights):
+            return LayoutNodeData.vertical(children: children.map { layoutData(from: $0, tabHostID: tabHostID) }, weights: weights.map { Double($0) })
+        }
+    }
+
+    private func layoutNode(from data: LayoutNodeData, hostStore: [UUID: HostItem], defaultHost: HostItem, idMap: inout [UUID: UUID]) -> LayoutNode {
+        switch data {
+        case let .pane(pane):
+            let state = PaneState()
+            idMap[pane.id] = state.id
+            state.title = pane.title
+            if let hid = pane.hostItemID, let host = hostStore[hid] {
+                state.hostItem = host
+            } else if pane.hostItemID == nil {
+                // Inherit tab host (no override)
+            } else if let hid = pane.hostItemID {
+                state.hostItem = hostStore[hid] ?? defaultHost
+            }
+            return LayoutNode.pane(state)
+        case let .horizontal(children, weights):
+            let nodes = children.map { layoutNode(from: $0, hostStore: hostStore, defaultHost: defaultHost, idMap: &idMap) }
+            return LayoutNode.horizontal(children: nodes, weights: weights.map { CGFloat($0) })
+        case let .vertical(children, weights):
+            let nodes = children.map { layoutNode(from: $0, hostStore: hostStore, defaultHost: defaultHost, idMap: &idMap) }
+            return LayoutNode.vertical(children: nodes, weights: weights.map { CGFloat($0) })
+        }
     }
 
     // MARK: - Save
@@ -70,7 +119,8 @@ final class WorkspacePersistenceManager {
                 sortOrder: index,
                 isBroadcastEnabled: tab.isBroadcastEnabled,
                 activePaneID: tab.activePaneID,
-                paneIDs: tab.paneIDs
+                paneIDs: tab.paneIDs,
+                layout: layoutData(from: tab.layout.root, tabHostID: tab.hostItem.id)
             )
             workspaceTabs.append(workspaceTab)
         }
@@ -173,13 +223,20 @@ final class WorkspacePersistenceManager {
         sessionManager: SessionManager,
         modelContext: ModelContext
     ) async {
-        // Close all existing tabs first (sequentially to avoid race conditions)
         for tab in sessionManager.tabs {
             await sessionManager.closeTab(tab.id)
         }
 
-        // Fetch only the host items we need
-        let neededIDs = Set(workspace.tabs.map(\.hostItemID))
+        // Collect all host IDs (tab + per-pane)
+        var neededIDs = Set(workspace.tabs.map(\.hostItemID))
+        for wt in workspace.tabs {
+            if let layout = wt.layout {
+                collectHosts(from: layout, into: &neededIDs)
+            } else if let paneIDs = wt.paneIDs {
+                // Legacy: paneIDs share tab host, no extra hosts
+                _ = paneIDs
+            }
+        }
         var hostStore: [UUID: HostItem] = [:]
         let descriptor = FetchDescriptor<HostItem>()
         if let hosts = try? modelContext.fetch(descriptor) {
@@ -188,30 +245,70 @@ final class WorkspacePersistenceManager {
             }
         }
 
-        // Open tabs from workspace (sequentially)
         for workspaceTab in workspace.tabs.sorted(by: { $0.sortOrder < $1.sortOrder }) {
             guard let hostItem = hostStore[workspaceTab.hostItemID] else {
                 logger.warning("Host item not found for workspace tab: \(workspaceTab.hostItemID)")
                 continue
             }
-
-            let tab = TerminalTab(hostItem: hostItem)
+            let tab = TerminalTab(id: workspaceTab.id, hostItem: hostItem)
             tab.title = workspaceTab.title
             tab.colorLabel = workspaceTab.colorLabel
             tab.isBroadcastEnabled = workspaceTab.isBroadcastEnabled
 
-            sessionManager.tabs.append(tab)
+            // Restore layout if available
+            if let layoutData = workspaceTab.layout {
+                var idMap: [UUID: UUID] = [:]
+                let node = layoutNode(from: layoutData, hostStore: hostStore, defaultHost: hostItem, idMap: &idMap)
+                tab.layout = TabLayout(root: node)
+                if let oldActive = workspaceTab.activePaneID, let newActive = idMap[oldActive] {
+                    tab.layout.activePaneID = newActive
+                    tab.activePaneID = newActive
+                } else {
+                    tab.activePaneID = tab.layout.activePaneID
+                }
+            } else if let paneIDs = workspaceTab.paneIDs, paneIDs.count > 1 {
+                // Legacy fallback: reconstruct simple horizontal splits
+                // Keep first pane as is, add remaining as splits
+                // This preserves old workspaces without layout data
+                for _ in 1..<paneIDs.count {
+                    _ = tab.layout.splitHorizontal()
+                }
+                if let active = workspaceTab.activePaneID { tab.activePaneID = active }
+            }
 
+            sessionManager.tabs.append(tab)
+            // Connect primary pane via connectTab, additional panes via connectPane
+            let allPanes = tab.layout.root.allPaneIDs
             Task {
                 await sessionManager.connectTab(tab)
+                // Small delay to let primary PTY establish, then connect splits
+                try? await Task.sleep(for: .milliseconds(300))
+                for pid in allPanes where pid != tab.layout.activePaneID {
+                    if let pane = tab.layout.findPane(id: pid) {
+                        await sessionManager.connectPane(tab: tab, pane: pane)
+                    }
+                }
+                // Also ensure active pane is connected if it wasn't primary
+                if let active = tab.activePaneID, !allPanes.isEmpty, allPanes.first != active {
+                    if let pane = tab.layout.findPane(id: active) {
+                        await sessionManager.connectPane(tab: tab, pane: pane)
+                    }
+                }
             }
         }
 
-        // Restore active tab
         if workspace.activeTabIndex < sessionManager.tabs.count {
             sessionManager.activeTabID = sessionManager.tabs[workspace.activeTabIndex].id
         }
+        logger.info("Workspace '\(workspace.name)' restored with \(workspace.tabs.count) tabs (layout-aware)")
+    }
 
-        logger.info("Workspace '\(workspace.name)' restored with \(workspace.tabs.count) tabs")
+    private func collectHosts(from data: LayoutNodeData, into set: inout Set<UUID>) {
+        switch data {
+        case let .pane(pane):
+            if let hid = pane.hostItemID { set.insert(hid) }
+        case let .horizontal(children, _), let .vertical(children, _):
+            for child in children { collectHosts(from: child, into: &set) }
+        }
     }
 }

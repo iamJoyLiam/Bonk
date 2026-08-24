@@ -56,6 +56,15 @@ final class TerminalTab: Identifiable {
         layout = TabLayout(root: .pane(pane))
         activePaneID = pane.id
     }
+
+    init(id: UUID, hostItem: HostItem) {
+        self.id = id
+        self.hostItem = hostItem
+        title = hostItem.name
+        let pane = PaneState()
+        layout = TabLayout(root: .pane(pane))
+        activePaneID = pane.id
+    }
 }
 
 /// Session binding mode for a pane.
