@@ -6,6 +6,40 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.2.0</title>
+            <pubDate>Mon, 24 Aug 2026 12:00:00 +0800</pubDate>
+            <sparkle:version>20262000</sparkle:version>
+            <sparkle:shortVersionString>2026.2.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- 新增会话录制与回放：asciicast v2 按窗格录制，录制列表与回放播放器（暂停/继续、倍速、主题自适应、初始提示捕获）
+- 录制与工作区列表改版：plain 列表 + 分隔线，移除卡片阴影，统一面板头部样式
+- SSH 架构升级 VNext（M1-M6）：Hybrid 原生优先+兼容回退、算法注入、Host 画像与强制兼容、端口转发策略、单 SFTP 多路复用、M6 性能压测
+- PTY 与连接稳定性：统一锁、ENXIO/EMFILE 句柄回收、keepalive/重连退避、串口热插拔与命名、ControlPath 分离
+- 分屏体验：拖拽分隔线实时调整（权重记忆）、拖放目标精准到窗格、关闭/拆分不丢失状态
+- SFTP 增强：流水线化、时间排序、tar.gz、progress、资源与网络中断恢复
+- UI 细节：工具栏/标签拖拽、幽灵平滑重排、右键菜单精简、输入法与粘贴体验、主题切换同步终端与窗口
+- 性能与质量：DEAD_CODE_STRIPPING、ObservationTracking 隔离、测试覆盖与诊断日志
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.0/Bonk-2026.2.0-arm64.dmg"
+                length="24438842"
+                type="application/octet-stream"
+                sparkle:edSignature="AvPAR9Wqfk5AqoEhUPPQ2halgBCECtkCA+8ke0p2uUsSWWHnMknnUjzKodmaPCODun8EUK05paRsTqsvqTf8Ag=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.0/Bonk-2026.2.0-x86_64.dmg"
+                length="25521872"
+                type="application/octet-stream"
+                sparkle:edSignature="98vA/WD/Bcvgnl08dJQVvyyC6kY3rTqPNY5bYJrHgbXVQ/pPBpGs7xHIs+vJAJB1sc6FPpWqTO8X5tx/+GgNBA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.1.21</title>
             <pubDate>Thu, 20 Aug 2026 08:00:00 +0000</pubDate>
             <sparkle:version>20261021</sparkle:version>
