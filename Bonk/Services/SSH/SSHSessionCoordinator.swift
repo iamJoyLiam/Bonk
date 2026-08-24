@@ -79,7 +79,7 @@ public actor SSHSessionCoordinator {
             return .native
         }
         if req.requiresCertificate || req.authentication == .certificate {
-            return .compatibility(reason: .modern) // compat reason for cert; caller maps to .forcedCompatibility if needed
+            return .compatibility(reason: .forcedCompatibility)
         }
         if req.keyAlgorithm == .rsa {
             // Native 0.3.6 has no rsa-sha2
