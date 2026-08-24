@@ -189,6 +189,14 @@ final class TerminalViewCache {
         accessOrder = accessOrder.filter { protectedIDs.contains($0) }
     }
 
+    /// Whether any of the given panes is currently in alternate screen (vim/less).
+    func isAnyPaneAlternate(paneIDs: [UUID]) -> Bool {
+        for id in paneIDs {
+            if let cached = cache[id], cached.view.terminal.isCurrentBufferAlternate { return true }
+        }
+        return false
+    }
+
     /// Update scroll sensitivity for all cached terminal views.
     func updateScrollSensitivity(_ sensitivity: CGFloat) {
         for (_, cached) in cache {

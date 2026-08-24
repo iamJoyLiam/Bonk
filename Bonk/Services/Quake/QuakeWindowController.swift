@@ -13,8 +13,21 @@ import SwiftUI
 
 /// Custom NSPanel that can become key window even when borderless.
 class QuakePanel: NSPanel {
+    /// Handler for ESC key; return true if handled (swallow), false to pass through.
+    var escHandler: (() -> Bool)?
+
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53, let handler = escHandler, handler() { return }
+        super.keyDown(with: event)
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        if let handler = escHandler, handler() { return }
+        super.cancelOperation(sender)
+    }
 }
 
 // MARK: - Quake Window Controller

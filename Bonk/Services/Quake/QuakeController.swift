@@ -32,7 +32,7 @@ final class QuakeController {
     private var windowController: QuakeWindowController?
 
     /// Focus manager.
-    private let focusManager = QuakeFocusManager()
+    let focusManager = QuakeFocusManager()
 
     // MARK: - State
 
@@ -84,6 +84,8 @@ final class QuakeController {
                 }
             }
         }
+
+        setupEscHandler()
 
         logger.info("QuakeController setup complete")
     }
@@ -180,6 +182,26 @@ final class QuakeController {
 
     private func hideQuakeWindow() {
         windowController?.hide()
+    }
+
+    // MARK: - ESC Handling
+
+    private func setupEscHandler() {
+        guard let panel = windowController?.panel else { return }
+        panel.escHandler = { [weak self] in
+            guard let self, self.currentMode == .quake else { return false }
+            switch self.configuration.escBehavior {
+            case .always:
+                self.transitionTo(.embedded)
+                return true
+            case .never:
+                return false
+            case .onlyWhenNoAlternateScreen:
+                if self.focusManager.isInAlternateScreen() { return false }
+                self.transitionTo(.embedded)
+                return true
+            }
+        }
     }
 
     // MARK: - Configuration Update

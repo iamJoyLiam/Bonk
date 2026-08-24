@@ -377,6 +377,10 @@ struct ContentView: View {
             hostingView.frame = NSRect(x: 0, y: 0, width: 800, height: 400)
 
             controller.setup(contentView: hostingView)
+            controller.focusManager.alternateScreenProvider = { @MainActor [weak sessionManager] in
+                guard let sm = sessionManager, let tab = sm.activeTab else { return false }
+                return TerminalViewCache.shared.isAnyPaneAlternate(paneIDs: tab.paneIDs)
+            }
         }
     }
 #endif

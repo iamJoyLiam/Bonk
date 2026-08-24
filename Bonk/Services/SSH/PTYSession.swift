@@ -178,6 +178,15 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             Task { await SessionRecordingService.shared.recordOutput(paneID: pid, text: raw) }
         }
 
+        // Zmodem auto-detection: look for ** + ZDLE sequence in output
+        if ZmodemHandler.containsZmodemSequence(in: text) {
+            if zmodemHandler == nil { setupZmodem() }
+            zmodemHandler?.processData(Array(text.utf8))
+        } else if let handler = zmodemHandler, case .receivingFile = handler.state {
+            // While receiving, non-header data is file content
+            handler.processRawData(Data(text.utf8))
+        }
+
         // Process through OSC 7 detector for CWD tracking
         osc7Detector.process(text)
 
@@ -284,6 +293,19 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                                 if Task.isCancelled { break }
                                 switch data {
                                 case let .stdout(buf):
+                                    // Raw Zmodem header check before String conversion (binary-safe)
+                                    if let bytes = buf.getBytes(at: buf.readerIndex, length: buf.readableBytes),
+                                       ZmodemHandler.containsZmodemHeader(in: bytes) {
+                                        if self.zmodemHandler == nil { self.setupZmodem() }
+                                        self.zmodemHandler?.processData(bytes)
+                                    } else if let handler = self.zmodemHandler, case .receivingFile = handler.state {
+                                        // While receiving, raw file bytes (may be non-UTF8) go directly to handler
+                                        if let bytes = buf.getBytes(at: buf.readerIndex, length: buf.readableBytes) {
+                                            handler.processRawData(Data(bytes))
+                                            // Don't echo binary file data to terminal
+                                            continue
+                                        }
+                                    }
                                     for chunk in Self.chunkByteBuffer(buf) {
                                         self.yieldOutput(chunk)
                                     }
@@ -672,6 +694,30 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         handler.onSendData = { [weak self] data in
             Task {
                 try? await self?.sendRawBytes(data)
+            }
+        }
+        handler.onReceiveFileRequest = { info in
+            // Auto-save to Downloads; return nil would cancel. Main-thread safe (FileManager only).
+            let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+            var dest = downloads.appendingPathComponent(info.name)
+            // Avoid overwriting: add suffix if exists
+            var counter = 1
+            let ext = dest.pathExtension
+            let base = dest.deletingPathExtension().lastPathComponent
+            while FileManager.default.fileExists(atPath: dest.path) {
+                let newName = ext.isEmpty ? "\(base)_\(counter)" : "\(base)_\(counter).\(ext)"
+                dest = downloads.appendingPathComponent(newName)
+                counter += 1
+            }
+            return dest
+        }
+        handler.onProgress = { progress in
+            Log.ssh.debug("[Zmodem] progress \(Int(progress * 100))%")
+        }
+        handler.onCompletion = { result in
+            switch result {
+            case .success(let url): Log.ssh.info("[Zmodem] completed \(url?.lastPathComponent ?? "done")")
+            case .failure(let err): Log.ssh.error("[Zmodem] failed \(err.localizedDescription)")
             }
         }
         zmodemHandler = handler

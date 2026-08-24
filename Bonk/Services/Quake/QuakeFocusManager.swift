@@ -114,11 +114,14 @@ final class QuakeFocusManager {
 
     // MARK: - Alternate Screen Detection
 
+    /// Provider that returns true when any visible terminal is in alternate screen (vim/less).
+    /// Set by `QuakeController` to query `TerminalViewCache` / SwiftTerm state.
+    var alternateScreenProvider: (@MainActor () -> Bool)?
+
     /// Check if the terminal is currently in alternate screen mode (vim, less, etc.).
-    /// This is a heuristic - the actual detection depends on terminal state.
+    @MainActor
     func isInAlternateScreen() -> Bool {
-        // TODO: Implement actual alternate screen detection
-        // For now, return false (allow ESC to hide)
+        if let provider = alternateScreenProvider { return provider() }
         return false
     }
 }
