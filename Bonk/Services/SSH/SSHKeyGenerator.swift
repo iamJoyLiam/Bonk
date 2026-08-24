@@ -67,24 +67,102 @@ enum SSHKeyGenerator {
     /// Generate an SSH key pair.
     static func generate(type: SSHKeyType, passphrase: String? = nil) throws -> GeneratedSSHKey {
         logger.info("Generating \(type.displayName) key...")
-
+        let trimmed = passphrase?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasPassphrase = trimmed != nil && !(trimmed!.isEmpty)
+        // Prefer system ssh-keygen for correct OpenSSH format + passphrase encryption.
+        // Falls back to CryptoKit/Security if ssh-keygen unavailable.
+        if let result = try? generateViaSSHKeygen(type: type, passphrase: hasPassphrase ? trimmed : nil) {
+            return result
+        }
+        // Fallback (no passphrase encryption)
         switch type {
         case .ed25519:
-            return try generateEd25519()
+            return try generateEd25519(passphrase: trimmed)
         case .rsa2048:
-            return try generateRSA(bits: 2048)
+            return try generateRSA(bits: 2048, passphrase: trimmed)
         case .rsa4096:
-            return try generateRSA(bits: 4096)
+            return try generateRSA(bits: 4096, passphrase: trimmed)
         case .ecdsaP256:
-            return try generateECDSA(bits: 256)
+            return try generateECDSA(bits: 256, passphrase: trimmed)
         case .ecdsaP384:
-            return try generateECDSA(bits: 384)
+            return try generateECDSA(bits: 384, passphrase: trimmed)
         }
     }
 
-    // MARK: - Ed25519
+    // MARK: - System ssh-keygen (correct OpenSSH v1 + passphrase)
 
-    private static func generateEd25519() throws -> GeneratedSSHKey {
+    private static func generateViaSSHKeygen(type: SSHKeyType, passphrase: String?) throws -> GeneratedSSHKey {
+        let fm = FileManager.default
+        let tmpDir = fm.temporaryDirectory.appendingPathComponent("bonk-keygen-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: tmpDir) }
+        let keyPath = tmpDir.appendingPathComponent("key")
+        let pubPath = tmpDir.appendingPathComponent("key.pub")
+
+        var args: [String] = []
+        switch type {
+        case .ed25519:
+            args = ["-t", "ed25519", "-f", keyPath.path, "-N", passphrase ?? "", "-C", "bonk@local"]
+        case .rsa2048:
+            args = ["-t", "rsa", "-b", "2048", "-f", keyPath.path, "-N", passphrase ?? "", "-C", "bonk@local"]
+        case .rsa4096:
+            args = ["-t", "rsa", "-b", "4096", "-f", keyPath.path, "-N", passphrase ?? "", "-C", "bonk@local"]
+        case .ecdsaP256:
+            args = ["-t", "ecdsa", "-b", "256", "-f", keyPath.path, "-N", passphrase ?? "", "-C", "bonk@local"]
+        case .ecdsaP384:
+            args = ["-t", "ecdsa", "-b", "384", "-f", keyPath.path, "-N", passphrase ?? "", "-C", "bonk@local"]
+        }
+
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/ssh-keygen")
+        proc.arguments = args
+        let errPipe = Pipe()
+        proc.standardError = errPipe
+        proc.standardOutput = Pipe()
+        try proc.run()
+        proc.waitUntilExit()
+        guard proc.terminationStatus == 0 else {
+            let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "unknown"
+            throw SSHKeyGeneratorError.keyGenerationFailed("ssh-keygen failed: \(err)")
+        }
+        guard let privatePEM = try? String(contentsOf: keyPath, encoding: .utf8),
+              let publicSSH = try? String(contentsOf: pubPath, encoding: .utf8) else {
+            throw SSHKeyGeneratorError.keyGenerationFailed("Failed to read generated key")
+        }
+        let fingerprint = (try? fingerprintViaSSHKeygen(pubPath: pubPath)) ?? calculateFingerprintForSSHPublicKey(publicSSH)
+        return GeneratedSSHKey(type: type, privateKeyPEM: privatePEM.trimmingCharacters(in: .whitespacesAndNewlines), publicKeySSH: publicSSH.trimmingCharacters(in: .whitespacesAndNewlines), fingerprint: fingerprint)
+    }
+
+    private static func fingerprintViaSSHKeygen(pubPath: URL) throws -> String {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/ssh-keygen")
+        proc.arguments = ["-lf", pubPath.path, "-E", "sha256"]
+        let outPipe = Pipe()
+        proc.standardOutput = outPipe
+        proc.standardError = Pipe()
+        try proc.run()
+        proc.waitUntilExit()
+        let out = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        // Output: "256 SHA256:xxxxx ... (ED25519)"
+        if let range = out.range(of: "SHA256:") {
+            let after = out[range.upperBound...]
+            let token = after.split(separator: " ").first ?? Substring("")
+            return "SHA256:\(token)"
+        }
+        throw SSHKeyGeneratorError.keyGenerationFailed("Failed to parse fingerprint")
+    }
+
+    private static func calculateFingerprintForSSHPublicKey(_ ssh: String) -> String {
+        let parts = ssh.split(separator: " ")
+        guard parts.count >= 2, let data = Data(base64Encoded: String(parts[1])) else { return "SHA256:unknown" }
+        let hash = SHA256.hash(data: data)
+        let b64 = Data(hash).base64EncodedString().replacingOccurrences(of: "=", with: "")
+        return "SHA256:\(b64)"
+    }
+
+    // MARK: - Ed25519 (fallback, no passphrase encryption)
+
+    private static func generateEd25519(passphrase: String? = nil) throws -> GeneratedSSHKey {
         // Use CryptoKit for Ed25519 key generation
         let privateKey = Curve25519.Signing.PrivateKey()
         let publicKey = privateKey.publicKey
@@ -123,9 +201,9 @@ enum SSHKeyGenerator {
         return "ssh-ed25519 \(base64)"
     }
 
-    // MARK: - RSA
+    // MARK: - RSA (fallback)
 
-    private static func generateRSA(bits: Int) throws -> GeneratedSSHKey {
+    private static func generateRSA(bits: Int, passphrase: String? = nil) throws -> GeneratedSSHKey {
         let attributes: [String: Any] = [
             kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
             kSecAttrKeySizeInBits as String: bits,
@@ -176,9 +254,9 @@ enum SSHKeyGenerator {
         return "ssh-rsa \(base64)"
     }
 
-    // MARK: - ECDSA
+    // MARK: - ECDSA (fallback)
 
-    private static func generateECDSA(bits: Int) throws -> GeneratedSSHKey {
+    private static func generateECDSA(bits: Int, passphrase: String? = nil) throws -> GeneratedSSHKey {
         let keyType = bits == 256 ? kSecAttrKeyTypeECSECPrimeRandom : kSecAttrKeyTypeECSECPrimeRandom
         let attributes: [String: Any] = [
             kSecAttrKeyType as String: keyType,
