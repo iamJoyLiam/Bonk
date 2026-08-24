@@ -70,6 +70,15 @@ struct GeneralSettingsView: View {
                 Text("When enabled, every new SSH connection starts asciicast recording automatically.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+
+            Section("SSH Config") {
+                Toggle("Auto-sync ~/.ssh/config", isOn: Binding(
+                    get: { preferences.autoSyncSSHConfig ?? false },
+                    set: { preferences.autoSyncSSHConfig = $0 }
+                ))
+                Text("When enabled, Bonk watches ~/.ssh/config and offers to import changes.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)

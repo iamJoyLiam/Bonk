@@ -29,6 +29,10 @@ final class Credential {
     var username: String?
     var createdAt: Date
     var notes: String?
+    // SSH key metadata (all optional for migration safety)
+    var keyTypeRaw: String?
+    var publicKey: String?
+    var fingerprint: String?
 
     @Relationship(inverse: \HostItem.credentialRef)
     var hosts: [HostItem]

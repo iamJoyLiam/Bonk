@@ -45,6 +45,8 @@ final class UserPreferences {
     var reconnectBaseDelay: Double? // seconds
     /// Auto-record all sessions (optional)
     var autoRecord: Bool?
+    /// Auto-sync ~/.ssh/config (optional for migration)
+    var autoSyncSSHConfig: Bool?
 
     init(
         fontSize: Double = 14,
@@ -68,7 +70,8 @@ final class UserPreferences {
         autoReconnect: Bool? = true,
         maxReconnectAttempts: Int? = 5,
         reconnectBaseDelay: Double? = 1.0,
-        autoRecord: Bool? = nil
+        autoRecord: Bool? = nil,
+        autoSyncSSHConfig: Bool? = nil
     ) {
         self.fontSize = fontSize
         self.fontFamily = fontFamily
@@ -92,5 +95,6 @@ final class UserPreferences {
         self.maxReconnectAttempts = maxReconnectAttempts
         self.reconnectBaseDelay = reconnectBaseDelay
         self.autoRecord = autoRecord
+        self.autoSyncSSHConfig = autoSyncSSHConfig
     }
 }

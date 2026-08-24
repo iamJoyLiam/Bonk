@@ -6,6 +6,7 @@
 //
 
 import os.log
+import SwiftData
 import SwiftUI
 
 // MARK: - Key Generator View
@@ -14,6 +15,7 @@ import SwiftUI
 struct SSHKeyGeneratorView: View {
     @Environment(I18n.self) private var i18n
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
 
     @State private var selectedType: SSHKeyType = .ed25519
     @State private var passphrase = ""
@@ -22,6 +24,7 @@ struct SSHKeyGeneratorView: View {
     @State private var isGenerating = false
     @State private var showCopied = false
     @State private var errorMessage: String?
+    @State private var showVaultSaved = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -203,8 +206,25 @@ struct SSHKeyGeneratorView: View {
                     }
                 }
 
+                // Save to Vault
+                Button {
+                    saveToVault(key)
+                } label: {
+                    Label("Save to Vault", systemImage: "key.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .disabled(showVaultSaved)
+
                 if showCopied {
                     Text(i18n.t(.copied))
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                        .transition(.opacity)
+                }
+                if showVaultSaved {
+                    Text("Saved to Vault")
                         .font(.caption)
                         .foregroundStyle(.green)
                         .transition(.opacity)
@@ -264,7 +284,8 @@ struct SSHKeyGeneratorView: View {
 
         Task {
             do {
-                let key = try SSHKeyGenerator.generate(type: selectedType)
+                let pass = passphrase.trimmingCharacters(in: .whitespacesAndNewlines)
+                let key = try SSHKeyGenerator.generate(type: selectedType, passphrase: pass.isEmpty ? nil : pass)
                 withAnimation {
                     generatedKey = key
                 }
@@ -272,6 +293,21 @@ struct SSHKeyGeneratorView: View {
                 errorMessage = error.localizedDescription
             }
             isGenerating = false
+        }
+    }
+
+    private func saveToVault(_ key: GeneratedSSHKey) {
+        let name = "\(key.type.displayName) \(key.fingerprint.prefix(16))"
+        let cred = Credential(name: String(name), type: .privateKey)
+        cred.keyTypeRaw = key.type.rawValue
+        cred.publicKey = key.publicKeySSH
+        cred.fingerprint = key.fingerprint
+        modelContext.insert(cred)
+        cred.storeSecret(key.privateKeyPEM)
+        try? modelContext.save()
+        withAnimation { showVaultSaved = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation { showVaultSaved = false }
         }
     }
 
@@ -295,6 +331,8 @@ struct SSHKeyGeneratorView: View {
 
         if panel.runModal() == .OK, let url = panel.url {
             try? content.write(to: url, atomically: true, encoding: .utf8)
+            // Ensure private key is not world-readable (0600) — consistent with OpenSSHBackend+Identity
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
         }
     }
 }
