@@ -53,31 +53,36 @@ import SwiftUI
 
         var body: some View {
             ZStack {
-                switch tab.session?.connectionState ?? .disconnected {
-                case .disconnected:
-                    disconnectedView
-                case .connecting:
+                if tab.session?.connectionState == .connected, paneState.ptySession == nil {
+                    // Split restore race: tab connected but this pane has no PTY yet
                     connectingView
-                case .connected:
-                    PaneMacBridge(
-                        paneID: paneState.id,
-                        tabID: tab.id,
-                        colorScheme: colorScheme,
-                        fontSize: fontSize,
-                        fontFamily: fontFamily,
-                        lineHeight: lineHeight,
-                        scrollbackLines: scrollbackLines,
-                        cursorStyle: cursorStyle,
-                        cursorBlink: cursorBlink,
-                        copyOnSelect: copyOnSelect,
-                        onSend: onSend,
-                        onResize: onResize,
-                        onTitleChange: onTitleChange,
-                        completionContext: completionContext,
-                        onViewReady: connectOutputStreamWithRetry
-                    )
-                case let .reconnecting(attempt, max):
-                    reconnectingView(attempt: attempt, max: max)
+                } else {
+                    switch tab.session?.connectionState ?? .disconnected {
+                    case .disconnected:
+                        disconnectedView
+                    case .connecting:
+                        connectingView
+                    case .connected:
+                        PaneMacBridge(
+                            paneID: paneState.id,
+                            tabID: tab.id,
+                            colorScheme: colorScheme,
+                            fontSize: fontSize,
+                            fontFamily: fontFamily,
+                            lineHeight: lineHeight,
+                            scrollbackLines: scrollbackLines,
+                            cursorStyle: cursorStyle,
+                            cursorBlink: cursorBlink,
+                            copyOnSelect: copyOnSelect,
+                            onSend: onSend,
+                            onResize: onResize,
+                            onTitleChange: onTitleChange,
+                            completionContext: completionContext,
+                            onViewReady: connectOutputStreamWithRetry
+                        )
+                    case let .reconnecting(attempt, max):
+                        reconnectingView(attempt: attempt, max: max)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -89,6 +94,11 @@ import SwiftUI
             }
             .onAppear {
                 connectOutputStreamWithRetry()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalPTYSessionReady)) { note in
+                if let tid = note.userInfo?["tabID"] as? UUID, tid == tab.id {
+                    connectOutputStreamWithRetry()
+                }
             }
         }
 

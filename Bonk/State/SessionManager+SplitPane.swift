@@ -206,6 +206,7 @@ extension SessionManager {
                 return
             }
             pane.ptySession = ptySession
+            NotificationCenter.default.post(name: .terminalPTYSessionReady, object: nil, userInfo: ["tabID": tab.id])
         }
 
         if let serialConfig = tab.serialConfig {
@@ -226,7 +227,18 @@ extension SessionManager {
             return
         }
 
-        guard let service = tab.session?.sshService else { return }
+        // Wait for sshService to be ready (restore path races connectTab)
+        var service = tab.session?.sshService
+        if service == nil {
+            for _ in 0..<30 {
+                try? await Task.sleep(for: .milliseconds(100))
+                if let s = tab.session?.sshService { service = s; break }
+            }
+        }
+        guard let service else {
+            Log.session.error("[SPLIT] No sshService after wait for pane \(pane.id)")
+            return
+        }
         do {
             let ptySession = try await service.openPTY()
             adoptOrClose(ptySession)

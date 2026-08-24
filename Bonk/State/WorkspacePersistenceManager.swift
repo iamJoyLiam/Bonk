@@ -312,22 +312,14 @@ final class WorkspacePersistenceManager {
             }
 
             sessionManager.tabs.append(tab)
-            // Connect primary pane via connectTab, additional panes via connectPane
+            // Sequential restore: connectTab is the real attempt (no double handshake),
+            // then connect remaining panes. Skip the pane that connectTab already handled (first leaf).
             let allPanes = tab.layout.root.allPaneIDs
-            Task {
-                await sessionManager.connectTab(tab)
-                // Small delay to let primary PTY establish, then connect splits
-                try? await Task.sleep(for: .milliseconds(300))
-                for pid in allPanes where pid != tab.layout.activePaneID {
-                    if let pane = tab.layout.findPane(id: pid) {
-                        await sessionManager.connectPane(tab: tab, pane: pane)
-                    }
-                }
-                // Also ensure active pane is connected if it wasn't primary
-                if let active = tab.activePaneID, !allPanes.isEmpty, allPanes.first != active {
-                    if let pane = tab.layout.findPane(id: active) {
-                        await sessionManager.connectPane(tab: tab, pane: pane)
-                    }
+            let firstPaneID = tab.layout.root.paneState?.id ?? allPanes.first
+            await sessionManager.connectTab(tab)
+            for pid in allPanes where pid != firstPaneID {
+                if let pane = tab.layout.findPane(id: pid) {
+                    await sessionManager.connectPane(tab: tab, pane: pane)
                 }
             }
         }
