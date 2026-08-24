@@ -103,9 +103,10 @@ public actor SSHNetworkService {
     /// Enable auto-reconnection after initial connection succeeds.
     public func enableReconnection(attempts: Int = 3) {
         guard var config else { return }
-        // OpenSSH owns interactive auth; automatic reconnect would reopen
-        // password/MFA prompts behind the user's terminal.
-        let resolvedAttempts = usesOpenSSHTransport ? 0 : attempts
+        // Previously disabled for OpenSSH to avoid re-prompting password/MFA.
+        // Now enabled for both engines; handleDisconnect distinguishes
+        // interactive auth failures (no reconnect) from network drops (reconnect).
+        let resolvedAttempts = attempts
         config = SSHConnectionConfig(
             host: config.host,
             port: config.port,
@@ -575,16 +576,21 @@ public actor SSHNetworkService {
         client = nil
 
         if usesOpenSSHTransport {
-            // OpenSSH PTY owns interactive auth. Child exit means session end;
-            // never replace a password prompt with a reconnect spinner.
-            usesOpenSSHTransport = false
-            // Tear the backend down too: it owns temp identity files and the
-            // jump askpass script (with plaintext password); without this they
-            // linger in /tmp and the ControlMaster socket stays for 300s.
+            // For OpenSSH, tear down the backend (temp files, ControlMaster) but
+            // allow reconnect when the disconnect is a network drop (not an
+            // interactive auth failure). maxReconnectAttempts==0 means "do not
+            // reconnect" (e.g. user cancelled or auth failed before enableReconnection).
             openSSHBackend?.close()
             openSSHBackend = nil
-            connectionState = .disconnected
-            stateContinuation.yield(.disconnected)
+            guard config.maxReconnectAttempts > 0 else {
+                usesOpenSSHTransport = false
+                connectionState = .disconnected
+                stateContinuation.yield(.disconnected)
+                return
+            }
+            // Keep usesOpenSSHTransport true so reconnect() takes the OpenSSH path (via connect)
+            isWaitingForNetwork = true
+            startReconnect()
             return
         }
 

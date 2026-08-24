@@ -153,6 +153,9 @@ struct ContentView: View {
             .sheet(isPresented: $toolbarCoordinator.showSSHConfigImport) {
                 SSHConfigImportView(modelContext: modelContext)
             }
+            .sheet(isPresented: $toolbarCoordinator.showTabbyImport) {
+                TabbyImportView(modelContext: modelContext)
+            }
             .sheet(isPresented: $toolbarCoordinator.showKeyGenerator) {
                 SSHKeyGeneratorView()
             }

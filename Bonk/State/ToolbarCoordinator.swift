@@ -20,6 +20,7 @@ final class ToolbarCoordinator {
     var showKeyGenerator = false
     var showWorkspaces = false
     var showSSHConfigImport = false
+    var showTabbyImport = false
     var showAddHostSheet = false
     var showRecordings = false
     var showJumpHosts = false

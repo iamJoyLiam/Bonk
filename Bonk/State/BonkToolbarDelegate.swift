@@ -27,6 +27,7 @@ extension NSToolbarItem.Identifier {
     static let keyGenerator = NSToolbarItem.Identifier("com.bonk.toolbar.keyGenerator")
     static let workspaces = NSToolbarItem.Identifier("com.bonk.toolbar.workspaces")
     static let sshImport = NSToolbarItem.Identifier("com.bonk.toolbar.sshImport")
+    static let tabbyImport = NSToolbarItem.Identifier("com.bonk.toolbar.tabbyImport")
     static let sftp = NSToolbarItem.Identifier("com.bonk.toolbar.sftp")
     static let recording = NSToolbarItem.Identifier("com.bonk.toolbar.recording")
     static let jumpHosts = NSToolbarItem.Identifier("com.bonk.toolbar.jumpHosts")
@@ -67,7 +68,7 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
          .serverCPU, .serverMemory, .serverDisk,
          .broadcast, .sftp, .workspaces, .recording, .jumpHosts,
          .serialPort, .portForward,         // 不常用：保留在自定义中
-         .keyGenerator, .sshImport,
+         .keyGenerator, .sshImport, .tabbyImport,
          .ai, .snippets,
          .space, .flexibleSpace]
     }
@@ -185,6 +186,15 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
                 icon: "square.and.arrow.down"
             ) { [weak self] in
                 self?.coordinator.showSSHConfigImport = true
+            }
+
+        case .tabbyImport:
+            return makeItem(
+                id: itemIdentifier,
+                label: "Import Tabby",
+                icon: "square.and.arrow.down.on.square"
+            ) { [weak self] in
+                self?.coordinator.showTabbyImport = true
             }
 
         case .sftp:
