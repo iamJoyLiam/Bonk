@@ -296,8 +296,11 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             Task { @MainActor in NotificationCenter.default.post(name: .commandBlockDidAdd, object: nil, userInfo: ["block": finishedBlock]) }
             activeCommandBlock.withLockedValue { $0 = nil }
         }
+        // Team relay — broadcast to LAN guests (host only)
+        let displayTextForTeam = LogColorizer.colorize(text)
+        Task { @MainActor in TeamRelay.shared.broadcastOutput(displayTextForTeam) }
         // Colorize for display only.
-        let displayText = LogColorizer.colorize(text)
+        let displayText = displayTextForTeam
         // Send to all live consumers with per-consumer backpressure.
         // Skip consumers whose pending bytes exceed the high watermark;
         // they will resume once the Coordinator calls decrementPendingBytes().

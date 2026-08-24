@@ -18,6 +18,7 @@ protocol TeamRelayDelegate: AnyObject {
 
 @MainActor
 final class TeamRelay: ObservableObject {
+    static let shared = TeamRelay()
     @Published private(set) var isHosting = false
     @Published private(set) var isConnected = false
     @Published private(set) var connectedPeers: [TeamPeer] = []
@@ -239,11 +240,23 @@ final class TeamRelay: ObservableObject {
                 logger.info("Host ignoring input from non-driver \(peerConnectionID.uuidString.prefix(8))")
                 return
             }
-            delegate?.teamRelay(self, didReceiveInput: payload, from: peerConnectionID)
+            if let delegate {
+                delegate.teamRelay(self, didReceiveInput: payload, from: peerConnectionID)
+            } else {
+                // Fallback: directly forward to active PTY (MVP without delegate wiring)
+                Task { @MainActor in
+                    guard let sessionManager = BonkAppDelegate.shared?.sessionManager,
+                          let tabID = sessionManager.activeTabID,
+                          let data = payload.data(using: .utf8)
+                    else { return }
+                    let bytes = Array(data)
+                    try? await sessionManager.sendInput(bytes[...], to: tabID)
+                }
+            }
         case let .resize(columns, rows):
             delegate?.teamRelay(self, didReceiveResize: columns, rows: rows, from: peerConnectionID)
-        case let .controlRequest(peerID, displayName):
-            delegate?.teamRelay(self, didRequestControl: peerID, displayName: displayName)
+        case let .controlRequest(_, displayName):
+            delegate?.teamRelay(self, didRequestControl: peerConnectionID, displayName: displayName)
         case .heartbeat:
             sendMessage(.heartbeat, to: hostedConnections[peerConnectionID]!)
         default:

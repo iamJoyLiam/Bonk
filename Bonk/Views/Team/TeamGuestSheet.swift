@@ -11,6 +11,7 @@ struct TeamGuestSheet: View {
     @State private var pinInput = ""
     @State private var displayName = Host.current().localizedName ?? "Guest"
     @State private var selectedHost: DiscoveredTeamHost?
+    @State private var guestOutput = ""
 
     var body: some View {
         VStack(spacing: 16) {
@@ -21,6 +22,30 @@ struct TeamGuestSheet: View {
             manualSection
             Divider()
             pinSection
+            if relay.isConnected {
+                Divider()
+                GroupBox("Live Terminal") {
+                    ScrollView {
+                        Text(guestOutput.isEmpty ? "Waiting for output…" : guestOutput)
+                            .font(.system(.caption, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                    .frame(height: 120)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .cornerRadius(6)
+                }
+                HStack(spacing: 8) {
+                    Button("Request Control") {
+                        relay.sendControlRequest(displayName: displayName, peerID: UUID())
+                    }
+                    Spacer()
+                    Text(relay.driverPeerID == nil ? "Host controls" : "Driver: \(relay.driverPeerID?.uuidString.prefix(4) ?? "")")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                GuestInputBar(relay: relay)
+            }
             Spacer()
             footerSection
         }
@@ -28,6 +53,12 @@ struct TeamGuestSheet: View {
         .padding()
         .onAppear { discovery.startBrowsing() }
         .onDisappear { discovery.stopBrowsing() }
+        .onReceive(NotificationCenter.default.publisher(for: .teamGuestDidReceiveOutput)) { note in
+            if let payload = note.userInfo?["payload"] as? String {
+                guestOutput.append(payload)
+                if guestOutput.count > 20000 { guestOutput = String(guestOutput.suffix(15000)) }
+            }
+        }
     }
 
     private var headerSection: some View {
@@ -132,5 +163,26 @@ struct TeamGuestSheet: View {
             endpoint = discovery.manualEndpoint(host: manualHost, port: portValue)
         }
         relay.connectToHost(endpoint: endpoint, displayName: displayName, pin: pinInput)
+    }
+}
+
+private struct GuestInputBar: View {
+    @ObservedObject var relay: TeamRelay
+    @State private var inputText = ""
+
+    var body: some View {
+        HStack(spacing: 8) {
+            TextField("Type command…", text: $inputText)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { sendInput() }
+            Button("Send") { sendInput() }
+                .disabled(inputText.isEmpty)
+        }
+    }
+
+    private func sendInput() {
+        guard !inputText.isEmpty else { return }
+        relay.sendInputFromGuest(inputText + "\n")
+        inputText = ""
     }
 }
