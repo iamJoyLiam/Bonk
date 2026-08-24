@@ -61,6 +61,7 @@ struct ContentView: View {
                 TerminalViewCache.shared.configureMemoryPressure {
                     sessionManager.activeTabID
                 }
+                TriggerManager.shared.configure(modelContext: modelContext)
                 // Sync coordinator with actual state
                 toolbarCoordinator.workspace = workspace
                 toolbarCoordinator.sessionManager = sessionManager

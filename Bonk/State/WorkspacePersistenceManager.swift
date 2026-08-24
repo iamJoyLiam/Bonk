@@ -36,6 +36,7 @@ final class WorkspacePersistenceManager {
         var updatedAt: Date
         var activeTabIndex: Int
         var tabs: [WorkspaceTabData]
+        var isTemplate: Bool? // nil = regular workspace, true = template
     }
 
     struct WorkspaceTabData: Codable, Identifiable {
@@ -106,7 +107,8 @@ final class WorkspacePersistenceManager {
     func saveWorkspace(
         name: String,
         sessionManager: SessionManager,
-        existingWorkspaceID: UUID? = nil
+        existingWorkspaceID: UUID? = nil,
+        isTemplate: Bool = false
     ) -> WorkspaceData? {
         var workspaceTabs: [WorkspaceTabData] = []
 
@@ -133,6 +135,7 @@ final class WorkspacePersistenceManager {
             existing.updatedAt = Date()
             existing.activeTabIndex = activeIndex
             existing.tabs = workspaceTabs
+            existing.isTemplate = isTemplate ? true : nil
             workspace = existing
         } else {
             workspace = WorkspaceData(
@@ -141,7 +144,8 @@ final class WorkspacePersistenceManager {
                 createdAt: Date(),
                 updatedAt: Date(),
                 activeTabIndex: activeIndex,
-                tabs: workspaceTabs
+                tabs: workspaceTabs,
+                isTemplate: isTemplate ? true : nil
             )
         }
 

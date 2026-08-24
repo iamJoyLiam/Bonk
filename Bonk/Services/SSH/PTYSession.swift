@@ -183,9 +183,13 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             if zmodemHandler == nil { setupZmodem() }
             zmodemHandler?.processData(Array(text.utf8))
         } else if let handler = zmodemHandler, case .receivingFile = handler.state {
-            // While receiving, non-header data is file content
             handler.processRawData(Data(text.utf8))
         }
+
+        // Trigger evaluation (throttled, MainActor)
+        let triggerText = text
+        let triggerSession = self
+        Task { @MainActor in TriggerManager.shared.processOutput(triggerText, ptySession: triggerSession) }
 
         // Process through OSC 7 detector for CWD tracking
         osc7Detector.process(text)

@@ -27,7 +27,7 @@ struct BonkApp: App {
             HostItem.self, UserPreferences.self, Credential.self, HostGroup.self,
             AIConversationRecord.self, AIMessageRecord.self, AIProviderRecord.self,
             Snippet.self, PortForward.self, JumpHost.self, InlineSuggestionRecord.self,
-            SSHBackendProfile.self,
+            SSHBackendProfile.self, TriggerRule.self,
         ])
         // AGENTS.md: never change storeName — always use default. DEBUG uses in-memory store to avoid touching real DB (Xcode runs).
         #if DEBUG
@@ -49,6 +49,7 @@ struct BonkApp: App {
             let msg = error.localizedDescription + " " + String(describing: error)
             return msg.contains("no such table") || msg.contains("no such column")
                 || msg.contains("ZSSHBACKENDPROFILE") || msg.contains("ZFORCECOMPATIBILITY")
+                || msg.contains("ZTRIGGERRULE") || msg.contains("TriggerRule")
         }
         do {
             let container = try ModelContainer(for: schema, configurations: [config])
@@ -57,6 +58,7 @@ struct BonkApp: App {
                 let ctx = ModelContext(container)
                 _ = try ctx.fetch(FetchDescriptor<SSHBackendProfile>())
                 _ = try ctx.fetch(FetchDescriptor<HostItem>())
+                _ = try ctx.fetch(FetchDescriptor<TriggerRule>())
             } catch {
                 if isSchemaMismatch(error) {
                     #if DEBUG

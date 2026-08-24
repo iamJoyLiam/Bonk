@@ -249,6 +249,16 @@ final class SessionManager {
                 fallback: fallbackInfo, passwordOverride: passwordOverride
             )
             try await finalizeConnection(tab: tab, session: session, service: service, context: finalizeCtx)
+            // Auto-record if enabled
+            if let ctx = modelContext, let prefs = try? ctx.fetch(FetchDescriptor<UserPreferences>()).first, prefs.autoRecord == true {
+                let pid = tab.activePaneID ?? tab.layout.activePaneID
+                Task {
+                    if !(await SessionRecordingService.shared.isRecording(paneID: pid)) {
+                        _ = try? await SessionRecordingService.shared.start(host: tab.hostItem.name, tabID: tab.id, paneID: pid)
+                        tab.layout.findPane(id: pid)?.ptySession?.recordingPaneID = pid
+                    }
+                }
+            }
             Log.session.info("[CONNECT] PTY session established successfully")
         } catch {
             Log.session.error("[CONNECT] Connection failed: \(error.localizedDescription)")

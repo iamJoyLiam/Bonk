@@ -168,7 +168,12 @@ struct RecordingListView: View {
     }
 
     private func share(_ url: URL) {
-        NSWorkspace.shared.activateFileViewerSelecting([url])
+        if let window = NSApp.keyWindow, let view = window.contentView {
+            let picker = NSSharingServicePicker(items: [url])
+            picker.show(relativeTo: .zero, of: view, preferredEdge: .minY)
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
     }
 
     private func playbackDisplayName(for url: URL) -> String {

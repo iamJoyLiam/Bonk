@@ -43,6 +43,8 @@ final class UserPreferences {
     var autoReconnect: Bool?
     var maxReconnectAttempts: Int?
     var reconnectBaseDelay: Double? // seconds
+    /// Auto-record all sessions (optional)
+    var autoRecord: Bool?
 
     init(
         fontSize: Double = 14,
@@ -65,7 +67,8 @@ final class UserPreferences {
         sftpDefaultLocalPath: String? = nil,
         autoReconnect: Bool? = true,
         maxReconnectAttempts: Int? = 5,
-        reconnectBaseDelay: Double? = 1.0
+        reconnectBaseDelay: Double? = 1.0,
+        autoRecord: Bool? = nil
     ) {
         self.fontSize = fontSize
         self.fontFamily = fontFamily
@@ -88,5 +91,6 @@ final class UserPreferences {
         self.autoReconnect = autoReconnect
         self.maxReconnectAttempts = maxReconnectAttempts
         self.reconnectBaseDelay = reconnectBaseDelay
+        self.autoRecord = autoRecord
     }
 }

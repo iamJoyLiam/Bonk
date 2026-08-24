@@ -34,6 +34,10 @@ struct SettingsView: View {
                 .tabItem { Label(i18n.t(.quakeTerminal), systemImage: "arrow.down.to.line") }
                 .tag("quake")
 
+            TriggerSettingsView()
+                .tabItem { Label("Triggers", systemImage: "bolt.trianglebadge.exclamationmark") }
+                .tag("triggers")
+
             AISettingsView()
                 .tabItem { Label(i18n.t(.ai), systemImage: "sparkles") }
                 .tag("ai")

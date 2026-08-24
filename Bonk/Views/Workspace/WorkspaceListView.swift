@@ -19,6 +19,7 @@ struct WorkspaceListView: View {
     @State private var workspaces: [WorkspacePersistenceManager.WorkspaceData] = []
     @State private var showSaveSheet = false
     @State private var newWorkspaceName = ""
+    @State private var newWorkspaceIsTemplate = false
     @State private var workspaceToDelete: WorkspacePersistenceManager.WorkspaceData?
     @State private var workspaceToRename: WorkspacePersistenceManager.WorkspaceData?
     @State private var renameName = ""
@@ -126,14 +127,19 @@ struct WorkspaceListView: View {
 
     private func workspaceRow(_ workspace: WorkspacePersistenceManager.WorkspaceData) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: "square.stack.3d.up.fill")
-                .foregroundStyle(.blue)
+            Image(systemName: workspace.isTemplate == true ? "square.stack.3d.up.badge.a.fill" : "square.stack.3d.up.fill")
+                .foregroundStyle(workspace.isTemplate == true ? .orange : .blue)
                 .frame(width: AppStyle.buttonMedium)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(workspace.name)
-                    .font(.headline)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(workspace.name)
+                        .font(.headline)
+                        .lineLimit(1)
+                    if workspace.isTemplate == true {
+                        Text("Template").font(.caption2).padding(.horizontal, 6).padding(.vertical, 2).background(Color.orange.opacity(0.15)).cornerRadius(4)
+                    }
+                }
                 HStack(spacing: 8) {
                     Label(i18n.tr(.tabsCount, args: workspace.tabs.count), systemImage: "sidebar.left")
                     Text("•").foregroundStyle(.tertiary)
@@ -206,17 +212,21 @@ struct WorkspaceListView: View {
                 Section(i18n.t(.workspaceName)) {
                     TextField(i18n.t(.workspaceName), text: $newWorkspaceName)
                 }
+                Section {
+                    Toggle("Save as Template", isOn: $newWorkspaceIsTemplate)
+                    Text("Templates are reusable layouts for new workspaces.").font(.caption).foregroundStyle(.secondary)
+                }
             }
             .formStyle(.grouped)
             .scrollContentBackground(.hidden)
             .navigationTitle(i18n.t(.saveWorkspace))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(i18n.t(.cancel)) { showSaveSheet = false; newWorkspaceName = "" }
+                    Button(i18n.t(.cancel)) { showSaveSheet = false; newWorkspaceName = ""; newWorkspaceIsTemplate = false }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(i18n.t(.save)) {
-                        saveWorkspace(); showSaveSheet = false; newWorkspaceName = ""
+                        saveWorkspace(); showSaveSheet = false; newWorkspaceName = ""; newWorkspaceIsTemplate = false
                     }
                     .disabled(newWorkspaceName.trimmingCharacters(in: .whitespaces).isEmpty)
                     .keyboardShortcut(.defaultAction)
@@ -236,7 +246,7 @@ struct WorkspaceListView: View {
     private func saveWorkspace() {
         let name = newWorkspaceName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
-        if let workspace = persistence.saveWorkspace(name: name, sessionManager: sessionManager) {
+        if let workspace = persistence.saveWorkspace(name: name, sessionManager: sessionManager, isTemplate: newWorkspaceIsTemplate) {
             if let index = workspaces.firstIndex(where: { $0.id == workspace.id }) {
                 workspaces[index] = workspace
             } else {

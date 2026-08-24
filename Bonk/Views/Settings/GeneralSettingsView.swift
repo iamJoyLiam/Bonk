@@ -61,6 +61,15 @@ struct GeneralSettingsView: View {
                     Label(i18n.t(.generateSSHKey), systemImage: "key.fill")
                 }
             }
+
+            Section("Recording") {
+                Toggle("Auto-record sessions", isOn: Binding(
+                    get: { preferences.autoRecord ?? false },
+                    set: { preferences.autoRecord = $0 }
+                ))
+                Text("When enabled, every new SSH connection starts asciicast recording automatically.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
