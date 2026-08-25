@@ -446,6 +446,8 @@
   "workspace_count": "已保存 %d 个",
   "ago": "前",
   "template": "模板",
+  "templates": "模板",
+  "all": "全部",
   "save_as_template": "保存为模板",
   "template_description": "模板是可复用的工作区布局，用于快速创建新工作区。",
   "paste": "粘贴",

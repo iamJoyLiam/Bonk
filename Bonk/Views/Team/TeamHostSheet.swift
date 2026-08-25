@@ -4,109 +4,115 @@ struct TeamHostSheet: View {
     @Environment(I18n.self) private var i18n
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var relay: TeamRelay
-    @State private var displayName = Host.current().localizedName ?? "Mac"
+    @State private var displayName = ""
 
     var body: some View {
-        VStack(spacing: 16) {
-            headerSection
-            Divider()
-            if relay.isHosting, let pin = relay.pairingPin, let port = relay.hostedPort {
-                hostingSection(pin: pin, port: port)
-            } else {
-                setupSection
+        VStack(spacing: 0) {
+            HStack(spacing: AppStyle.spacingM) {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: AppStyle.fontMedium, weight: .semibold))
+                    .foregroundStyle(.blue)
+                    .frame(width: AppStyle.iconHero, height: AppStyle.iconHero)
+                Text(i18n.t(.hostSession).replacingOccurrences(of: "…", with: "").replacingOccurrences(of: "...", with: ""))
+                    .font(.system(size: AppStyle.fontRegular, weight: .semibold))
+                Spacer()
             }
+            .padding(.horizontal, AppStyle.spacingXL)
+            .padding(.vertical, AppStyle.spacingML)
             Divider()
-            peersSection
-            Spacer()
-            footerSection
-        }
-        .frame(minWidth: 380, minHeight: 420)
-        .padding()
-    }
-
-    private var headerSection: some View {
-        HStack {
-            Image(systemName: "person.2.fill")
-                .font(.title2)
-                .foregroundStyle(.blue)
-            Text(i18n.t(.hostSession))
-                .font(.headline)
-            Spacer()
-        }
-    }
-
-    private var setupSection: some View {
-        VStack(spacing: 12) {
-            TextField("Display name", text: $displayName)
-                .textFieldStyle(.roundedBorder)
-            Button {
-                relay.startHosting(displayName: displayName)
-            } label: {
-                Label(i18n.t(.startHosting), systemImage: "antenna.radiowaves.left.and.right")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            Text(i18n.t(.teamHostHint))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private func hostingSection(pin: String, port: UInt16) -> some View {
-        VStack(spacing: 12) {
-            GroupBox {
-                VStack(spacing: 8) {
-                    LabeledContent("PIN") {
-                        Text(pin)
-                            .font(.system(.title2, design: .monospaced))
-                            .textSelection(.enabled)
+            Form {
+                if relay.isHosting, let pin = relay.pairingPin, let port = relay.hostedPort {
+                    Section(i18n.t(.hostSession).replacingOccurrences(of: "…", with: "").replacingOccurrences(of: "...", with: "")) {
+                        LabeledContent("PIN") {
+                            Text(pin)
+                                .font(.system(.title3, design: .monospaced, weight: .semibold))
+                                .textSelection(.enabled)
+                        }
+                        LabeledContent(i18n.t(.port)) { Text("\(port)") }
+                        LabeledContent("Service") {
+                            Text(TeamConstants.serviceType)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                    LabeledContent("Port") { Text("\(port)") }
-                    LabeledContent("Service") { Text(TeamConstants.serviceType) }
-                }
-            }
-            Text("Guest: Bonk → Team → Join → enter PIN")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Button(role: .destructive) { relay.stopHosting() } label: {
-                Label(i18n.t(.stopHosting), systemImage: "stop.circle")
-            }
-        }
-    }
-
-    private var peersSection: some View {
-        GroupBox(i18n.t(.connectedPeers)) {
-            if relay.connectedPeers.isEmpty {
-                Text(i18n.t(.noGuests))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                VStack(spacing: 8) {
-                    ForEach(relay.connectedPeers) { peer in
+                    Section {
                         HStack {
-                            Text(peer.displayName).lineLimit(1)
                             Spacer()
-                            if relay.driverPeerID == peer.id {
-                                Text("Driver").font(.caption2).foregroundStyle(.green)
-                            } else {
-                                Button(i18n.t(.grantControl)) { relay.grantControl(to: peer.id) }
+                            Button(role: .destructive) { relay.stopHosting() } label: {
+                                Label(i18n.t(.stopHosting), systemImage: "stop.circle")
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.large)
+                            Spacer()
+                        }
+                        .listRowBackground(Color.clear)
+                    }
+                } else {
+                    Section(i18n.t(.hostSession).replacingOccurrences(of: "…", with: "").replacingOccurrences(of: "...", with: "")) {
+                        TextField(i18n.t(.displayName), text: $displayName)
+                        HStack {
+                            Spacer()
+                            Button {
+                                let effective = displayName.trimmingCharacters(in: .whitespaces).isEmpty ? (Host.current().localizedName ?? "Mac") : displayName
+                                relay.startHosting(displayName: effective)
+                            } label: {
+                                Label(i18n.t(.startHosting), systemImage: "antenna.radiowaves.left.and.right")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
+                            Spacer()
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: AppStyle.spacingS, leading: 0, bottom: AppStyle.spacingS, trailing: 0))
+                    }
+                }
+
+                Section(i18n.t(.connectedPeers)) {
+                    if relay.connectedPeers.isEmpty {
+                        Text(i18n.t(.noGuests))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(relay.connectedPeers) { peer in
+                            HStack(spacing: AppStyle.spacingM) {
+                                Image(systemName: "person.circle.fill")
+                                    .foregroundStyle(.secondary)
+                                Text(peer.displayName).lineLimit(1)
+                                Spacer()
+                                if relay.driverPeerID == peer.id {
+                                    Label("Driver", systemImage: "keyboard.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(.green)
+                                } else {
+                                    Button(i18n.t(.grantControl)) { relay.grantControl(to: peer.id) }
+                                        .font(.caption)
+                                }
+                                Button(i18n.t(.revokeControl)) { relay.revokeControl(from: peer.id) }
                                     .font(.caption)
                             }
-                            Button(i18n.t(.revokeControl)) { relay.revokeControl(from: peer.id) }
-                                .font(.caption)
                         }
                     }
                 }
-            }
-        }
-    }
 
-    private var footerSection: some View {
-        HStack {
-            Button(i18n.t(.ok)) { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            Spacer()
+                Section {
+                    Text(i18n.t(.teamHostHint))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .listRowBackground(Color.clear)
+            }
+            .formStyle(.grouped)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: AppStyle.panelWidthMedium)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button(i18n.t(.cancel)) { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button(i18n.t(.ok)) { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
         }
     }
 }

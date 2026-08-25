@@ -36,6 +36,7 @@ struct WorkspaceListView: View {
         VStack(spacing: 0) {
             headerSection
             Divider()
+            filterPicker
             if workspaces.isEmpty {
                 emptyStateView
             } else {
@@ -79,29 +80,39 @@ struct WorkspaceListView: View {
         .sheet(isPresented: $showSaveSheet) { saveWorkspaceSheet }
     }
 
-    // MARK: - Header — exactly as screenshot: blue icon + headline, right count caption
+    // MARK: - Header — title only, picker moved below divider to match AddHostSheet
 
     private var headerSection: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Image(systemName: "square.stack.3d.up")
-                    .font(.title2)
-                    .foregroundStyle(.blue)
-                Text(i18n.t(.workspaces))
-                    .font(.headline)
-                Spacer()
-                Text(i18n.tr(.workspaceCount, args: workspaces.count))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+        HStack(spacing: AppStyle.spacingM) {
+            Image(systemName: "square.stack.3d.up")
+                .font(.system(size: AppStyle.fontMedium, weight: .semibold))
+                .foregroundStyle(.blue)
+                .frame(width: AppStyle.iconHero, height: AppStyle.iconHero)
+            Text(i18n.t(.workspaces))
+                .font(.system(size: AppStyle.fontRegular, weight: .semibold))
+            Spacer()
+            Text(i18n.tr(.workspaceCount, args: workspaces.count))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, AppStyle.spacingXL)
+        .padding(.vertical, AppStyle.spacingML)
+    }
+
+    private var filterPicker: some View {
+        HStack {
+            Spacer()
             Picker("", selection: $filter) {
-                Text("All").tag("all")
-                Text("Templates").tag("templates")
+                Text(i18n.t(.all)).tag("all")
+                Text(i18n.t(.templates)).tag("templates")
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .frame(width: AppStyle.teamPickerWidth)
+            Spacer()
         }
-        .padding()
+        .padding(.horizontal, AppStyle.spacingXL)
+        .padding(.vertical, AppStyle.spacingM)
     }
 
     // MARK: - Empty

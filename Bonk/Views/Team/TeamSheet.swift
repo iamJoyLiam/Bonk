@@ -8,39 +8,69 @@ struct TeamSheet: View {
     @ObservedObject var discovery: TeamDiscoveryService
 
     @State private var selectedTab: String = "host"
-    @State private var hostDisplayName = Host.current().localizedName ?? "Mac"
-    @State private var guestDisplayName = Host.current().localizedName ?? "Guest"
+    @State private var hostDisplayName = ""
+    @State private var guestDisplayName = ""
     @State private var manualHost = ""
     @State private var manualPort = ""
     @State private var pinInput = ""
     @State private var selectedHost: DiscoveredTeamHost?
     @State private var guestOutput = ""
+    @State private var guestInputText = ""
 
     var body: some View {
         VStack(spacing: 0) {
-            headerSection
-            Divider()
-            Picker("", selection: $selectedTab) {
-                Text(i18n.t(.hostSession)).tag("host")
-                Text(i18n.t(.joinSession)).tag("join")
+            HStack(spacing: AppStyle.spacingM) {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: AppStyle.fontMedium, weight: .semibold))
+                    .foregroundStyle(.blue)
+                    .frame(width: AppStyle.iconHero, height: AppStyle.iconHero)
+                Text(i18n.t(.team))
+                    .font(.system(size: AppStyle.fontRegular, weight: .semibold))
+                Spacer()
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, AppStyle.spacingL)
-            .padding(.vertical, AppStyle.spacingM)
-
-            ScrollView {
-                VStack(spacing: AppStyle.spacingL) {
-                    if selectedTab == "host" { hostContent }
-                    else { joinContent }
+            .padding(.horizontal, AppStyle.spacingXL)
+            .padding(.vertical, AppStyle.spacingML)
+            Divider()
+            Form {
+                Section {
+                    HStack {
+                        Spacer()
+                        Picker("", selection: $selectedTab) {
+                            Text(i18n.t(.hostSession).replacingOccurrences(of: "…", with: "").replacingOccurrences(of: "...", with: "")).tag("host")
+                            Text(i18n.t(.joinSession).replacingOccurrences(of: "…", with: "").replacingOccurrences(of: "...", with: "")).tag("join")
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: AppStyle.teamPickerWidth)
+                        Spacer()
+                    }
                 }
-                .padding(.horizontal, AppStyle.spacingL)
-                .padding(.vertical, AppStyle.spacingM)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: AppStyle.spacingM, leading: 0, bottom: AppStyle.spacingS, trailing: 0))
+
+                if selectedTab == "host" { hostForm }
+                else { joinForm }
+
+                Section {
+                    Text(i18n.t(.teamHostHint))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .listRowBackground(Color.clear)
             }
-            Divider()
-            footerSection
+            .formStyle(.grouped)
         }
-        .frame(minWidth: AppStyle.settingsWindowWidth, idealWidth: AppStyle.settingsWindowWidth)
-        .frame(maxHeight: 600)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: AppStyle.panelWidthMedium)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button(i18n.t(.cancel)) { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button(i18n.t(.ok)) { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
         .onAppear { if selectedTab == "join" { discovery.startBrowsing() } }
         .onChange(of: selectedTab) { _, newValue in
             if newValue == "join" { discovery.startBrowsing() } else { discovery.stopBrowsing() }
@@ -54,207 +84,170 @@ struct TeamSheet: View {
         }
     }
 
-    // MARK: - Header
+    // MARK: - Host (Form)
 
-    private var headerSection: some View {
-        HStack(spacing: AppStyle.spacingM) {
-            Image(systemName: "person.2.fill")
-                .font(.system(size: AppStyle.fontMedium, weight: .semibold))
-                .foregroundStyle(.blue)
-                .frame(width: AppStyle.iconHero, height: AppStyle.iconHero)
-                .background(Circle().fill(Color.blue.opacity(0.12)))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(i18n.t(.team))
-                    .font(.system(size: AppStyle.fontRegular, weight: .semibold))
-                Text(i18n.t(.teamHostHint))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+    @ViewBuilder
+    private var hostForm: some View {
+        if relay.isHosting, let pin = relay.pairingPin, let port = relay.hostedPort {
+            Section(i18n.t(.hostSession).replacingOccurrences(of: "…", with: "").replacingOccurrences(of: "...", with: "")) {
+                LabeledContent("PIN") {
+                    Text(pin)
+                        .font(.system(.title3, design: .monospaced, weight: .semibold))
+                        .textSelection(.enabled)
+                }
+                LabeledContent(i18n.t(.port)) { Text("\(port)") }
+                LabeledContent("Service") {
+                    Text(TeamConstants.serviceType)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
-            Spacer()
-            if relay.isHosting || relay.isConnected {
-                Text(relay.isHosting ? i18n.t(.hostSession) : i18n.t(.connected))
-                    .font(.caption2)
-                    .padding(.horizontal, 6).padding(.vertical, 3)
-                    .background(Color.green.opacity(0.15))
-                    .cornerRadius(4)
+            Section {
+                HStack {
+                    Spacer()
+                    Button(role: .destructive) { relay.stopHosting() } label: {
+                        Label(i18n.t(.stopHosting), systemImage: "stop.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    Spacer()
+                }
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: AppStyle.spacingS, leading: 0, bottom: AppStyle.spacingS, trailing: 0))
+            }
+        } else {
+            Section(i18n.t(.hostSession).replacingOccurrences(of: "…", with: "").replacingOccurrences(of: "...", with: "")) {
+                TextField(i18n.t(.displayName), text: $hostDisplayName)
+                HStack {
+                    Spacer()
+                    Button {
+                        let effectiveName = hostDisplayName.trimmingCharacters(in: .whitespaces).isEmpty ? (Host.current().localizedName ?? "Mac") : hostDisplayName
+                        relay.startHosting(displayName: effectiveName)
+                    } label: {
+                        Label(i18n.t(.startHosting), systemImage: "antenna.radiowaves.left.and.right")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    Spacer()
+                }
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: AppStyle.spacingS, leading: 0, bottom: AppStyle.spacingS, trailing: 0))
             }
         }
-        .padding(.horizontal, AppStyle.spacingL)
-        .padding(.vertical, AppStyle.spacingM)
-    }
 
-    // MARK: - Host
-
-    private var hostContent: some View {
-        VStack(spacing: AppStyle.spacingL) {
-            if relay.isHosting, let pin = relay.pairingPin, let port = relay.hostedPort {
-                GroupBox {
-                    VStack(spacing: AppStyle.spacingM) {
-                        LabeledContent("PIN") {
-                            Text(pin)
-                                .font(.system(.title3, design: .monospaced, weight: .semibold))
-                                .textSelection(.enabled)
-                        }
-                        LabeledContent(i18n.t(.port)) { Text("\(port)") }
-                        LabeledContent("Service") {
-                            Text(TeamConstants.serviceType)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                Text("Guest: Bonk → Team → PIN")
+        Section(i18n.t(.connectedPeers)) {
+            if relay.connectedPeers.isEmpty {
+                Text(i18n.t(.noGuests))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Button(role: .destructive) { relay.stopHosting() } label: {
-                    Label(i18n.t(.stopHosting), systemImage: "stop.circle")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
             } else {
-                GroupBox {
-                    VStack(alignment: .leading, spacing: AppStyle.spacingM) {
-                        Text(i18n.t(.displayName))
-                            .font(.caption)
+                ForEach(relay.connectedPeers) { peer in
+                    HStack(spacing: AppStyle.spacingM) {
+                        Image(systemName: "person.circle.fill")
                             .foregroundStyle(.secondary)
-                        TextField(i18n.t(.displayName), text: $hostDisplayName)
-                            .textFieldStyle(.roundedBorder)
-                        Button {
-                            relay.startHosting(displayName: hostDisplayName)
-                        } label: {
-                            Label(i18n.t(.startHosting), systemImage: "antenna.radiowaves.left.and.right")
-                                .frame(maxWidth: .infinity)
+                        Text(peer.displayName).lineLimit(1)
+                        Spacer()
+                        if relay.driverPeerID == peer.id {
+                            Label("Driver", systemImage: "keyboard.fill")
+                                .font(.caption2)
+                                .foregroundStyle(.green)
+                        } else {
+                            Button(i18n.t(.grantControl)) { relay.grantControl(to: peer.id) }
+                                .font(.caption)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                    }
-                }
-            }
-
-            GroupBox(i18n.t(.connectedPeers)) {
-                if relay.connectedPeers.isEmpty {
-                    Text(i18n.t(.noGuests))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    VStack(spacing: AppStyle.spacingS) {
-                        ForEach(relay.connectedPeers) { peer in
-                            HStack(spacing: AppStyle.spacingM) {
-                                Image(systemName: "person.circle.fill")
-                                    .foregroundStyle(.secondary)
-                                Text(peer.displayName)
-                                    .lineLimit(1)
-                                Spacer()
-                                if relay.driverPeerID == peer.id {
-                                    Label("Driver", systemImage: "keyboard.fill")
-                                        .font(.caption2)
-                                        .foregroundStyle(.green)
-                                } else {
-                                    Button(i18n.t(.grantControl)) { relay.grantControl(to: peer.id) }
-                                        .font(.caption)
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
-                                }
-                                Button(i18n.t(.revokeControl)) { relay.revokeControl(from: peer.id) }
-                                    .font(.caption)
-                            }
-                            .padding(.vertical, 2)
-                            if peer.id != relay.connectedPeers.last?.id { Divider() }
-                        }
+                        Button(i18n.t(.revokeControl)) { relay.revokeControl(from: peer.id) }
+                            .font(.caption)
                     }
                 }
             }
         }
     }
 
-    // MARK: - Join
+    // MARK: - Join (Form)
 
-    private var joinContent: some View {
-        VStack(spacing: AppStyle.spacingL) {
-            GroupBox(i18n.t(.discovered)) {
-                if discovery.discoveredHosts.isEmpty {
-                    Text(i18n.t(.noHostsFound))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    VStack(spacing: 0) {
-                        ForEach(discovery.discoveredHosts) { host in
-                            HStack(spacing: AppStyle.spacingM) {
-                                Image(systemName: "desktopcomputer")
-                                    .foregroundStyle(.secondary)
-                                Text(host.displayName)
-                                    .lineLimit(1)
-                                Spacer()
-                                Button(selectedHost?.id == host.id ? i18n.t(.connected) : i18n.t(.selectHost)) {
-                                    selectedHost = host
-                                    manualHost = ""
-                                    manualPort = ""
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .disabled(selectedHost?.id == host.id)
-                            }
-                            .padding(.vertical, AppStyle.spacingS)
-                            if host.id != discovery.discoveredHosts.last?.id { Divider() }
-                        }
-                    }
-                }
-            }
-
-            GroupBox(i18n.t(.manualIP)) {
-                HStack(spacing: AppStyle.spacingM) {
-                    TextField("192.168.1.10", text: $manualHost)
-                        .textFieldStyle(.roundedBorder)
-                    TextField(i18n.t(.port), text: $manualPort)
-                        .frame(maxWidth: 90)
-                        .textFieldStyle(.roundedBorder)
-                }
-                .onChange(of: manualHost) { _, _ in if !manualHost.isEmpty { selectedHost = nil } }
-            }
-
-            GroupBox {
-                VStack(spacing: AppStyle.spacingM) {
-                    TextField(i18n.t(.displayName), text: $guestDisplayName)
-                        .textFieldStyle(.roundedBorder)
+    @ViewBuilder
+    private var joinForm: some View {
+        Section(i18n.t(.discovered)) {
+            if discovery.discoveredHosts.isEmpty {
+                Text(i18n.t(.noHostsFound))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(discovery.discoveredHosts) { host in
                     HStack(spacing: AppStyle.spacingM) {
-                        TextField("PIN", text: $pinInput)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 120)
-                        Button {
-                            joinSelectedHost()
-                        } label: {
-                            Label(i18n.t(.joinSession), systemImage: "arrow.right.circle.fill")
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(!canJoin)
+                        Image(systemName: "desktopcomputer")
+                            .foregroundStyle(.secondary)
+                        Text(host.displayName).lineLimit(1)
                         Spacer()
-                    }
-                    if relay.isConnected {
-                        Button(i18n.t(.disconnect), role: .destructive) { relay.disconnectGuest() }
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button(selectedHost?.id == host.id ? i18n.t(.connected) : i18n.t(.selectHost)) {
+                            selectedHost = host
+                            manualHost = ""
+                            manualPort = ""
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(selectedHost?.id == host.id)
                     }
                 }
             }
+        }
 
-            if relay.isConnected {
-                GroupBox(i18n.t(.liveTerminal)) {
-                    ScrollView {
-                        Text(guestOutput.isEmpty ? i18n.t(.waitingForOutput) : guestOutput)
-                            .font(.system(.caption, design: .monospaced))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .textSelection(.enabled)
-                            .padding(6)
-                    }
-                    .frame(height: 140)
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .cornerRadius(6)
+        Section(i18n.t(.manualIP)) {
+            TextField("Host", text: $manualHost)
+                .autocorrectionDisabled()
+                .textContentType(.URL)
+            TextField(i18n.t(.port), text: $manualPort)
+        }
+        .onChange(of: manualHost) { _, _ in if !manualHost.isEmpty { selectedHost = nil } }
+
+        Section(i18n.t(.joinSession).replacingOccurrences(of: "…", with: "").replacingOccurrences(of: "...", with: "")) {
+            TextField(i18n.t(.displayName), text: $guestDisplayName)
+            TextField("PIN", text: $pinInput)
+            HStack {
+                Spacer()
+                Button {
+                    joinSelectedHost()
+                } label: {
+                    Label(i18n.t(.joinSession).replacingOccurrences(of: "…", with: "").replacingOccurrences(of: "...", with: ""), systemImage: "arrow.right.circle.fill")
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(!canJoin)
+                Spacer()
+            }
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: AppStyle.spacingS, leading: 0, bottom: AppStyle.spacingS, trailing: 0))
+            if relay.isConnected {
+                HStack {
+                    Spacer()
+                    Button(i18n.t(.disconnect), role: .destructive) { relay.disconnectGuest() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    Spacer()
+                }
+                .listRowBackground(Color.clear)
+            }
+        }
+
+        if relay.isConnected {
+            Section(i18n.t(.liveTerminal)) {
+                ScrollView {
+                    Text(guestOutput.isEmpty ? i18n.t(.waitingForOutput) : guestOutput)
+                        .font(.system(.caption, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .padding(AppStyle.spacingS)
+                }
+                .frame(height: AppStyle.teamLiveTerminalHeight)
+                .background(Color(nsColor: .textBackgroundColor))
+                .cornerRadius(AppStyle.cornerRadiusSmall)
+                .listRowInsets(EdgeInsets())
+            }
+            Section {
                 HStack(spacing: AppStyle.spacingM) {
                     Button(i18n.t(.requestControl)) {
-                        relay.sendControlRequest(displayName: guestDisplayName, peerID: UUID())
+                        let effective = guestDisplayName.trimmingCharacters(in: .whitespaces).isEmpty ? (Host.current().localizedName ?? "Guest") : guestDisplayName
+                        relay.sendControlRequest(displayName: effective, peerID: UUID())
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -265,7 +258,6 @@ struct TeamSheet: View {
                 }
                 HStack(spacing: AppStyle.spacingM) {
                     TextField(i18n.t(.typeCommand), text: $guestInputText)
-                        .textFieldStyle(.roundedBorder)
                         .onSubmit { sendGuestInput() }
                     Button(i18n.t(.send)) { sendGuestInput() }
                         .buttonStyle(.borderedProminent)
@@ -275,21 +267,10 @@ struct TeamSheet: View {
         }
     }
 
-    @State private var guestInputText = ""
     private func sendGuestInput() {
         guard !guestInputText.isEmpty else { return }
         relay.sendInputFromGuest(guestInputText + "\n")
         guestInputText = ""
-    }
-
-    private var footerSection: some View {
-        HStack {
-            Button(i18n.t(.ok)) { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            Spacer()
-        }
-        .padding(.horizontal, AppStyle.spacingL)
-        .padding(.vertical, AppStyle.spacingM)
     }
 
     private var canJoin: Bool {
@@ -303,6 +284,7 @@ struct TeamSheet: View {
             guard let portValue = UInt16(manualPort) else { return }
             endpoint = discovery.manualEndpoint(host: manualHost, port: portValue)
         }
-        relay.connectToHost(endpoint: endpoint, displayName: guestDisplayName, pin: pinInput)
+        let effectiveGuestName = guestDisplayName.trimmingCharacters(in: .whitespaces).isEmpty ? (Host.current().localizedName ?? "Guest") : guestDisplayName
+        relay.connectToHost(endpoint: endpoint, displayName: effectiveGuestName, pin: pinInput)
     }
 }

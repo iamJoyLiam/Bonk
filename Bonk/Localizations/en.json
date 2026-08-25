@@ -446,6 +446,8 @@
   "workspace_count": "%@ Workspaces",
   "ago": "ago",
   "template": "Template",
+  "templates": "Templates",
+  "all": "All",
   "save_as_template": "Save as Template",
   "template_description": "Templates are reusable layouts for new workspaces.",
   "paste": "Paste",

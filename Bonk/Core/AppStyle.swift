@@ -173,4 +173,15 @@ enum AppStyle {
     // MARK: - AI Panel
 
     static let aiPanelWidth: CGFloat = 320
+
+    // MARK: - Team Sheet
+
+    static let teamContentWidth: CGFloat = 380
+    static let teamPickerWidth: CGFloat = 320
+    static let teamSheetMinWidth: CGFloat = 460
+    static let teamSheetIdealWidth: CGFloat = 480
+    static let teamSheetMinHeight: CGFloat = 520
+    static let teamSheetIdealHeight: CGFloat = 540
+    static let teamPortFieldWidth: CGFloat = 90
+    static let teamLiveTerminalHeight: CGFloat = 140
 }

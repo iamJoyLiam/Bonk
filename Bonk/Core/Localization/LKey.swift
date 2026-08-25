@@ -513,6 +513,8 @@ enum LKey: String, CaseIterable {
     case workspaceCount = "workspace_count"
     case ago = "ago"
     case template = "template"
+    case templates = "templates"
+    case all = "all"
     case saveAsTemplate = "save_as_template"
     case templateDescription = "template_description"
 

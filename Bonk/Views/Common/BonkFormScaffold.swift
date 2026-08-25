@@ -7,6 +7,7 @@ import SwiftUI
 // / PortForwardEditSheet / GroupEditSheet aligned without copy-paste.
 
 struct BonkFormScaffold<Content: View>: View {
+    @Environment(I18n.self) private var i18n
     let title: String
     var minWidth: CGFloat = AppStyle.panelWidthMedium
     var idealHeight: CGFloat?
@@ -47,7 +48,7 @@ struct BonkFormScaffold<Content: View>: View {
                 .toolbar {
                     if let onCancel {
                         ToolbarItem(placement: .cancellationAction) {
-                            Button(String(localized: "Cancel")) { onCancel() }
+                            Button(i18n.t(.cancel)) { onCancel() }
                                 .keyboardShortcut(.cancelAction)
                         }
                     }
@@ -61,6 +62,7 @@ struct BonkFormScaffold<Content: View>: View {
                 }
         }
         .frame(minWidth: minWidth, idealWidth: minWidth, idealHeight: idealHeight)
+        .environment(\.locale, Locale(identifier: i18n.lang))
     }
 }
 
