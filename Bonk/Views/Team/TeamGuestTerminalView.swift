@@ -40,7 +40,8 @@ struct TeamGuestTerminalView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .disabled(!relay.isConnected || (relay.driverPeerID != nil && relay.driverPeerID != relay.hostPeerID))
+                .disabled(!relay.isConnected || relay.sharedSessionID == nil || (relay.driverPeerID != nil && relay.driverPeerID != relay.hostPeerID))
+                .help(relay.sharedSessionID == nil ? "主持端暂无可共享的终端" : "")
                 Text((relay.driverPeerID == nil || relay.driverPeerID == relay.hostPeerID) ? "未授权" : i18n.t(.driver))
                     .font(.caption)
                     .foregroundStyle((relay.driverPeerID == nil || relay.driverPeerID == relay.hostPeerID) ? Color.red : Color.green)

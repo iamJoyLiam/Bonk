@@ -212,6 +212,10 @@ struct TeamSheet: View {
                 HStack {
                     Spacer()
                     Button {
+                        guard BonkAppDelegate.shared?.sessionManager?.activeTab != nil else {
+                            relay.lastError = "请先打开一个终端再开启主持"
+                            return
+                        }
                         let effectiveName = hostDisplayName.trimmingCharacters(in: .whitespaces).isEmpty ? savedDisplayName : hostDisplayName
                         persistDisplayName(effectiveName)
                         relay.startHosting(displayName: effectiveName)
@@ -220,6 +224,7 @@ struct TeamSheet: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    .disabled(BonkAppDelegate.shared?.sessionManager?.activeTab == nil)
                     Spacer()
                 }
                 .listRowBackground(Color.clear)
@@ -256,6 +261,7 @@ struct TeamSheet: View {
                         } else {
                             Button(i18n.t(.grantControl)) { relay.grantControl(to: peer.id) }
                                 .font(.caption)
+                                .disabled(relay.sharedSessionID == nil)
                         }
                         Button(i18n.t(.revokeControl)) { relay.revokeControl(from: peer.id) }
                             .font(.caption)
@@ -270,12 +276,16 @@ struct TeamSheet: View {
     @ViewBuilder
     private var joinForm: some View {
         Section(i18n.t(.discovered)) {
-            if discovery.discoveredHosts.isEmpty {
+            let filteredHosts = discovery.discoveredHosts.filter { host in
+                guard relay.isHosting, let hostName = relay.hostPeer?.displayName else { return true }
+                return host.displayName != hostName
+            }
+            if filteredHosts.isEmpty {
                 Text(i18n.t(.noHostsFound))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(discovery.discoveredHosts) { host in
+                ForEach(filteredHosts) { host in
                     HStack(spacing: AppStyle.spacingM) {
                         Image(systemName: "desktopcomputer")
                             .foregroundStyle(.secondary)
