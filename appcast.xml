@@ -6,6 +6,37 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.2.2</title>
+            <pubDate>Tue, 25 Aug 2026 18:43:26 +0800</pubDate>
+            <sparkle:version>20262002</sparkle:version>
+            <sparkle:shortVersionString>2026.2.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- 团队协作（Team）：局域网共享当前终端，Bonjour 自动发现 + IP/PIN 直连，独立实时终端窗口（同 SFTP 浏览器），毫秒级控制权申请/收回与断开互通知
+- 协议与性能：有界帧（256KB/512KB）防恶意超大帧，TeamSessionID 会话路由，16ms 输出合并（64KB 批量）降主线程压力，8s 配对超时 + 15s 心跳，PIN 限流
+- 交互：已连接自动弹独立窗口并收起团队面板，显示名称持久化（默认 macOS 用户名），未授权红色标识，已授权置灰防重发，访客切主持会话时提示访客模式
+- 界面：移除“协同中”常驻横幅与命令块抽屉，断开/关闭同聚右侧，实时窗口标题精简为“实时终端”，[Connected] 回显
+- 修复：主持秒开（Published hostedPort + 缓存本机 IP）、控制权与断开通知必达（主/实时窗口互斥兜底）、菜单“实时终端”常亮可重开
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.2/Bonk-2026.2.2-arm64.dmg"
+                length="22773651"
+                type="application/octet-stream"
+                sparkle:edSignature="U9kEmBxrg/AkjB0anxJvQnd0e+geDSynpVEhlEQsYyUuFYG72hlmIh2muHtP6RK2TkkNHRu/gsDP4tBSs3U6Bg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.2/Bonk-2026.2.2-x86_64.dmg"
+                length="23697284"
+                type="application/octet-stream"
+                sparkle:edSignature="SIVJijv2rZ0SqldXd1j0C+70nMpMIcjG6A4TZEf84ujiE0FiE9rCsuNadkqSvSxp7GUM9EMHhUTZBCqh+S1jAA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.2.1</title>
             <pubDate>Mon, 25 Aug 2026 10:00:00 +0800</pubDate>
             <sparkle:version>20262001</sparkle:version>
