@@ -20,13 +20,14 @@ final class TeamRelay: ObservableObject {
     @Published var pendingControlRequest: (peerID: UUID, displayName: String)?
     @Published var controlRevokedNotice: String?
     @Published var peerDisconnectedNotice: String?
+    @Published var pendingShareHosts: [HostItemExport]?
     @Published private(set) var hostedPort: UInt16?
 
     private let logger = Logger(subsystem: "com.bonk", category: "TeamRelay")
     private var hostListener: NWListener?
     private var hostedConnections: [UUID: NWConnection] = [:]
     private var hostedFramers: [UUID: TeamMessageFramer] = [:]
-    private var hostPeer: TeamPeer?
+    private(set) var hostPeer: TeamPeer?
     private var hostHeartbeatTasks: [UUID: Task<Void, Never>] = [:]
     private var hostPairingTimeoutTasks: [UUID: Task<Void, Never>] = [:]
     private var hostLastActivity: [UUID: Date] = [:]
@@ -550,6 +551,10 @@ final class TeamRelay: ObservableObject {
                 displayName: sanitizedDisplayName(displayName, fallback: "Guest")
             )
 
+        case let .shareHosts(hosts):
+            guard isPaired(peerConnectionID) else { return }
+            pendingShareHosts = hosts
+
         case .heartbeat:
             hostLastActivity[peerConnectionID] = Date()
             if let connection = hostedConnections[peerConnectionID] {
@@ -681,6 +686,9 @@ final class TeamRelay: ObservableObject {
                 controlRevokedNotice = "主持人已收回控制权，需重新请求授权"
             }
 
+        case let .shareHosts(hosts):
+            pendingShareHosts = hosts
+
         case let .pairingRejected(reason):
             finishGuestConnection(
                 generation: guestConnectionGeneration,
@@ -748,6 +756,16 @@ final class TeamRelay: ObservableObject {
     func sendControlRequest(displayName: String) {
         guard let guestPeer else { return }
         sendToGuest(.controlRequest(peerID: guestPeer.id, displayName: displayName))
+    }
+
+    func shareHosts(_ hosts: [HostItemExport]) {
+        guard !hosts.isEmpty else { return }
+        let message = TeamMessage.shareHosts(hosts: hosts)
+        if isHosting {
+            broadcastToGuests(message)
+        } else if isConnected {
+            sendToGuest(message)
+        }
     }
 
     // MARK: - Guest output buffering

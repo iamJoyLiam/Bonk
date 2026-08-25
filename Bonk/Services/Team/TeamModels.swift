@@ -144,15 +144,16 @@ enum TeamMessage: Codable, Sendable, Equatable {
     case heartbeat
     case pairingChallenge(pin: String, peer: TeamPeer)
     case pairingRejected(reason: String)
+    case shareHosts(hosts: [HostItemExport])
 
     private enum CodingKeys: String, CodingKey {
-        case type, payload, sessionID, columns, rows, peerID, displayName, snapshot, peer, pin, reason
+        case type, payload, sessionID, columns, rows, peerID, displayName, snapshot, peer, pin, reason, hosts
     }
     private enum MessageType: String, Codable {
         case terminalOutput, terminalInput, resize
         case controlRequest, controlGrant, controlRevoke
         case presenceSnapshot, peerJoined, peerLeft
-        case notice, heartbeat, pairingChallenge, pairingRejected
+        case notice, heartbeat, pairingChallenge, pairingRejected, shareHosts
     }
 
     init(from decoder: Decoder) throws {
@@ -192,6 +193,8 @@ enum TeamMessage: Codable, Sendable, Equatable {
             )
         case .pairingRejected:
             self = .pairingRejected(reason: try container.decode(String.self, forKey: .reason))
+        case .shareHosts:
+            self = .shareHosts(hosts: try container.decode([HostItemExport].self, forKey: .hosts))
         }
     }
 
@@ -235,8 +238,29 @@ enum TeamMessage: Codable, Sendable, Equatable {
         case let .pairingRejected(reason):
             try container.encode(MessageType.pairingRejected, forKey: .type)
             try container.encode(reason, forKey: .reason)
+        case let .shareHosts(hosts):
+            try container.encode(MessageType.shareHosts, forKey: .type)
+            try container.encode(hosts, forKey: .hosts)
         }
     }
+}
+
+// MARK: - Host Share Export
+
+struct HostItemExport: Codable, Sendable, Equatable {
+    var name: String
+    var host: String
+    var port: Int
+    var username: String
+    var authType: String
+    var credential: CredentialExport?
+}
+
+struct CredentialExport: Codable, Sendable, Equatable {
+    var name: String
+    var type: String
+    var username: String?
+    var secret: String?
 }
 
 // MARK: - Team Constants

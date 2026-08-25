@@ -8,9 +8,11 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct TeamLiveWindowView: View {
     @Environment(I18n.self) var i18n
+    @Environment(\.modelContext) private var modelContext
     @ObservedObject var relay: TeamRelay
     @Environment(WorkspaceManager.self) var workspace
 
@@ -60,5 +62,46 @@ struct TeamLiveWindowView: View {
         } message: {
             Text(relay.peerDisconnectedNotice ?? "")
         }
+        .alert(
+            "收到共享主机",
+            isPresented: Binding(
+                get: { relay.pendingShareHosts != nil },
+                set: { if !$0 { relay.pendingShareHosts = nil } }
+            )
+        ) {
+            Button("合并") {
+                if let hosts = relay.pendingShareHosts {
+                    Task { await importSharedHosts(hosts) }
+                    relay.pendingShareHosts = nil
+                }
+            }
+            Button("取消", role: .cancel) { relay.pendingShareHosts = nil }
+        } message: {
+            if let hosts = relay.pendingShareHosts {
+                Text("主持人分享了 \(hosts.count) 台主机：\(hosts.map(\.name).joined(separator: "、"))，是否合并到本地？")
+            }
+        }
+    }
+
+    private func importSharedHosts(_ hosts: [HostItemExport]) async {
+        for exp in hosts {
+            let exists = (try? modelContext.fetch(FetchDescriptor<HostItem>()))?.contains(where: { $0.host == exp.host && $0.port == exp.port && $0.username == exp.username }) ?? false
+            if exists { continue }
+            let authType = AuthType(rawValue: exp.authType) ?? .password
+            let host = HostItem(name: exp.name, host: exp.host, port: exp.port, username: exp.username, authType: authType)
+            if let credExp = exp.credential, let secret = credExp.secret, !secret.isEmpty {
+                if authType != .secureEnclave {
+                    let type: CredentialType = CredentialType(rawValue: credExp.type) ?? .password
+                    if type != .apiKey {
+                        let cred = Credential(name: credExp.name, type: type, username: credExp.username)
+                        cred.storeSecret(secret)
+                        modelContext.insert(cred)
+                        host.credentialRef = cred
+                    }
+                }
+            }
+            modelContext.insert(host)
+        }
+        try? modelContext.save()
     }
 }

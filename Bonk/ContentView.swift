@@ -207,6 +207,25 @@ struct ContentView: View {
             } message: {
                 Text(teamRelay.peerDisconnectedNotice ?? "")
             }
+            .alert(
+                "收到共享主机",
+                isPresented: Binding(
+                    get: { teamRelay.pendingShareHosts != nil },
+                    set: { if !$0 { teamRelay.pendingShareHosts = nil } }
+                )
+            ) {
+                Button("合并") {
+                    if let hosts = teamRelay.pendingShareHosts {
+                        Task { await importSharedHosts(hosts) }
+                        teamRelay.pendingShareHosts = nil
+                    }
+                }
+                Button("取消", role: .cancel) { teamRelay.pendingShareHosts = nil }
+            } message: {
+                if let hosts = teamRelay.pendingShareHosts {
+                    Text("主持人分享了 \(hosts.count) 台主机：\(hosts.map(\.name).joined(separator: "、"))，是否合并到本地？")
+                }
+            }
             // Sheets
             .sheet(isPresented: $toolbarCoordinator.showAddHostSheet) {
                 NavigationStack {
@@ -351,6 +370,7 @@ struct ContentView: View {
                 rootView: TeamLiveWindowView(relay: TeamRelay.shared)
                     .environment(i18n)
                     .environment(workspace)
+                    .modelContext(modelContext)
             )
             hostingView.autoresizingMask = [.width, .height]
             window.contentView = hostingView
@@ -376,6 +396,34 @@ struct ContentView: View {
             teamWindow = nil
             teamWindowDelegate = nil
         #endif
+    }
+
+    private func importSharedHosts(_ hosts: [HostItemExport]) async {
+        for exp in hosts {
+            // deduplicate by host+port+username
+            let exists = (try? modelContext.fetch(FetchDescriptor<HostItem>()))?.contains(where: { $0.host == exp.host && $0.port == exp.port && $0.username == exp.username }) ?? false
+            if exists { continue }
+            let authType = AuthType(rawValue: exp.authType) ?? .password
+            let host = HostItem(name: exp.name, host: exp.host, port: exp.port, username: exp.username, authType: authType)
+            if let credExp = exp.credential, let secret = credExp.secret, !secret.isEmpty {
+                // SecureEnclave cannot be shared
+                if authType == .secureEnclave { /* skip secret */ } else {
+                    let type: CredentialType = CredentialType(rawValue: credExp.type) ?? .password
+                    if type != .apiKey {
+                        let cred = Credential(name: credExp.name, type: type, username: credExp.username)
+                        cred.storeSecret(secret)
+                        modelContext.insert(cred)
+                        host.credentialRef = cred
+                    }
+                }
+            }
+            if let secret = exp.credential?.secret, exp.credential == nil, !secret.isEmpty {
+                if authType == .password { host.storePassword(secret) }
+                else if authType == .privateKey { host.storePrivateKey(secret) }
+            }
+            modelContext.insert(host)
+        }
+        try? modelContext.save()
     }
 
     // MARK: - iOS Layout

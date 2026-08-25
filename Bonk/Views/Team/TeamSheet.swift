@@ -41,6 +41,7 @@ struct TeamSheet: View {
     @State private var pinInput = ""
     @State private var selectedHost: DiscoveredTeamHost?
     @State private var showPinPrompt = false
+    @State private var showShareHosts = false
 
     private var savedDisplayName: String {
         if let saved = UserDefaults.standard.string(forKey: "team_display_name"), !saved.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -268,6 +269,18 @@ struct TeamSheet: View {
                     }
                 }
             }
+            if relay.isHosting, !relay.connectedPeers.isEmpty {
+                Section {
+                    Button {
+                        showShareHosts = true
+                    } label: {
+                        Label("分享已保存主机给访客", systemImage: "square.and.arrow.up")
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showShareHosts) {
+            TeamShareHostsSheet(relay: relay)
         }
     }
 
