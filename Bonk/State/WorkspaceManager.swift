@@ -51,6 +51,10 @@ final class WorkspaceManager {
 
     var isSFTPWindowOpen = false
 
+    // MARK: - Team Live Window (independent, like SFTP)
+
+    var isTeamWindowOpen = false
+
     // MARK: - Title Bar Sheet Presentations
 
     let broadcastManager = BroadcastManager()
@@ -77,6 +81,10 @@ final class WorkspaceManager {
 
     func toggleSFTPWindow() {
         isSFTPWindowOpen.toggle()
+    }
+
+    func toggleTeamWindow() {
+        isTeamWindowOpen.toggle()
     }
 
     func toggleBroadcast() {

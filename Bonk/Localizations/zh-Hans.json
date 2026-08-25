@@ -552,6 +552,21 @@
   "type_command": "输入命令…",
   "send": "发送",
   "connected_peers": "已连接",
-  "host_controls": "主持人控制中",
-  "team_host_hint": "共享当前终端标签给局域网访客，访客通过 Bonjour 或 IP:端口 + PIN 加入。"
+  "host_controls": "未授权",
+  "driver": "已授权",
+  "team_host_hint": "共享当前终端标签给局域网访客，访客通过 Bonjour 或 IP:端口 + PIN 加入。",
+  "control_request_title": "请求控制",
+  "control_request_message": "“%@”请求控制你的终端，是否允许？",
+  "allow": "允许",
+  "deny": "拒绝",
+  "blocks": "命令块",
+  "no_results": "无结果",
+  "search_command_or_output": "搜索命令或输出",
+  "copy_snippet": "复制片段",
+  "shell_integration_hint": "未启用 Shell 分组（OSC 133）。zsh/bash 需安装 iTerm2 / Oh My Zsh Shell 集成，或在 .zshrc 添加：\nprecmd(){ print -Pn \"\\e]133;A\\e\\\\\" }\npreexec(){ print -Pn \"\\e]133;C\\e\\\\\" }\n# 命令结束打印 \"\\e]133;D;$?\\e\\\\\"。",
+  "copy_command": "复制命令",
+  "copy_output": "复制输出",
+  "copy_both": "复制全部",
+  "search_in_terminal": "在终端中搜索",
+  "guest_operating": "访客正在操作 — 主机输入已暂停"
 }

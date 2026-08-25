@@ -32,7 +32,7 @@ struct CommandBlocksPanel: View {
             if blocks.isEmpty {
                 emptyState
             } else if filtered.isEmpty {
-                Text("No results")
+                Text(i18n.t(.noResults))
                     .font(.callout).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -64,7 +64,7 @@ struct CommandBlocksPanel: View {
     // MARK: Header
     private var header: some View {
         HStack(spacing: 8) {
-            Label("Blocks", systemImage: "rectangle.grid.1x2")
+            Label(i18n.t(.blocks), systemImage: "rectangle.grid.1x2")
                 .font(.headline)
             Spacer()
             if !blocks.isEmpty {
@@ -77,17 +77,15 @@ struct CommandBlocksPanel: View {
                 } label: {
                     Image(systemName: "trash").font(.caption)
                 }
-                .buttonStyle(.borderless).help("Clear")
+                .buttonStyle(.borderless).help(i18n.t(.delete))
             }
-            Button { isPresented = false } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                .buttonStyle(.plain)
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .overlay(alignment: .bottom) {
             if !blocks.isEmpty {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary).font(.caption)
-                    TextField("Search command or output", text: $searchText)
+                    TextField(i18n.t(.searchCommandOrOutput), text: $searchText)
                         .textFieldStyle(.plain).font(.callout)
                     if !searchText.isEmpty {
                         Button { searchText = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).font(.caption) }
@@ -106,15 +104,15 @@ struct CommandBlocksPanel: View {
     private var emptyState: some View {
         VStack(spacing: 10) {
             Image(systemName: "terminal").font(.largeTitle).foregroundStyle(.secondary)
-            Text("No commands yet")
+            Text(i18n.t(.noCommands))
                 .font(.callout.weight(.medium))
-            Text("Shell integration via OSC 133分组。\n需启用：zsh/bash 安装 shell-integration（如 iTerm2 / Oh My Zsh 插件），\n或在 .zshrc 添加：\nprecmd() { print -Pn \"\\e]133;A\\e\\\\\" }\npreexec() { print -Pn \"\\e]133;C\\e\\\\\" }\n命令结束打印 \"\\e]133;D;$?\\e\\\\\"")
+            Text(i18n.t(.shellIntegrationHint))
                 .font(.caption).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .textSelection(.enabled)
                 .padding(.horizontal, 16)
             if let cmd = sampleInstallCommand {
-                Button { copy(cmd) } label: { Label("Copy snippet", systemImage: "doc.on.doc") }
+                Button { copy(cmd) } label: { Label(i18n.t(.copySnippet), systemImage: "doc.on.doc") }
                     .controlSize(.small)
             }
         }
@@ -161,12 +159,12 @@ struct CommandBlocksPanel: View {
                         .background((code == 0 ? SwiftUI.Color.green : SwiftUI.Color.red).opacity(0.12), in: Capsule())
                 }
                 Menu {
-                    Button("Copy command") { copy(block.command) }
-                    Button("Copy output") { copy(block.output) }
-                    Button("Copy both") { copy("$ \(block.command)\n\(block.output)") }
+                    Button(i18n.t(.copyCommand)) { copy(block.command) }
+                    Button(i18n.t(.copyOutput)) { copy(block.output) }
+                    Button(i18n.t(.copyBoth)) { copy("$ \(block.command)\n\(block.output)") }
                     Divider()
-                    Button("Search in terminal") { searchInTerminal(block.command) }
-                    Button("Re-run") { rerun(block.command) }
+                    Button(i18n.t(.searchInTerminal)) { searchInTerminal(block.command) }
+                    Button(i18n.t(.rerunCommand)) { rerun(block.command) }
                 } label: {
                     Image(systemName: "ellipsis.circle").foregroundStyle(.secondary)
                 }
@@ -197,9 +195,9 @@ struct CommandBlocksPanel: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     HStack(spacing: 8) {
-                        Button { copy(block.output) } label: { Label("Copy output", systemImage: "doc.on.doc") }
+                        Button { copy(block.output) } label: { Label(i18n.t(.copyOutput), systemImage: "doc.on.doc") }
                             .controlSize(.small)
-                        Button { searchInTerminal(block.output.prefix(80).description) } label: { Label("Find", systemImage: "magnifyingglass") }
+                        Button { searchInTerminal(block.output.prefix(80).description) } label: { Label(i18n.t(.find), systemImage: "magnifyingglass") }
                             .controlSize(.small)
                         Spacer()
                         Text(block.startTime.formatted(date: .omitted, time: .standard))
@@ -226,7 +224,7 @@ struct CommandBlocksPanel: View {
     private func copy(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        withAnimation { copyTip = "Copied" }
+        withAnimation { copyTip = i18n.t(.copied) }
         Task { @MainActor in try? await Task.sleep(for: .seconds(1.2)); withAnimation { copyTip = nil } }
     }
 

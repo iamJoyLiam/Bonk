@@ -218,7 +218,7 @@ import SwiftUI
         func updateNSView(_ nsView: NSView, context: Context) {
             guard context.coordinator.lastPaneID != paneID else {
                 if let cached = TerminalViewCache.shared.retrieve(paneID) {
-                    updateSettings(for: cached)
+                    updateSettings(for: cached, coordinator: context.coordinator)
                 }
                 return
             }
@@ -230,10 +230,17 @@ import SwiftUI
                 oldCached.view.removeFromSuperview()
             }
 
-            let cached: CachedTerminalView = if let existing = TerminalViewCache.shared.retrieve(paneID) {
-                existing
+            let cached: CachedTerminalView
+            let created: Bool
+            if let existing = TerminalViewCache.shared.retrieve(paneID) {
+                cached = existing
+                created = false
             } else {
-                createTerminalView(for: paneID, context: context)
+                cached = createTerminalView(for: paneID, context: context)
+                created = true
+            }
+            if created {
+                context.coordinator.lastColorSchemeID = colorScheme.id
             }
 
             cached.view.translatesAutoresizingMaskIntoConstraints = false
@@ -247,6 +254,8 @@ import SwiftUI
                 cached.view.bottomAnchor.constraint(equalTo: nsView.bottomAnchor, constant: -terminalViewInsets.bottom),
             ]
             NSLayoutConstraint.activate(cached.constraints)
+
+            updateSettings(for: cached, coordinator: context.coordinator)
 
             // Force re-render after re-adding cached view
             cached.view.needsDisplay = true
@@ -306,10 +315,17 @@ import SwiftUI
 
         private func setupTerminalView(for paneID: UUID, in containerView: NSView, context: Context) {
             // Check cache first to preserve terminal state across tab switches
-            let cached: CachedTerminalView = if let existing = TerminalViewCache.shared.retrieve(paneID) {
-                existing
+            let cached: CachedTerminalView
+            let created: Bool
+            if let existing = TerminalViewCache.shared.retrieve(paneID) {
+                cached = existing
+                created = false
             } else {
-                createTerminalView(for: paneID, context: context)
+                cached = createTerminalView(for: paneID, context: context)
+                created = true
+            }
+            if created {
+                context.coordinator.lastColorSchemeID = colorScheme.id
             }
 
             cached.view.translatesAutoresizingMaskIntoConstraints = false
@@ -324,6 +340,7 @@ import SwiftUI
             ]
             NSLayoutConstraint.activate(cached.constraints)
             context.coordinator.lastPaneID = paneID
+            updateSettings(for: cached, coordinator: context.coordinator)
 
             // Force re-render after re-adding cached view to view hierarchy
             cached.view.needsDisplay = true
@@ -333,20 +350,26 @@ import SwiftUI
             }
         }
 
-        private func updateSettings(for cached: CachedTerminalView) {
+        private func updateSettings(for cached: CachedTerminalView, coordinator: PaneCoordinator) {
             let terminal = cached.view
             let newFont = createSafeFont(family: fontFamily, size: CGFloat(fontSize))
-            terminal.font = newFont
+            if !terminal.font.isEqual(newFont) {
+                terminal.font = newFont
+            }
             terminal.terminal.setCursorStyle(mapCursorStyle(cursorStyle, blink: cursorBlink))
             if terminal.terminal.options.scrollback != scrollbackLines {
                 terminal.terminal.changeScrollback(scrollbackLines)
             }
-            // Update color scheme when theme changes
-            applyColorScheme(to: terminal, scheme: colorScheme)
+            // Update color scheme only when it actually changed.
+            if coordinator.lastColorSchemeID != colorScheme.id {
+                applyColorScheme(to: terminal, scheme: colorScheme)
+                coordinator.lastColorSchemeID = colorScheme.id
+            }
         }
     }
 
     private class PaneCoordinator: NSObject {
         var lastPaneID: UUID?
+        var lastColorSchemeID: String?
     }
 #endif

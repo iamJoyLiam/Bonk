@@ -13,7 +13,8 @@ struct TeamPresenceBar: View {
                 }
                 if let driverID = snapshot.driverPeerID,
                    let driver = snapshot.allPeers.first(where: { $0.id == driverID }) {
-                    Text("● \(driver.displayName) \(i18n.t(.hostControls))")
+                    let isHost = driverID == snapshot.hostPeer.id
+                    Text("● \(driver.displayName) \(isHost ? i18n.t(.hostControls) : i18n.t(.driver))")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }

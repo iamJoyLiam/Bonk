@@ -81,6 +81,13 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         set { recordingPaneIDBox.withLockedValue { $0 = newValue } }
     }
 
+    /// Team routing key. Set by SessionManager when PTY is adopted by a tab/pane.
+    private let teamSessionIDBox = NIOLockedValueBox<TeamSessionID?>(nil)
+    public var teamSessionID: TeamSessionID? {
+        get { teamSessionIDBox.withLockedValue { $0 } }
+        set { teamSessionIDBox.withLockedValue { $0 = newValue } }
+    }
+
     /// OSC 7 CWD detector — intercepts escape sequences to track directory changes.
     let osc7Detector = PTYOSC7Detector()
 
@@ -101,6 +108,11 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// One-shot output observers for command-response patterns (e.g., getCWD).
     private typealias ObserverClosure = @Sendable (String) -> Void
     private let outputObservers = OSAllocatedUnfairLock<[UUID: ObserverClosure]>(uncheckedState: [:])
+
+    /// Team output is intentionally decoupled from terminal output. TeamRelay
+    /// is MainActor-isolated; scheduling one hop per PTY chunk causes main
+    /// actor queue pressure during high-volume commands.
+    private let teamOutputCoalescer = TeamOutputCoalescer()
 
     /// Pending PTY size — caches resize requests when SSH channel is not yet ready.
     /// Prevents window-change packets from being silently dropped during connection setup.
@@ -296,9 +308,10 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             Task { @MainActor in NotificationCenter.default.post(name: .commandBlockDidAdd, object: nil, userInfo: ["block": finishedBlock]) }
             activeCommandBlock.withLockedValue { $0 = nil }
         }
-        // Team relay — broadcast to LAN guests (host only)
+        // Team relay — broadcast to LAN guests (host only), coalesced so
+        // high-volume PTY output does not enqueue one MainActor task per chunk.
         let displayTextForTeam = LogColorizer.colorize(text)
-        Task { @MainActor in TeamRelay.shared.broadcastOutput(displayTextForTeam) }
+        teamOutputCoalescer.append(displayTextForTeam, sessionID: teamSessionID)
         // Colorize for display only.
         let displayText = displayTextForTeam
         // Send to all live consumers with per-consumer backpressure.
@@ -944,5 +957,86 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         if byte == 0x5C { return .ground } // \ → ST terminator
         if byte == 0x1B { return .dcsString } // another ESC
         return .dcsEntry
+    }
+}
+
+/// Coalesces PTY output before crossing into TeamRelay's MainActor isolation.
+///
+/// One detached timer task is created per 16 ms window, not per PTY chunk.
+/// A byte threshold keeps pending data bounded when a command produces output
+/// faster than the relay can serialize and send it.
+private final class TeamOutputCoalescer: @unchecked Sendable {
+    private struct State {
+        var pending = ""
+        var pendingByteCount = 0
+        var pendingSessionID: TeamSessionID?
+        var scheduledGeneration: UInt64 = 0
+        var nextGeneration: UInt64 = 0
+    }
+
+    private let state = OSAllocatedUnfairLock<State>(uncheckedState: State())
+    private static let flushInterval = Duration.milliseconds(16)
+    private static let maxBatchBytes = 64 * 1024
+
+    func append(_ text: String, sessionID: TeamSessionID?) {
+        guard !text.isEmpty else { return }
+
+        let shouldFlushPrevious = state.withLock { state in
+            !state.pending.isEmpty && state.pendingSessionID != sessionID
+        }
+        if shouldFlushPrevious {
+            flush()
+        }
+
+        let result = state.withLock { state -> (flushImmediately: Bool, generation: UInt64?) in
+            if state.pendingSessionID == nil {
+                state.pendingSessionID = sessionID
+            }
+            state.pending.append(text)
+            state.pendingByteCount += text.utf8.count
+            if state.pendingByteCount >= Self.maxBatchBytes {
+                return (true, nil)
+            }
+            guard state.scheduledGeneration == 0 else {
+                return (false, nil)
+            }
+            state.nextGeneration &+= 1
+            state.scheduledGeneration = state.nextGeneration
+            return (false, state.scheduledGeneration)
+        }
+
+        if result.flushImmediately {
+            flush()
+        } else if let generation = result.generation {
+            scheduleFlush(generation: generation)
+        }
+    }
+
+    private func scheduleFlush(generation: UInt64) {
+        Task.detached { [weak self] in
+            try? await Task.sleep(for: Self.flushInterval)
+            guard !Task.isCancelled else { return }
+            self?.flush(generation: generation)
+        }
+    }
+
+    private func flush(generation: UInt64? = nil) {
+        let result = state.withLock { state -> (payload: String, sessionID: TeamSessionID?)? in
+            if let generation, state.scheduledGeneration != generation {
+                return nil
+            }
+            state.scheduledGeneration = 0
+            guard !state.pending.isEmpty else { return nil }
+            let result = (payload: state.pending, sessionID: state.pendingSessionID)
+            state.pending.removeAll(keepingCapacity: true)
+            state.pendingByteCount = 0
+            state.pendingSessionID = nil
+            return result
+        }
+        guard let result, !result.payload.isEmpty else { return }
+
+        Task { @MainActor in
+            TeamRelay.shared.broadcastOutput(result.payload, sessionID: result.sessionID)
+        }
     }
 }

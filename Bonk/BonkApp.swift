@@ -319,6 +319,16 @@ struct BonkApp: App {
                 Button(i18n.t(.team)) {
                     Task { @MainActor in BonkAppDelegate.shared?.coordinator?.showTeam = true }
                 }
+                Button(i18n.t(.liveTerminal)) {
+                    Task { @MainActor in
+                        if TeamRelay.shared.isConnected, let workspace = BonkAppDelegate.shared?.workspace {
+                            workspace.toggleTeamWindow()
+                        } else {
+                            BonkAppDelegate.shared?.coordinator?.showTeam = true
+                        }
+                    }
+                }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
             }
         }
     }

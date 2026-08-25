@@ -219,6 +219,7 @@ import SwiftUI
         private func createTerminalView(for tabID: UUID, context _: Context) -> CachedTerminalView {
             let font = createSafeFont(family: fontFamily, size: CGFloat(fontSize))
             let terminal = NativeTerminalView(frame: .zero, font: font)
+            terminal.bellStyle = .none
             terminal.configureNativeColors()
 
             // 滚动条：初始隐藏，滚动时显示，使用小尺寸

@@ -1,5 +1,26 @@
 import SwiftUI
 
+private func hostLocalIPAddress() -> String {
+    var address = "127.0.0.1"
+    var ifaddr: UnsafeMutablePointer<ifaddrs>?
+    guard getifaddrs(&ifaddr) == 0, let firstAddr = ifaddr else { return address }
+    for ptr in sequence(first: firstAddr, next: { $0.pointee.ifa_next }) {
+        let interface = ptr.pointee
+        let addrFamily = interface.ifa_addr.pointee.sa_family
+        if addrFamily == UInt8(AF_INET) {
+            let name = String(cString: interface.ifa_name)
+            if name == "en0" || name == "en1" || name.hasPrefix("en") {
+                var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                getnameinfo(interface.ifa_addr, socklen_t(interface.ifa_addr.pointee.sa_len), &hostname, socklen_t(hostname.count), nil, 0, NI_NUMERICHOST)
+                let ip = String(cString: hostname)
+                if !ip.hasPrefix("127.") { address = ip; break }
+            }
+        }
+    }
+    freeifaddrs(ifaddr)
+    return address
+}
+
 struct TeamHostSheet: View {
     @Environment(I18n.self) private var i18n
     @Environment(\.dismiss) private var dismiss
@@ -23,12 +44,17 @@ struct TeamHostSheet: View {
             Form {
                 if relay.isHosting, let pin = relay.pairingPin, let port = relay.hostedPort {
                     Section(i18n.t(.hostSession).replacingOccurrences(of: "…", with: "").replacingOccurrences(of: "...", with: "")) {
+                        LabeledContent("IP") {
+                            Text(hostLocalIPAddress())
+                                .textSelection(.enabled)
+                                .foregroundStyle(.secondary)
+                        }
                         LabeledContent("PIN") {
                             Text(pin)
                                 .font(.system(.title3, design: .monospaced, weight: .semibold))
                                 .textSelection(.enabled)
                         }
-                        LabeledContent(i18n.t(.port)) { Text("\(port)") }
+                        LabeledContent(i18n.t(.port)) { Text(verbatim: "\(port)") }
                         LabeledContent("Service") {
                             Text(TeamConstants.serviceType)
                                 .font(.caption)
@@ -80,7 +106,7 @@ struct TeamHostSheet: View {
                                 Text(peer.displayName).lineLimit(1)
                                 Spacer()
                                 if relay.driverPeerID == peer.id {
-                                    Label("Driver", systemImage: "keyboard.fill")
+                                    Label(i18n.t(.driver), systemImage: "keyboard.fill")
                                         .font(.caption2)
                                         .foregroundStyle(.green)
                                 } else {
@@ -112,6 +138,14 @@ struct TeamHostSheet: View {
             ToolbarItem(placement: .confirmationAction) {
                 Button(i18n.t(.ok)) { dismiss() }
                     .keyboardShortcut(.defaultAction)
+            }
+        }
+        .alert(i18n.t(.controlRequestTitle), isPresented: Binding(get: { relay.pendingControlRequest != nil }, set: { if !$0 { relay.pendingControlRequest = nil } })) {
+            Button(i18n.t(.allow)) { if let req = relay.pendingControlRequest { relay.grantControl(to: req.peerID) } }
+            Button(i18n.t(.deny), role: .cancel) { relay.pendingControlRequest = nil }
+        } message: {
+            if let req = relay.pendingControlRequest {
+                Text(i18n.tr(.controlRequestMessage, args: req.displayName))
             }
         }
     }

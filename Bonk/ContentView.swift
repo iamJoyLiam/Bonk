@@ -13,9 +13,12 @@ struct ContentView: View {
         @State private var showTerminalSearch = false
         @State private var sftpWindow: NSWindow?
         @State private var sftpWindowDelegate: SFTPWindowDelegate?
+        @State private var teamWindow: NSWindow?
+        @State private var teamWindowDelegate: TeamWindowDelegate?
         @Environment(WorkspaceManager.self) private var workspace
         @Bindable var sessionManager: SessionManager
         @Bindable var toolbarCoordinator: ToolbarCoordinator
+        @ObservedObject private var teamRelay = TeamRelay.shared
     #endif
 
     private var preferences: UserPreferences {
@@ -113,6 +116,23 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .toggleSFTP)) { _ in
                 workspace.toggleSFTPWindow()
             }
+            // Team live terminal independent window (like SFTP)
+            .onChange(of: workspace.isTeamWindowOpen) { _, isOpen in
+                if isOpen {
+                    openTeamWindow()
+                } else {
+                    closeTeamWindow()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("BonkShowTeam"))) { _ in
+                toolbarCoordinator.showTeam = true
+            }
+            .onChange(of: teamRelay.isConnected) { _, isConnected in
+                if isConnected {
+                    if !workspace.isTeamWindowOpen { workspace.isTeamWindowOpen = true }
+                    if toolbarCoordinator.showTeam { toolbarCoordinator.showTeam = false }
+                }
+            }
             .onReceive(NotificationCenter.default.publisher(for: .terminalNewTab)) { _ in
                 handleNewTabShortcut()
             }
@@ -132,6 +152,60 @@ struct ContentView: View {
                 if preferences.autoSyncSSHConfig == true {
                     toolbarCoordinator.showUnifiedImport = true
                 }
+            }
+            // Global Team control request — host sees popup even when Team sheet not open
+            .alert(
+                i18n.t(.controlRequestTitle),
+                isPresented: Binding(
+                    get: { teamRelay.pendingControlRequest != nil },
+                    set: { if !$0 { teamRelay.pendingControlRequest = nil } }
+                )
+            ) {
+                Button(i18n.t(.allow)) {
+                    if let req = teamRelay.pendingControlRequest {
+                        teamRelay.grantControl(to: req.peerID)
+                    }
+                }
+                Button(i18n.t(.deny), role: .cancel) {
+                    teamRelay.pendingControlRequest = nil
+                }
+            } message: {
+                if let req = teamRelay.pendingControlRequest {
+                    Text(i18n.tr(.controlRequestMessage, args: req.displayName))
+                }
+            }
+            .alert(
+                i18n.t(.connectionError),
+                isPresented: Binding(
+                    get: { teamRelay.lastError != nil && !teamRelay.isConnected && !teamRelay.isHosting },
+                    set: { if !$0 { teamRelay.lastError = nil } }
+                )
+            ) {
+                Button(i18n.t(.ok)) { teamRelay.lastError = nil }
+            } message: {
+                Text(teamRelay.lastError ?? "")
+            }
+            .alert(
+                "控制权已收回",
+                isPresented: Binding(
+                    get: { teamRelay.controlRevokedNotice != nil && !workspace.isTeamWindowOpen },
+                    set: { if !$0 { teamRelay.controlRevokedNotice = nil } }
+                )
+            ) {
+                Button("知道了") { teamRelay.controlRevokedNotice = nil }
+            } message: {
+                Text(teamRelay.controlRevokedNotice ?? "主持人已收回控制权，需重新请求授权")
+            }
+            .alert(
+                "连接已断开",
+                isPresented: Binding(
+                    get: { teamRelay.peerDisconnectedNotice != nil },
+                    set: { if !$0 { teamRelay.peerDisconnectedNotice = nil } }
+                )
+            ) {
+                Button("知道了") { teamRelay.peerDisconnectedNotice = nil }
+            } message: {
+                Text(teamRelay.peerDisconnectedNotice ?? "")
             }
             // Sheets
             .sheet(isPresented: $toolbarCoordinator.showAddHostSheet) {
@@ -251,6 +325,56 @@ struct ContentView: View {
             window.close()
             sftpWindow = nil
             sftpWindowDelegate = nil
+        #endif
+    }
+
+    private func openTeamWindow() {
+        #if os(macOS)
+            if let window = teamWindow, window.isVisible {
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                return
+            }
+            let contentSize = NSSize(width: 860, height: 620)
+            let minimumContentSize = NSSize(width: 640, height: 480)
+            let window = NSWindow(
+                contentRect: NSRect(origin: .zero, size: contentSize),
+                styleMask: [.titled, .closable, .resizable, .miniaturizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.contentMinSize = minimumContentSize
+            window.title = i18n.t(.liveTerminal)
+            window.isReleasedWhenClosed = false
+            window.titleVisibility = .visible
+            let hostingView = NSHostingView(
+                rootView: TeamLiveWindowView(relay: TeamRelay.shared)
+                    .environment(i18n)
+                    .environment(workspace)
+            )
+            hostingView.autoresizingMask = [.width, .height]
+            window.contentView = hostingView
+            window.setContentSize(contentSize)
+            window.center()
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            let delegate = TeamWindowDelegate {
+                teamWindow = nil
+                teamWindowDelegate = nil
+                workspace.isTeamWindowOpen = false
+            }
+            teamWindowDelegate = delegate
+            window.delegate = delegate
+            teamWindow = window
+        #endif
+    }
+
+    private func closeTeamWindow() {
+        #if os(macOS)
+            guard let window = teamWindow else { return }
+            window.close()
+            teamWindow = nil
+            teamWindowDelegate = nil
         #endif
     }
 
@@ -511,6 +635,18 @@ struct ContentView: View {
 
 #if os(macOS)
     private final class SFTPWindowDelegate: NSObject, NSWindowDelegate {
+        private let onClose: () -> Void
+
+        init(onClose: @escaping () -> Void) {
+            self.onClose = onClose
+        }
+
+        func windowWillClose(_: Notification) {
+            onClose()
+        }
+    }
+
+    private final class TeamWindowDelegate: NSObject, NSWindowDelegate {
         private let onClose: () -> Void
 
         init(onClose: @escaping () -> Void) {

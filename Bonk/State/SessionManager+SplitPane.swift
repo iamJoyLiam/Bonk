@@ -28,6 +28,7 @@ extension SessionManager {
         guard let tab = activeTab else { return }
         guard let newPane = tab.layout.splitHorizontal() else { return }
         tab.activePaneID = newPane.id
+        TeamRelay.shared.setSharedSession(tabID: tab.id, paneID: newPane.id)
         FocusManager.shared.focus(newPane.id)
         updateTabTitleForSplit(tab)
 
@@ -39,6 +40,7 @@ extension SessionManager {
         guard let tab = activeTab else { return }
         guard let newPane = tab.layout.splitVertical() else { return }
         tab.activePaneID = newPane.id
+        TeamRelay.shared.setSharedSession(tabID: tab.id, paneID: newPane.id)
         FocusManager.shared.focus(newPane.id)
         updateTabTitleForSplit(tab)
 
@@ -180,6 +182,7 @@ extension SessionManager {
         // Move the PTY session to the new tab (preserves history)
         if let newPane = newTab.layout.root.paneState {
             newPane.ptySession = ptySession
+            ptySession.teamSessionID = TeamSessionID(tabID: newTab.id, paneID: newPane.id)
         }
 
         // Remove the pane from the original tab
@@ -193,6 +196,9 @@ extension SessionManager {
 
         // Set the new tab as active
         activeTabID = newTab.id
+        if let paneID = newTab.activePaneID {
+            TeamRelay.shared.setSharedSession(tabID: newTab.id, paneID: paneID)
+        }
     }
 
     /// Connect a new pane (open PTY session).
@@ -206,6 +212,7 @@ extension SessionManager {
                 return
             }
             pane.ptySession = ptySession
+            ptySession.teamSessionID = TeamSessionID(tabID: tab.id, paneID: pane.id)
             NotificationCenter.default.post(name: .terminalPTYSessionReady, object: nil, userInfo: ["tabID": tab.id])
         }
 
@@ -252,6 +259,7 @@ extension SessionManager {
         guard let tab = activeTab else { return }
         tab.layout.selectPane(paneID)
         tab.activePaneID = paneID
+        TeamRelay.shared.setSharedSession(tabID: tab.id, paneID: paneID)
     }
 
     /// Add a pane from source tab to target tab (for drag-to-split).
@@ -313,6 +321,7 @@ extension SessionManager {
 
         // Move PTY session from source to new pane
         newPane.ptySession = sourcePTY
+        sourcePTY.teamSessionID = TeamSessionID(tabID: targetTab.id, paneID: newPane.id)
         sourcePane.ptySession = nil
 
         // Don't move terminal view cache

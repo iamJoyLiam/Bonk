@@ -183,5 +183,6 @@ enum AppStyle {
     static let teamSheetMinHeight: CGFloat = 520
     static let teamSheetIdealHeight: CGFloat = 540
     static let teamPortFieldWidth: CGFloat = 90
-    static let teamLiveTerminalHeight: CGFloat = 140
+    static let teamLiveTerminalHeight: CGFloat = 220
+    static let teamInputFieldHeight: CGFloat = 36
 }

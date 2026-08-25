@@ -592,5 +592,22 @@ enum LKey: String, CaseIterable {
     case send = "send"
     case connectedPeers = "connected_peers"
     case hostControls = "host_controls"
+    case driver
     case teamHostHint = "team_host_hint"
+    case controlRequestTitle = "control_request_title"
+    case controlRequestMessage = "control_request_message"
+    case allow = "allow"
+    case deny = "deny"
+
+    // Command Blocks (Warp-style)
+    case blocks
+    case noResults = "no_results"
+    case searchCommandOrOutput = "search_command_or_output"
+    case copySnippet = "copy_snippet"
+    case shellIntegrationHint = "shell_integration_hint"
+    case copyCommand = "copy_command"
+    case copyOutput = "copy_output"
+    case copyBoth = "copy_both"
+    case searchInTerminal = "search_in_terminal"
+    case guestOperating = "guest_operating"
 }
