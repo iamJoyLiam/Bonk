@@ -42,6 +42,7 @@ struct TeamSheet: View {
     @State private var selectedHost: DiscoveredTeamHost?
     @State private var showPinPrompt = false
     @State private var showShareHosts = false
+    @State private var maxGuests: Int = TeamConstants.maxGuestCount
 
     private var savedDisplayName: String {
         if let saved = UserDefaults.standard.string(forKey: "team_display_name"), !saved.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -116,6 +117,7 @@ struct TeamSheet: View {
         }
         .onAppear {
             cachedIP = localIPAddress()
+            maxGuests = TeamConstants.maxGuestCount
             if hostDisplayName.trimmingCharacters(in: .whitespaces).isEmpty { hostDisplayName = savedDisplayName }
             if guestDisplayName.trimmingCharacters(in: .whitespaces).isEmpty { guestDisplayName = savedDisplayName }
             if selectedTab == "join" { discovery.startBrowsing() }
@@ -185,6 +187,21 @@ struct TeamSheet: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+            Section("人数上限") {
+                HStack {
+                    Text("最大访客数")
+                    Spacer()
+                    Stepper(value: $maxGuests, in: 1...8) {
+                        Text("\(maxGuests) 人")
+                    }
+                    .frame(width: 140)
+                    .onChange(of: maxGuests) { _, newValue in
+                        UserDefaults.standard.set(newValue, forKey: "team_max_guests")
+                    }
+                }
+                Text("当前 \(relay.connectedPeers.count) / \(maxGuests) 人在线，超限时访客将收到“已达上限”提示，主持端不弹。")
+                    .font(.caption2).foregroundStyle(.secondary)
             }
             if BonkAppDelegate.shared?.sessionManager?.activeTab == nil {
                 Section {

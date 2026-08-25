@@ -47,6 +47,8 @@ final class UserPreferences {
     var autoRecord: Bool?
     /// Auto-sync ~/.ssh/config (optional for migration)
     var autoSyncSSHConfig: Bool?
+    /// Team max guests (optional, default 3, range 1...8)
+    var teamMaxGuests: Int?
 
     init(
         fontSize: Double = 14,
@@ -71,7 +73,8 @@ final class UserPreferences {
         maxReconnectAttempts: Int? = 5,
         reconnectBaseDelay: Double? = 1.0,
         autoRecord: Bool? = nil,
-        autoSyncSSHConfig: Bool? = nil
+        autoSyncSSHConfig: Bool? = nil,
+        teamMaxGuests: Int? = nil
     ) {
         self.fontSize = fontSize
         self.fontFamily = fontFamily
@@ -96,5 +99,6 @@ final class UserPreferences {
         self.reconnectBaseDelay = reconnectBaseDelay
         self.autoRecord = autoRecord
         self.autoSyncSSHConfig = autoSyncSSHConfig
+        self.teamMaxGuests = teamMaxGuests
     }
 }

@@ -11,6 +11,13 @@ import XCTest
 @MainActor
 final class TeamRelayTests: XCTestCase {
 
+    override func setUp() async throws {
+        UserDefaults.standard.set(1, forKey: "team_max_guests")
+    }
+    override func tearDown() async throws {
+        UserDefaults.standard.removeObject(forKey: "team_max_guests")
+    }
+
     func testHostGuestPairingPropagatesGuestIdentity() async throws {
         let host = TeamRelay()
         let guest = TeamRelay()

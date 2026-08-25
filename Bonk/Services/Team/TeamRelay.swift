@@ -928,4 +928,5 @@ final class TeamRelay: ObservableObject {
 extension Notification.Name {
     static let teamGuestDidReceiveOutput = Notification.Name("teamGuestDidReceiveOutput")
     static let teamPresenceDidChange = Notification.Name("teamPresenceDidChange")
+    static let teamMaxGuestsDidChange = Notification.Name("teamMaxGuestsDidChange")
 }

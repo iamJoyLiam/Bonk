@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 // MARK: - Team Session
 
@@ -274,7 +275,11 @@ enum TeamConstants {
     static let replayBufferByteLimit = 2 * 1024 * 1024
     static let heartbeatIntervalSeconds: TimeInterval = 15
     static let connectionTimeoutSeconds: TimeInterval = 8
-    static let maxGuestCount = 1 // MVP: 1 host + 1 guest
+    static var maxGuestCount: Int {
+        let v = UserDefaults.standard.integer(forKey: "team_max_guests")
+        if v >= 1 && v <= 8 { return v }
+        return 3 // default 1 host + 3 guests
+    }
     static let maxFrameBytes = 256 * 1024
     static let maxReceiveBufferBytes = 512 * 1024
     static let maxPairingFailuresPerMinute = 5
