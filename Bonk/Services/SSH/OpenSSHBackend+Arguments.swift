@@ -38,6 +38,10 @@ extension OpenSSHBackend {
             "-o", "GlobalKnownHostsFile=/dev/null",
             "-o", "NumberOfPasswordPrompts=2",
             "-o", "ConnectTimeout=10",
+            // 防空闲假死：30s 心跳，3 次无响应断开后触发重连
+            "-o", "ServerAliveInterval=30",
+            "-o", "ServerAliveCountMax=3",
+            "-o", "TCPKeepAlive=yes",
             // P2 加密与 QoS 择优：GCM 硬件加速优先，批量传输 QoS
             "-o", "Ciphers=\(SFTPCompressionStrategy.preferredCiphers)",
             "-o", "MACs=\(SFTPCompressionStrategy.preferredMACs)",

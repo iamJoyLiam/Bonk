@@ -457,10 +457,9 @@ public actor SSHNetworkService {
 
     private func reconnect() async {
         guard let config else { return }
-        guard !usesOpenSSHTransport else {
-            connectionState = .disconnected
-            stateContinuation.yield(.disconnected)
-            Log.ssh.warning("Skipping automatic reconnect for OpenSSH transport")
+        // OpenSSH 也需自动重连（此前直接跳过导致空闲后假死）
+        if usesOpenSSHTransport {
+            await reconnectOpenSSH(config: config)
             return
         }
 
@@ -547,6 +546,68 @@ public actor SSHNetworkService {
             connectionState = .disconnected
             stateContinuation.yield(.disconnected)
             Log.ssh.error("Reconnect exhausted after \(maxAttempts) attempts")
+        }
+    }
+
+    private func reconnectOpenSSH(config: SSHConnectionConfig) async {
+        let maxAttempts = max(config.maxReconnectAttempts, 1)
+        var attempt = 0
+        while attempt < maxAttempts, !Task.isCancelled {
+            connectionState = .reconnecting(attempt: attempt + 1, maxAttempts: maxAttempts)
+            stateContinuation.yield(.reconnecting(attempt: attempt + 1, maxAttempts: maxAttempts))
+            let baseSeconds = max(config.baseReconnectDelay.components.seconds, 1)
+            let delaySeconds = min(baseSeconds * Int64(1 << min(attempt, 4)), 30)
+            let jitterMs = Int64.random(in: 0 ..< 500)
+            let totalMs = delaySeconds * 1000 + jitterMs
+            try? await Task.sleep(for: .milliseconds(Double(totalMs)))
+            guard !Task.isCancelled else { break }
+            do {
+                // 清理旧 socket，避免 ControlMaster 残留
+                try? await Task.sleep(for: .milliseconds(200))
+                let backend = try OpenSSHBackend(config: config)
+                openSSHBackend = backend
+                usesOpenSSHTransport = true
+                connectionState = .connected
+                stateContinuation.yield(.connected)
+                Log.ssh.info("[RECONNECT] OpenSSH reconnect succeeded attempt \(attempt + 1)")
+                stopNetworkMonitor()
+                startNetworkMonitor()
+                if let ptyConfig = lastPTYConfig {
+                    do {
+                        let session = try backend.openPTY(
+                            cols: ptyConfig.cols, rows: ptyConfig.rows, termType: ptyConfig.termType
+                        ) { [weak self] in Task { await self?.handleDisconnect() } } onError: { _ in }
+                        activePTYSession = session
+                        pendingPTYSession = session
+                        Log.ssh.info("[RECONNECT] OpenSSH PTY re-created \(ptyConfig.cols)x\(ptyConfig.rows)")
+                    } catch {
+                        Log.ssh.warning("[RECONNECT] OpenSSH PTY re-create failed: \(error.localizedDescription)")
+                    }
+                }
+                return
+            } catch is CancellationError {
+                break
+            } catch let error as SSHServiceError {
+                switch error {
+                case .hostKeyMismatch, .alreadyConnected:
+                    Log.ssh.error("[RECONNECT] Fatal OpenSSH error, aborting: \(error.localizedDescription)")
+                    connectionState = .disconnected
+                    stateContinuation.yield(.disconnected)
+                    return
+                default:
+                    Log.ssh.warning("[RECONNECT] OpenSSH attempt \(attempt + 1)/\(maxAttempts) failed: \(error.localizedDescription)")
+                    attempt += 1
+                }
+            } catch {
+                Log.ssh.warning("[RECONNECT] OpenSSH attempt \(attempt + 1)/\(maxAttempts) failed: \(error.localizedDescription)")
+                attempt += 1
+            }
+        }
+        if !Task.isCancelled {
+            usesOpenSSHTransport = false
+            connectionState = .disconnected
+            stateContinuation.yield(.disconnected)
+            Log.ssh.error("[RECONNECT] OpenSSH reconnect exhausted after \(maxAttempts) attempts")
         }
     }
 
