@@ -17,9 +17,9 @@ final class AppKitTerminalConsumer: TerminalConsumer {
     weak var terminalView: SwiftTerm.TerminalView?
     private var onBytesConsumed: (@Sendable (Int) -> Void)?
 
-    init(terminalView: SwiftTerm.TerminalView, onBytesConsumed: (@Sendable (Int) -> Void)? = nil) {
+    init(terminalView: SwiftTerm.TerminalView, onBytesProcessed: (@Sendable (Int) -> Void)? = nil) {
         self.terminalView = terminalView
-        self.onBytesConsumed = onBytesConsumed
+        self.onBytesConsumed = onBytesProcessed
     }
 
     func receive(_ text: String) {

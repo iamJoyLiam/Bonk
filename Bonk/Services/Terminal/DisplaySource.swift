@@ -20,6 +20,7 @@ import CoreVideo
 /// Display-synced tick source. Uses CVDisplayLink on macOS (frame-aligned)
 /// and falls back to 16ms Task loop when unavailable (e.g. headless).
 final class AppKitDisplaySource: DisplaySource, @unchecked Sendable {
+    static let shared = AppKitDisplaySource()
     let ticks: AsyncStream<Void>
     private let continuation: AsyncStream<Void>.Continuation
     private var displayLink: CVDisplayLink?

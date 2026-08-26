@@ -247,8 +247,9 @@ import SwiftUI
             coordinator.terminalView = terminal
 
             // Core fix: intercept AppKit physical layout for accurate PTY sync
+            // Route through Engine so resize coalesces with display tick (single watermark path)
             terminal.onPhysicalLayout = { [weak coordinator] cols, rows in
-                coordinator?.onResize?(cols, rows)
+                coordinator?.handleResize(cols: cols, rows: rows)
             }
 
             coordinator.observeThemeChanges()
@@ -317,6 +318,17 @@ import SwiftUI
         var selectionObserver: NSObjectProtocol?
         var selectAllObserver: NSObjectProtocol?
         var focusObserver: NSObjectProtocol?
+        // Engine seam — one per coordinator, display-synced via shared source
+        nonisolated(unsafe) var terminalEngine: TerminalEngine?
+        nonisolated(unsafe) var engineConsumerID: UUID?
+        /// Access engine only on MainActor; creates lazily.
+        @MainActor func getOrCreateEngine() -> TerminalEngine {
+            if let e = terminalEngine { return e }
+            let e = TerminalEngine(displaySource: AppKitDisplaySource.shared)
+            e.onResize = { [weak self] cols, rows in self?.onResize?(cols, rows) }
+            terminalEngine = e
+            return e
+        }
 
         var feedTask: Task<Void, Never>? {
             get { lock.lock(); defer { lock.unlock() }; return _feedTask }
@@ -340,6 +352,14 @@ import SwiftUI
         var onTitleChange: (@Sendable (String) -> Void)? {
             get { lock.lock(); defer { lock.unlock() }; return _onTitleChange }
             set { lock.lock(); defer { lock.unlock() }; _onTitleChange = newValue }
+        }
+
+        /// Resize via Engine (coalesced; single watermark path). Safe to call from any thread.
+        func handleResize(cols: Int, rows: Int) {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.getOrCreateEngine().resize(cols: cols, rows: rows)
+            }
         }
 
         init(

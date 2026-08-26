@@ -18,42 +18,48 @@ import SwiftTerm
                 Log.ui.info("[Feed] Cancelling existing feed task")
                 existingTask.cancel()
             }
-            // Reset batch state
+            // Legacy batch state cleared (kept for backward compat, now unused)
             batchBuffer.withLock { $0 = "" }
             batchFlushScheduled.withLock { $0 = false }
 
-            Log.ui.info("[Feed] Starting new feed task")
+            // Engine path — single coalescer per display tick, single watermark
+            Log.ui.info("[Feed] Starting new feed task (Engine)")
+
             feedTask = Task { [weak self] in
                 guard let self else {
                     Log.ui.warning("[Feed] Self deallocated, exiting")
                     return
                 }
-                // No initial delay — replayed buffer should paint immediately on tab switch
-                Log.ui.info("[Feed] Feed task started, waiting for data")
+                // Clean previous subscription if any
+                let oldID: UUID? = await MainActor.run { self.engineConsumerID }
+                if let old = oldID {
+                    await MainActor.run {
+                        self.getOrCreateEngine().unsubscribe(old)
+                        if self.engineConsumerID == old { self.engineConsumerID = nil }
+                    }
+                }
+                let newID = UUID()
+                await MainActor.run { self.engineConsumerID = newID }
+                // Subscribe view to engine (MainActor)
+                let engine = await MainActor.run { self.getOrCreateEngine() }
+                await MainActor.run {
+                    guard let view = self.terminalView else { return }
+                    let consumer = AppKitTerminalConsumer(terminalView: view, onBytesProcessed: onBytesProcessed)
+                    engine.subscribe(newID, consumer: consumer)
+                }
+                Log.ui.info("[Feed] Feed task started (Engine), waiting for data")
                 for await text in stream {
                     guard !Task.isCancelled else {
                         Log.ui.info("[Feed] Feed task cancelled")
                         break
                     }
-                    let (shouldFlush, endsCR) = batchBuffer.withLock { buf -> (Bool, Bool) in
-                        buf += text
-                        let endsCR = buf.utf8.last == 0x0D
-                            && buf.utf8.count >= 2
-                            && buf.utf8.dropLast().last != 0x0A
-                        return (buf.utf8.count >= Self.batchThreshold, endsCR)
-                    }
-                    if shouldFlush {
-                        flushBatch(onBytesProcessed: onBytesProcessed)
-                    } else if !endsCR {
-                        // Normal path: schedule time-based flush.
-                        // When buffer ends with bare CR, skip the flush so the
-                        // CR and its replacement text stay in the same batch —
-                        // prevents garbled output from programs like Docker
-                        // Compose that use \r for in-place line updates.
-                        scheduleFlush(onBytesProcessed: onBytesProcessed)
-                    }
+                    await MainActor.run { engine.push(text) }
                 }
-                Log.ui.info("[Feed] Feed task ended")
+                await MainActor.run {
+                    engine.unsubscribe(newID)
+                    if self.engineConsumerID == newID { self.engineConsumerID = nil }
+                }
+                Log.ui.info("[Feed] Feed task ended (Engine)")
             }
         }
 

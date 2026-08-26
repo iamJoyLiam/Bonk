@@ -104,7 +104,7 @@ final class TerminalEngine {
         state.consumers.removeValue(forKey: id)
     }
 
-    /// Coalesce resize to at most one SIGWINCH per display frame (also debounced here for safety).
+    /// Coalesce resize to at most one SIGWINCH per display frame.
     func resize(cols: Int, rows: Int) {
         guard cols > 0, rows > 0 else { return }
         if let last = state.lastResize, last.0 == cols, last.1 == rows { return }

@@ -297,11 +297,9 @@ import SwiftUI
             coordinator.terminalView = terminal
 
             // Core fix: intercept AppKit physical layout for accurate PTY sync.
-            // The pane path previously had no resize propagation after the
-            // one-shot post-connect sync, so Vim stayed truncated whenever the
-            // final layout differed from that initial size.
+            // Route through Engine for single-watermark coalescing.
             terminal.onPhysicalLayout = { [weak coordinator] cols, rows in
-                coordinator?.onResize?(cols, rows)
+                coordinator?.handleResize(cols: cols, rows: rows)
             }
 
             coordinator.observeThemeChanges()
