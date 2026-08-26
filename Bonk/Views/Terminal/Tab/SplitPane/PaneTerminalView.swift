@@ -167,9 +167,6 @@ struct PaneTerminalView: View {
             .allowsHitTesting(true)
 
         }
-        .overlay(alignment: .top) {
-            TeamControlBanner(relay: TeamRelay.shared)
-        }
         .onAppear {
             terminalNSView = TerminalViewCache.shared.retrieve(paneState.id)?.view
         }
@@ -253,9 +250,4 @@ struct PaneTerminalView: View {
     func refreshRecordingState() async {
         isRecording = await SessionRecordingService.shared.isRecording(paneID: paneState.id)
     }
-}
-
-private struct TeamControlBanner: View {
-    @ObservedObject var relay: TeamRelay
-    var body: some View { EmptyView() }
 }
