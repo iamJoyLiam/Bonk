@@ -9,11 +9,11 @@ private func localIPAddress() -> String {
         let interface = ptr.pointee
         let addrFamily = interface.ifa_addr.pointee.sa_family
         if addrFamily == UInt8(AF_INET) {
-            let name = String(cString: interface.ifa_name)
+            let name = String(validatingCString: interface.ifa_name) ?? ""
             if name == "en0" || name == "en1" || name.hasPrefix("en") {
                 var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
                 getnameinfo(interface.ifa_addr, socklen_t(interface.ifa_addr.pointee.sa_len), &hostname, socklen_t(hostname.count), nil, 0, NI_NUMERICHOST)
-                let ip = String(cString: hostname)
+                let ip = String(decoding: hostname.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
                 if !ip.hasPrefix("127.") {
                     address = ip
                     break

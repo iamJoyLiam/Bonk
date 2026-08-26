@@ -354,7 +354,7 @@ final class SFTPService {
         let chunkSize: UInt32 = 32_000
         // In-flight read window: 16 × 32KB = 512KB, enough to keep a high-latency
         // link saturated without buffering the whole file in memory.
-        let pipelineDepth = 16
+        let pipelineDepth = 32
         var nextReadOffset: UInt64 = 0
         var nextWriteOffset: UInt64 = 0
         var pending: [UInt64: Data] = [:]
@@ -700,7 +700,7 @@ final class SFTPService {
         // Larger buffers are split into sequential 32KB requests anyway.
         let chunkSize = 32_000
         // In-flight write window: 16 × 32KB = 512KB.
-        let pipelineDepth = 16
+        let pipelineDepth = 32
         var offset: UInt64 = 0
         var completedBytes: UInt64 = 0
         var pending = 0

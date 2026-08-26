@@ -118,21 +118,37 @@ private final class CitadelSFTPChannel: SFTPChannel {
         let handle = try FileHandle(forReadingFrom: localURL)
         defer { try? handle.close() }
         let file = try await sftp.openFile(filePath: remotePath, flags: [.write, .create, .truncate])
+        // Pipelined upload: 32KB * 16 = 512KB window, matches SFTPService Citadel path
         let chunkSize = 32_000
+        let pipelineDepth = 32
         var offset: UInt64 = 0
+        var completedBytes: UInt64 = 0
+        var pending = 0
         var lastProgress: Double = -1
+        let remoteFile = SendableSFTPFile(file)
         do {
-            while true {
-                guard let chunk = try handle.read(upToCount: chunkSize), !chunk.isEmpty else { break }
-                var buffer = ByteBuffer()
-                buffer.writeBytes(chunk)
-                try await file.write(buffer, at: offset)
-                offset += UInt64(chunk.count)
-                let progress = total > 0 ? Double(offset) / Double(total) : 1.0
-                if progress - lastProgress >= 0.01 || progress >= 1.0 {
-                    lastProgress = progress
-                    onProgress(min(progress, 1.0))
+            try await withThrowingTaskGroup(of: Int.self) { group in
+                while true {
+                    while pending < pipelineDepth {
+                        guard let chunkData = try handle.read(upToCount: chunkSize), !chunkData.isEmpty else { break }
+                        let chunkOffset = offset
+                        offset += UInt64(chunkData.count)
+                        pending += 1
+                        group.addTask {
+                            try await SFTPTransferEngine.writeChunk(remoteFile, data: chunkData, at: chunkOffset)
+                        }
+                    }
+                    if pending == 0 { break }
+                    guard let written = try await group.next() else { break }
+                    pending -= 1
+                    completedBytes += UInt64(written)
+                    let progress = total > 0 ? Double(completedBytes) / Double(total) : 1.0
+                    if progress - lastProgress >= 0.01 || progress >= 1.0 {
+                        lastProgress = progress
+                        onProgress(min(progress, 1.0))
+                    }
                 }
+                try await group.waitForAll()
             }
             if total == 0 { onProgress(1.0) }
             try? await file.close()
@@ -152,24 +168,51 @@ private final class CitadelSFTPChannel: SFTPChannel {
             return
         }
         defer { handle.closeFile() }
+        // Pipelined download: 32KB * 16 = 512KB window
         let chunkSize: UInt32 = 32_000
-        var offset: UInt64 = 0
+        let pipelineDepth = 32
+        var nextReadOffset: UInt64 = 0
+        var nextWriteOffset: UInt64 = 0
+        var pending: [UInt64: Data] = [:]
+        var readDone = false
+        var inFlight = 0
         var lastProgress: Double = -1
+        let remoteFile = SendableSFTPFile(file)
         do {
-            while true {
-                let buffer = try await file.read(from: offset, length: chunkSize)
-                if buffer.readableBytes == 0 { break }
-                let data = Data(buffer.readableBytesView)
-                handle.write(data)
-                offset += UInt64(data.count)
-                let progress: Double = total > 0 ? Double(offset) / Double(total) : (buffer.readableBytes < Int(chunkSize) ? 1.0 : Double(offset) / Double(offset + UInt64(chunkSize)))
-                if progress - lastProgress >= 0.01 || progress >= 1.0 {
-                    lastProgress = progress
-                    onProgress(min(progress, 1.0))
+            try await withThrowingTaskGroup(of: (UInt64, Data).self) { group in
+                while !readDone || inFlight > 0 {
+                    while !readDone && inFlight < pipelineDepth {
+                        let readOffset = nextReadOffset
+                        nextReadOffset += UInt64(chunkSize)
+                        inFlight += 1
+                        group.addTask {
+                            try await SFTPTransferEngine.readChunk(remoteFile, offset: readOffset, length: chunkSize)
+                        }
+                    }
+                    guard let (readOffset, data) = try await group.next() else { break }
+                    inFlight -= 1
+                    if data.isEmpty || data.count < Int(chunkSize) {
+                        readDone = true
+                    }
+                    if !data.isEmpty {
+                        pending[readOffset] = data
+                    }
+                    while let bytes = pending.removeValue(forKey: nextWriteOffset) {
+                        try handle.write(contentsOf: bytes)
+                        nextWriteOffset += UInt64(bytes.count)
+                        let progress: Double = total > 0 ? Double(nextWriteOffset) / Double(total) : (readDone ? 1.0 : Double(nextWriteOffset) / Double(nextWriteOffset + UInt64(chunkSize)))
+                        if progress - lastProgress >= 0.01 || progress >= 1.0 {
+                            lastProgress = progress
+                            onProgress(min(progress, 1.0))
+                        }
+                    }
                 }
-                if buffer.readableBytes < Int(chunkSize) { break }
+                try await group.waitForAll()
             }
             if total == 0 { onProgress(1.0) }
+            if lastProgress < 1.0 {
+                onProgress(1.0)
+            }
             try? await file.close()
         } catch {
             try? await file.close()
