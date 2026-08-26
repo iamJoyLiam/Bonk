@@ -74,6 +74,9 @@ extension TeamRelay {
             connectedPeers = snapshot.guestPeers
             if previousSessionID != snapshot.sharedSessionID {
                 resetGuestOutput()
+                if snapshot.sharedSessionID == nil && previousSessionID != nil {
+                    sharedSessionLostNotice = "主持人已关闭共享终端"
+                }
             }
 
         case let .peerJoined(peer):

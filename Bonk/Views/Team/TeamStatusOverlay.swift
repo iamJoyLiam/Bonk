@@ -40,35 +40,36 @@ struct TeamStatusOverlay: View {
     var body: some View {
         if isActive {
             HStack(spacing: 8) {
-                // Network + participants
+                // Network + participants — solid pill, high contrast
                 HStack(spacing: 4) {
                     Image(systemName: networkIcon)
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(networkColor)
                     Text(participantText)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.primary)
                 }
 
                 if let typingName = relay.typingPeerName {
                     Divider().frame(height: 12)
                     HStack(spacing: 4) {
-                        Circle().fill(Color.green).frame(width: 5, height: 5)
+                        Circle().fill(Color.green).frame(width: 6, height: 6)
+                            .shadow(color: .green.opacity(0.5), radius: 2)
                         Text("\(typingName) 正在输入…")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.primary)
                             .lineLimit(1)
                     }
                 }
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
+            .background(Color(nsColor: .windowBackgroundColor).opacity(0.98), in: RoundedRectangle(cornerRadius: 8))
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.08), radius: 4, y: 1)
+            .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
         }
     }
 }

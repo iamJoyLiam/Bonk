@@ -77,6 +77,17 @@ struct TeamLiveWindowView: View {
             Text(relay.lastError ?? "")
         }
         .alert(
+            "共享已结束",
+            isPresented: Binding(
+                get: { relay.sharedSessionLostNotice != nil },
+                set: { if !$0 { relay.sharedSessionLostNotice = nil } }
+            )
+        ) {
+            Button("知道了") { relay.sharedSessionLostNotice = nil }
+        } message: {
+            Text(relay.sharedSessionLostNotice ?? "主持人已关闭共享终端")
+        }
+        .alert(
             "收到共享主机",
             isPresented: Binding(
                 get: { relay.pendingShareHosts != nil },

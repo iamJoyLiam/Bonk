@@ -21,6 +21,7 @@ final class TeamRelay: ObservableObject {
     @Published var controlRevokedNotice: String?
     @Published var peerDisconnectedNotice: String?
     @Published var pendingShareHosts: [HostItemExport]?
+    @Published var sharedSessionLostNotice: String?
     @Published var hostedPort: UInt16?
 
     let logger = Logger(subsystem: "com.bonk", category: "TeamRelay")
