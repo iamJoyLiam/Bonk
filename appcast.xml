@@ -6,6 +6,35 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.2.4</title>
+            <pubDate>Wed, 26 Aug 2026 17:20:00 +0800</pubDate>
+            <sparkle:version>20262004</sparkle:version>
+            <sparkle:shortVersionString>2026.2.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- SFTP 性能跃迁：DispatchIO + pread/pwrite 零拷贝、256KB 大包、阈值 500MB→50MB、4/8 分片多 Channel + N×TCP 池化三级回落、GCM/ChaCha 优选 + IPQoS
+- 修复空闲假死：OpenSSH ServerAlive 30s 心跳 + 自动重连（5 次退避重建 PTY，输入排队重放）
+- 修复：SerialPort Swift6 nonisolated(unsafe) 并发告警
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.4/Bonk-2026.2.4-arm64.dmg"
+                length="23011336"
+                type="application/octet-stream"
+                sparkle:edSignature="zx6DdhxjXwgi7Ji+Qt/JvWyRGwsSIu4/Cy2hrBf3WirH9iNiohzL29ACbefhZ3SHLtypOJ29lyZJI1HBjPo0BA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.4/Bonk-2026.2.4-x86_64.dmg"
+                length="23887938"
+                type="application/octet-stream"
+                sparkle:edSignature="NMvDL064N4eQn4ofiqmr65u7oVlsNKOrvfbcHRoVq9duiEOem+pQK3iEDxkdDXZct+n9cMm7rxxLZEgqJeaNDA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.2.3</title>
             <pubDate>Wed, 26 Aug 2026 10:24:31 +0800</pubDate>
             <sparkle:version>20262003</sparkle:version>
