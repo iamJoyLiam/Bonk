@@ -9,10 +9,10 @@ import os.log
 final class TeamRelay: ObservableObject {
     static let shared = TeamRelay()
 
-    @Published private(set) var isHosting = false
-    @Published private(set) var isConnected = false
-    @Published private(set) var connectedPeers: [TeamPeer] = []
-    @Published private(set) var sharedSessionID: TeamSessionID?
+    @Published var isHosting = false
+    @Published var isConnected = false
+    @Published var connectedPeers: [TeamPeer] = []
+    @Published var sharedSessionID: TeamSessionID?
     @Published var driverPeerID: UUID?
     @Published var hostPeerID: UUID?
     @Published var pairingPin: String?
@@ -21,43 +21,43 @@ final class TeamRelay: ObservableObject {
     @Published var controlRevokedNotice: String?
     @Published var peerDisconnectedNotice: String?
     @Published var pendingShareHosts: [HostItemExport]?
-    @Published private(set) var hostedPort: UInt16?
+    @Published var hostedPort: UInt16?
 
-    private let logger = Logger(subsystem: "com.bonk", category: "TeamRelay")
-    private var hostListener: NWListener?
-    private var hostedConnections: [UUID: NWConnection] = [:]
-    private var hostedFramers: [UUID: TeamMessageFramer] = [:]
-    private(set) var hostPeer: TeamPeer?
-    private var hostHeartbeatTasks: [UUID: Task<Void, Never>] = [:]
-    private var hostPairingTimeoutTasks: [UUID: Task<Void, Never>] = [:]
-    private var hostLastActivity: [UUID: Date] = [:]
+    let logger = Logger(subsystem: "com.bonk", category: "TeamRelay")
+    var hostListener: NWListener?
+    var hostedConnections: [UUID: NWConnection] = [:]
+    var hostedFramers: [UUID: TeamMessageFramer] = [:]
+    var hostPeer: TeamPeer?
+    var hostHeartbeatTasks: [UUID: Task<Void, Never>] = [:]
+    var hostPairingTimeoutTasks: [UUID: Task<Void, Never>] = [:]
+    var hostLastActivity: [UUID: Date] = [:]
 
-    private var guestConnection: NWConnection?
-    private var guestFramer = TeamMessageFramer()
-    private var guestPeer: TeamPeer?
-    private var guestHeartbeatTask: Task<Void, Never>?
-    private var guestPairingTimeoutTask: Task<Void, Never>?
-    private var guestLastActivity = Date.distantPast
-    private var guestConnectionGeneration: UInt64 = 0
-    private var hasPaired = false
+    var guestConnection: NWConnection?
+    var guestFramer = TeamMessageFramer()
+    var guestPeer: TeamPeer?
+    var guestHeartbeatTask: Task<Void, Never>?
+    var guestPairingTimeoutTask: Task<Void, Never>?
+    var guestLastActivity = Date.distantPast
+    var guestConnectionGeneration: UInt64 = 0
+    var hasPaired = false
 
-    private var isHostMode = false
-    private var pairingFailureTimestamps: [Date] = []
-    private var replayBuffer: [ReplayChunk] = []
-    private var replayByteCount = 0
-    private var pendingGuestOutput = ""
-    private var guestOutputReplay = ""
-    private var guestOutputByteCount = 0
-    private var guestOutputRevision: UInt64 = 0
-    private var guestOutputFlushTask: Task<Void, Never>?
+    var isHostMode = false
+    var pairingFailureTimestamps: [Date] = []
+    var replayBuffer: [ReplayChunk] = []
+    var replayByteCount = 0
+    var pendingGuestOutput = ""
+    var guestOutputReplay = ""
+    var guestOutputByteCount = 0
+    var guestOutputRevision: UInt64 = 0
+    var guestOutputFlushTask: Task<Void, Never>?
 
-    private static let guestOutputFlushInterval = Duration.milliseconds(16)
-    private static let heartbeatTimeout: TimeInterval = max(
+    static let guestOutputFlushInterval = Duration.milliseconds(16)
+    static let heartbeatTimeout: TimeInterval = max(
         TeamConstants.connectionTimeoutSeconds,
         TeamConstants.heartbeatIntervalSeconds * 2
     )
 
-    private struct ReplayChunk {
+    struct ReplayChunk {
         let sessionID: TeamSessionID
         let payload: String
     }
@@ -227,7 +227,7 @@ final class TeamRelay: ObservableObject {
         resetGuestOutput()
     }
 
-    private func cancelGuestResources() {
+    func cancelGuestResources() {
         guestConnection?.cancel()
         guestConnection = nil
         guestHeartbeatTask?.cancel()
@@ -237,7 +237,7 @@ final class TeamRelay: ObservableObject {
         guestFramer = TeamMessageFramer()
     }
 
-    private func finishGuestConnection(generation: UInt64, error: String?) {
+    func finishGuestConnection(generation: UInt64, error: String?) {
         guard generation == guestConnectionGeneration else { return }
         if let error {
             lastError = error
@@ -257,7 +257,7 @@ final class TeamRelay: ObservableObject {
         connectedPeers.removeAll()
     }
 
-    private func startGuestPairingTimeout(generation: UInt64) {
+    func startGuestPairingTimeout(generation: UInt64) {
         guestPairingTimeoutTask?.cancel()
         guestPairingTimeoutTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(TeamConstants.connectionTimeoutSeconds))
@@ -271,7 +271,7 @@ final class TeamRelay: ObservableObject {
         }
     }
 
-    private func startGuestHeartbeat(generation: UInt64) {
+    func startGuestHeartbeat(generation: UInt64) {
         guestHeartbeatTask?.cancel()
         guestHeartbeatTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
@@ -287,438 +287,6 @@ final class TeamRelay: ObservableObject {
                 }
                 self.sendToGuest(.heartbeat)
             }
-        }
-    }
-
-    // MARK: - Host: handle connection
-
-    private func handleNewHostConnection(_ connection: NWConnection) {
-        guard isHosting else {
-            connection.cancel()
-            return
-        }
-
-        let peerConnectionID = UUID()
-        hostedConnections[peerConnectionID] = connection
-        hostedFramers[peerConnectionID] = TeamMessageFramer()
-        hostLastActivity[peerConnectionID] = Date()
-
-        connection.stateUpdateHandler = { [weak self] state in
-            Task { @MainActor in
-                guard let self else { return }
-                switch state {
-                case .ready:
-                    self.logger.info("Host accepted connection \(peerConnectionID.uuidString.prefix(8))")
-                    self.startHostPairingTimeout(for: peerConnectionID)
-                    self.receiveOnHostConnection(peerConnectionID: peerConnectionID)
-                    self.updatePresenceSnapshot()
-                case .failed(let error):
-                    self.logger.error("Host connection failed: \(error.localizedDescription)")
-                    self.removeHostConnection(peerConnectionID)
-                case .cancelled:
-                    self.removeHostConnection(peerConnectionID)
-                default:
-                    break
-                }
-            }
-        }
-        connection.start(queue: .global(qos: .utility))
-    }
-
-    private func startHostPairingTimeout(for peerConnectionID: UUID) {
-        hostPairingTimeoutTasks[peerConnectionID]?.cancel()
-        hostPairingTimeoutTasks[peerConnectionID] = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(TeamConstants.connectionTimeoutSeconds))
-            guard let self,
-                  !Task.isCancelled,
-                  self.hostedConnections[peerConnectionID] != nil,
-                  !self.isPaired(peerConnectionID)
-            else { return }
-            self.rejectHostConnection(peerConnectionID, reason: "配对超时")
-        }
-    }
-
-    private func startHostHeartbeat(for peerConnectionID: UUID) {
-        hostHeartbeatTasks[peerConnectionID]?.cancel()
-        hostHeartbeatTasks[peerConnectionID] = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(TeamConstants.heartbeatIntervalSeconds))
-                guard let self,
-                      self.hostedConnections[peerConnectionID] != nil,
-                      self.isPaired(peerConnectionID)
-                else { return }
-
-                let lastActivity = self.hostLastActivity[peerConnectionID] ?? .distantPast
-                if Date().timeIntervalSince(lastActivity) > Self.heartbeatTimeout {
-                    self.removeHostConnection(peerConnectionID)
-                    return
-                }
-                if let connection = self.hostedConnections[peerConnectionID] {
-                    self.sendMessage(.heartbeat, to: connection)
-                }
-            }
-        }
-    }
-
-    private func removeHostConnection(_ peerConnectionID: UUID) {
-        hostedConnections[peerConnectionID]?.cancel()
-        hostedConnections.removeValue(forKey: peerConnectionID)
-        hostedFramers.removeValue(forKey: peerConnectionID)
-        hostLastActivity.removeValue(forKey: peerConnectionID)
-        hostHeartbeatTasks.removeValue(forKey: peerConnectionID)?.cancel()
-        hostPairingTimeoutTasks.removeValue(forKey: peerConnectionID)?.cancel()
-
-        guard let index = connectedPeers.firstIndex(where: { $0.id == peerConnectionID }) else {
-            return
-        }
-
-        let peerName = connectedPeers[index].displayName
-        peerDisconnectedNotice = "访客 \(peerName) 已断开"
-        connectedPeers.remove(at: index)
-        if pendingControlRequest?.peerID == peerConnectionID {
-            pendingControlRequest = nil
-        }
-        if driverPeerID == peerConnectionID {
-            driverPeerID = hostPeer?.id
-            if var hostPeer {
-                hostPeer.isDriver = true
-                self.hostPeer = hostPeer
-            }
-            for index in connectedPeers.indices {
-                connectedPeers[index].isDriver = false
-            }
-            broadcastToGuests(.controlRevoke(peerID: peerConnectionID))
-        }
-        updatePresenceSnapshot()
-    }
-
-    private func isPaired(_ peerConnectionID: UUID) -> Bool {
-        connectedPeers.contains { $0.id == peerConnectionID }
-    }
-
-    private func rejectHostConnection(_ peerConnectionID: UUID, reason: String) {
-        guard let connection = hostedConnections[peerConnectionID] else { return }
-        sendMessage(.pairingRejected(reason: reason), to: connection)
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(250))
-            guard let self,
-                  self.hostedConnections[peerConnectionID] != nil,
-                  !self.isPaired(peerConnectionID)
-            else { return }
-            self.removeHostConnection(peerConnectionID)
-        }
-    }
-
-    // MARK: - Messaging
-
-    private func sendMessage(_ message: TeamMessage, to connection: NWConnection) {
-        guard let payload = try? JSONEncoder().encode(message) else {
-            logger.error("Failed to encode team message")
-            return
-        }
-        guard payload.count <= TeamConstants.maxFrameBytes else {
-            logger.error("Team message exceeds frame limit")
-            return
-        }
-
-        var framed = payload
-        framed.append(0x0A)
-        connection.send(content: framed, completion: .contentProcessed { [weak self] error in
-            guard let error else { return }
-            Task { @MainActor in
-                self?.logger.error("Team send failed: \(error.localizedDescription)")
-            }
-        })
-    }
-
-    private func sendToGuest(_ message: TeamMessage) {
-        guard let connection = guestConnection else { return }
-        sendMessage(message, to: connection)
-    }
-
-    private func broadcastToGuests(_ message: TeamMessage) {
-        guard let payload = try? JSONEncoder().encode(message) else {
-            logger.error("Failed to encode team message")
-            return
-        }
-        guard payload.count <= TeamConstants.maxFrameBytes else {
-            logger.error("Team message exceeds frame limit")
-            return
-        }
-        var framed = payload
-        framed.append(0x0A)
-        for (peerID, connection) in hostedConnections where isPaired(peerID) {
-            connection.send(content: framed, completion: .contentProcessed { [weak self] error in
-                guard let error else { return }
-                Task { @MainActor in
-                    self?.logger.error("Team send failed: \(error.localizedDescription)")
-                }
-            })
-        }
-    }
-
-    // MARK: - Host receive
-
-    private func receiveOnHostConnection(peerConnectionID: UUID) {
-        guard let connection = hostedConnections[peerConnectionID] else { return }
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
-            guard let self else { return }
-            if let data, !data.isEmpty {
-                Task { @MainActor in
-                    self.handleHostData(data, peerConnectionID: peerConnectionID)
-                }
-            }
-            if let error {
-                self.logger.error("Host receive error: \(error.localizedDescription)")
-                Task { @MainActor in
-                    self.removeHostConnection(peerConnectionID)
-                }
-                return
-            }
-            if isComplete {
-                Task { @MainActor in
-                    self.removeHostConnection(peerConnectionID)
-                }
-                return
-            }
-            Task { @MainActor in
-                self.receiveOnHostConnection(peerConnectionID: peerConnectionID)
-            }
-        }
-    }
-
-    private func handleHostData(_ data: Data, peerConnectionID: UUID) {
-        guard hostedConnections[peerConnectionID] != nil else { return }
-        hostLastActivity[peerConnectionID] = Date()
-
-        var framer = hostedFramers[peerConnectionID] ?? TeamMessageFramer()
-        do {
-            for frame in try framer.append(data) {
-                let message = try JSONDecoder().decode(TeamMessage.self, from: frame)
-                handleHostMessage(message, peerConnectionID: peerConnectionID)
-            }
-            hostedFramers[peerConnectionID] = framer
-        } catch {
-            logger.warning("Host rejected malformed team frame")
-            removeHostConnection(peerConnectionID)
-        }
-    }
-
-    private func handleHostMessage(_ message: TeamMessage, peerConnectionID: UUID) {
-        switch message {
-        case let .pairingChallenge(pin, peer):
-            guard !isPaired(peerConnectionID) else { return }
-            guard connectedPeers.count < TeamConstants.maxGuestCount else {
-                rejectHostConnection(peerConnectionID, reason: "主持端已达到访客上限")
-                return
-            }
-            guard allowPairingAttempt() else {
-                rejectHostConnection(peerConnectionID, reason: "配对尝试过多，请稍后再试")
-                return
-            }
-            guard pin == pairingPin else {
-                recordPairingFailure()
-                logger.warning("Host pairing PIN mismatch")
-                rejectHostConnection(peerConnectionID, reason: "PIN 不正确")
-                return
-            }
-
-            hostPairingTimeoutTasks.removeValue(forKey: peerConnectionID)?.cancel()
-            let guestPeer = TeamPeer(
-                id: peerConnectionID,
-                displayName: sanitizedDisplayName(peer.displayName, fallback: "Guest"),
-                role: .guest
-            )
-            connectedPeers.append(guestPeer)
-            startHostHeartbeat(for: peerConnectionID)
-            updatePresenceSnapshot()
-            sendReplay(to: peerConnectionID)
-            if let connection = hostedConnections[peerConnectionID] {
-                sendMessage(.notice(payload: "[Connected]\r\n"), to: connection)
-            }
-            if sharedSessionID == nil,
-               let connection = hostedConnections[peerConnectionID]
-            {
-                sendMessage(
-                    .notice(payload: "主持端当前没有可共享的终端，请先打开或连接一个终端。\n"),
-                    to: connection
-                )
-            }
-
-        case let .terminalInput(sessionID, payload):
-            guard isPaired(peerConnectionID),
-                  driverPeerID == peerConnectionID,
-                  sessionID == sharedSessionID
-            else {
-                return
-            }
-            forwardInput(payload, to: sessionID)
-
-        case let .resize(sessionID, columns, rows):
-            guard isPaired(peerConnectionID),
-                  driverPeerID == peerConnectionID,
-                  sessionID == sharedSessionID
-            else {
-                return
-            }
-            forwardResize(columns: columns, rows: rows, to: sessionID)
-
-        case let .controlRequest(_, displayName):
-            guard isPaired(peerConnectionID) else { return }
-            pendingControlRequest = (
-                peerID: peerConnectionID,
-                displayName: sanitizedDisplayName(displayName, fallback: "Guest")
-            )
-
-        case let .shareHosts(hosts):
-            guard isPaired(peerConnectionID) else { return }
-            pendingShareHosts = hosts
-
-        case .heartbeat:
-            hostLastActivity[peerConnectionID] = Date()
-            if let connection = hostedConnections[peerConnectionID] {
-                sendMessage(.heartbeat, to: connection)
-            }
-
-        default:
-            break
-        }
-    }
-
-    private func forwardInput(_ payload: String, to sessionID: TeamSessionID) {
-        guard let sessionManager = BonkAppDelegate.shared?.sessionManager,
-              let data = payload.data(using: .utf8)
-        else { return }
-        let bytes = Array(data)
-        Task { @MainActor in
-            try? await sessionManager.sendInput(
-                bytes[...],
-                to: sessionID.tabID,
-                paneID: sessionID.paneID
-            )
-        }
-    }
-
-    private func forwardResize(columns: Int, rows: Int, to sessionID: TeamSessionID) {
-        guard let sessionManager = BonkAppDelegate.shared?.sessionManager else { return }
-        Task { @MainActor in
-            try? await sessionManager.resizePTY(
-                cols: columns,
-                rows: rows,
-                tabID: sessionID.tabID,
-                paneID: sessionID.paneID
-            )
-        }
-    }
-
-    // MARK: - Guest receive
-
-    private func receiveOnGuestConnection(generation: UInt64) {
-        guard let connection = guestConnection else { return }
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
-            guard let self else { return }
-            if let data, !data.isEmpty {
-                Task { @MainActor in
-                    guard self.guestConnectionGeneration == generation else { return }
-                    self.handleGuestData(data)
-                }
-            }
-            if let error {
-                self.logger.error("Guest receive error: \(error.localizedDescription)")
-                Task { @MainActor in
-                    self.finishGuestConnection(
-                        generation: generation,
-                        error: self.hasPaired ? nil : "连接被拒绝，请检查 IP/Port/PIN"
-                    )
-                }
-                return
-            }
-            if isComplete {
-                Task { @MainActor in
-                    self.finishGuestConnection(generation: generation, error: nil)
-                }
-                return
-            }
-            Task { @MainActor in
-                guard self.guestConnectionGeneration == generation else { return }
-                self.receiveOnGuestConnection(generation: generation)
-            }
-        }
-    }
-
-    private func handleGuestData(_ data: Data) {
-        guestLastActivity = Date()
-        do {
-            for frame in try guestFramer.append(data) {
-                let message = try JSONDecoder().decode(TeamMessage.self, from: frame)
-                handleGuestMessage(message)
-            }
-        } catch {
-            logger.warning("Guest rejected malformed team frame")
-            finishGuestConnection(generation: guestConnectionGeneration, error: "主机发送了无效数据")
-        }
-    }
-
-    private func handleGuestMessage(_ message: TeamMessage) {
-        switch message {
-        case let .terminalOutput(sessionID, payload):
-            guard sharedSessionID == nil || sharedSessionID == sessionID else { return }
-            sharedSessionID = sessionID
-            hasPaired = true
-            queueGuestOutput(payload)
-
-        case let .notice(payload):
-            hasPaired = true
-            queueGuestOutput(payload)
-
-        case let .presenceSnapshot(snapshot):
-            hasPaired = true
-            guestPairingTimeoutTask?.cancel()
-            guestPairingTimeoutTask = nil
-            let previousSessionID = sharedSessionID
-            hostPeerID = snapshot.hostPeer.id
-            driverPeerID = snapshot.driverPeerID
-            sharedSessionID = snapshot.sharedSessionID
-            connectedPeers = snapshot.guestPeers
-            if previousSessionID != snapshot.sharedSessionID {
-                resetGuestOutput()
-            }
-
-        case let .peerJoined(peer):
-            hasPaired = true
-            if !connectedPeers.contains(where: { $0.id == peer.id }) {
-                connectedPeers.append(peer)
-            }
-
-        case let .peerLeft(peerID):
-            connectedPeers.removeAll { $0.id == peerID }
-            if driverPeerID == peerID {
-                driverPeerID = hostPeerID
-            }
-
-        case let .controlGrant(peerID):
-            driverPeerID = peerID
-
-        case let .controlRevoke(peerID):
-            if driverPeerID == peerID {
-                driverPeerID = hostPeerID
-                controlRevokedNotice = "主持人已收回控制权，需重新请求授权"
-            }
-
-        case let .shareHosts(hosts):
-            pendingShareHosts = hosts
-
-        case let .pairingRejected(reason):
-            finishGuestConnection(
-                generation: guestConnectionGeneration,
-                error: reason
-            )
-
-        case .heartbeat:
-            sendToGuest(.heartbeat)
-
-        default:
-            break
         }
     }
 
@@ -787,74 +355,6 @@ final class TeamRelay: ObservableObject {
         }
     }
 
-    // MARK: - Guest output buffering
-
-    func guestOutputSnapshot() -> (revision: UInt64, payload: String) {
-        (guestOutputRevision, guestOutputReplay)
-    }
-
-    private func queueGuestOutput(_ payload: String) {
-        guard !payload.isEmpty else { return }
-        pendingGuestOutput.append(payload)
-        scheduleGuestOutputFlush()
-    }
-
-    private func scheduleGuestOutputFlush() {
-        guard guestOutputFlushTask == nil else { return }
-        guestOutputFlushTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: Self.guestOutputFlushInterval)
-            guard !Task.isCancelled else { return }
-            self?.flushGuestOutput()
-        }
-    }
-
-    private func flushGuestOutput() {
-        guestOutputFlushTask = nil
-        guard !pendingGuestOutput.isEmpty else { return }
-        let payload = pendingGuestOutput
-        pendingGuestOutput.removeAll(keepingCapacity: true)
-        appendGuestReplay(payload)
-        guestOutputRevision &+= 1
-        NotificationCenter.default.post(
-            name: .teamGuestDidReceiveOutput,
-            object: nil,
-            userInfo: [
-                "payload": payload,
-                "revision": guestOutputRevision
-            ]
-        )
-    }
-
-    private func appendGuestReplay(_ payload: String) {
-        guestOutputReplay.append(payload)
-        guestOutputByteCount += payload.utf8.count
-        let maxBytes = TeamConstants.replayBufferByteLimit
-        if guestOutputByteCount > maxBytes {
-            let data = Data(guestOutputReplay.utf8)
-            let suffix = data.suffix(maxBytes)
-            // Drop incomplete UTF-8 sequence at the start (up to 3 bytes)
-            var decoded: String? = nil
-            for offset in 0..<min(4, suffix.count) {
-                let slice = suffix.dropFirst(offset)
-                if let str = String(data: slice, encoding: .utf8) {
-                    decoded = str
-                    break
-                }
-            }
-            guestOutputReplay = decoded ?? String(decoding: suffix, as: UTF8.self)
-            guestOutputByteCount = guestOutputReplay.utf8.count
-        }
-    }
-
-    private func resetGuestOutput() {
-        guestOutputFlushTask?.cancel()
-        guestOutputFlushTask = nil
-        pendingGuestOutput.removeAll(keepingCapacity: true)
-        guestOutputReplay.removeAll(keepingCapacity: true)
-        guestOutputByteCount = 0
-        guestOutputRevision = 0
-    }
-
     // MARK: - Control (Host)
 
     func grantControl(to peerID: UUID) {
@@ -892,7 +392,7 @@ final class TeamRelay: ObservableObject {
 
     // MARK: - Presence / Replay
 
-    private func updatePresenceSnapshot() {
+    func updatePresenceSnapshot() {
         guard let hostPeer else { return }
         let snapshot = TeamPresenceSnapshot(
             hostPeer: hostPeer,
@@ -903,7 +403,7 @@ final class TeamRelay: ObservableObject {
         broadcastToGuests(.presenceSnapshot(snapshot: snapshot))
     }
 
-    private func appendReplay(sessionID: TeamSessionID, payload: String) {
+    func appendReplay(sessionID: TeamSessionID, payload: String) {
         replayBuffer.append(ReplayChunk(sessionID: sessionID, payload: payload))
         replayByteCount += payload.utf8.count
         while replayByteCount > TeamConstants.replayBufferByteLimit ||
@@ -915,7 +415,7 @@ final class TeamRelay: ObservableObject {
         }
     }
 
-    private func sendReplay(to peerConnectionID: UUID) {
+    func sendReplay(to peerConnectionID: UUID) {
         guard let connection = hostedConnections[peerConnectionID] else { return }
         for chunk in replayBuffer {
             sendMessage(
@@ -927,23 +427,23 @@ final class TeamRelay: ObservableObject {
 
     // MARK: - Pairing helpers
 
-    private func allowPairingAttempt() -> Bool {
+    func allowPairingAttempt() -> Bool {
         let cutoff = Date().addingTimeInterval(-60)
         pairingFailureTimestamps.removeAll { $0 < cutoff }
         return pairingFailureTimestamps.count < TeamConstants.maxPairingFailuresPerMinute
     }
 
-    private func recordPairingFailure() {
+    func recordPairingFailure() {
         pairingFailureTimestamps.append(Date())
     }
 
-    private func sanitizedDisplayName(_ name: String, fallback: String) -> String {
+    func sanitizedDisplayName(_ name: String, fallback: String) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return fallback }
         return String(trimmed.prefix(64))
     }
 
-    private func currentActiveSessionID() -> TeamSessionID? {
+    func currentActiveSessionID() -> TeamSessionID? {
         guard let sessionManager = BonkAppDelegate.shared?.sessionManager,
               let tab = sessionManager.activeTab,
               let paneID = tab.activePaneID
@@ -951,7 +451,7 @@ final class TeamRelay: ObservableObject {
         return TeamSessionID(tabID: tab.id, paneID: paneID)
     }
 
-    private func generatePin() -> String {
+    func generatePin() -> String {
         String(format: "%06d", Int.random(in: 0...999_999))
     }
 }
