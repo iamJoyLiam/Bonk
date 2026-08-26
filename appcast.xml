@@ -6,6 +6,35 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.2.3</title>
+            <pubDate>Wed, 26 Aug 2026 10:24:31 +0800</pubDate>
+            <sparkle:version>20262003</sparkle:version>
+            <sparkle:shortVersionString>2026.2.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- 修复：永久移除终端 Focus Mode 侧边框（连接后左侧 120pt 蓝点列表），该模式入口与状态已彻底删除
+- 修复：恢复终端内边距 4/8pt 并使容器背景跟随主题，不再贴边且无对比色框，焦点蓝框已禁用
+- 修复：设置 → 通用 “自动录制 / 自动同步 SSH Config” 文案国际化（中英文）
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.3/Bonk-2026.2.3-arm64.dmg"
+                length="22902631"
+                type="application/octet-stream"
+                sparkle:edSignature="mVI25ZMXu5Gg4NiGXWz1/1TYIW/Qfq8kTAUFQ5rzE1iPUhexwqXYKBmBn6DT7CS0l/vrIv+MW0E+ET/wcft3Aw=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.3/Bonk-2026.2.3-x86_64.dmg"
+                length="23778876"
+                type="application/octet-stream"
+                sparkle:edSignature="AVWs2QHj0E6NO/zGlin3Y4rMscGuyg8OafXwlABQhZudf2VSwIpsD/+cojh6MKPabcHQ1xN/cZ5+L5jTAFHJBQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.2.2</title>
             <pubDate>Tue, 25 Aug 2026 18:43:26 +0800</pubDate>
             <sparkle:version>20262002</sparkle:version>

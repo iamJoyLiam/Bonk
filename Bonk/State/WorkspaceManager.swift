@@ -10,9 +10,6 @@ import SwiftUI
 @Observable
 @MainActor
 final class WorkspaceManager {
-    var isFocusMode: Bool = UserDefaults.standard.bool(forKey: "workspace_focus_mode") {
-        didSet { UserDefaults.standard.set(isFocusMode, forKey: "workspace_focus_mode") }
-    }
     // MARK: - Right Sidebar Inspectors
 
     /// Which right sidebar inspector is active (only one at a time).
@@ -89,9 +86,5 @@ final class WorkspaceManager {
 
     func toggleBroadcast() {
         broadcastManager.toggle()
-    }
-
-    func toggleFocusMode() {
-        isFocusMode.toggle()
     }
 }

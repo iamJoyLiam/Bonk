@@ -107,7 +107,7 @@ import SwiftUI
         }
 
         private var terminalBackground: SwiftUI.Color {
-            SwiftUI.Color(nsColor: .controlBackgroundColor)
+            SwiftUI.Color(nsColor: colorScheme.background.nsColor)
         }
 
         private var connectingView: some View {

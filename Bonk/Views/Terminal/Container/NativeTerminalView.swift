@@ -36,6 +36,18 @@ import SwiftTerm
             }
         }
 
+        // MARK: - Focus Ring
+
+        override init(frame frameRect: NSRect, font: NSFont?) {
+            super.init(frame: frameRect, font: font)
+            focusRingType = .none
+        }
+
+        required init?(coder: NSCoder) {
+            super.init(coder: coder)
+            focusRingType = .none
+        }
+
         // MARK: - Inline Completion
 
         let completionService = InlineCompletionService.shared

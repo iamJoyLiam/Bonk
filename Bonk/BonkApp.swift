@@ -221,11 +221,6 @@ struct BonkApp: App {
                     Task { @MainActor in BonkAppDelegate.shared?.coordinator?.showRecordings = true }
                 }
                 Divider()
-                Button((BonkAppDelegate.shared?.workspace?.isFocusMode ?? false) ? "Exit Focus Mode" : "Focus Mode") {
-                    Task { @MainActor in BonkAppDelegate.shared?.workspace?.toggleFocusMode() }
-                }
-                .keyboardShortcut("f", modifiers: [.command, .option])
-                Divider()
                 Menu(i18n.t(.theme)) {
                     Button(i18n.t(.system)) { Task { @MainActor in TerminalThemeManager.shared.setActive("system") } }
                     ForEach(ThemeRegistry.all, id: \.id) { theme in

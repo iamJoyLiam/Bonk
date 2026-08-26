@@ -55,6 +55,9 @@ func applyColorScheme(to view: SwiftTerm.TerminalView, scheme: TerminalColorSche
     import AppKit
 
     /// Inset of the terminal view within its container.
+    /// Restored to (4, 8) for comfortable padding; container background now matches
+    /// `colorScheme.background` (see TerminalContainerView/PaneContainerBridge) so
+    /// the inset no longer appears as a contrasting "box".
     let terminalViewInsets = NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
 
     /// Create a monospaced font, falling back to the system font when the

@@ -27,7 +27,7 @@ struct GeneralSettingsView: View {
                 Toggle(i18n.t(.hostAutoFillClear), isOn: $preferences.hostAutoFillClear)
             }
 
-            Section("SFTP") {
+            Section(i18n.t(.sftp)) {
                 Toggle(i18n.t(.sftpOverwriteAlways), isOn: Binding(
                     get: { preferences.sftpOverwriteAlways ?? false },
                     set: { preferences.sftpOverwriteAlways = $0 }
@@ -62,21 +62,21 @@ struct GeneralSettingsView: View {
                 }
             }
 
-            Section("Recording") {
-                Toggle("Auto-record sessions", isOn: Binding(
+            Section(i18n.t(.recording)) {
+                Toggle(i18n.t(.autoRecordSessions), isOn: Binding(
                     get: { preferences.autoRecord ?? false },
                     set: { preferences.autoRecord = $0 }
                 ))
-                Text("When enabled, every new SSH connection starts asciicast recording automatically.")
+                Text(i18n.t(.autoRecordDesc))
                     .font(.caption).foregroundStyle(.secondary)
             }
 
-            Section("SSH Config") {
-                Toggle("Auto-sync ~/.ssh/config", isOn: Binding(
+            Section(i18n.t(.sshConfig)) {
+                Toggle(i18n.t(.autoSyncSSHConfig), isOn: Binding(
                     get: { preferences.autoSyncSSHConfig ?? false },
                     set: { preferences.autoSyncSSHConfig = $0 }
                 ))
-                Text("When enabled, Bonk watches ~/.ssh/config and offers to import changes.")
+                Text(i18n.t(.autoSyncSSHConfigDesc))
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

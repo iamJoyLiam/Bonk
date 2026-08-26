@@ -549,8 +549,15 @@ enum LKey: String, CaseIterable {
     case showAll = "show_all"
     case rec = "rec"
 
+    // General — Recording / SSH Config (GeneralSettingsView)
+    case autoRecordSessions = "auto_record_sessions"
+    case autoRecordDesc = "auto_record_desc"
+    case sshConfig = "ssh_config"
+    case autoSyncSSHConfig = "auto_sync_ssh_config"
+    case autoSyncSSHConfigDesc = "auto_sync_ssh_config_desc"
+
     // Triggers
-    case triggers = "triggers"
+    case triggers
     case triggersDescription = "triggers_description"
     case noTriggers = "no_triggers"
     case noTriggersDescription = "no_triggers_description"

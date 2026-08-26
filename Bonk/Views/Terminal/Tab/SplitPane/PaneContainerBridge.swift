@@ -155,7 +155,7 @@ import SwiftUI
         }
 
         private var terminalBackground: SwiftUI.Color {
-            SwiftUI.Color(nsColor: .controlBackgroundColor)
+            SwiftUI.Color(nsColor: colorScheme.background.nsColor)
         }
 
         @Environment(I18n.self) var i18n

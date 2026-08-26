@@ -118,7 +118,7 @@ struct ContentView: View {
                 cursorBlink: themeManager.cursorBlink,
                 showSearch: $showTerminalSearch
             )
-            .background(colorScheme.isTransparent ? Color.clear : Color(nsColor: .controlBackgroundColor))
+            .background(colorScheme.isTransparent ? Color.clear : Color(nsColor: colorScheme.background.nsColor))
             .clipped()
             // SFTP independent window
             .onChange(of: workspace.isSFTPWindowOpen) { _, isOpen in
