@@ -308,10 +308,11 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             Task { @MainActor in NotificationCenter.default.post(name: .commandBlockDidAdd, object: nil, userInfo: ["block": finishedBlock]) }
             activeCommandBlock.withLockedValue { $0 = nil }
         }
-        // Colorize for display only. Team now shares the same Engine tick
-        // (TeamTerminalConsumer on the same TerminalEngine), so no separate
-        // coalescer is needed here.
-        let displayText = LogColorizer.colorize(text)
+        // Display text is raw here — single colorization point is now
+        // TerminalEngine's consumers (AppKit + Team) on the coalesced tick.
+        // Doing it per-chunk here would miss signatures split across chunks
+        // and cause double hasANSI skips on coalesced buffers.
+        let displayText = text
         // Send to all live consumers with per-consumer backpressure.
         // Skip consumers whose pending bytes exceed the high watermark;
         // they will resume once the Coordinator calls decrementPendingBytes().
