@@ -189,3 +189,35 @@ extension TeamRelay {
         (guestOutputRevision, guestOutputReplay)
     }
 }
+
+// MARK: - Guest send API
+
+extension TeamRelay {
+    func sendInputFromGuest(_ payload: String, sessionID: TeamSessionID? = nil) {
+        guard let sessionID = sessionID ?? sharedSessionID else { return }
+        if let guestPeer {
+            markTyping(peerID: guestPeer.id, displayName: guestPeer.displayName)
+        }
+        sendToGuest(.terminalInput(sessionID: sessionID, payload: payload))
+    }
+
+    func sendResizeFromGuest(columns: Int, rows: Int) {
+        guard let sessionID = sharedSessionID else { return }
+        sendToGuest(.resize(sessionID: sessionID, columns: columns, rows: rows))
+    }
+
+    func sendControlRequest(displayName: String) {
+        guard let guestPeer else { return }
+        sendToGuest(.controlRequest(peerID: guestPeer.id, displayName: displayName))
+    }
+
+    func shareHosts(_ hosts: [HostItemExport]) {
+        guard !hosts.isEmpty else { return }
+        let message = TeamMessage.shareHosts(hosts: hosts)
+        if isHosting {
+            broadcastToGuests(message)
+        } else if isConnected {
+            sendToGuest(message)
+        }
+    }
+}
