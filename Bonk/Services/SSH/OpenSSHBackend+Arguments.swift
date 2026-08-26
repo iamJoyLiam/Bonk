@@ -21,7 +21,7 @@ extension OpenSSHBackend {
 
     func sftpArguments(attemptID: String) -> [String] {
         var args = commonOpenSSHArguments(
-            additionalOptions: ["-B", "131072", "-R", "128"],
+            additionalOptions: ["-B", "262144", "-R", "256"],
             attemptID: attemptID
         )
         args += ["-P", String(config.port), "\(config.username)@\(config.host)"]
@@ -38,6 +38,10 @@ extension OpenSSHBackend {
             "-o", "GlobalKnownHostsFile=/dev/null",
             "-o", "NumberOfPasswordPrompts=2",
             "-o", "ConnectTimeout=10",
+            // P2 加密与 QoS 择优：GCM 硬件加速优先，批量传输 QoS
+            "-o", "Ciphers=\(SFTPCompressionStrategy.preferredCiphers)",
+            "-o", "MACs=\(SFTPCompressionStrategy.preferredMACs)",
+            "-o", "IPQoS=throughput",
         ]
         args += legacyRSACompatibilityArguments()
         if let req = config.algorithmRequirements, !req.isEmpty {

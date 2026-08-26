@@ -75,11 +75,11 @@ final class SerialPortService {
 
     private let logger = Logger(subsystem: "com.bonk", category: "SerialPort")
 
-    private var notificationPort: OpaquePointer?
-    private var runLoopSource: CFRunLoopSource?
-    private var matchedIterator: io_iterator_t = 0
-    private var removedIterator: io_iterator_t = 0
-    private var isMonitoring = false
+    nonisolated(unsafe) private var notificationPort: OpaquePointer?
+    nonisolated(unsafe) private var runLoopSource: CFRunLoopSource?
+    nonisolated(unsafe) private var matchedIterator: io_iterator_t = 0
+    nonisolated(unsafe) private var removedIterator: io_iterator_t = 0
+    nonisolated(unsafe) private var isMonitoring = false
 
     deinit {
         // Ensure IOKit resources are released even if stopMonitoring was not called.

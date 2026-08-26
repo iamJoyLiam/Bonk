@@ -345,16 +345,56 @@ final class SFTPService {
     /// Download file chunks with progress updates.
     /// Reads are pipelined (multiple in flight) so throughput isn't limited to one
     /// round trip per chunk, then reassembled in order locally.
+    /// P2: >500MB 自动分片并行（已知大小），否则单流 EOF 自适应。
     private func downloadChunks(
         file: SFTPFile, entry: SFTPFileEntry, localURL: URL,
         transferID: UUID
     ) async throws {
-        // 32_000 fits within the SSH channel's max packet size (Citadel uses the
-        // same limit internally for writes).
-        let chunkSize: UInt32 = 32_000
-        // In-flight read window: 16 × 32KB = 512KB, enough to keep a high-latency
-        // link saturated without buffering the whole file in memory.
-        let pipelineDepth = 32
+        // Sendable wrapper for the off-MainActor network reads below.
+        let remoteFile = SendableSFTPFile(file)
+
+        // P2 parallel download — 仅当大小已知且超过阈值
+        if entry.size > 0, SFTPParallelStrategy.shouldUseParallel(totalBytes: entry.size) {
+            Log.sftp.info("[P2] SFTPService downloadChunks parallel total=\(entry.size)")
+            do {
+                try await SFTPParallelTransferEngine.parallelDownload(
+                    remoteFile: remoteFile,
+                    localURL: localURL,
+                    totalBytes: entry.size,
+                    isCancelled: { [weak self] in
+                        if Task.isCancelled { return true }
+                        guard let self else { return false }
+                        return await MainActor.run {
+                            self.transfers.first(where: { $0.id == transferID })?.isCancelled ?? false
+                        }
+                    },
+                    onProgress: { [weak self] progress in
+                        Task { @MainActor in
+                            guard let self else { return }
+                            let clamped = min(max(progress, 0), 1)
+                            if let idx = self.transfers.firstIndex(where: { $0.id == transferID }) {
+                                self.transfers[idx].transferredBytes = UInt64(Double(entry.size) * clamped)
+                            }
+                        }
+                    }
+                )
+                if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                    transfers[idx].transferredBytes = entry.size
+                }
+                return
+            } catch is CancellationError {
+                throw SFTPServiceError.transferCancelled
+            } catch let err as SFTPServiceError where err == .transferCancelled {
+                throw err
+            } catch {
+                Log.sftp.warning("[P2] SFTPService parallelDownload failed, fallback: \(String(describing: error))")
+                // 清理残留文件，准备单流重试
+                try? FileManager.default.removeItem(at: localURL)
+            }
+        }
+
+        let chunkSize: UInt32 = UInt32(SFTPParallelStrategy.chunkSize)
+        let pipelineDepth: Int = SFTPParallelStrategy.pipelinePerShard(shards: 1, totalBytes: entry.size)
         var nextReadOffset: UInt64 = 0
         var nextWriteOffset: UInt64 = 0
         var pending: [UInt64: Data] = [:]
@@ -365,8 +405,6 @@ final class SFTPService {
         FileManager.default.createFile(atPath: localURL.path, contents: nil)
         let handle = try FileHandle(forWritingTo: localURL)
         defer { try? handle.close() }
-        // Sendable wrapper for the off-MainActor network reads below.
-        let remoteFile = SendableSFTPFile(file)
 
         // Don't rely on entry.size for loop control - it may be inaccurate
         // for some file types or SFTP servers. Read until EOF.
@@ -399,10 +437,13 @@ final class SFTPService {
                     pending[readOffset] = data
                 }
 
-                // Write completed chunks back in order
+                // Write completed chunks back in order — off MainActor via detached
                 while let bytes = pending.removeValue(forKey: nextWriteOffset) {
-                    try handle.write(contentsOf: bytes)
-                    nextWriteOffset += UInt64(bytes.count)
+                    let bytesToWrite = bytes
+                    try await Task.detached(priority: .userInitiated) {
+                        try handle.write(contentsOf: bytesToWrite)
+                    }.value
+                    nextWriteOffset += UInt64(bytesToWrite.count)
                     updateCounter += 1
                     if updateCounter % 10 == 0 {
                         if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
@@ -536,13 +577,10 @@ final class SFTPService {
             transferredBytes: 0, isComplete: false, error: nil
         ))
 
-        let handle = try FileHandle(forReadingFrom: localURL)
-        defer { try? handle.close() }
-
         do {
             try await sftp.withFile(filePath: remote, flags: [.write, .create, .truncate]) { file in
                 try await self.writeChunks(
-                    handle: handle, file: file, totalBytes: totalBytes,
+                    localURL: localURL, file: file, totalBytes: totalBytes,
                     transferID: transferID, continuation: continuation
                 )
 
@@ -686,43 +724,82 @@ final class SFTPService {
     #endif
 
     /// Write file chunks with pipelined concurrent writes.
-    /// SFTP is request/response: a write waits for the server's status reply, so
-    /// sequential writes cost one round trip per 32KB chunk. Keeping multiple
-    /// writes in flight raises throughput to window/RTT instead of 32KB/RTT.
+    /// File IO is off MainActor via SFTPTransferActor (DispatchIO), pipeline 1024×32KB=32MB.
+    /// P2: >500MB 自动切分片并行（4/8 shards），否则保持原自适应单流。
     private func writeChunks(
-        handle: FileHandle,
+        localURL: URL,
         file: SFTPFile,
         totalBytes: UInt64,
         transferID: UUID,
         continuation: AsyncThrowingStream<Double, Error>.Continuation
     ) async throws {
-        // 32_000 matches Citadel's internal SFTP write slice (SFTPFile.write).
-        // Larger buffers are split into sequential 32KB requests anyway.
-        let chunkSize = 32_000
-        // In-flight write window: 16 × 32KB = 512KB.
-        let pipelineDepth = 32
+        let remoteFile = SendableSFTPFile(file)
+
+        // P2 parallel path — 仅 Citadel Native 路径，OpenSSH 路径已在 performUpload 分流
+        if SFTPParallelStrategy.shouldUseParallel(totalBytes: totalBytes) {
+            Log.sftp.info("[P2] SFTPService writeChunks parallel total=\(totalBytes)")
+            do {
+                try await SFTPParallelTransferEngine.parallelUpload(
+                    localURL: localURL,
+                    remoteFile: remoteFile,
+                    totalBytes: totalBytes,
+                    isCancelled: { [weak self] in
+                        if Task.isCancelled { return true }
+                        guard let self else { return false }
+                        // Hop 到 MainActor 读取取消标记
+                        return await MainActor.run {
+                            self.transfers.first(where: { $0.id == transferID })?.isCancelled ?? false
+                        }
+                    },
+                    onProgress: { [weak self] progress in
+                        Task { @MainActor in
+                            guard let self else { return }
+                            let clamped = min(max(progress, 0), 1)
+                            if let idx = self.transfers.firstIndex(where: { $0.id == transferID }) {
+                                self.transfers[idx].transferredBytes = UInt64(Double(totalBytes) * clamped)
+                            }
+                            continuation.yield(clamped)
+                        }
+                    }
+                )
+                // 额外 MainActor 取消检查（用户点取消按钮）
+                if transfers.first(where: { $0.id == transferID })?.isCancelled == true {
+                    throw SFTPServiceError.transferCancelled
+                }
+                return
+            } catch is CancellationError {
+                throw SFTPServiceError.transferCancelled
+            } catch let err as SFTPServiceError where err == .transferCancelled {
+                throw err
+            } catch {
+                Log.sftp.warning("[P2] SFTPService parallelUpload failed, fallback to single stream: \(String(describing: error))")
+                // fallthrough to single stream
+            }
+        }
+
+        let chunkSize = SFTPParallelStrategy.chunkSize
+        let pipelineDepth: Int = SFTPParallelStrategy.pipelinePerShard(shards: 1, totalBytes: totalBytes)
+        let reader = try SFTPTransferActor(url: localURL)
+        defer { Task { await reader.close() } }
         var offset: UInt64 = 0
         var completedBytes: UInt64 = 0
         var pending = 0
         var updateCounter = 0
         var lastReportedProgress: Double = -1
 
-        // Sendable wrapper for the off-MainActor network writes below.
-        let remoteFile = SendableSFTPFile(file)
-
         try await withThrowingTaskGroup(of: Int.self) { group in
             while true {
                 let isCancelled = transfers.first(where: { $0.id == transferID })?.isCancelled ?? false
                 if isCancelled { throw SFTPServiceError.transferCancelled }
 
-                // Top up the write pipeline
+                // Top up the write pipeline — file read off MainActor via actor
                 while pending < pipelineDepth {
-                    guard let chunkData = try handle.read(upToCount: chunkSize), !chunkData.isEmpty else { break }
+                    let chunkData = try await reader.readChunk(offset: offset, length: chunkSize)
+                    guard !chunkData.isEmpty else { break }
                     let chunkOffset = offset
                     offset += UInt64(chunkData.count)
                     pending += 1
                     group.addTask {
-                        // Network write runs off the MainActor (see SFTPTransferEngine).
                         try await SFTPTransferEngine.writeChunk(
                             remoteFile, data: chunkData, at: chunkOffset
                         )
@@ -863,8 +940,24 @@ enum SFTPTransferEngine {
         data: Data,
         at offset: UInt64
     ) async throws -> Int {
-        var buffer = ByteBuffer(data: data)
+        // Zero-copy: avoid Data→Array→ByteBuffer double copy via direct ByteBufferAllocator
+        var buffer = ByteBufferAllocator().buffer(capacity: data.count)
+        data.withUnsafeBytes { ptr in
+            buffer.writeBytes(ptr)
+        }
         try await file.file.write(buffer, at: offset)
         return data.count
+    }
+
+    nonisolated static func writeBuffer(
+        _ file: SendableSFTPFile,
+        buffer: ByteBuffer,
+        at offset: UInt64
+    ) async throws -> Int {
+        // True zero-copy: buffer already from pread, no Data intermediate
+        var buf = buffer
+        let count = buf.readableBytes
+        try await file.file.write(buf, at: offset)
+        return count
     }
 }

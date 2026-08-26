@@ -721,6 +721,9 @@ public actor SSHNetworkService {
             }
             #endif
             if let activeClient = client {
+                if let cfg = config {
+                    return NativeSSHSession(client: activeClient, endpoint: endpoint, config: cfg, hostKeyStore: hostKeyStore)
+                }
                 return NativeSSHSession(client: activeClient, endpoint: endpoint)
             }
             return nil
