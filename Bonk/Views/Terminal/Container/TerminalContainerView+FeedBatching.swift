@@ -64,7 +64,10 @@ import SwiftTerm
             }
             guard !alreadyScheduled else { return }
             Task { [weak self] in
-                try? await Task.sleep(for: .milliseconds(5))
+                // Coalesce to one display frame (60 fps ≈ 16 ms) instead of 5 ms.
+                // 200 MainActor hops/s → ~60 hops/s, 3× fewer VT parses under flood,
+                // while interactive echo still feels instant (< 1 frame delay).
+                try? await Task.sleep(for: .milliseconds(16))
                 self?.flushBatch(onBytesProcessed: onBytesProcessed)
             }
         }

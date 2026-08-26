@@ -27,6 +27,8 @@ import SwiftTerm
 
         private var lastSyncedCols = -1
         private var lastSyncedRows = -1
+        private nonisolated(unsafe) var resizeDebounceTask: Task<Void, Never>?
+        private var pendingResize: (Int, Int)?
 
         /// Scroll sensitivity multiplier (exposed for setting from preferences).
         /// This wraps SwiftTerm's native scrollSensitivity property.
@@ -66,13 +68,26 @@ import SwiftTerm
             guard cols > 0, rows > 0 else { return }
 
             // Filter duplicate dimensions to avoid redundant SIGWINCH signals
-            guard cols != lastSyncedCols || rows != lastSyncedRows else { return }
+            guard cols != lastSyncedCols || rows != lastSyncedRows else {
+                positionGhostOverlay()
+                return
+            }
 
             lastSyncedCols = cols
             lastSyncedRows = rows
+            pendingResize = (cols, rows)
 
-            // At this point, AppKit has finalized the frame — dimensions are 100% accurate
-            onPhysicalLayout?(cols, rows)
+            // Coalesce rapid layout storms (splitter drag triggers dozens of layouts/s)
+            // into at most one SIGWINCH per display frame.
+            resizeDebounceTask?.cancel()
+            resizeDebounceTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(16))
+                guard !Task.isCancelled, let self, let pending = self.pendingResize else { return }
+                // Clear pending before firing so a new layout during the callback
+                // schedules a fresh debounce instead of being swallowed.
+                self.pendingResize = nil
+                self.onPhysicalLayout?(pending.0, pending.1)
+            }
             positionGhostOverlay()
         }
 
@@ -122,6 +137,7 @@ import SwiftTerm
 
         deinit {
             completionDebounceTask?.cancel()
+            resizeDebounceTask?.cancel()
             if let observer = resignObserver {
                 NotificationCenter.default.removeObserver(observer)
             }

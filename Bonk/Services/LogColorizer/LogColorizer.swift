@@ -44,12 +44,11 @@ enum LogColorizer {
     // MARK: - Line Processing
 
     private static func colorizeLine(_ line: String) -> String {
-        // Skip empty lines
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        if trimmed.isEmpty { return line }
-
-        // Skip lines that already contain ANSI escape sequences (server-colored output)
+        // Fast-path: empty or ANSI — no trimming needed first.
+        if line.isEmpty { return line }
         if hasANSI(line) { return line }
+        // Skip empty/whitespace-only lines — avoid double trimming (isShellNoise trims again).
+        if line.trimmingCharacters(in: .whitespaces).isEmpty { return line }
 
         // Skip shell prompts and cursor control
         if isShellNoise(line) { return line }
@@ -151,13 +150,21 @@ enum LogColorizer {
         text.contains("\u{1B}")
     }
 
+    // Cached shell-noise regexes — previously recompiled per line.
+    private static let shellNoiseRegex1: NSRegularExpression? = try? NSRegularExpression(
+        pattern: #"^(?:\$\s|>\s|#\s|[%>]\s)"#
+    )
+    private static let shellNoiseRegex2: NSRegularExpression? = try? NSRegularExpression(
+        pattern: #"^\w+@[\w.-]+:\S*\s*[#$>]\s*$"#
+    )
+
     /// Skip shell prompts, cursor control, tab completion noise.
     private static func isShellNoise(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty { return true }
-        // Prompt patterns
-        if trimmed.range(of: #"^(?:\$\s|>\s|#\s|[%>]\s)"#, options: .regularExpression) != nil { return true }
-        if trimmed.range(of: #"^\w+@[\w.-]+:\S*\s*[#$>]\s*$"#, options: .regularExpression) != nil { return true }
+        let range = NSRange(trimmed.startIndex..., in: trimmed)
+        if let r1 = shellNoiseRegex1, r1.firstMatch(in: trimmed, range: range) != nil { return true }
+        if let r2 = shellNoiseRegex2, r2.firstMatch(in: trimmed, range: range) != nil { return true }
         return false
     }
 }

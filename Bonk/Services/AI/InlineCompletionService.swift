@@ -634,16 +634,22 @@ final class InlineCompletionService {
         "error", "info", "help", "status", "up", "down", "created", "ports",
     ]
 
+    private nonisolated static let stripANSIRegex: NSRegularExpression? = try? NSRegularExpression(
+        pattern: #"\x1B(?:\[[0-9;?]*[a-zA-Z]|\][^\x07\x1B]*(?:\x07|\x1B\\))"#
+    )
+
     /// Remove CSI/OSC escapes so prompt tokens are not wasted on color codes.
     nonisolated private static func stripANSI(_ text: String) -> String {
-        guard let regex = try? NSRegularExpression(
-            pattern: #"\x1B(?:\[[0-9;?]*[a-zA-Z]|\][^\x07\x1B]*(?:\x07|\x1B\\))"#
-        ) else { return text }
+        guard let regex = stripANSIRegex else { return text }
         let range = NSRange(location: 0, length: (text as NSString).length)
         return regex.stringByReplacingMatches(in: text, range: range, withTemplate: "")
     }
 
     // MARK: - Output Normalization
+
+    private nonisolated static let promptLeftoverRegex: NSRegularExpression? = try? NSRegularExpression(
+        pattern: #"^[>\$#%❯➜]\s+"#
+    )
 
     /// Clean a model response into a single-line suggestion.
     /// Pure function so it is unit-testable.
@@ -662,18 +668,23 @@ final class InlineCompletionService {
         guard text.count <= maxSuggestionChars else { return "" }
 
         // Never suggest shell prompt leftovers.
-        if text.range(of: #"^[>\$#%❯➜]\s+"#, options: .regularExpression) != nil { return "" }
+        if let regex = promptLeftoverRegex,
+           regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil { return "" }
         return text
     }
 
     // MARK: - Prompt Prefix Stripping
+
+    private nonisolated static let commandTextRegex: NSRegularExpression? = try? NSRegularExpression(
+        pattern: #"[>%$#❯➜]\s+(\S.*)$"#
+    )
 
     /// Extract the command part from a terminal line that may contain a shell
     /// prompt prefix (e.g. `user@host:~$ docker ru` → `docker ru`).
     /// Matches the first prompt symbol followed by whitespace and a command.
     /// Pure function so it is unit-testable.
     static func commandText(from line: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: #"[>%$#❯➜]\s+(\S.*)$"#) else { return nil }
+        guard let regex = commandTextRegex else { return nil }
         let nsLine = line as NSString
         guard let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: nsLine.length)) else {
             return nil
