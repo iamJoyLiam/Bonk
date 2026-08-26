@@ -321,6 +321,7 @@ import SwiftUI
         // Engine seam — one per coordinator, display-synced via shared source
         nonisolated(unsafe) var terminalEngine: TerminalEngine?
         nonisolated(unsafe) var engineConsumerID: UUID?
+        nonisolated(unsafe) var engineConsumer: (any TerminalConsumer)?
         /// Access engine only on MainActor; creates lazily.
         @MainActor func getOrCreateEngine() -> TerminalEngine {
             if let e = terminalEngine { return e }

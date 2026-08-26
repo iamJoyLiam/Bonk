@@ -35,16 +35,20 @@ import SwiftTerm
                 if let old = oldID {
                     await MainActor.run {
                         self.getOrCreateEngine().unsubscribe(old)
-                        if self.engineConsumerID == old { self.engineConsumerID = nil }
+                        if self.engineConsumerID == old {
+                            self.engineConsumerID = nil
+                            self.engineConsumer = nil
+                        }
                     }
                 }
                 let newID = UUID()
                 await MainActor.run { self.engineConsumerID = newID }
-                // Subscribe view to engine (MainActor)
+                // Subscribe view to engine (MainActor) — hold strong ref so weak Engine entry stays alive
                 let engine = await MainActor.run { self.getOrCreateEngine() }
                 await MainActor.run {
                     guard let view = self.terminalView else { return }
                     let consumer = AppKitTerminalConsumer(terminalView: view, onBytesProcessed: onBytesProcessed)
+                    self.engineConsumer = consumer
                     engine.subscribe(newID, consumer: consumer)
                 }
                 Log.ui.info("[Feed] Feed task started (Engine), waiting for data")
@@ -57,7 +61,10 @@ import SwiftTerm
                 }
                 await MainActor.run {
                     engine.unsubscribe(newID)
-                    if self.engineConsumerID == newID { self.engineConsumerID = nil }
+                    if self.engineConsumerID == newID {
+                        self.engineConsumerID = nil
+                        self.engineConsumer = nil
+                    }
                 }
                 Log.ui.info("[Feed] Feed task ended (Engine)")
             }
