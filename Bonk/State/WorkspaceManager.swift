@@ -10,6 +10,14 @@ import SwiftUI
 @Observable
 @MainActor
 final class WorkspaceManager {
+    init() {
+        // Clean up legacy Focus Mode flag that previously created the sidebar "box".
+        // The feature was permanently removed in v2026.2.3; leftover defaults should not linger.
+        if UserDefaults.standard.object(forKey: "workspace_focus_mode") != nil {
+            UserDefaults.standard.removeObject(forKey: "workspace_focus_mode")
+        }
+    }
+
     // MARK: - Right Sidebar Inspectors
 
     /// Which right sidebar inspector is active (only one at a time).

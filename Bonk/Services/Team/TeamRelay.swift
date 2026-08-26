@@ -47,6 +47,7 @@ final class TeamRelay: ObservableObject {
     private var replayByteCount = 0
     private var pendingGuestOutput = ""
     private var guestOutputReplay = ""
+    private var guestOutputByteCount = 0
     private var guestOutputRevision: UInt64 = 0
     private var guestOutputFlushTask: Task<Void, Never>?
 
@@ -241,7 +242,7 @@ final class TeamRelay: ObservableObject {
         if let error {
             lastError = error
         } else if !hasPaired, isConnected {
-            lastError = lastError ?? "PIN 不正确或主机已断开"
+            lastError = "PIN 不正确或主机已断开"
         } else if hasPaired, isConnected {
             // Host disconnected after successful pairing — notify guest explicitly
             peerDisconnectedNotice = "主持人已断开连接"
@@ -400,7 +401,10 @@ final class TeamRelay: ObservableObject {
         sendMessage(.pairingRejected(reason: reason), to: connection)
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(250))
-            guard let self, self.hostedConnections[peerConnectionID] != nil else { return }
+            guard let self,
+                  self.hostedConnections[peerConnectionID] != nil,
+                  !self.isPaired(peerConnectionID)
+            else { return }
             self.removeHostConnection(peerConnectionID)
         }
     }
@@ -433,8 +437,23 @@ final class TeamRelay: ObservableObject {
     }
 
     private func broadcastToGuests(_ message: TeamMessage) {
+        guard let payload = try? JSONEncoder().encode(message) else {
+            logger.error("Failed to encode team message")
+            return
+        }
+        guard payload.count <= TeamConstants.maxFrameBytes else {
+            logger.error("Team message exceeds frame limit")
+            return
+        }
+        var framed = payload
+        framed.append(0x0A)
         for (peerID, connection) in hostedConnections where isPaired(peerID) {
-            sendMessage(message, to: connection)
+            connection.send(content: framed, completion: .contentProcessed { [weak self] error in
+                guard let error else { return }
+                Task { @MainActor in
+                    self?.logger.error("Team send failed: \(error.localizedDescription)")
+                }
+            })
         }
     }
 
@@ -808,9 +827,22 @@ final class TeamRelay: ObservableObject {
 
     private func appendGuestReplay(_ payload: String) {
         guestOutputReplay.append(payload)
+        guestOutputByteCount += payload.utf8.count
         let maxBytes = TeamConstants.replayBufferByteLimit
-        if guestOutputReplay.utf8.count > maxBytes {
-            guestOutputReplay = String(guestOutputReplay.suffix(maxBytes))
+        if guestOutputByteCount > maxBytes {
+            let data = Data(guestOutputReplay.utf8)
+            let suffix = data.suffix(maxBytes)
+            // Drop incomplete UTF-8 sequence at the start (up to 3 bytes)
+            var decoded: String? = nil
+            for offset in 0..<min(4, suffix.count) {
+                let slice = suffix.dropFirst(offset)
+                if let str = String(data: slice, encoding: .utf8) {
+                    decoded = str
+                    break
+                }
+            }
+            guestOutputReplay = decoded ?? String(decoding: suffix, as: UTF8.self)
+            guestOutputByteCount = guestOutputReplay.utf8.count
         }
     }
 
@@ -819,6 +851,7 @@ final class TeamRelay: ObservableObject {
         guestOutputFlushTask = nil
         pendingGuestOutput.removeAll(keepingCapacity: true)
         guestOutputReplay.removeAll(keepingCapacity: true)
+        guestOutputByteCount = 0
         guestOutputRevision = 0
     }
 
