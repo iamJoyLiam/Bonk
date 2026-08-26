@@ -39,6 +39,21 @@ struct ContentView: View {
         private var workspaceBindable: Bindable<WorkspaceManager> {
             Bindable(workspace)
         }
+        private var controlRevokedBinding: Binding<Bool> {
+            Binding(
+                get: {
+                    if workspace.isTeamWindowOpen { return false }
+                    return teamRelay.controlRevokedNotice != nil
+                },
+                set: { if !$0 { teamRelay.controlRevokedNotice = nil } }
+            )
+        }
+        private var peerDisconnectedBinding: Binding<Bool> {
+            Binding(
+                get: { teamRelay.peerDisconnectedNotice != nil },
+                set: { if !$0 { teamRelay.peerDisconnectedNotice = nil } }
+            )
+        }
     #endif
 
     var body: some View {
@@ -128,7 +143,13 @@ struct ContentView: View {
                 toolbarCoordinator.showTeam = true
             }
             .onChange(of: teamRelay.isConnected) { _, isConnected in
-                if isConnected {
+                if isConnected, teamRelay.hostPeerID != nil {
+                    if !workspace.isTeamWindowOpen { workspace.isTeamWindowOpen = true }
+                    if toolbarCoordinator.showTeam { toolbarCoordinator.showTeam = false }
+                }
+            }
+            .onChange(of: teamRelay.hostPeerID) { _, hostPeerID in
+                if teamRelay.isConnected, hostPeerID != nil {
                     if !workspace.isTeamWindowOpen { workspace.isTeamWindowOpen = true }
                     if toolbarCoordinator.showTeam { toolbarCoordinator.showTeam = false }
                 }
@@ -177,7 +198,10 @@ struct ContentView: View {
             .alert(
                 i18n.t(.connectionError),
                 isPresented: Binding(
-                    get: { teamRelay.lastError != nil && !teamRelay.isConnected && !teamRelay.isHosting },
+                    get: {
+                        guard teamRelay.lastError != nil else { return false }
+                        return !teamRelay.isConnected && !teamRelay.isHosting
+                    },
                     set: { if !$0 { teamRelay.lastError = nil } }
                 )
             ) {
@@ -185,24 +209,12 @@ struct ContentView: View {
             } message: {
                 Text(teamRelay.lastError ?? "")
             }
-            .alert(
-                "控制权已收回",
-                isPresented: Binding(
-                    get: { teamRelay.controlRevokedNotice != nil && !workspace.isTeamWindowOpen },
-                    set: { if !$0 { teamRelay.controlRevokedNotice = nil } }
-                )
-            ) {
+            .alert("控制权已收回", isPresented: controlRevokedBinding) {
                 Button("知道了") { teamRelay.controlRevokedNotice = nil }
             } message: {
                 Text(teamRelay.controlRevokedNotice ?? "主持人已收回控制权，需重新请求授权")
             }
-            .alert(
-                "连接已断开",
-                isPresented: Binding(
-                    get: { teamRelay.peerDisconnectedNotice != nil },
-                    set: { if !$0 { teamRelay.peerDisconnectedNotice = nil } }
-                )
-            ) {
+            .alert("连接已断开", isPresented: peerDisconnectedBinding) {
                 Button("知道了") { teamRelay.peerDisconnectedNotice = nil }
             } message: {
                 Text(teamRelay.peerDisconnectedNotice ?? "")
@@ -222,9 +234,9 @@ struct ContentView: View {
                 }
                 Button("取消", role: .cancel) { teamRelay.pendingShareHosts = nil }
             } message: {
-                if let hosts = teamRelay.pendingShareHosts {
-                    Text("主持人分享了 \(hosts.count) 台主机：\(hosts.map(\.name).joined(separator: "、"))，是否合并到本地？")
-                }
+                let count = teamRelay.pendingShareHosts?.count ?? 0
+                let names = teamRelay.pendingShareHosts?.map(\.name).joined(separator: "、") ?? ""
+                Text("主持人分享了 \(count) 台主机：\(names)，是否合并到本地？")
             }
             // Sheets
             .sheet(isPresented: $toolbarCoordinator.showAddHostSheet) {

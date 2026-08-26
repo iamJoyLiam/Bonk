@@ -1,6 +1,5 @@
 import SwiftUI
 import SwiftData
-import UniformTypeIdentifiers
 
 struct TeamShareHostsSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -52,17 +51,6 @@ struct TeamShareHostsSheet: View {
                     }
                     .listRowBackground(Color.clear)
                 }
-                Section {
-                    HStack {
-                        Spacer()
-                        Button("导出为文件") {
-                            exportToFile()
-                        }
-                        .disabled(selectedIDs.isEmpty)
-                        Spacer()
-                    }
-                    .listRowBackground(Color.clear)
-                }
             }
             .formStyle(.grouped)
             .navigationTitle("分享主机")
@@ -108,39 +96,5 @@ struct TeamShareHostsSheet: View {
         }
         relay.shareHosts(exports)
         dismiss()
-    }
-
-    private func exportToFile() {
-        let hosts = allHosts.filter { selectedIDs.contains($0.id) }
-        let exports: [HostItemExport] = hosts.compactMap { h in
-            var credExport: CredentialExport?
-            if let cred = h.credentialRef {
-                if cred.type == .apiKey { return nil }
-                var secret: String? = nil
-                if includeSecrets {
-                    if let s = cred.loadSecret(), !s.isEmpty { secret = s }
-                    else if h.authType == .password, let s = h.loadPassword() { secret = s }
-                    else if h.authType == .privateKey, let s = h.loadPrivateKey() { secret = s }
-                    if h.authType == .secureEnclave { secret = nil }
-                }
-                credExport = CredentialExport(name: cred.name, type: cred.type.rawValue, username: cred.username, secret: secret)
-            } else if includeSecrets {
-                var secret: String? = nil
-                if h.authType == .password { secret = h.loadPassword() }
-                else if h.authType == .privateKey { secret = h.loadPrivateKey() }
-                if let s = secret, !s.isEmpty {
-                    credExport = CredentialExport(name: h.name, type: h.authType.rawValue, username: h.username, secret: s)
-                }
-            }
-            return HostItemExport(name: h.name, host: h.host, port: h.port, username: h.username, authType: h.authType.rawValue, credential: credExport)
-        }
-        guard let data = try? JSONEncoder().encode(exports),
-              let json = String(data: data, encoding: .utf8) else { return }
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = "bonk-hosts-\(Date().formatted(.iso8601)).json"
-        if panel.runModal() == .OK, let url = panel.url {
-            try? json.write(to: url, atomically: true, encoding: .utf8)
-        }
     }
 }

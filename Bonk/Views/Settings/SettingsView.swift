@@ -37,6 +37,10 @@ struct SettingsView: View {
             AISettingsView()
                 .tabItem { Label(i18n.t(.ai), systemImage: "sparkles") }
                 .tag("ai")
+
+            ExportHostsView()
+                .tabItem { Label("导出", systemImage: "square.and.arrow.up") }
+                .tag("export")
         }
         .frame(width: AppStyle.settingsWindowWidth, height: 500)
         .environment(\.locale, Locale(identifier: i18n.lang))

@@ -598,6 +598,11 @@ enum LKey: String, CaseIterable {
     case controlRequestMessage = "control_request_message"
     case allow = "allow"
     case deny = "deny"
+    case teamVisitorMode = "team_visitor_mode"
+    case shareHostsToGuest = "share_hosts_to_guest"
+    case teamMaxGuests = "team_max_guests"
+    case teamMaxGuestsDesc = "team_max_guests_desc"
+    case exportHosts = "export_hosts"
 
     // Command Blocks (Warp-style)
     case blocks

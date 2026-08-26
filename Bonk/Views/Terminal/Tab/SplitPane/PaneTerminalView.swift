@@ -168,17 +168,9 @@ struct PaneTerminalView: View {
 
         }
         .overlay(alignment: .top) {
-            // Keep TeamRelay observation inside banner so relay state changes
-            // cannot invalidate the terminal bridge.
             TeamControlBanner(relay: TeamRelay.shared)
         }
-        .overlay(alignment: .topTrailing) {
-            TeamNetworkIndicator(relay: TeamRelay.shared)
-                .padding(.top, 6)
-                .padding(.trailing, 8)
-        }
         .onAppear {
-            // Get terminal view reference for event forwarding
             terminalNSView = TerminalViewCache.shared.retrieve(paneState.id)?.view
         }
     }
@@ -266,28 +258,4 @@ struct PaneTerminalView: View {
 private struct TeamControlBanner: View {
     @ObservedObject var relay: TeamRelay
     var body: some View { EmptyView() }
-}
-
-private struct TeamNetworkIndicator: View {
-    @ObservedObject var relay: TeamRelay
-
-    var body: some View {
-        if relay.isHosting, !relay.connectedPeers.isEmpty {
-            Image(systemName: "antenna.radiowaves.left.and.right")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.white)
-                .padding(5)
-                .background(Color.green, in: Circle())
-                .shadow(color: .black.opacity(0.2), radius: 2)
-                .help("已连接 \(relay.connectedPeers.count) 位访客")
-        } else if relay.isConnected {
-            Image(systemName: "antenna.radiowaves.left.and.right")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.white)
-                .padding(5)
-                .background(Color.blue, in: Circle())
-                .shadow(color: .black.opacity(0.2), radius: 2)
-                .help("已连接到主持端")
-        }
-    }
 }

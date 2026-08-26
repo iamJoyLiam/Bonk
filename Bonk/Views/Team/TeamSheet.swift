@@ -188,9 +188,9 @@ struct TeamSheet: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            Section("人数上限") {
+            Section(i18n.t(.teamMaxGuests)) {
                 HStack {
-                    Text("最大访客数")
+                    Text(i18n.t(.teamMaxGuests))
                     Spacer()
                     Stepper(value: $maxGuests, in: 1...8) {
                         Text("\(maxGuests) 人")
@@ -200,7 +200,7 @@ struct TeamSheet: View {
                         UserDefaults.standard.set(newValue, forKey: "team_max_guests")
                     }
                 }
-                Text("当前 \(relay.connectedPeers.count) / \(maxGuests) 人在线，超限时访客将收到“已达上限”提示，主持端不弹。")
+                Text(i18n.tr(.teamMaxGuestsDesc, args: relay.connectedPeers.count, maxGuests))
                     .font(.caption2).foregroundStyle(.secondary)
             }
             if BonkAppDelegate.shared?.sessionManager?.activeTab == nil {
@@ -242,7 +242,6 @@ struct TeamSheet: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .disabled(BonkAppDelegate.shared?.sessionManager?.activeTab == nil)
                     Spacer()
                 }
                 .listRowBackground(Color.clear)
@@ -253,7 +252,7 @@ struct TeamSheet: View {
         Section(i18n.t(.connectedPeers)) {
             if !relay.isHosting {
                 if relay.isConnected {
-                    Text("当前为访客模式，已连接到主持端，无法主持")
+                    Text(i18n.t(.teamVisitorMode))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -291,7 +290,7 @@ struct TeamSheet: View {
                     Button {
                         showShareHosts = true
                     } label: {
-                        Label("分享已保存主机给访客", systemImage: "square.and.arrow.up")
+                        Label(i18n.t(.shareHostsToGuest), systemImage: "square.and.arrow.up")
                     }
                 }
             }
@@ -307,8 +306,13 @@ struct TeamSheet: View {
     private var joinForm: some View {
         Section(i18n.t(.discovered)) {
             let filteredHosts = discovery.discoveredHosts.filter { host in
-                guard relay.isHosting, let hostName = relay.hostPeer?.displayName else { return true }
-                return host.displayName != hostName
+                guard relay.isHosting else { return true }
+                let hostName = relay.hostPeer?.displayName ?? ""
+                let saved = UserDefaults.standard.string(forKey: "team_display_name") ?? ""
+                // Filter self, including Bonjour auto-rename like "MacBook (2)"
+                if !hostName.isEmpty && (host.displayName == hostName || host.displayName.hasPrefix(hostName + " ") || host.displayName.hasPrefix(hostName + "(")) { return false }
+                if !saved.isEmpty && (host.displayName == saved || host.displayName.hasPrefix(saved + " ") || host.displayName.hasPrefix(saved + "(")) { return false }
+                return true
             }
             if filteredHosts.isEmpty {
                 Text(i18n.t(.noHostsFound))
