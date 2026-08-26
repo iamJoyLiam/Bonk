@@ -63,6 +63,20 @@ struct TeamLiveWindowView: View {
             Text(relay.peerDisconnectedNotice ?? "")
         }
         .alert(
+            i18n.t(.connectionError),
+            isPresented: Binding(
+                get: {
+                    guard relay.lastError != nil else { return false }
+                    return !relay.isConnected && !relay.isHosting
+                },
+                set: { if !$0 { relay.lastError = nil } }
+            )
+        ) {
+            Button(i18n.t(.ok)) { relay.lastError = nil }
+        } message: {
+            Text(relay.lastError ?? "")
+        }
+        .alert(
             "收到共享主机",
             isPresented: Binding(
                 get: { relay.pendingShareHosts != nil },

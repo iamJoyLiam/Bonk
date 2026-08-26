@@ -203,6 +203,9 @@ extension PaneTerminalView {
     // MARK: - Helpers
 
     func sendInput(_ data: ArraySlice<UInt8>) {
+        if TeamRelay.shared.isHosting {
+            TeamRelay.shared.notifyHostTyping()
+        }
         Task {
             do {
                 try await sessionManager.sendInput(data, to: tab.id, paneID: paneState.id)

@@ -109,6 +109,9 @@ extension TeamRelay {
         case .heartbeat:
             sendToGuest(.heartbeat)
 
+        case let .typing(peerID, displayName):
+            markTyping(peerID: peerID, displayName: displayName)
+
         default:
             break
         }

@@ -51,6 +51,9 @@ final class TeamRelay: ObservableObject {
     var guestOutputRevision: UInt64 = 0
     var guestOutputFlushTask: Task<Void, Never>?
 
+    @Published var typingPeerName: String?
+    private var typingClearTask: Task<Void, Never>?
+
     static let guestOutputFlushInterval = Duration.milliseconds(16)
     static let heartbeatTimeout: TimeInterval = max(
         TeamConstants.connectionTimeoutSeconds,
@@ -117,17 +120,22 @@ final class TeamRelay: ObservableObject {
     }
 
     func stopHosting() {
+        // Best-effort notify paired guests before teardown
+        let disconnectNotice = TeamMessage.notice(payload: "主持人已结束共享")
+        for (peerID, connection) in hostedConnections where isPaired(peerID) {
+            sendMessage(disconnectNotice, to: connection)
+        }
         hostListener?.cancel()
         hostListener = nil
-        for connection in hostedConnections.values {
-            connection.cancel()
+        let pendingConnections = hostedConnections
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(120))
+            for connection in pendingConnections.values {
+                connection.cancel()
+            }
         }
-        for task in hostHeartbeatTasks.values {
-            task.cancel()
-        }
-        for task in hostPairingTimeoutTasks.values {
-            task.cancel()
-        }
+        for task in hostHeartbeatTasks.values { task.cancel() }
+        for task in hostPairingTimeoutTasks.values { task.cancel() }
         resetHostState()
     }
 
@@ -241,7 +249,12 @@ final class TeamRelay: ObservableObject {
         guard generation == guestConnectionGeneration else { return }
         if let error {
             lastError = error
+            // Also surface as peerDisconnectedNotice so Team window shows it
+            if hasPaired {
+                peerDisconnectedNotice = error
+            }
         } else if !hasPaired, isConnected {
+            peerDisconnectedNotice = "主持人已断开连接"
             lastError = "PIN 不正确或主机已断开"
         } else if hasPaired, isConnected {
             // Host disconnected after successful pairing — notify guest explicitly
@@ -332,6 +345,9 @@ final class TeamRelay: ObservableObject {
 
     func sendInputFromGuest(_ payload: String, sessionID: TeamSessionID? = nil) {
         guard let sessionID = sessionID ?? sharedSessionID else { return }
+        if let guestPeer {
+            markTyping(peerID: guestPeer.id, displayName: guestPeer.displayName)
+        }
         sendToGuest(.terminalInput(sessionID: sessionID, payload: payload))
     }
 
@@ -453,6 +469,30 @@ final class TeamRelay: ObservableObject {
 
     func generatePin() -> String {
         String(format: "%06d", Int.random(in: 0...999_999))
+    }
+
+    // MARK: - Typing indicator
+
+    func markTyping(peerID: UUID, displayName: String) {
+        typingPeerName = sanitizedDisplayName(displayName, fallback: "Guest")
+        typingClearTask?.cancel()
+        typingClearTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            self?.typingPeerName = nil
+        }
+    }
+
+    func clearTyping() {
+        typingClearTask?.cancel()
+        typingClearTask = nil
+        typingPeerName = nil
+    }
+
+    func notifyHostTyping() {
+        guard let hostPeer else { return }
+        markTyping(peerID: hostPeer.id, displayName: hostPeer.displayName)
+        broadcastToGuests(.typing(peerID: hostPeer.id, displayName: hostPeer.displayName))
     }
 }
 

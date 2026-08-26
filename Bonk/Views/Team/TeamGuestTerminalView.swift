@@ -53,11 +53,18 @@ struct TeamGuestTerminalView: View {
             .padding(.horizontal, AppStyle.spacingXL)
             .padding(.vertical, 8)
             Divider()
-            TeamGuestFullTerminalBridge(relay: relay)
-                .frame(minHeight: 320, idealHeight: 400)
-                .background(Color(nsColor: .textBackgroundColor))
-                .clipShape(.rect(cornerRadius: AppStyle.cornerRadiusSmall))
-                .padding(AppStyle.spacingXL)
+            ZStack {
+                TeamGuestFullTerminalBridge(relay: relay)
+                    .frame(minHeight: 320, idealHeight: 400)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .clipShape(.rect(cornerRadius: AppStyle.cornerRadiusSmall))
+                    .overlay(alignment: .topTrailing) {
+                        TeamStatusOverlay(relay: relay)
+                            .padding(.top, 6)
+                            .padding(.trailing, 8)
+                    }
+            }
+            .padding(AppStyle.spacingXL)
             .overlay {
                 if !relay.isConnected && !hasReceivedOutput {
                     Text(i18n.t(.waitingForOutput))

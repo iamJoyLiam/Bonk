@@ -27,6 +27,7 @@ struct PaneTerminalView: View {
 
     // Upload state
     let uploadManager = UploadManager.shared
+    @ObservedObject private var teamRelay = TeamRelay.shared
     @State var pendingUploadURL: URL?
     @State var pendingUploadTab: TerminalTab?
     @State var showOverwriteAlert = false
@@ -166,6 +167,12 @@ struct PaneTerminalView: View {
             )
             .allowsHitTesting(true)
 
+        }
+        .overlay(alignment: .topTrailing) {
+            TeamStatusOverlay(relay: teamRelay)
+                .padding(.top, 6)
+                .padding(.trailing, 8)
+                .allowsHitTesting(false)
         }
         .onAppear {
             terminalNSView = TerminalViewCache.shared.retrieve(paneState.id)?.view

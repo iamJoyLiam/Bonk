@@ -146,6 +146,7 @@ enum TeamMessage: Codable, Sendable, Equatable {
     case pairingChallenge(pin: String, peer: TeamPeer)
     case pairingRejected(reason: String)
     case shareHosts(hosts: [HostItemExport])
+    case typing(peerID: UUID, displayName: String)
 
     private enum CodingKeys: String, CodingKey {
         case type, payload, sessionID, columns, rows, peerID, displayName, snapshot, peer, pin, reason, hosts
@@ -154,7 +155,7 @@ enum TeamMessage: Codable, Sendable, Equatable {
         case terminalOutput, terminalInput, resize
         case controlRequest, controlGrant, controlRevoke
         case presenceSnapshot, peerJoined, peerLeft
-        case notice, heartbeat, pairingChallenge, pairingRejected, shareHosts
+        case notice, heartbeat, pairingChallenge, pairingRejected, shareHosts, typing
     }
 
     init(from decoder: Decoder) throws {
@@ -196,6 +197,8 @@ enum TeamMessage: Codable, Sendable, Equatable {
             self = .pairingRejected(reason: try container.decode(String.self, forKey: .reason))
         case .shareHosts:
             self = .shareHosts(hosts: try container.decode([HostItemExport].self, forKey: .hosts))
+        case .typing:
+            self = .typing(peerID: try container.decode(UUID.self, forKey: .peerID), displayName: try container.decode(String.self, forKey: .displayName))
         }
     }
 
@@ -242,6 +245,10 @@ enum TeamMessage: Codable, Sendable, Equatable {
         case let .shareHosts(hosts):
             try container.encode(MessageType.shareHosts, forKey: .type)
             try container.encode(hosts, forKey: .hosts)
+        case let .typing(peerID, displayName):
+            try container.encode(MessageType.typing, forKey: .type)
+            try container.encode(peerID, forKey: .peerID)
+            try container.encode(displayName, forKey: .displayName)
         }
     }
 }

@@ -219,6 +219,8 @@ extension TeamRelay {
             else {
                 return
             }
+            let peerName = connectedPeers.first(where: { $0.id == peerConnectionID })?.displayName ?? "Guest"
+            markTyping(peerID: peerConnectionID, displayName: peerName)
             forwardInput(payload, to: sessionID)
 
         case let .resize(sessionID, columns, rows):
@@ -246,6 +248,10 @@ extension TeamRelay {
             if let connection = hostedConnections[peerConnectionID] {
                 sendMessage(.heartbeat, to: connection)
             }
+
+        case let .typing(peerID, displayName):
+            guard isPaired(peerConnectionID) else { return }
+            markTyping(peerID: peerID, displayName: displayName)
 
         default:
             break
