@@ -322,6 +322,8 @@ import SwiftUI
         nonisolated(unsafe) var terminalEngine: TerminalEngine?
         nonisolated(unsafe) var engineConsumerID: UUID?
         nonisolated(unsafe) var engineConsumer: (any TerminalConsumer)?
+        nonisolated(unsafe) var teamConsumerID: UUID?
+        nonisolated(unsafe) var teamConsumer: (any TerminalConsumer)?
         /// Access engine only on MainActor; creates lazily.
         @MainActor func getOrCreateEngine() -> TerminalEngine {
             if let e = terminalEngine { return e }
@@ -329,6 +331,23 @@ import SwiftUI
             e.onResize = { [weak self] cols, rows in self?.onResize?(cols, rows) }
             terminalEngine = e
             return e
+        }
+
+        /// Team is a second subscriber on the same Engine — same tick, same watermark, same colorization point.
+        @MainActor func updateTeamSubscription(sessionID: TeamSessionID?) {
+            let engine = getOrCreateEngine()
+            // Remove previous
+            if let old = teamConsumerID {
+                engine.unsubscribe(old)
+                teamConsumerID = nil
+                teamConsumer = nil
+            }
+            guard let sessionID else { return }
+            let id = UUID()
+            let consumer = TeamTerminalConsumer(sessionID: sessionID)
+            teamConsumer = consumer
+            teamConsumerID = id
+            engine.subscribe(id, consumer: consumer)
         }
 
         var feedTask: Task<Void, Never>? {

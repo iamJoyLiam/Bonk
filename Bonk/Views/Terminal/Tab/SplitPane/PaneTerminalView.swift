@@ -99,6 +99,9 @@ struct PaneTerminalView: View {
         }
         .task { await refreshRecordingState() }
         .onChange(of: paneState.ptySession?.recordingPaneID) { _, _ in Task { await refreshRecordingState() } }
+        .onAppear { updateTeamSubscription() }
+        .onChange(of: teamRelay.sharedSessionID) { _, _ in updateTeamSubscription() }
+        .onChange(of: teamRelay.isHosting) { _, _ in updateTeamSubscription() }
     }
 
     // MARK: - Pane Content
@@ -256,5 +259,18 @@ struct PaneTerminalView: View {
 
     func refreshRecordingState() async {
         isRecording = await SessionRecordingService.shared.isRecording(paneID: paneState.id)
+    }
+
+    @MainActor
+    private func updateTeamSubscription() {
+        guard let cached = TerminalViewCache.shared.retrieve(paneState.id),
+              let coordinator = cached.coordinator as? ContainerTerminalCoordinator
+        else { return }
+        // Only the shared pane (host) broadcasts; guest never broadcasts
+        if teamRelay.isHosting, let shared = teamRelay.sharedSessionID, shared.paneID == paneState.id {
+            coordinator.updateTeamSubscription(sessionID: shared)
+        } else {
+            coordinator.updateTeamSubscription(sessionID: nil)
+        }
     }
 }

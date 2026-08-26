@@ -308,12 +308,10 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             Task { @MainActor in NotificationCenter.default.post(name: .commandBlockDidAdd, object: nil, userInfo: ["block": finishedBlock]) }
             activeCommandBlock.withLockedValue { $0 = nil }
         }
-        // Team relay — broadcast to LAN guests (host only), coalesced so
-        // high-volume PTY output does not enqueue one MainActor task per chunk.
-        let displayTextForTeam = LogColorizer.colorize(text)
-        teamOutputCoalescer.append(displayTextForTeam, sessionID: teamSessionID)
-        // Colorize for display only.
-        let displayText = displayTextForTeam
+        // Colorize for display only. Team now shares the same Engine tick
+        // (TeamTerminalConsumer on the same TerminalEngine), so no separate
+        // coalescer is needed here.
+        let displayText = LogColorizer.colorize(text)
         // Send to all live consumers with per-consumer backpressure.
         // Skip consumers whose pending bytes exceed the high watermark;
         // they will resume once the Coordinator calls decrementPendingBytes().

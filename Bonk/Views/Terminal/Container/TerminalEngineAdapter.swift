@@ -32,6 +32,18 @@ final class AppKitTerminalConsumer: TerminalConsumer {
 }
 #endif
 
+/// Team adapter — same coalesced text as local view, broadcast to guests.
+@MainActor
+final class TeamTerminalConsumer: TerminalConsumer {
+    let sessionID: TeamSessionID
+    init(sessionID: TeamSessionID) { self.sessionID = sessionID }
+    func receive(_ text: String) {
+        // Keep colorization in display layer (Phase A) — team also colorizes here for consistency
+        let colored = LogColorizer.colorize(text)
+        TeamRelay.shared.broadcastOutput(colored, sessionID: sessionID)
+    }
+}
+
 /// Headless adapter for tests — records receives without SwiftTerm/AppKit.
 @MainActor
 final class HeadlessTerminalConsumer: TerminalConsumer {

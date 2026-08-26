@@ -308,6 +308,11 @@ import SwiftUI
 
             let cached = CachedTerminalView(tabID: paneID, view: terminal, coordinator: coordinator)
             TerminalViewCache.shared.store(tabID: paneID, parentTabID: tabID, view: terminal, coordinator: coordinator)
+            // If this pane is already the shared one (restore path), subscribe team immediately
+            if TeamRelay.shared.isHosting, TeamRelay.shared.sharedSessionID?.paneID == paneID,
+               let sid = TeamRelay.shared.sharedSessionID {
+                Task { @MainActor in coordinator.updateTeamSubscription(sessionID: sid) }
+            }
             return cached
         }
 
@@ -342,6 +347,15 @@ import SwiftUI
 
             // Force re-render after re-adding cached view to view hierarchy
             cached.view.needsDisplay = true
+            // Ensure team subscription matches current shared pane (covers restore + cache reuse)
+            if let tCoord = cached.coordinator as? ContainerTerminalCoordinator {
+                if TeamRelay.shared.isHosting, TeamRelay.shared.sharedSessionID?.paneID == paneID,
+                   let sid = TeamRelay.shared.sharedSessionID {
+                    Task { @MainActor in tCoord.updateTeamSubscription(sessionID: sid) }
+                } else {
+                    Task { @MainActor in tCoord.updateTeamSubscription(sessionID: nil) }
+                }
+            }
 
             Task { @MainActor in try? await Task.sleep(for: .milliseconds(100))
                 containerView.window?.makeFirstResponder(cached.view)
