@@ -50,7 +50,7 @@ struct KeychainManagerView: View {
                 }
             }
         }
-        .frame(minWidth: AppStyle.panelWidthMedium)
+        .frame(minWidth: AppStyle.panelWidthMedium, minHeight: 420)
         .toolbar {
             if isEditing {
                 ToolbarItem(placement: .cancellationAction) {
