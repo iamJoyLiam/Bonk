@@ -6,21 +6,19 @@
 //  Replaces LayoutNode / LayoutNodeData / TabLayout triple.
 //
 
+import Combine
 import Foundation
 
 @MainActor
 final class LayoutStore: ObservableObject {
-    @Published var root: LayoutNode = .leaf(PaneState())
+    @Published var root: LayoutNode = .horizontal(children: [], weights: [])
 
     func codableRepresentation() -> Data? {
-        try? JSONEncoder().encode(CodableLayoutNode(node: root))
+        // Placeholder: real Codable will mirror LayoutNode directly (weights CGFloat, stable IDs)
+        return nil
     }
 
-    private struct CodableLayoutNode: Codable {
-        let node: LayoutNode
-        init(node: LayoutNode) { self.node = node }
-        // Placeholder: real Codable will mirror LayoutNode directly
-        func encode(to encoder: Encoder) throws {}
-        init(from decoder: Decoder) throws { self.node = .leaf(PaneState()) }
+    func restore(from data: Data) {
+        // Placeholder: decode single tree, validate weights, concurrent restore
     }
 }

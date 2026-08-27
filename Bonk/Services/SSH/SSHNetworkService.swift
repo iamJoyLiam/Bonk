@@ -455,12 +455,10 @@ public actor SSHNetworkService {
         reconnectTask = Task { await self.reconnect() }
     }
 
+    /// Single reconnect loop — one policy, one watermark, one phase stream.
+    /// `usesOpenSSHTransport` selects the attempt body; backoff + state + PTY rebind are shared.
     private func reconnect() async {
         guard let config else { return }
-        if usesOpenSSHTransport {
-            await reconnectOpenSSH(config: config)
-            return
-        }
         let policy = ReconnectPolicy.default
         let maxAttempts = max(config.maxReconnectAttempts, policy.maxAttempts)
         var attempt = 0
@@ -470,67 +468,76 @@ public actor SSHNetworkService {
             let delay = policy.delay(for: attempt)
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { break }
-
             do {
-                // Bound the reconnect attempt too: against a half-open link
-                // the handshake would otherwise hang forever, blocking the
-                // retry loop (makes `catch is SSHTimeoutError` below reachable).
-                try await withThrowingTimeout(of: .seconds(Self.connectionTimeoutSeconds)) {
-                    try await self.establishConnection(config: config)
-                }
-
-                // Reconnection successful — stop network monitor if active
-                stopNetworkMonitor()
-                startNetworkMonitor()
-
-                // Restart keepalive for the NEW client. Without this the
-                // reconnected session has no liveness monitoring, and the old
-                // keepalive task (weak ref to the dead client) lingers for up
-                // to one interval.
-                await keepAlive.settimeoutHandler { [weak self] in
-                    guard let self else { return }
-                    Task { await self.handleDisconnect() }
-                }
-                if let client {
-                    await keepAlive.start(client: client)
-                }
-
-                if let ptyConfig = lastPTYConfig, let client {
-                    let session = PTYSession()
-                    session.start(
-                        client: client, cols: ptyConfig.cols,
-                        rows: ptyConfig.rows, termType: ptyConfig.termType
-                    )
-                    activePTYSession = session
-                    pendingPTYSession = session
+                if usesOpenSSHTransport {
+                    // OpenSSH path: re-create ControlMaster socket
+                    try? await Task.sleep(for: .milliseconds(200))
+                    let backend = try OpenSSHBackend(config: config)
+                    openSSHBackend = backend
+                    usesOpenSSHTransport = true
+                    connectionState = .connected
+                    stateContinuation.yield(.connected)
+                    Log.ssh.info("[RECONNECT] OpenSSH reconnect succeeded attempt \(attempt + 1)")
+                    stopNetworkMonitor()
+                    startNetworkMonitor()
+                    if let ptyConfig = lastPTYConfig {
+                        do {
+                            let session = try backend.openPTY(
+                                cols: ptyConfig.cols, rows: ptyConfig.rows, termType: ptyConfig.termType
+                            ) { [weak self] in Task { await self?.handleDisconnect() } } onError: { _ in }
+                            activePTYSession = session
+                            pendingPTYSession = session
+                            Log.ssh.info("[RECONNECT] OpenSSH PTY re-created \(ptyConfig.cols)x\(ptyConfig.rows)")
+                        } catch {
+                            Log.ssh.warning("[RECONNECT] OpenSSH PTY re-create failed: \(error.localizedDescription)")
+                        }
+                    }
+                } else {
+                    // Native Citadel path: bound handshake + keepalive re-arm
+                    try await withThrowingTimeout(of: .seconds(Self.connectionTimeoutSeconds)) {
+                        try await self.establishConnection(config: config)
+                    }
+                    stopNetworkMonitor()
+                    startNetworkMonitor()
+                    await keepAlive.settimeoutHandler { [weak self] in
+                        guard let self else { return }
+                        Task { await self.handleDisconnect() }
+                    }
+                    if let client {
+                        await keepAlive.start(client: client)
+                    }
+                    if let ptyConfig = lastPTYConfig, let client {
+                        let session = PTYSession()
+                        session.start(client: client, cols: ptyConfig.cols, rows: ptyConfig.rows, termType: ptyConfig.termType)
+                        activePTYSession = session
+                        pendingPTYSession = session
+                    }
                 }
                 return
             } catch is CancellationError {
                 break
             } catch let error as SSHServiceError {
-                // Fatal errors: don't retry
+                // Fatal errors: don't retry (both transports)
                 switch error {
                 case .hostKeyMismatch, .alreadyConnected:
                     Log.ssh.error("Fatal SSH error, aborting reconnect: \(error.localizedDescription)")
+                    if usesOpenSSHTransport {
+                        connectionState = .disconnected
+                        stateContinuation.yield(.disconnected)
+                    }
                     return
                 case .notConnected, .connectionFailed, .reconnectExhausted:
-                    Log.ssh.warning(
-                        "Recoverable SSH error (attempt \(attempt + 1)/\(maxAttempts)): \(error.localizedDescription)"
-                    )
+                    Log.ssh.warning("Recoverable SSH error (attempt \(attempt + 1)/\(maxAttempts)): \(error.localizedDescription)")
                     attempt += 1
                 }
             } catch is SSHTimeoutError {
                 Log.ssh.warning("Reconnect attempt \(attempt + 1)/\(maxAttempts) timed out")
                 attempt += 1
             } catch {
-                // Generic errors (network timeouts, DNS failures, etc.) — retry
-                Log.ssh.warning(
-                    "Reconnect attempt \(attempt + 1)/\(maxAttempts) failed: \(error.localizedDescription)"
-                )
+                Log.ssh.warning("Reconnect attempt \(attempt + 1)/\(maxAttempts) failed: \(error.localizedDescription)")
                 attempt += 1
             }
         }
-
         if !Task.isCancelled {
             usesOpenSSHTransport = false
             connectionState = .disconnected
@@ -539,64 +546,9 @@ public actor SSHNetworkService {
         }
     }
 
+    /// Legacy entry kept for external callers — now forwards to single `reconnect()`.
     private func reconnectOpenSSH(config: SSHConnectionConfig) async {
-        let policy = ReconnectPolicy.default
-        let maxAttempts = max(config.maxReconnectAttempts, policy.maxAttempts)
-        var attempt = 0
-        while attempt < maxAttempts, !Task.isCancelled {
-            connectionState = .reconnecting(attempt: attempt + 1, maxAttempts: maxAttempts)
-            stateContinuation.yield(.reconnecting(attempt: attempt + 1, maxAttempts: maxAttempts))
-            let delay = policy.delay(for: attempt)
-            try? await Task.sleep(for: delay)
-            guard !Task.isCancelled else { break }
-            do {
-                // 清理旧 socket，避免 ControlMaster 残留
-                try? await Task.sleep(for: .milliseconds(200))
-                let backend = try OpenSSHBackend(config: config)
-                openSSHBackend = backend
-                usesOpenSSHTransport = true
-                connectionState = .connected
-                stateContinuation.yield(.connected)
-                Log.ssh.info("[RECONNECT] OpenSSH reconnect succeeded attempt \(attempt + 1)")
-                stopNetworkMonitor()
-                startNetworkMonitor()
-                if let ptyConfig = lastPTYConfig {
-                    do {
-                        let session = try backend.openPTY(
-                            cols: ptyConfig.cols, rows: ptyConfig.rows, termType: ptyConfig.termType
-                        ) { [weak self] in Task { await self?.handleDisconnect() } } onError: { _ in }
-                        activePTYSession = session
-                        pendingPTYSession = session
-                        Log.ssh.info("[RECONNECT] OpenSSH PTY re-created \(ptyConfig.cols)x\(ptyConfig.rows)")
-                    } catch {
-                        Log.ssh.warning("[RECONNECT] OpenSSH PTY re-create failed: \(error.localizedDescription)")
-                    }
-                }
-                return
-            } catch is CancellationError {
-                break
-            } catch let error as SSHServiceError {
-                switch error {
-                case .hostKeyMismatch, .alreadyConnected:
-                    Log.ssh.error("[RECONNECT] Fatal OpenSSH error, aborting: \(error.localizedDescription)")
-                    connectionState = .disconnected
-                    stateContinuation.yield(.disconnected)
-                    return
-                default:
-                    Log.ssh.warning("[RECONNECT] OpenSSH attempt \(attempt + 1)/\(maxAttempts) failed: \(error.localizedDescription)")
-                    attempt += 1
-                }
-            } catch {
-                Log.ssh.warning("[RECONNECT] OpenSSH attempt \(attempt + 1)/\(maxAttempts) failed: \(error.localizedDescription)")
-                attempt += 1
-            }
-        }
-        if !Task.isCancelled {
-            usesOpenSSHTransport = false
-            connectionState = .disconnected
-            stateContinuation.yield(.disconnected)
-            Log.ssh.error("[RECONNECT] OpenSSH reconnect exhausted after \(maxAttempts) attempts")
-        }
+        await reconnect()
     }
 
     // MARK: - Disconnect Monitor

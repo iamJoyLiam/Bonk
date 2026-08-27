@@ -251,10 +251,10 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             }
         }
 
-        // Trigger evaluation (throttled, MainActor)
-        let triggerText = text
-        let triggerSession = self
-        Task { @MainActor in TriggerManager.shared.processOutput(triggerText, ptySession: triggerSession) }
+        // Trigger evaluation — pane-aware batching via TriggerEngine (Phase 7).
+        // One lock + 32ms coalescer per pane, at most one MainActor hop per batch.
+        let paneID = teamSessionIDBox.withLockedValue { $0?.paneID }
+        TriggerEngine.shared.enqueue(paneID: paneID, text: text, ptySession: self)
 
         // Process through OSC 7 detector for CWD tracking
         osc7Detector.process(text)

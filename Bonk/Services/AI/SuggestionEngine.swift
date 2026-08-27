@@ -6,6 +6,7 @@
 //  View only subscribes to Suggestion? and positions ghost.
 //
 
+import Combine
 import Foundation
 
 struct Suggestion: Sendable, Equatable {
