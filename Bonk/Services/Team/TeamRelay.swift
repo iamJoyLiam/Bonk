@@ -9,7 +9,7 @@ import os.log
 final class TeamRelay: ObservableObject {
     static let shared = TeamRelay()
 
-    @Published var isHosting = false
+    @Published var isHosting = false // TODO: delegate to TeamStore.isHosting (Phase 4 takeover)
     @Published var isConnected = false
     @Published var connectedPeers: [TeamPeer] = []
     @Published var sharedSessionID: TeamSessionID?
