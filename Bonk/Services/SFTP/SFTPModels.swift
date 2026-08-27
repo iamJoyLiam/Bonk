@@ -46,21 +46,27 @@ public struct SFTPFileEntry: Identifiable, Sendable, Equatable {
 }
 
 /// Transfer progress for file upload/download.
-struct SFTPTransfer: Identifiable {
+@Observable
+final class SFTPTransfer: Identifiable {
     let id: UUID
     let filename: String
-    let totalBytes: UInt64
+    var totalBytes: UInt64
     var transferredBytes: UInt64
     var isComplete: Bool
     var isCancelled: Bool = false
     var error: String?
+    @ObservationIgnored var lastUIUpdate = Date.distantPast
+
+    init(id: UUID, filename: String, totalBytes: UInt64, transferredBytes: UInt64, isComplete: Bool, isCancelled: Bool = false, error: String? = nil) {
+        self.id = id; self.filename = filename; self.totalBytes = totalBytes
+        self.transferredBytes = transferredBytes; self.isComplete = isComplete
+        self.isCancelled = isCancelled; self.error = error
+    }
 
     var progress: Double {
         guard totalBytes > 0 else { return 0 }
-        return Double(transferredBytes) / Double(totalBytes)
+        return min(Double(transferredBytes) / Double(totalBytes), 1.0)
     }
 
-    var isActive: Bool {
-        !isComplete && !isCancelled
-    }
+    var isActive: Bool { !isComplete && !isCancelled }
 }

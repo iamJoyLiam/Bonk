@@ -24,8 +24,8 @@ import Citadel
 enum SFTPParallelStrategy {
     /// 单流阈值（字节）— 28× 差距下 500MB 过高，50MB 起并行才能覆盖常见文件
     static let parallelThreshold: UInt64 = 50 * 1024 * 1024
-    /// Termius 等用 256KB-1MB，我们从 32KB→256KB 降包数 8×
-    static let chunkSize: Int = 256 * 1024
+    /// 验证后调至 1MB + pipeline 128，以覆盖 SFTP 64KB 包限制下的 warm-up
+    static let chunkSize: Int = 1024 * 1024
 
     /// 根据文件大小决定分片数
     static func shardCount(for totalBytes: UInt64) -> Int {
@@ -40,17 +40,17 @@ enum SFTPParallelStrategy {
         totalBytes > parallelThreshold
     }
 
-    /// 每 shard 的 pipeline 深度，保持总窗口 ~32MB
-    /// 256KB×128=32MB；单流 32MB / 16MB / 4MB 三档保持不变逻辑但按新 chunkSize 折算
+    /// 每 shard 的 pipeline 深度，目标总窗口 64MB 以覆盖 64KB 小包
+    /// 1MB×128=128MB 单流；4×128×1MB 需限流，实为 64MB outstanding
     static func pipelinePerShard(shards: Int, totalBytes: UInt64) -> Int {
         switch shards {
         case 1:
-            if totalBytes > 100 * 1024 * 1024 { return 128 } // 32MB
-            if totalBytes > 10 * 1024 * 1024 { return 64 }  // 16MB
-            return 16 // 4MB
-        case 4: return 32  // 4×32×256KB=32MB
-        case 8: return 16  // 8×16×256KB=32MB
-        default: return 32
+            if totalBytes > 100 * 1024 * 1024 { return 128 } // 128MB
+            if totalBytes > 10 * 1024 * 1024 { return 64 }  // 64MB
+            return 32 // 32MB
+        case 4: return 128  // 4×128×64KB≈32MB 实际包小，窗口 32MB
+        case 8: return 64  // 8×64×64KB≈32MB
+        default: return 64
         }
     }
 }
@@ -74,14 +74,8 @@ private final class ProgressMerger: @unchecked Sendable {
             return accumulated
         }
         let progress = total > 0 ? Double(completed) / Double(total) : 1.0
-        let shouldReport = lastReported.withLockedValue { last -> Bool in
-            if progress - last >= 0.01 || progress >= 1.0 {
-                last = progress
-                return true
-            }
-            return false
-        }
-        if shouldReport { onProgress(min(progress, 1.0)) }
+        lastReported.withLockedValue { last in last = progress }
+        onProgress(min(progress, 1.0))
     }
 
     var completed: UInt64 { lock.withLockedValue { $0 } }
@@ -242,6 +236,7 @@ enum SFTPParallelTransferEngine {
         merger: ProgressMerger,
         isCancelled: @Sendable () async -> Bool
     ) async throws {
+        // downloadShard range \(range.lowerBound)-\(range.upperBound) shards=\(shards) — verbose
         let pipeline = SFTPParallelStrategy.pipelinePerShard(shards: shards, totalBytes: range.upperBound - range.lowerBound)
         let chunkSize: UInt32 = UInt32(SFTPParallelStrategy.chunkSize)
 
@@ -296,22 +291,38 @@ enum SFTPParallelTransferEngine {
                     pending[readOffset] = data
                 }
 
-                // 按 offset 顺序刷盘，降低随机写碎片；此处在 shard 内有序
+                // 批量 pwrite：每 1MB 合并一次，降低小 IO 次数
+                var batch = Data()
+                var batchStart = nextWriteOffset
+                var batchBytes: UInt64 = 0
                 while let bytes = pending.removeValue(forKey: nextWriteOffset) {
-                    let chunkBytes = bytes
-                    // pwrite 原子随机写，无 seek 竞态
-                    let written = chunkBytes.withUnsafeBytes { ptr -> Int in
+                    batch.append(bytes)
+                    batchBytes += UInt64(bytes.count)
+                    nextWriteOffset += UInt64(bytes.count)
+                    // 满 1MB 或到 shard 末尾再刷盘
+                    if batchBytes >= 1024 * 1024 || nextWriteOffset >= range.upperBound || pending[ nextWriteOffset] == nil {
+                        let written = batch.withUnsafeBytes { ptr -> Int in
+                            guard let base = ptr.baseAddress else { return 0 }
+                            return Darwin.pwrite(fileDescriptor, base, batch.count, off_t(batchStart))
+                        }
+                        if written < 0 {
+                            throw SFTPServiceError.operationFailed("pwrite failed at \(batchStart): \(String(cString: strerror(errno)))")
+                        }
+                        merger.add(batchBytes)
+                        batch = Data()
+                        batchStart = nextWriteOffset
+                        batchBytes = 0
+                    }
+                    if nextWriteOffset >= range.upperBound { readDone = true }
+                }
+                // 刷剩余 batch
+                if !batch.isEmpty {
+                    let written = batch.withUnsafeBytes { ptr -> Int in
                         guard let base = ptr.baseAddress else { return 0 }
-                        return Darwin.pwrite(fileDescriptor, base, chunkBytes.count, off_t(nextWriteOffset))
+                        return Darwin.pwrite(fileDescriptor, base, batch.count, off_t(batchStart))
                     }
-                    if written < 0 {
-                        throw SFTPServiceError.operationFailed("pwrite failed at \(nextWriteOffset): \(String(cString: strerror(errno)))")
-                    }
-                    nextWriteOffset += UInt64(chunkBytes.count)
-                    merger.add(UInt64(chunkBytes.count))
-                    if nextWriteOffset >= range.upperBound {
-                        readDone = true
-                    }
+                    if written < 0 { throw SFTPServiceError.operationFailed("pwrite failed at \(batchStart)") }
+                    merger.add(batchBytes)
                 }
                 // 若 pending 非空但下一个 offset 未就绪，继续等待网络
             }
@@ -520,7 +531,7 @@ enum SFTPParallelTransferEngine {
             try? fileHandle.close()
         }
         let merger = ProgressMerger(total: totalBytes, onProgress: onProgress)
-        Log.sftp.info("[POOL] multiTCP download shards=\(shards)")
+        Log.sftp.info("[POOL] multiTCP download shards=\(shards) total=\(totalBytes)")
         try await withThrowingTaskGroup(of: Void.self) { group in
             for idx in 0..<shards {
                 let start = UInt64(idx) * shardSize

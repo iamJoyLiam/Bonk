@@ -19,6 +19,9 @@ final class SFTPService {
     var errorMessage: String?
     var transfers: [SFTPTransfer] = []
 
+    // Unified seam — one channel for all backends (Citadel/OpenSSH/VNext).
+    // Deep SFTPStore will own this; SFTPService currently bridges.
+    private var channel: (any SFTPChannel)?
     private var sftpClient: SFTPClient?
     #if os(macOS)
         private var openSSHSFTPClient: OpenSSHSFTPClient?
@@ -39,24 +42,29 @@ final class SFTPService {
 
     /// Open SFTP over the active SSH transport.
     func connect(using sshService: SSHNetworkService) async throws {
+        if let channel {
+            if entries.isEmpty { try await listDirectory() }
+            return
+        }
         #if os(macOS)
             if let openSSHSFTPClient, openSSHSFTPClient.isActive {
-                if entries.isEmpty {
-                    try await listDirectory()
-                }
+                // Legacy path still populates unified channel for new callers
+                channel = OpenSSHSFTPChannelAdapter(client: openSSHSFTPClient)
+                if entries.isEmpty { try await listDirectory() }
                 return
             }
         #endif
         if let sftpClient, sftpClient.isActive {
-            if entries.isEmpty {
-                try await listDirectory()
-            }
+            channel = CitadelSFTPAdapter(sftp: sftpClient)
+            if entries.isEmpty { try await listDirectory() }
             return
         }
+        channel = nil
         sftpClient = nil
         #if os(macOS)
             openSSHSFTPClient = nil
         #endif
+        vnextChannel = nil
 
         Log.sftp.info("Opening SFTP session...")
         isLoading = true
@@ -68,6 +76,8 @@ final class SFTPService {
                 do {
                     let path = try await client.realPath()
                     openSSHSFTPClient = client
+                    channel = OpenSSHSFTPChannelAdapter(client: client)
+                    vnextChannel = channel
                     currentPath = path
                     Log.sftp.info("OpenSSH SFTP connected, initial path: \(self.currentPath)")
                     try await listDirectory()
@@ -75,6 +85,8 @@ final class SFTPService {
                 } catch {
                     client.close()
                     openSSHSFTPClient = nil
+                    channel = nil
+                    vnextChannel = nil
                     throw error
                 }
             }
@@ -84,30 +96,41 @@ final class SFTPService {
         do {
             let path = try await client.getRealPath(atPath: ".")
             sftpClient = client
+            channel = CitadelSFTPAdapter(sftp: client)
+            vnextChannel = channel
             currentPath = path
             Log.sftp.info("SFTP connected, initial path: \(self.currentPath)")
             try await listDirectory()
         } catch {
             try? await client.close()
             sftpClient = nil
+            channel = nil
+            vnextChannel = nil
             throw error
         }
     }
 
     /// VNext — connect via unified SSHSession (single-connection multiplex, T5)
     func connect(using session: any SSHSession) async throws {
+        if let channel {
+            if entries.isEmpty { try await listDirectory() }
+            return
+        }
         if let vnextChannel {
+            channel = vnextChannel
             if entries.isEmpty { try await listDirectory() }
             return
         }
         vnextChannel = nil
+        channel = nil
         Log.sftp.info("Opening SFTP via VNext session...")
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
-        let channel = try await session.openSFTP()
-        let path = try await channel.realPath()
-        vnextChannel = channel
+        let ch = try await session.openSFTP()
+        let path = try await ch.realPath()
+        vnextChannel = ch
+        channel = ch
         currentPath = path
         Log.sftp.info("VNext SFTP connected, initial path: \(self.currentPath)")
         try await listDirectory()
@@ -115,13 +138,14 @@ final class SFTPService {
 
     /// List files in the current directory.
     func listDirectory(_ path: String? = nil, showLoading: Bool = true) async throws {
-        if let channel = vnextChannel {
+        // Unified — single channel seam (Citadel/OpenSSH/VNext)
+        if let ch = channel ?? vnextChannel {
             if showLoading { self.isLoading = true }
             self.errorMessage = nil
             defer { if showLoading { self.isLoading = false } }
             let targetPath = path ?? self.currentPath
             let requestID = self.beginListRequest()
-            var result = try await channel.listDirectory(at: targetPath)
+            var result = try await ch.listDirectory(at: targetPath)
             guard requestID == self.listRequestSequence else { return }
             let sorted = await Task.detached(priority: .userInitiated) {
                 result.sorted {
@@ -134,18 +158,12 @@ final class SFTPService {
             currentPath = targetPath
             return
         }
+        // Legacy fallback (transitional, channel should already be set)
         #if os(macOS)
             if let sftp = openSSHSFTPClient {
-                if showLoading {
-                    self.isLoading = true
-                }
+                if showLoading { self.isLoading = true }
                 self.errorMessage = nil
-                defer {
-                    if showLoading {
-                        self.isLoading = false
-                    }
-                }
-
+                defer { if showLoading { self.isLoading = false } }
                 let targetPath = path ?? self.currentPath
                 let requestID = self.beginListRequest()
                 var result = try await sftp.listDirectory(at: targetPath)
@@ -162,49 +180,32 @@ final class SFTPService {
                 return
             }
         #endif
-
         guard let sftp = sftpClient else {
             Log.sftp.error("listDirectory failed: not connected")
             throw SFTPServiceError.notConnected
         }
-        if showLoading {
-            self.isLoading = true
-        }
+        if showLoading { self.isLoading = true }
         self.errorMessage = nil
-        defer {
-            if showLoading {
-                self.isLoading = false
-            }
-        }
-
+        defer { if showLoading { self.isLoading = false } }
         let targetPath = path ?? self.currentPath
         let requestID = beginListRequest()
         let names = try await sftp.listDirectory(atPath: targetPath)
         guard requestID == listRequestSequence else { return }
-
         var result: [SFTPFileEntry] = []
         for name in names {
             for component in name.components {
-                // Skip . and ..
                 if component.filename == "." || component.filename == ".." { continue }
-
                 let isDir = component.longname.hasPrefix("d")
                 let fullPath = pathJoin(targetPath, component.filename)
-
                 result.append(SFTPFileEntry(
-                    id: fullPath,
-                    name: component.filename,
-                    path: fullPath,
-                    isDirectory: isDir,
-                    size: component.attributes.size ?? 0,
+                    id: fullPath, name: component.filename, path: fullPath,
+                    isDirectory: isDir, size: component.attributes.size ?? 0,
                     permissions: component.attributes.permissions ?? 0,
                     modifiedAt: component.attributes.accessModificationTime?.modificationTime,
                     longname: component.longname
                 ))
             }
         }
-
-        // Sort off MainActor for large directories (10k entries)
         let sorted = await Task.detached(priority: .userInitiated) {
             result.sorted {
                 if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
@@ -212,7 +213,6 @@ final class SFTPService {
             }
         }.value
         guard requestID == listRequestSequence else { return }
-
         entries = sorted
         currentPath = targetPath
     }
@@ -232,9 +232,9 @@ final class SFTPService {
 
     /// Create a new directory.
     func createDirectory(name: String) async throws {
-        if let channel = vnextChannel {
+        if let ch = channel ?? vnextChannel {
             let newPath = pathJoin(currentPath, name)
-            try await channel.createDirectory(at: newPath)
+            try await ch.createDirectory(at: newPath)
             try await listDirectory()
             return
         }
@@ -246,7 +246,6 @@ final class SFTPService {
                 return
             }
         #endif
-
         guard let sftp = sftpClient else { throw SFTPServiceError.notConnected }
         let newPath = pathJoin(currentPath, name)
         try await sftp.createDirectory(atPath: newPath)
@@ -255,8 +254,8 @@ final class SFTPService {
 
     /// Delete a file or directory.
     func delete(_ entry: SFTPFileEntry) async throws {
-        if let channel = vnextChannel {
-            try await channel.remove(at: entry.path, isDirectory: entry.isDirectory)
+        if let ch = channel ?? vnextChannel {
+            try await ch.remove(at: entry.path, isDirectory: entry.isDirectory)
             try await listDirectory()
             return
         }
@@ -267,29 +266,33 @@ final class SFTPService {
                 return
             }
         #endif
-
         guard let sftp = sftpClient else { throw SFTPServiceError.notConnected }
-        if entry.isDirectory {
-            try await sftp.rmdir(at: entry.path)
-        } else {
-            try await sftp.remove(at: entry.path)
-        }
+        if entry.isDirectory { try await sftp.rmdir(at: entry.path) } else { try await sftp.remove(at: entry.path) }
         try await listDirectory()
     }
 
     /// Download a file to local disk.
     func download(_ entry: SFTPFileEntry, to localURL: URL) async throws {
-        if let channel = vnextChannel {
+        // Unified — single channel handles all backends (parallel inside adapter)
+        if let ch = channel ?? vnextChannel {
             guard !entry.isDirectory else { return }
+            Log.sftp.debug("[DOWNLOAD] start \(entry.name, privacy: .public) size=\(entry.size)")
             let transferID = UUID()
             transfers.append(SFTPTransfer(id: transferID, filename: entry.name, totalBytes: entry.size, transferredBytes: 0, isComplete: false, error: nil))
             do {
-                try await channel.download(entry.path, to: localURL, operationID: transferID, onProgress: { [weak self] progress in
-                    Task { @MainActor in
-                        guard let self else { return }
+                Log.sftp.debug("[DOWNLOAD] unified ch.download call for \(entry.name, privacy: .public)")
+                try await ch.download(entry.path, to: localURL, operationID: transferID, onProgress: { [weak self] progress in
+                    Task { @MainActor [weak self] in
+                        guard let self, let transfer = self.transfers.first(where: { $0.id == transferID }) else { return }
                         let clamped = min(max(progress, 0), 1)
-                        if let idx = self.transfers.firstIndex(where: { $0.id == transferID }) {
-                            self.transfers[idx].transferredBytes = UInt64(Double(entry.size) * clamped)
+                        let now = Date()
+                        // Throttle UI to 100ms (standard Transfer UI), always allow 1.0
+                        if clamped < 1.0, now.timeIntervalSince(transfer.lastUIUpdate) < 0.1 { return }
+                        transfer.lastUIUpdate = now
+                        let newBytes = UInt64(Double(transfer.totalBytes) * clamped)
+                        // Monotonic protection
+                        if newBytes >= transfer.transferredBytes || clamped >= 1.0 {
+                            transfer.transferredBytes = newBytes
                         }
                     }
                 })
@@ -305,33 +308,21 @@ final class SFTPService {
             }
             return
         }
+        // Legacy fallback during migration
         #if os(macOS)
             if let sftp = openSSHSFTPClient {
                 guard !entry.isDirectory else { return }
-                try await downloadWithOpenSSH(
-                    sftp: sftp,
-                    entry: entry,
-                    localURL: localURL
-                )
+                try await downloadWithOpenSSH(sftp: sftp, entry: entry, localURL: localURL)
                 return
             }
         #endif
-
         guard let sftp = sftpClient else { throw SFTPServiceError.notConnected }
         guard !entry.isDirectory else { return }
-
         let transferID = UUID()
-        transfers.append(SFTPTransfer(
-            id: transferID, filename: entry.name, totalBytes: entry.size,
-            transferredBytes: 0, isComplete: false, error: nil
-        ))
-
+        transfers.append(SFTPTransfer(id: transferID, filename: entry.name, totalBytes: entry.size, transferredBytes: 0, isComplete: false, error: nil))
         do {
             try await sftp.withFile(filePath: entry.path, flags: .read) { file in
-                try await self.downloadChunks(
-                    file: file, entry: entry, localURL: localURL,
-                    transferID: transferID
-                )
+                try await self.downloadChunks(file: file, entry: entry, localURL: localURL, transferID: transferID)
             }
             self.markTransferComplete(transferID)
             self.scheduleTransferRemoval(transferID, after: 3)
@@ -519,7 +510,8 @@ final class SFTPService {
         to remotePath: String?,
         continuation: AsyncThrowingStream<Double, Error>.Continuation
     ) async throws {
-        if let channel = vnextChannel {
+        // Unified — single channel seam
+        if let ch = channel ?? vnextChannel {
             let targetPath = remotePath ?? pathJoin(currentPath, localURL.lastPathComponent)
             let filename = localURL.lastPathComponent
             let attrs = try? FileManager.default.attributesOfItem(atPath: localURL.path)
@@ -527,7 +519,7 @@ final class SFTPService {
             let transferID = UUID()
             transfers.append(SFTPTransfer(id: transferID, filename: filename, totalBytes: total, transferredBytes: 0, isComplete: false, error: nil))
             do {
-                try await channel.upload(localURL, to: targetPath, operationID: transferID, onProgress: { [weak self] progress in
+                try await ch.upload(localURL, to: targetPath, operationID: transferID, onProgress: { [weak self] progress in
                     Task { @MainActor in
                         guard let self else { return }
                         let clamped = min(max(progress, 0), 1)
@@ -551,18 +543,13 @@ final class SFTPService {
             try? await listDirectory(showLoading: false)
             return
         }
+        // Legacy fallback
         #if os(macOS)
             if let sftp = openSSHSFTPClient {
-                try await performOpenSSHUpload(
-                    localURL,
-                    to: remotePath,
-                    sftp: sftp,
-                    continuation: continuation
-                )
+                try await performOpenSSHUpload(localURL, to: remotePath, sftp: sftp, continuation: continuation)
                 return
             }
         #endif
-
         guard let sftp = sftpClient else { throw SFTPServiceError.notConnected }
 
         let filename = localURL.lastPathComponent
@@ -831,22 +818,19 @@ final class SFTPService {
     /// Check if a file exists at the given absolute path.
     /// Returns nil when the check itself fails (e.g. network error).
     func fileExists(at path: String) async -> Bool? {
+        if let ch = channel ?? vnextChannel {
+            return await ch.fileExists(at: path)
+        }
         #if os(macOS)
-            if let sftp = openSSHSFTPClient {
-                return await sftp.fileExists(at: path)
-            }
+            if let sftp = openSSHSFTPClient { return await sftp.fileExists(at: path) }
         #endif
-
         guard let sftp = sftpClient else { return nil }
         do {
-            // Try to open the file for reading - this is the most reliable way
-            // because it doesn't rely on cached directory listings
             let file = try await sftp.openFile(filePath: path, flags: [.read])
             try await file.close()
             Log.sftp.debug("fileExists check: \(path) -> true (openFile succeeded)")
             return true
         } catch {
-            // File doesn't exist or can't be opened
             Log.sftp.debug("fileExists check: \(path) -> false (openFile failed: \(error.localizedDescription))")
             return false
         }
@@ -854,28 +838,31 @@ final class SFTPService {
 
     /// Refresh the current path from the remote server.
     func refreshCurrentPath() async {
+        if let ch = channel ?? vnextChannel {
+            do { currentPath = try await ch.realPath() } catch {
+                Log.sftp.warning("Failed to refresh current path: \(error.localizedDescription)")
+            }
+            return
+        }
         #if os(macOS)
             if let sftp = openSSHSFTPClient {
-                do {
-                    currentPath = try await sftp.realPath()
-                } catch {
+                do { currentPath = try await sftp.realPath() } catch {
                     Log.sftp.warning("Failed to refresh current path: \(error.localizedDescription)")
                 }
                 return
             }
         #endif
-
         guard let sftp = sftpClient else { return }
-        do {
-            currentPath = try await sftp.getRealPath(atPath: ".")
-        } catch {
+        do { currentPath = try await sftp.getRealPath(atPath: ".") } catch {
             Log.sftp.warning("Failed to refresh current path: \(error.localizedDescription)")
         }
     }
 
     /// Close the SFTP session.
     func disconnect() async {
-        if let channel = vnextChannel { await channel.close() }
+        if let ch = channel { await ch.close() }
+        if let ch2 = vnextChannel { await ch2.close() }
+        channel = nil
         vnextChannel = nil
         #if os(macOS)
             openSSHSFTPClient?.close()
@@ -884,7 +871,6 @@ final class SFTPService {
         try? await sftpClient?.close()
         sftpClient = nil
         entries = []
-        // Cancel any in-flight transfers
         for transfer in transfers where !transfer.isComplete {
             if let idx = transfers.firstIndex(where: { $0.id == transfer.id }) { transfers[idx].isCancelled = true }
         }
