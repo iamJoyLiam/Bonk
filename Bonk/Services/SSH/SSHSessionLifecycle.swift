@@ -7,6 +7,7 @@
 //  6 hops into one `connect(host:)` call. SessionManager observes single `phase`.
 //
 
+import Combine
 import Foundation
 import os
 
@@ -96,7 +97,7 @@ final class SSHSessionLifecycle: ObservableObject {
         #if os(macOS)
         await service.setVNextPreferredBackend(forced)
         #endif
-        Log.session.info("[Lifecycle] resolve \(config.host):\(config.port) decision=\(decision)")
+        Log.session.info("[Lifecycle] resolve \(config.host):\(config.port) decision=\(String(describing: decision), privacy: .public)")
         return ResolvedConnection(config: config, effectiveConfig: effective, requirements: req, decision: decision, service: service)
     }
 
