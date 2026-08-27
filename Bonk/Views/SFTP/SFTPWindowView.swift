@@ -214,8 +214,33 @@ struct SFTPWindowView: View {
                         .lineLimit(1)
 
                     if transfer.isActive {
-                        ProgressView(value: transfer.progress)
-                            .progressViewStyle(.linear)
+                        if let progress = transfer.progress {
+                            ProgressView(value: progress)
+                                .progressViewStyle(.linear)
+                        } else {
+                            // Unknown size: indeterminate + bytes (never fake %)
+                            ProgressView()
+                                .progressViewStyle(.linear)
+                        }
+                    }
+
+                    // Bytes label — for known shows "500 MB / 600 MB" style via progress, for unknown just MB
+                    if transfer.isActive || transfer.isComplete {
+                        let bytesText: String = {
+                            let mb = Double(transfer.transferredBytes) / (1024*1024)
+                            if let total = transfer.totalBytes, total > 0 {
+                                let totalMB = Double(total) / (1024*1024)
+                                if totalMB >= 1024 { return String(format: "%.1f/%.1f GB", mb/1024, totalMB/1024) }
+                                return String(format: "%.1f/%.1f MB", mb, totalMB)
+                            } else {
+                                if mb >= 1024 { return String(format: "%.1f GB", mb/1024) }
+                                return String(format: "%.1f MB", mb)
+                            }
+                        }()
+                        Text(bytesText)
+                            .font(.system(size: AppStyle.fontCaption).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
 
                     Spacer()

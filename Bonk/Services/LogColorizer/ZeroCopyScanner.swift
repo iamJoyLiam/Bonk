@@ -9,9 +9,13 @@
 import Foundation
 
 struct HighlightSpan: Sendable, Equatable {
-    let offset: Int // utf8 offset in line
+    let offset: Int // utf16 offset (NSRange location)
     let length: Int
     let ansiCode: String
+    let priority: Int
+    init(offset: Int, length: Int, ansiCode: String, priority: Int = 50) {
+        self.offset = offset; self.length = length; self.ansiCode = ansiCode; self.priority = priority
+    }
 }
 
 final class ZeroCopyScanner: @unchecked Sendable {
@@ -19,40 +23,39 @@ final class ZeroCopyScanner: @unchecked Sendable {
     // Scanner is only called after LogClassifier says LOG.
 
     func scan(line: String) -> [HighlightSpan] {
-        // Fast byte-level pre-check before regex: does line contain strong token bytes?
-        // This avoids per-line regex for non-log lines that passed classifier via strong signature?
-        // Actually classifier already ensured it's a log, so we can directly scan tokens.
-        // Use LogPatterns.tokenRegexes only (level, IP, timestamp, etc.)
         var spans: [HighlightSpan] = []
         let fullRange = NSRange(line.startIndex..., in: line)
         for pattern in LogPatterns.allPatterns {
             let matches = pattern.regex.matches(in: line, options: [], range: fullRange)
             for m in matches {
-                spans.append(HighlightSpan(offset: m.range.location, length: m.range.length, ansiCode: pattern.ansiCode))
+                spans.append(HighlightSpan(offset: m.range.location, length: m.range.length, ansiCode: pattern.ansiCode, priority: pattern.priority))
             }
         }
-        // Also check syslog PRI at start
         if let (sev, endIdx) = SyslogPRI.extract(from: line) {
             let len = line.utf16.distance(from: line.startIndex, to: endIdx)
-            spans.append(HighlightSpan(offset: 0, length: len, ansiCode: sev.ansiCode))
+            spans.append(HighlightSpan(offset: 0, length: len, ansiCode: sev.ansiCode, priority: 1))
         }
-        // Deduplicate overlapping spans by priority (lowest wins)
-        return merge(spans)
+        return Dedup.merge(spans)
     }
 
-    private func merge(_ spans: [HighlightSpan]) -> [HighlightSpan] {
-        let sorted = spans.sorted {
-            if $0.offset != $1.offset { return $0.offset < $1.offset }
-            // Use priority via ansiCode ordering? For now keep first
-            return $0.length > $1.length
+    // Shared merge ensures single dedup logic for LogColorizer & overlay
+    enum Dedup {
+        static func merge(_ spans: [HighlightSpan]) -> [HighlightSpan] {
+            let sorted = spans.sorted {
+                if $0.offset != $1.offset { return $0.offset < $1.offset }
+                return $0.priority < $1.priority // lowest priority (most important) first
+            }
+            var result: [HighlightSpan] = []
+            var lastEnd = -1
+            for s in sorted {
+                if s.offset < lastEnd { continue }
+                result.append(s)
+                lastEnd = s.offset + s.length
+            }
+            return result
         }
-        var result: [HighlightSpan] = []
-        var lastEnd = -1
-        for s in sorted {
-            if s.offset < lastEnd { continue }
-            result.append(s)
-            lastEnd = s.offset + s.length
+        static func toANSIRanges(_ spans: [HighlightSpan]) -> [(range: NSRange, code: String)] {
+            spans.map { (NSRange(location: $0.offset, length: $0.length), $0.ansiCode) }
         }
-        return result
     }
 }

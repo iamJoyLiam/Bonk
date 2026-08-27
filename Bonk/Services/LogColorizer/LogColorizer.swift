@@ -49,8 +49,9 @@ enum LogColorizer {
         return result
     }
 
-    // MARK: - Classifier (two-stage pipeline: LogClassifier -> LogTokenizer)
+    // MARK: - Classifier & Scanner (two-stage: LogClassifier gates, ZeroCopyScanner tokenizes)
     nonisolated(unsafe) private static let classifier = LogClassifier()
+    nonisolated(unsafe) private static let scanner = ZeroCopyScanner()
 
     // MARK: - Line Processing
 
@@ -69,33 +70,10 @@ enum LogColorizer {
         let classification = classifier.classify(line)
         guard classification == .log || classification == .continuation else { return line }
 
-        // Collect all (range, ansiCode, priority) tuples from all pattern matches
-        var annotations: [(range: NSRange, code: String, priority: Int)] = []
-
-        let fullRange = NSRange(line.startIndex..., in: line)
-
-        // 1. Syslog PRI: <134> → color the PRI tag itself
-        if let (severity, endIdx) = SyslogPRI.extract(from: line) {
-            let priEnd = line.utf16.distance(from: line.startIndex, to: endIdx)
-            let priRange = NSRange(location: 0, length: priEnd)
-            annotations.append((priRange, severity.ansiCode, 1))
-        }
-
-        // 2. Scan all field patterns
-        for pattern in LogPatterns.allPatterns {
-            let matches = pattern.regex.matches(in: line, options: [], range: fullRange)
-            for match in matches {
-                annotations.append((match.range, pattern.ansiCode, pattern.priority))
-            }
-        }
-
-        // If no annotations, return original
-        if annotations.isEmpty { return line }
-
-        // Deduplicate: for overlapping ranges, keep lowest priority (highest importance)
-        let merged = mergeAnnotations(annotations)
-
-        // Apply ANSI wrapping in reverse order to preserve indices
+        // Only LOG lines reach here — use zero-copy scanner (single regex pass per token)
+        let spans = scanner.scan(line: line)
+        if spans.isEmpty { return line }
+        let merged = ZeroCopyScanner.Dedup.toANSIRanges(spans)
         return applyAnnotations(to: line, annotations: merged)
     }
 

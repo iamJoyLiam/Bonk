@@ -199,24 +199,46 @@ final class SFTPService {
             do {
                 Log.sftp.debug("[DOWNLOAD] unified ch.download call for \(entry.name, privacy: .public)")
                 try await ch.download(entry.path, to: localURL, operationID: transferID, onProgress: { [weak self] progress in
+                    let clamped = min(max(progress, 0), 1)
+                    // Aggregate BEFORE MainActor hop (50ms, ≈20 FPS, never drop 1.0)
+                    guard SFTPProgressThrottler.shared.shouldEmit(id: transferID, progress: clamped) else { return }
                     Task { @MainActor [weak self] in
-                        guard let self, let transfer = self.transfers.first(where: { $0.id == transferID }) else { return }
-                        let clamped = min(max(progress, 0), 1)
-                        let now = Date()
-                        // Throttle UI to 100ms (standard Transfer UI), always allow 1.0
-                        if clamped < 1.0, now.timeIntervalSince(transfer.lastUIUpdate) < 0.1 { return }
-                        transfer.lastUIUpdate = now
-                        let newBytes = UInt64(Double(transfer.totalBytes) * clamped)
-                        // Monotonic protection
-                        if newBytes >= transfer.transferredBytes || clamped >= 1.0 {
-                            transfer.transferredBytes = newBytes
+                        guard let self, let idx = self.transfers.firstIndex(where: { $0.id == transferID }) else { return }
+                        let transfer = self.transfers[idx]
+                        transfer.lastUIUpdate = Date()
+                        transfer.fraction = clamped
+                        if let total = transfer.totalBytes, total > 0 {
+                            let newBytes = UInt64(Double(total) * clamped)
+                            if newBytes >= transfer.transferredBytes || clamped >= 1.0 {
+                                transfer.transferredBytes = newBytes
+                            }
+                        } else {
+                            // Unknown size: totalBytes==nil — don't fake %. Poll local file size for MB.
+                            if let attrs = try? FileManager.default.attributesOfItem(atPath: localURL.path),
+                               let size = attrs[.size] as? UInt64, size > transfer.transferredBytes {
+                                transfer.transferredBytes = size
+                            } else if clamped >= 1.0, let attrs = try? FileManager.default.attributesOfItem(atPath: localURL.path),
+                                      let size = attrs[.size] as? UInt64 {
+                                transfer.transferredBytes = size
+                            }
                         }
+                        // Force Observation refresh for ForEach row (class mutation alone doesn't always re-evaluate)
+                        self.transfers[idx] = transfer
                     }
                 })
                 if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                    transfers[idx].transferredBytes = entry.size
+                    transfers[idx].fraction = 1.0
+                    // Unknown size: entry.size==0, use actual file size on disk
+                    if let total = transfers[idx].totalBytes, total > 0 {
+                        transfers[idx].transferredBytes = entry.size
+                    } else if let attrs = try? FileManager.default.attributesOfItem(atPath: localURL.path),
+                              let size = attrs[.size] as? UInt64 {
+                        transfers[idx].transferredBytes = size
+                    }
                     transfers[idx].isComplete = true
+                    transfers[idx] = transfers[idx]
                 }
+                SFTPProgressThrottler.shared.remove(id: transferID)
                 scheduleTransferRemoval(transferID, after: 3)
             } catch {
                 markTransferError(transferID, error: error)
@@ -415,19 +437,33 @@ final class SFTPService {
             transfers.append(SFTPTransfer(id: transferID, filename: filename, totalBytes: total, transferredBytes: 0, isComplete: false, error: nil))
             do {
                 try await ch.upload(localURL, to: targetPath, operationID: transferID, onProgress: { [weak self] progress in
+                    let clamped = min(max(progress, 0), 1)
+                    guard SFTPProgressThrottler.shared.shouldEmit(id: transferID, progress: clamped) else { return }
                     Task { @MainActor in
                         guard let self else { return }
-                        let clamped = min(max(progress, 0), 1)
                         if let idx = self.transfers.firstIndex(where: { $0.id == transferID }) {
-                            self.transfers[idx].transferredBytes = UInt64(Double(total) * clamped)
+                            let t = self.transfers[idx]
+                            t.lastUIUpdate = Date()
+                            t.fraction = clamped
+                            if let totalUnwrapped = t.totalBytes, totalUnwrapped > 0 {
+                                t.transferredBytes = UInt64(Double(totalUnwrapped) * clamped)
+                            } else {
+                                // Unknown size: don't fake percentage; update bytes via fraction is meaningless
+                                // Keep transferredBytes as-is (updated by channel's byte-level callback if available)
+                                // Fallback: estimate bytes from progress only if total == 0, skip
+                            }
+                            self.transfers[idx] = t
                         }
                         continuation.yield(clamped)
                     }
                 })
                 if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                    transfers[idx].fraction = 1.0
                     transfers[idx].transferredBytes = total
                     transfers[idx].isComplete = true
+                    transfers[idx] = transfers[idx]
                 }
+                SFTPProgressThrottler.shared.remove(id: transferID)
                 continuation.yield(1.0)
                 scheduleTransferRemoval(transferID, after: 3)
             } catch {

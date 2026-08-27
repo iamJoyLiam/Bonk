@@ -62,6 +62,9 @@ private final class ProgressMerger: @unchecked Sendable {
     private let total: UInt64
     private let onProgress: @Sendable (Double) -> Void
     private let lastReported = NIOLockedValueBox<Double>(-1)
+    // Throttle before MainActor: 50ms (≈20 FPS) for Transfer UI, never drop 1.0
+    private let lastEmit = NIOLockedValueBox<Date>(.distantPast)
+    private let throttle: TimeInterval = 0.05
 
     init(total: UInt64, onProgress: @Sendable @escaping (Double) -> Void) {
         self.total = total
@@ -74,8 +77,18 @@ private final class ProgressMerger: @unchecked Sendable {
             return accumulated
         }
         let progress = total > 0 ? Double(completed) / Double(total) : 1.0
-        lastReported.withLockedValue { last in last = progress }
-        onProgress(min(progress, 1.0))
+        let p = min(progress, 1.0)
+        // Throttle: coalesce before MainActor hop
+        if p < 1.0 {
+            let now = Date()
+            let shouldEmit: Bool = lastEmit.withLockedValue { last in
+                if now.timeIntervalSince(last) >= throttle { last = now; return true }
+                return false
+            }
+            if !shouldEmit { return }
+        }
+        lastReported.withLockedValue { last in last = p }
+        onProgress(p)
     }
 
     var completed: UInt64 { lock.withLockedValue { $0 } }

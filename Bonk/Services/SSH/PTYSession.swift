@@ -430,7 +430,15 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
     /// Write keyboard input to the remote shell's stdin.
     public func sendInput(_ bytes: ArraySlice<UInt8>) async throws {
-        if let str = String(bytes: bytes, encoding: .utf8) { shellIntegration.appendInput(str) }
+        if let str = String(bytes: bytes, encoding: .utf8) {
+            shellIntegration.appendInput(str)
+            // PTY echo correlation: record for LogClassifier isCommandEcho ultimate path
+            // Capture up to first newline as command (input may come in chunks)
+            let firstLine = str.components(separatedBy: "\r").first?.components(separatedBy: "\n").first ?? str
+            if !firstLine.trimmingCharacters(in: .whitespaces).isEmpty {
+                PTYEchoTracker.shared.record(firstLine)
+            }
+        }
         inputTapBox.withLockedValue { $0 }?(bytes)
         if let pid = recordingPaneIDBox.withLockedValue({ $0 }) {
             let copy = Array(bytes)
@@ -667,6 +675,8 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         rawLiveContinuations.withLock { $0 }.values.forEach { $0.finish() }
         processOutputHandlerBox.withLockedValue { $0 = nil }
         sessionEndContinuation.finish()
+        // Reset echo correlation for this PTY lifecycle
+        PTYEchoTracker.shared.reset()
     }
 
     // MARK: - Serial Port Mode

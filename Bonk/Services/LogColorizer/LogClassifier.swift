@@ -35,6 +35,11 @@ final class LogClassifier: @unchecked Sendable {
             previousWasLog = false
             return .notLog 
         }
+        // Ultimate: PTY input correlation beats heuristic
+        if PTYEchoTracker.shared.isEcho(line) {
+            previousWasLog = false
+            return .notLog
+        }
         if isCommandEcho(line) {
             previousWasLog = false
             return .notLog
@@ -47,8 +52,8 @@ final class LogClassifier: @unchecked Sendable {
 
         // 1. Byte scanner fast path — check prefix bytes without regex
         // This is the hot path for 5000+ lines/sec, avoids NSRegularExpression for non-logs
-        let bytes = Array(line.utf8)
-        if let strong = byteScannerStrongMatch(bytes) {
+        // Zero-copy: no Array allocation, operates on String.utf8 view directly
+        if let strong = byteScannerStrongMatch(line) {
             previousWasLog = true
             return strong ? .log : .notLog
         }
@@ -88,10 +93,12 @@ final class LogClassifier: @unchecked Sendable {
     }
 
     private func isCommandEcho(_ line: String) -> Bool {
-        // If the line looks like a shell command that was echoed (user input),
-        // we treat it as NOT_LOG to avoid coloring the command itself.
+        // Fallback heuristic ONLY — do NOT expand this list.
+        // Final solution: PTY input/output correlation (input → echo → output).
+        // Until PTY correlation is wired, keep this minimal to avoid precision>recall drift.
         // Example: `grep ERROR application.log` should not have ERROR in red
-        // Heuristic: line starts with common shell verbs and contains no timestamp
+        // NOTE: `docker logs xxx` and `echo "2026-... ERROR"` are edge cases this heuristic
+        // cannot distinguish; PTY correlation will solve them.
         let lower = line.lowercased().trimmingCharacters(in: .whitespaces)
         let shellVerbs = ["echo ", "grep ", "cat ", "ping ", "ls ", "docker ", "kubectl ", "ps ", "curl ", "wget ", "ssh ", "scp ", "sftp ", "vim ", "nano ", "less ", "tail ", "head ", "awk ", "sed "]
         for verb in shellVerbs {
@@ -119,66 +126,77 @@ final class LogClassifier: @unchecked Sendable {
         return false
     }
 
-    // MARK: - Byte scanner (hot path, no regex)
+    // MARK: - Byte scanner (hot path, no regex) — zero-copy via String.utf8
 
-    private func byteScannerStrongMatch(_ bytes: [UInt8]) -> Bool? {
+    private func byteScannerStrongMatch(_ line: String) -> Bool? {
         // Returns nil if inconclusive (need regex), true/false if strong match found
-        // Check for strong log prefixes without regex — ultra fast
-        if bytes.isEmpty { return false }
-        let first = bytes[0]
+        // Check for strong log prefixes without regex — ultra fast, no allocations
+        let utf8 = line.utf8
+        guard let first = utf8.first else { return false }
         // Syslog PRI: starts with '<' and digit
         if first == UInt8(ascii: "<") {
-            // Check if next chars are digits and then '>'
-            var i = 1
-            while i < bytes.count && i < 5 && bytes[i] >= UInt8(ascii: "0") && bytes[i] <= UInt8(ascii: "9") { i += 1 }
-            if i < bytes.count && bytes[i] == UInt8(ascii: ">") { return true }
+            var idx = utf8.index(after: utf8.startIndex)
+            var digitCount = 0
+            while idx != utf8.endIndex, digitCount < 4, utf8[idx] >= UInt8(ascii: "0"), utf8[idx] <= UInt8(ascii: "9") {
+                digitCount += 1; idx = utf8.index(after: idx)
+            }
+            if idx != utf8.endIndex, utf8[idx] == UInt8(ascii: ">") { return true }
         }
-        // Timestamp: starts with digit '2' (for 2026-) or digit for BSD (Jan, Feb)
+        // Timestamp: starts with digit
         if first >= UInt8(ascii: "0") && first <= UInt8(ascii: "9") {
-            // Check for "2026-" or "2026/" prefix (4 digits + - or /)
-            if bytes.count >= 5 {
-                let isYear = bytes[0] >= UInt8(ascii: "0") && bytes[0] <= UInt8(ascii: "9") &&
-                             bytes[1] >= UInt8(ascii: "0") && bytes[1] <= UInt8(ascii: "9") &&
-                             bytes[2] >= UInt8(ascii: "0") && bytes[2] <= UInt8(ascii: "9") &&
-                             bytes[3] >= UInt8(ascii: "0") && bytes[3] <= UInt8(ascii: "9") &&
-                             (bytes[4] == UInt8(ascii: "-") || bytes[4] == UInt8(ascii: "/"))
-                if isYear {
-                    // Need to check if after timestamp there's a level nearby (within 40 chars)
-                    // For byte scanner, just check if line contains level keyword after timestamp
-                    // We do a quick scan for level substrings without regex (case-insensitive)
-                    let line = String(bytes: bytes, encoding: .utf8) ?? ""
-                    let lower = line.lowercased()
+            // Check for 4 digits + - or / prefix (YYYY- or YYYY/)
+            if line.count >= 5 {
+                let scalars = line.unicodeScalars
+                var sIdx = scalars.startIndex
+                var isYear = true
+                for _ in 0..<4 {
+                    guard sIdx != scalars.endIndex, scalars[sIdx].value >= 48, scalars[sIdx].value <= 57 else { isYear = false; break }
+                    sIdx = scalars.index(after: sIdx)
+                }
+                if isYear, sIdx != scalars.endIndex, (scalars[sIdx] == "-" || scalars[sIdx] == "/") {
+                    // Has timestamp prefix — check for level nearby without allocating lowercased copy
+                    // Case-insensitive search via range(options: .caseInsensitive) avoids String allocation
                     let levels = [" info ", " error ", " warn", " debug", " trace", " alert", " crit", " fatal", " notice", " emerg", "[error]", "[warn]", "[info]"]
                     for lvl in levels {
-                        if lower.contains(lvl) { return true }
+                        if line.range(of: lvl, options: .caseInsensitive) != nil { return true }
                     }
-                    // Also check for bracketed level like [error]
-                    if lower.contains("[error]") || lower.contains("[warn]") { return true }
-                    // Has timestamp but no level — still log (e.g., nginx access log)
-                    // But for precision, require level or bracket or IP
-                    // If it has timestamp + IP, it's log
-                    if lower.range(of: #"\d+\.\d+\.\d+\.\d+"#, options: .regularExpression) != nil { return true }
-                    // Otherwise, timestamp alone is not enough for precision > recall
+                    if line.range(of: "[error]", options: .caseInsensitive) != nil { return true }
+                    if line.range(of: "[warn]", options: .caseInsensitive) != nil { return true }
+                    // If has timestamp + IP, it's log
+                    let r = NSRange(line.startIndex..., in: line)
+                    if Self.ipRegex.firstMatch(in: line, range: r) != nil { return true }
+                    // Otherwise timestamp alone not enough (precision > recall)
                     return false
                 }
             }
-            // Check for "2026/08/27" nginx style
-            // Already covered by isYear above
         }
-        // BSD timestamp: Jan, Feb, Mar, etc. at start
-        if bytes.count >= 3 {
-            let prefix3 = String(bytes: Array(bytes.prefix(3)), encoding: .utf8) ?? ""
-            let bsdMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-            if bsdMonths.contains(prefix3) { return true }
+        // BSD timestamp: Jan, Feb, Mar, etc. at start (3-char month)
+        if line.count >= 3 {
+            let prefix3 = line.prefix(3)
+            let bsdMonths: Set<String> = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+            if bsdMonths.contains(String(prefix3)) { return true }
         }
-        // Nginx: check for " [error]" or " [warn]" pattern
-        // This will be caught by hasStrongSignature fallback, so return nil to let regex handle
+        // Nginx etc. -> fallback regex
         return nil
     }
 
+    // Cached — was recompiled per call via range(of: regex)
+    private static let timeRegex: NSRegularExpression = {
+        // swiftlint:disable:next force_try
+        try! NSRegularExpression(pattern: #"\d{2}:\d{2}:\d{2}"#)
+    }()
+    private static let ipRegex: NSRegularExpression = {
+        // swiftlint:disable:next force_try
+        try! NSRegularExpression(pattern: #"\d+\.\d+\.\d+\.\d+"#)
+    }()
+
     private func hasTimestamp(_ line: String) -> Bool {
-        // Quick check without regex: does line contain "2026-" or "2026/" or ":" with time?
-        return line.contains("2026-") || line.contains("2026/") || line.contains(":") && line.range(of: #"\d{2}:\d{2}:\d{2}"#, options: .regularExpression) != nil
+        if line.contains("2026-") || line.contains("2026/") { return true }
+        if line.contains(":") {
+            let r = NSRange(line.startIndex..., in: line)
+            if Self.timeRegex.firstMatch(in: line, range: r) != nil { return true }
+        }
+        return false
     }
 
     // MARK: - Strong signature via cached regex (fallback)

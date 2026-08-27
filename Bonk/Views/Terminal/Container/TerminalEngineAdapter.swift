@@ -12,10 +12,12 @@ import AppKit
 import SwiftTerm
 
 /// Adapter for real SwiftTerm view. Keeps AppKit out of Engine.
+/// Ultimate: off MainActor heavy regex → utility queue 16ms batch, never blocks renderer.
 @MainActor
 final class AppKitTerminalConsumer: TerminalConsumer {
     weak var terminalView: SwiftTerm.TerminalView?
     private var onBytesConsumed: (@Sendable (Int) -> Void)?
+    private let worker = LogHighlightWorker.shared
 
     init(terminalView: SwiftTerm.TerminalView, onBytesProcessed: (@Sendable (Int) -> Void)? = nil) {
         self.terminalView = terminalView
@@ -23,12 +25,34 @@ final class AppKitTerminalConsumer: TerminalConsumer {
     }
 
     func receive(_ text: String) {
-        // Two-stage pipeline: LogClassifier (strong signatures, shell prompt, byte-scanner) -> LogTokenizer (LogPatterns)
-        // Precision > Recall, incremental per completed line, batch via LogHighlightWorker for high throughput.
-        // For now, keep synchronous path but with classifier (fast byte-scanner avoids per-line regex for docker/ps tables).
-        // High-throughput (50k+ lines/sec) will automatically use LogHighlightWorker batch via TerminalEngine's coalescer.
-        let colored = LogColorizer.colorize(text)
-        terminalView?.feed(text: colored)
+        guard LogColorizerConfig.isEnabled else {
+            terminalView?.feed(text: text)
+            onBytesConsumed?(text.utf8.count)
+            return
+        }
+        // Fast-path: ANSI already present (e.g. ls --color) — bypass highlight
+        if text.contains("\u{1B}") {
+            terminalView?.feed(text: text)
+            onBytesConsumed?(text.utf8.count)
+            return
+        }
+        // High-flood: degraded mode protects renderer (50k lines/sec)
+        let lineCount = max(1, text.filter { $0 == "\n" }.count + 1)
+        if DegradedMode.shared.shouldDropLogHighlight(lineCount: lineCount) {
+            terminalView?.feed(text: text)
+            onBytesConsumed?(text.utf8.count)
+            return
+        }
+        // Background: byte-scanner + token regex on utility queue (never MainActor)
+        // 16ms coalesce ≈ 60 FPS terminal tick, matches Engine's displayLink
+        let bytes = text.utf8.count
+        let view = terminalView
+        let onConsumed = onBytesConsumed
+        worker.enqueue(text: text) { colored in
+            // Ensure ordering: view may have been recycled (tab switch)
+            view?.feed(text: colored)
+            onConsumed?(bytes)
+        }
     }
 
     func didConsume(bytes: Int) { onBytesConsumed?(bytes) }
@@ -36,13 +60,30 @@ final class AppKitTerminalConsumer: TerminalConsumer {
 #endif
 
 /// Team adapter — same coalesced text as local view, broadcast to guests.
+/// Off MainActor like local path: avoid blocking Engine tick.
 @MainActor
 final class TeamTerminalConsumer: TerminalConsumer {
     let sessionID: TeamSessionID
+    private let worker = LogHighlightWorker.shared
     init(sessionID: TeamSessionID) { self.sessionID = sessionID }
     func receive(_ text: String) {
-        let colored = LogColorizer.colorize(text)
-        TeamRelay.shared.broadcastOutput(colored, sessionID: sessionID)
+        guard LogColorizerConfig.isEnabled else {
+            TeamRelay.shared.broadcastOutput(text, sessionID: sessionID)
+            return
+        }
+        if text.contains("\u{1B}") {
+            TeamRelay.shared.broadcastOutput(text, sessionID: sessionID)
+            return
+        }
+        let lines = max(1, text.filter { $0 == "\n" }.count + 1)
+        if DegradedMode.shared.shouldDropLogHighlight(lineCount: lines) {
+            TeamRelay.shared.broadcastOutput(text, sessionID: sessionID)
+            return
+        }
+        let sid = sessionID
+        worker.enqueue(text: text) { colored in
+            TeamRelay.shared.broadcastOutput(colored, sessionID: sid)
+        }
     }
 }
 

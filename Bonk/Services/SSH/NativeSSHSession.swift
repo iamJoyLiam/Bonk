@@ -231,6 +231,8 @@ private final class CitadelSFTPChannel: SFTPChannel {
         var completedBytes: UInt64 = 0
         var pending = 0
         var lastProgress: Double = -1
+        var lastEmit = Date.distantPast
+        let throttle: TimeInterval = 0.05
         try await withThrowingTaskGroup(of: Int.self) { group in
             while true {
                 while pending < pipelineDepth {
@@ -248,8 +250,9 @@ private final class CitadelSFTPChannel: SFTPChannel {
                 pending -= 1
                 completedBytes += UInt64(written)
                 let progress = total > 0 ? Double(completedBytes) / Double(total) : 1.0
-                if progress - lastProgress >= 0.01 || progress >= 1.0 {
-                    lastProgress = progress
+                let now = Date()
+                if progress >= 1.0 || (progress - lastProgress >= 0.01 && now.timeIntervalSince(lastEmit) >= throttle) {
+                    lastProgress = progress; lastEmit = now
                     onProgress(min(progress, 1.0))
                 }
             }
@@ -354,6 +357,8 @@ private final class CitadelSFTPChannel: SFTPChannel {
         var readDone = false
         var inFlight = 0
         var lastProgress: Double = -1
+        var lastEmit = Date.distantPast
+        let throttle: TimeInterval = 0.05
         try await withThrowingTaskGroup(of: (UInt64, Data).self) { group in
             while !readDone || inFlight > 0 {
                 while !readDone && inFlight < pipelineDepth {
@@ -376,9 +381,11 @@ private final class CitadelSFTPChannel: SFTPChannel {
                     let b = bytes
                     try await Task.detached(priority: .userInitiated) { try handle.write(contentsOf: b) }.value
                     nextWriteOffset += UInt64(b.count)
+                    // Unknown size: indeterminate ProgressView (total==0) — don't fake real %.
                     let progress: Double = total > 0 ? Double(nextWriteOffset) / Double(total) : (readDone ? 1.0 : Double(nextWriteOffset) / Double(nextWriteOffset + UInt64(chunkSize)))
-                    if progress - lastProgress >= 0.01 || progress >= 1.0 {
-                        lastProgress = progress
+                    let now2 = Date()
+                    if progress >= 1.0 || (progress - lastProgress >= 0.01 && now2.timeIntervalSince(lastEmit) >= throttle) {
+                        lastProgress = progress; lastEmit = now2
                         onProgress(min(progress, 1.0))
                     }
                 }

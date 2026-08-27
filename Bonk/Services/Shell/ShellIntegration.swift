@@ -74,6 +74,10 @@ final class ShellIntegration {
             let cmd = payload.isEmpty ? pendingCommand : payload
             let range = ShellCommandRange(id: UUID(), startLine: lineCounter, endLine: nil, command: cmd, startTime: Date())
             current = range
+            // Feed echo tracker for ultimate correlation
+            if !cmd.trimmingCharacters(in: .whitespaces).isEmpty {
+                PTYEchoTracker.shared.record(cmd)
+            }
             return .commandStart(range)
         case "D":
             guard var cur = current else { return nil }

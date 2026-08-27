@@ -37,9 +37,9 @@ final class LogHighlightWorker: @unchecked Sendable {
         if shouldSchedule { scheduled = true }
         lock.unlock()
         if shouldSchedule {
-            queue.asyncAfter(deadline: .now() + .milliseconds(16)) { [weak self] in
-                self?.flush()
-            }
+            // Ultimate low latency: 0-delay coalesce — Engine already coalesced to tick.
+            // Extra 16ms here would double latency (Engine 16ms + Worker 16ms = 2 frames).
+            queue.async { [weak self] in self?.flush() }
         }
     }
 

@@ -138,6 +138,8 @@ final class CitadelSFTPAdapter: SFTPChannel {
         var completed: UInt64 = 0
         var pending = 0
         var last: Double = -1
+        var lastEmit = Date.distantPast
+        let throttle: TimeInterval = 0.05 // 20 FPS, coalesce before MainActor
         try await withThrowingTaskGroup(of: Int.self) { group in
             while true {
                 while pending < pipelineDepth {
@@ -153,7 +155,8 @@ final class CitadelSFTPAdapter: SFTPChannel {
                 pending -= 1
                 completed += UInt64(written)
                 let p = total > 0 ? Double(completed) / Double(total) : 1.0
-                if p - last >= 0.01 || p >= 1.0 { last = p; onProgress(min(p, 1.0)) }
+                let now = Date()
+                if p >= 1.0 || (p - last >= 0.01 && now.timeIntervalSince(lastEmit) >= throttle) { last = p; lastEmit = now; onProgress(min(p, 1.0)) }
             }
             try await group.waitForAll()
         }
@@ -231,6 +234,8 @@ final class CitadelSFTPAdapter: SFTPChannel {
         var readDone = false
         var inFlight = 0
         var last: Double = -1
+        var lastEmit = Date.distantPast
+        let throttle: TimeInterval = 0.05
         try await withThrowingTaskGroup(of: (UInt64, Data).self) { group in
             while !readDone || inFlight > 0 {
                 while !readDone && inFlight < depth {
@@ -246,8 +251,12 @@ final class CitadelSFTPAdapter: SFTPChannel {
                 while let bytes = pending.removeValue(forKey: nextWrite) {
                     try await Task.detached(priority: .userInitiated) { try handle.write(contentsOf: bytes) }.value
                     nextWrite += UInt64(bytes.count)
+                    // Unknown size: don't synthesize "real" percentage — SFTPService/SFTPWindowView
+                    // now shows indeterminate ProgressView for total==0. Keep internal p monotonic for
+                    // completion detection but never display as %.
                     let p: Double = total > 0 ? Double(nextWrite) / Double(total) : (readDone ? 1.0 : Double(nextWrite) / Double(nextWrite + UInt64(chunkSize)))
-                    if p - last >= 0.01 || p >= 1.0 { last = p; onProgress(min(p, 1.0)) }
+                    let now2 = Date()
+                    if p >= 1.0 || (p - last >= 0.01 && now2.timeIntervalSince(lastEmit) >= throttle) { last = p; lastEmit = now2; onProgress(min(p, 1.0)) }
                 }
             }
             try await group.waitForAll()

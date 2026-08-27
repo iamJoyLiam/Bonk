@@ -45,27 +45,54 @@ public struct SFTPFileEntry: Identifiable, Sendable, Equatable {
     }
 }
 
+/// Coalesces I/O → MainActor hops: 50ms (≈20 FPS), never drops 1.0
+final class SFTPProgressThrottler: @unchecked Sendable {
+    static let shared = SFTPProgressThrottler()
+    private let lock = NSLock()
+    private var last: [UUID: Date] = [:]
+    private let interval: TimeInterval = 0.05 // 20 FPS, as spec: 50~100ms
+    func shouldEmit(id: UUID, progress: Double) -> Bool {
+        if progress >= 1.0 { // always pass completion
+            lock.lock(); last[id] = Date(); lock.unlock(); return true
+        }
+        let now = Date()
+        lock.lock(); defer { lock.unlock() }
+        if let prev = last[id], now.timeIntervalSince(prev) < interval { return false }
+        last[id] = now; return true
+    }
+    func remove(id: UUID) { lock.lock(); last.removeValue(forKey: id); lock.unlock() }
+}
+
 /// Transfer progress for file upload/download.
+/// Known size: fraction = transferred/total, determinate ProgressView.
+/// Unknown size: totalBytes == nil, progress == nil -> indeterminate ProgressView + MB only.
 @Observable
 final class SFTPTransfer: Identifiable {
     let id: UUID
     let filename: String
-    var totalBytes: UInt64
+    var totalBytes: UInt64? // nil = unknown (e.g. SFTP attrs.size == 0)
     var transferredBytes: UInt64
     var isComplete: Bool
     var isCancelled: Bool = false
     var error: String?
+    /// Internal smooth fraction for known-size determinate UI (throttled 50~100ms, not per-byte)
+    var fraction: Double = 0
     @ObservationIgnored var lastUIUpdate = Date.distantPast
 
-    init(id: UUID, filename: String, totalBytes: UInt64, transferredBytes: UInt64, isComplete: Bool, isCancelled: Bool = false, error: String? = nil) {
+    init(id: UUID, filename: String, totalBytes: UInt64?, transferredBytes: UInt64, isComplete: Bool, isCancelled: Bool = false, error: String? = nil) {
         self.id = id; self.filename = filename; self.totalBytes = totalBytes
         self.transferredBytes = transferredBytes; self.isComplete = isComplete
         self.isCancelled = isCancelled; self.error = error
     }
+    // Convenience for known size (UInt64)
+    convenience init(id: UUID, filename: String, totalBytes: UInt64, transferredBytes: UInt64, isComplete: Bool, isCancelled: Bool = false, error: String? = nil) {
+        self.init(id: id, filename: filename, totalBytes: totalBytes == 0 ? nil : totalBytes, transferredBytes: transferredBytes, isComplete: isComplete, isCancelled: isCancelled, error: error)
+    }
 
-    var progress: Double {
-        guard totalBytes > 0 else { return 0 }
-        return min(Double(transferredBytes) / Double(totalBytes), 1.0)
+    /// Nil when unknown size -> UI shows indeterminate ProgressView()
+    var progress: Double? {
+        guard let total = totalBytes, total > 0 else { return nil }
+        return min(Double(transferredBytes) / Double(total), 1.0)
     }
 
     var isActive: Bool { !isComplete && !isCancelled }
