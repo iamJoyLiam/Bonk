@@ -259,9 +259,8 @@ extension TeamRelay {
     }
 
     func forwardInput(_ payload: String, to sessionID: TeamSessionID) {
-        guard let sessionManager = BonkAppDelegate.shared?.sessionManager,
-              let data = payload.data(using: .utf8)
-        else { return }
+        let sessionManager = injectedSessionManager ?? BonkAppDelegate.shared?.sessionManager
+        guard let sessionManager, let data = payload.data(using: .utf8) else { return }
         let bytes = Array(data)
         Task { @MainActor in
             try? await sessionManager.sendInput(
@@ -273,7 +272,8 @@ extension TeamRelay {
     }
 
     func forwardResize(columns: Int, rows: Int, to sessionID: TeamSessionID) {
-        guard let sessionManager = BonkAppDelegate.shared?.sessionManager else { return }
+        let sessionManager = injectedSessionManager ?? BonkAppDelegate.shared?.sessionManager
+        guard let sessionManager else { return }
         Task { @MainActor in
             try? await sessionManager.resizePTY(
                 cols: columns,

@@ -20,10 +20,8 @@ extension TeamRelay {
     }
 
     func currentActiveSessionID() -> TeamSessionID? {
-        guard let sessionManager = BonkAppDelegate.shared?.sessionManager,
-              let tab = sessionManager.activeTab,
-              let paneID = tab.activePaneID
-        else { return nil }
+        let sessionManager = injectedSessionManager ?? BonkAppDelegate.shared?.sessionManager
+        guard let sessionManager, let tab = sessionManager.activeTab, let paneID = tab.activePaneID else { return nil }
         return TeamSessionID(tabID: tab.id, paneID: paneID)
     }
 

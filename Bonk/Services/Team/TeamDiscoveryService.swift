@@ -18,48 +18,36 @@ struct DiscoveredTeamHost: Identifiable, Hashable, Sendable {
 final class TeamDiscoveryService: ObservableObject {
     @Published private(set) var discoveredHosts: [DiscoveredTeamHost] = []
     @Published private(set) var isBrowsing = false
+    // Single isHosting truth: mirrors TeamStore (one NWListener). Discovery's listener is now Store's.
+    private let store = TeamStore.shared
     @Published private(set) var isHosting = false
+    private var cancellables = Set<AnyCancellable>()
 
     private let logger = Logger(subsystem: "com.bonk", category: "TeamDiscovery")
     private var browser: NWBrowser?
-    private var listener: NWListener?
+    // Listener moved to TeamStore — retained via Store
     private var hostedServiceName: String = TeamConstants.defaultHostName
+
+    init() {
+        store.$isHosting.receive(on: DispatchQueue.main).sink { [weak self] v in
+            self?.isHosting = v
+        }.store(in: &cancellables)
+    }
 
     // MARK: - Host: publish
 
     func startHosting(displayName: String) {
-        stopHosting()
         hostedServiceName = displayName
         do {
-            let parameters = NWParameters.tcp
-            // MVP: no TLS for local discovery; TLS added in Relay layer
-            listener = try NWListener(service: .init(name: displayName, type: TeamConstants.serviceType), using: parameters)
-            listener?.stateUpdateHandler = { [weak self] state in
-                self?.logger.info("Host listener state: \(String(describing: state))")
-            }
-            listener?.serviceRegistrationUpdateHandler = { [weak self] change in
-                switch change {
-                case .add(let endpoint): self?.logger.info("Service registered: \(String(describing: endpoint))")
-                case .remove(let endpoint): self?.logger.info("Service removed: \(String(describing: endpoint))")
-                @unknown default: break
-                }
-            }
-            listener?.newConnectionHandler = { _ in
-                // Relay owns connection handling; this listener is only for Bonjour advertisement
-                // Keep it alive even if Relay creates its own NWListener on same service name
-            }
-            listener?.start(queue: .global(qos: .utility))
-            isHosting = true
-            logger.info("Started hosting team service: \(displayName)")
+            try store.startHosting(displayName: displayName)
+            logger.info("Started hosting via Store: \(displayName)")
         } catch {
-            logger.error("Failed to start hosting: \(error.localizedDescription)")
+            logger.error("Failed to start hosting via Store: \(error.localizedDescription)")
         }
     }
 
     func stopHosting() {
-        listener?.cancel()
-        listener = nil
-        isHosting = false
+        store.stopHosting()
     }
 
     // MARK: - Guest: browse

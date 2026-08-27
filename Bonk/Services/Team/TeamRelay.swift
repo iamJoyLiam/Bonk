@@ -7,10 +7,19 @@ import os.log
 
 @MainActor
 final class TeamRelay: ObservableObject {
-    static let shared = TeamRelay()
+    // Production singleton uses shared Store (single NWListener, single isHosting).
+    // Tests create fresh Relays via TeamRelay() which get a fresh Store for isolation.
+    static let shared: TeamRelay = {
+        let r = TeamRelay(store: TeamStore.shared)
+        return r
+    }()
 
-    @Published var isHosting = false // TODO: delegate to TeamStore.isHosting (Phase 4 takeover)
+    @Published var isHosting = false // mirrors TeamStore.isHosting (single truth)
     @Published var isConnected = false
+    // Injected SessionManager to break BonkAppDelegate.shared cycle (Phase 4)
+    weak var injectedSessionManager: SessionManager?
+    private let teamStore: TeamStore
+    private var storeCancellables = Set<AnyCancellable>()
     @Published var connectedPeers: [TeamPeer] = []
     @Published var sharedSessionID: TeamSessionID?
     @Published var driverPeerID: UUID?
@@ -66,6 +75,18 @@ final class TeamRelay: ObservableObject {
         let payload: String
     }
 
+    init(store: TeamStore = TeamStore()) {
+        self.teamStore = store
+        // Single isHosting truth: Store owns listener, Relay mirrors published value
+        teamStore.$isHosting.receive(on: DispatchQueue.main).sink { [weak self] v in
+            guard let self else { return }
+            if self.isHosting != v { self.isHosting = v }
+        }.store(in: &storeCancellables)
+        teamStore.$hostedPort.receive(on: DispatchQueue.main).sink { [weak self] v in
+            self?.hostedPort = v
+        }.store(in: &storeCancellables)
+    }
+
     // MARK: - Host
 
     func startHosting(displayName: String) {
@@ -111,6 +132,9 @@ final class TeamRelay: ObservableObject {
             if let raw = listener?.port?.rawValue, raw != 0 {
                 hostedPort = raw
             }
+            // Keep per-instance Store in sync (single truth for this Relay; shared Relay uses shared Store)
+            teamStore.isHosting = true
+            teamStore.hostedPort = hostedPort
             logger.info("Hosting team relay on \(String(describing: self.hostListener?.port))")
             updatePresenceSnapshot()
         } catch {
@@ -147,6 +171,8 @@ final class TeamRelay: ObservableObject {
         hostPairingTimeoutTasks.removeAll()
         hostLastActivity.removeAll()
         isHosting = false
+        teamStore.isHosting = false
+        teamStore.hostedPort = nil
         isHostMode = false
         pairingPin = nil
         hostedPort = nil

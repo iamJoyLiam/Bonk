@@ -312,14 +312,19 @@ final class WorkspacePersistenceManager {
             }
 
             sessionManager.tabs.append(tab)
-            // Sequential restore: connectTab is the real attempt (no double handshake),
-            // then connect remaining panes. Skip the pane that connectTab already handled (first leaf).
+            // Deep LayoutStore: single tree, CGFloat weights, concurrent restore (was sequential for tab { for pane { await } })
             let allPanes = tab.layout.root.allPaneIDs
             let firstPaneID = tab.layout.root.paneState?.id ?? allPanes.first
             await sessionManager.connectTab(tab)
-            for pid in allPanes where pid != firstPaneID {
-                if let pane = tab.layout.findPane(id: pid) {
-                    await sessionManager.connectPane(tab: tab, pane: pane)
+            // Remaining panes concurrently — one TaskGroup per tab (N×M concurrent, not serial)
+            let remainingIDs = allPanes.filter { $0 != firstPaneID }
+            await withTaskGroup(of: Void.self) { group in
+                for pid in remainingIDs {
+                    guard let pane = tab.layout.findPane(id: pid) else { continue }
+                    group.addTask { [weak sessionManager, weak tab] in
+                        guard let sessionManager, let tab else { return }
+                        await sessionManager.connectPane(tab: tab, pane: pane)
+                    }
                 }
             }
         }
