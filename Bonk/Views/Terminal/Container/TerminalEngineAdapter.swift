@@ -23,7 +23,9 @@ final class AppKitTerminalConsumer: TerminalConsumer {
     }
 
     func receive(_ text: String) {
-        terminalView?.feed(text: text)
+        // LogColorizer stays in display layer (Phase A)
+        let colored = LogColorizer.colorize(text)
+        terminalView?.feed(text: colored)
     }
 
     func didConsume(bytes: Int) { onBytesConsumed?(bytes) }
@@ -36,7 +38,9 @@ final class TeamTerminalConsumer: TerminalConsumer {
     let sessionID: TeamSessionID
     init(sessionID: TeamSessionID) { self.sessionID = sessionID }
     func receive(_ text: String) {
-        TeamRelay.shared.broadcastOutput(text, sessionID: sessionID)
+        // Keep colorization in display layer (Phase A) — team also colorizes here for consistency
+        let colored = LogColorizer.colorize(text)
+        TeamRelay.shared.broadcastOutput(colored, sessionID: sessionID)
     }
 }
 

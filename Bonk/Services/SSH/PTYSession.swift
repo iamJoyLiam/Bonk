@@ -308,11 +308,11 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             Task { @MainActor in NotificationCenter.default.post(name: .commandBlockDidAdd, object: nil, userInfo: ["block": finishedBlock]) }
             activeCommandBlock.withLockedValue { $0 = nil }
         }
-        // Colorize per chunk here (legacy) — Engine's consumer will skip
-        // already-colored lines via hasANSI per line, so split signatures
-        // across chunks would still miss, but at least basic logs display.
-        // Single-point coalesced colorize caused printf to not display.
-        let displayText = LogColorizer.colorize(text)
+        // Display text is raw here — single colorization point is now
+        // TerminalEngine's consumers (AppKit + Team) on the coalesced tick.
+        // Doing it per-chunk here would miss signatures split across chunks
+        // and cause double hasANSI skips on coalesced buffers.
+        let displayText = text
         // Send to all live consumers with per-consumer backpressure.
         // Skip consumers whose pending bytes exceed the high watermark;
         // they will resume once the Coordinator calls decrementPendingBytes().

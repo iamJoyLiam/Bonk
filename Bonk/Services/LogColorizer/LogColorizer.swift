@@ -18,25 +18,33 @@ enum LogColorizer {
     static func colorize(_ text: String) -> String {
         guard LogColorizerConfig.isEnabled else { return text }
 
-        // Process line-by-line
+        // Use NSString for LF search: Swift's `firstIndex(of: "\n" as Character)`
+        // treats "\r\n" as a single grapheme cluster, so it misses the LF
+        // inside CRLF and leaves CRLF-terminated log lines uncolored (tail path).
+        // NSString operates on UTF-16 and finds the LF scalar correctly.
+        let nsText = text as NSString
+        let length = nsText.length
         var result = ""
-        var lineStart = text.startIndex
-
-        while lineStart < text.endIndex {
-            let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
-            let line = String(text[lineStart..<lineEnd])
-            // Only colorize COMPLETE lines (terminated by \n). A chunk may end
-            // in the middle of a line; the tail half is either a fragment of a
-            // server escape sequence or will be completed by the next chunk —
-            // injecting SGR into it can corrupt the terminal's escape state.
-            // The completed line gets colorized when its final piece arrives.
-            if lineEnd < text.endIndex {
-                result += colorizeLine(line)
-                result += "\n"
-            } else {
-                result += line
+        result.reserveCapacity(text.utf8.count + 32)
+        var searchLoc = 0
+        while searchLoc < length {
+            let range = nsText.range(of: "\n", options: [], range: NSRange(location: searchLoc, length: length - searchLoc))
+            if range.location == NSNotFound {
+                // Tail without terminating \n — leave raw to avoid injecting SGR
+                // into a half-split escape sequence; it will be colored when
+                // the next chunk completes the line.
+                let tailStart = String.Index(utf16Offset: searchLoc, in: text)
+                result += String(text[tailStart...])
+                break
             }
-            lineStart = lineEnd == text.endIndex ? lineEnd : text.index(after: lineEnd)
+            let lineStart = String.Index(utf16Offset: searchLoc, in: text)
+            let lineEnd = String.Index(utf16Offset: range.location, in: text)
+            var line = String(text[lineStart..<lineEnd]) // excludes \n, includes \r if CRLF
+            let hasCR = line.hasSuffix("\r")
+            if hasCR { line.removeLast() }
+            result += colorizeLine(line)
+            result += hasCR ? "\r\n" : "\n"
+            searchLoc = range.location + 1
         }
         return result
     }

@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import os
 
 // MARK: - Pattern Definition
 
@@ -162,23 +163,20 @@ enum LogPatterns {
     /// A line that fails this scan cannot match any pattern above, so it is
     /// returned untouched after a single regex pass (the hot path for
     /// non-log output). Kept in sync with `allPatterns` by hand.
-    static let quickSignatureRegex: NSRegularExpression? = try? NSRegularExpression(
-        pattern: """
-        (?:\\b(?:EMERG(?:ENCY)?|PANIC|ALERT|CRIT(?:ICAL)?|FATAL|ERR(?:OR)?|FAIL(?:ED)?|FAILURE|TIMEOUT|REFUSED|WARN(?:ING)?|NOTICE|SUCCESS|COMPLETED|CONNECTED|INFO(?:RMATIONAL)?|DEBUG|TRACE)\\b
-        |\\b(?:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\b
-        |\\b[0-9A-Fa-f]{1,2}(?::[0-9A-Fa-f]{1,2}){5}\\b
-        |\\d{4}[-/]\\d{2}[-/]\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?
-        |\\d{1,2}月\\s*\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2}
-        |[A-Z][a-z]{2}\\s+\\d{1,2}\\s+\\d{2}:\\d{2}(?::\\d{2})?
-        |\\b\\w+\\[\\d+\\]
-        |\\b[a-zA-Z][\\w]*(?:-\\d+)+\\b
-        |\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b
-        |\\[(?:emerg|alert|crit(?:ical)?|err(?:or)?|warn(?:ing)?|notice|info(?:rmational)?|debug|trace|fatal)\\]
-        |level=(?:emerg|alert|crit|error|warn|notice|info|debug)
-        |<\\d{1,3}>
-        """,
-        options: [.caseInsensitive]
-    )
+    ///
+    /// Single-line pattern (no Swift multiline literal) — the previous
+    /// `\"\"\"` form with embedded newlines fails with Code=2048 on
+    /// some ICU versions (reported on real device). Lazy closure logs
+    /// the compilation error via os_log instead of silently returning nil.
+    static let quickSignatureRegex: NSRegularExpression? = {
+        let pattern = "(?:\\b(?:EMERG(?:ENCY)?|PANIC|ALERT|CRIT(?:ICAL)?|FATAL|ERR(?:OR)?|FAIL(?:ED)?|FAILURE|TIMEOUT|REFUSED|WARN(?:ING)?|NOTICE|SUCCESS|COMPLETED|CONNECTED|INFO(?:RMATIONAL)?|DEBUG|TRACE)\\b|\\b(?:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\b|\\b[0-9A-Fa-f]{1,2}(?::[0-9A-Fa-f]{1,2}){5}\\b|\\d{4}[-/]\\d{2}[-/]\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?|\\d{1,2}月\\s*\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2}|[A-Z][a-z]{2}\\s+\\d{1,2}\\s+\\d{2}:\\d{2}(?::\\d{2})?|\\b\\w+\\[\\d+\\]|\\b[a-zA-Z][\\w]*(?:-\\d+)+\\b|\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b|\\[(?:emerg|alert|crit(?:ical)?|err(?:or)?|warn(?:ing)?|notice|info(?:rmational)?|debug|trace|fatal)\\]|level=(?:emerg|alert|crit|error|warn|notice|info|debug)|<\\d{1,3}>)"
+        do {
+            return try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+        } catch {
+            Logger(subsystem: "Bonk", category: "LogColorizer").error("quickSignatureRegex compile failed: \(error.localizedDescription, privacy: .public) pattern: \(pattern, privacy: .public)")
+            return nil
+        }
+    }()
 }
 
 // MARK: - Syslog PRI Helpers
