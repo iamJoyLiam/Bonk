@@ -457,28 +457,18 @@ public actor SSHNetworkService {
 
     private func reconnect() async {
         guard let config else { return }
-        // OpenSSH 也需自动重连（此前直接跳过导致空闲后假死）
         if usesOpenSSHTransport {
             await reconnectOpenSSH(config: config)
             return
         }
-
-        let maxAttempts = max(config.maxReconnectAttempts, 1)
+        let policy = ReconnectPolicy.default
+        let maxAttempts = max(config.maxReconnectAttempts, policy.maxAttempts)
         var attempt = 0
-
-        // Bounded retries with exponential backoff (capped at 30s), then give
-        // up and let the user reconnect manually. Retrying forever is what
-        // produced hundreds of reconnect attempts against an unreachable host.
         while attempt < maxAttempts, !Task.isCancelled {
             connectionState = .reconnecting(attempt: attempt + 1, maxAttempts: maxAttempts)
             stateContinuation.yield(.reconnecting(attempt: attempt + 1, maxAttempts: maxAttempts))
-
-            let baseSeconds = max(config.baseReconnectDelay.components.seconds, 1)
-            let delaySeconds = min(baseSeconds * Int64(1 << min(attempt, 4)), 30)
-            let jitterMs = Int64.random(in: 0 ..< 500)
-            let totalMs = delaySeconds * 1000 + jitterMs
-
-            try? await Task.sleep(for: .milliseconds(Double(totalMs)))
+            let delay = policy.delay(for: attempt)
+            try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { break }
 
             do {
@@ -550,16 +540,14 @@ public actor SSHNetworkService {
     }
 
     private func reconnectOpenSSH(config: SSHConnectionConfig) async {
-        let maxAttempts = max(config.maxReconnectAttempts, 1)
+        let policy = ReconnectPolicy.default
+        let maxAttempts = max(config.maxReconnectAttempts, policy.maxAttempts)
         var attempt = 0
         while attempt < maxAttempts, !Task.isCancelled {
             connectionState = .reconnecting(attempt: attempt + 1, maxAttempts: maxAttempts)
             stateContinuation.yield(.reconnecting(attempt: attempt + 1, maxAttempts: maxAttempts))
-            let baseSeconds = max(config.baseReconnectDelay.components.seconds, 1)
-            let delaySeconds = min(baseSeconds * Int64(1 << min(attempt, 4)), 30)
-            let jitterMs = Int64.random(in: 0 ..< 500)
-            let totalMs = delaySeconds * 1000 + jitterMs
-            try? await Task.sleep(for: .milliseconds(Double(totalMs)))
+            let delay = policy.delay(for: attempt)
+            try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { break }
             do {
                 // 清理旧 socket，避免 ControlMaster 残留

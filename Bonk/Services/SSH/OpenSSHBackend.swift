@@ -41,20 +41,7 @@ final class OpenSSHBackend: @unchecked Sendable {
 
     init(config: SSHConnectionConfig) throws {
         self.config = config
-        let safeUser = config.username.replacingOccurrences(of: "/", with: "_")
-        let safeHost = config.host.replacingOccurrences(of: "/", with: "_")
-        let jumpTag: String = if let jump = config.jumpHost {
-            "via-\(jump.username.replacingOccurrences(of: "/", with: "_"))-\(jump.host.replacingOccurrences(of: "/", with: "_"))-\(jump.port)"
-        } else {
-            "direct"
-        }
-        let authTag: String = switch config.authMethod {
-        case .password: "pw"
-        case .privateKey: "key"
-        case .certificate: "cert"
-        case .secureEnclaveKey: "enclave"
-        }
-        controlPath = "/tmp/bonk-ssh-\(safeUser)-\(safeHost)-\(config.port)-\(jumpTag)-\(authTag).sock"
+        controlPath = SocketNaming.controlPath(host: config.host, port: config.port, username: config.username)
         knownHostsPath = try Self.prepareKnownHostsPath()
         try prepareIdentityFiles()
     }
