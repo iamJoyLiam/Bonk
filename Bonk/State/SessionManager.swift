@@ -218,15 +218,18 @@ final class SessionManager {
             return
         }
         setPhase(session, to: .connectingTransport, host: config.host, engine: "Resolver", reason: "VNext routing")
-
-        let routing = await vnextRouting(for: config, host: tab.hostItem)
-        let vnextReq = routing.requirements
-        let vnextCached = routing.cached
-        let vnextDecision = routing.decision
+        // 6-hop collapse via Lifecycle (Phase 3) — single resolve call
+        let lifecycle = SSHSessionLifecycle(networkService: SSHNetworkService(hostKeyStore: hostKeyStore), hostKeyStore: hostKeyStore)
+        guard let resolved = await lifecycle.resolve(host: tab.hostItem) else {
+            setPhase(session, to: .failed("resolve"), host: tab.hostItem.host, engine: "Lifecycle", reason: "resolve")
+            return
+        }
+        let vnextReq = resolved.requirements
+        let vnextCached: SSHSessionCoordinator.CachedProfile? = nil // already consumed in Lifecycle
+        let vnextDecision = resolved.decision
         logVNextDecision(vnextDecision, config: config, requirements: vnextReq)
-
-        var service = await makeVNextService(for: vnextDecision)
-        var effectiveConfig = effectiveConfig(for: config, decision: vnextDecision, cached: vnextCached)
+        var service = resolved.service
+        var effectiveConfig = resolved.effectiveConfig
         if case .compatibility = vnextDecision, let algos = vnextCached?.algorithms, !algos.isEmpty {
             Log.session.info("[VNext] Using cached compat algorithms: kex=\(algos.kex)")
         }
