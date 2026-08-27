@@ -49,6 +49,9 @@ enum LogColorizer {
         return result
     }
 
+    // MARK: - Classifier (two-stage pipeline: LogClassifier -> LogTokenizer)
+    nonisolated(unsafe) private static let classifier = LogClassifier()
+
     // MARK: - Line Processing
 
     private static func colorizeLine(_ line: String) -> String {
@@ -58,20 +61,13 @@ enum LogColorizer {
         // Skip empty/whitespace-only lines — avoid double trimming (isShellNoise trims again).
         if line.trimmingCharacters(in: .whitespaces).isEmpty { return line }
 
-        // Skip shell prompts and cursor control
+        // Skip shell prompts and cursor control (highest priority, precision > recall)
         if isShellNoise(line) { return line }
 
-        // Quick prefilter: ONE combined regex. A line with no recognizable
-        // signature cannot match any field pattern, so return it untouched
-        // instead of running every pattern's regex on it (the hot path).
-        guard let quick = LogPatterns.quickSignatureRegex,
-              quick.firstMatch(
-                  in: line,
-                  range: NSRange(line.startIndex..., in: line)
-              ) != nil
-        else {
-            return line
-        }
+        // Two-stage pipeline: LogClassifier decides LOG vs NOT_LOG (strong signatures, shell echo, multiline)
+        // LogPatterns are token definitions only — not used to decide if a line is a log.
+        let classification = classifier.classify(line)
+        guard classification == .log || classification == .continuation else { return line }
 
         // Collect all (range, ansiCode, priority) tuples from all pattern matches
         var annotations: [(range: NSRange, code: String, priority: Int)] = []
@@ -149,11 +145,6 @@ enum LogColorizer {
     // MARK: - Detection Helpers
 
     /// Check if text contains ANY escape sequences.
-    /// Any ESC byte disqualifies the line: CSI, OSC, DCS, and half-split
-    /// sequences across chunk boundaries must all be preserved verbatim.
-    /// (Checking only complete CSI sequences let the colorizer inject SGR
-    /// codes into OSC strings / split escapes, corrupting SwiftTerm's
-    /// escape-state machine and rendering garbage like "1;34m1.2.3.4m".)
     private static func hasANSI(_ text: String) -> Bool {
         text.contains("\u{1B}")
     }

@@ -63,20 +63,22 @@ enum LogPatterns {
     //
     // Bold variants for critical levels — visible on both light and dark backgrounds.
 
+    // Use (?<![A-Za-z0-9_\-]) / (?![A-Za-z0-9_\-]) instead of \b so hyphenated identifiers like "my-alert-service"
+    // (common in docker ps / k8s) don't trigger level coloring — hyphen is \W so \b would match inside them.
     static let levelKeywords: [LogFieldPattern] = [
-        LogFieldPattern("emerg", "\\b(?:EMERG(?:ENCY)?|PANIC)\\b", "1;41;97", 10),
-        LogFieldPattern("alert", "\\bALERT\\b", "1;41;97", 11),
-        LogFieldPattern("crit", "\\b(?:CRIT(?:ICAL)?)\\b", "1;91", 12),
-        LogFieldPattern("fatal", "\\bFATAL\\b", "1;91", 13),
-        LogFieldPattern("error", "\\b(?:ERR(?:OR)?)\\b", "1;31", 14),
-        LogFieldPattern("fail", "\\b(?:FAIL(?:ED)?|FAILURE)\\b", "1;31", 15),
-        LogFieldPattern("timeout", "\\bTIMEOUT\\b", "1;31", 16),
-        LogFieldPattern("refused", "\\bREFUSED\\b", "1;31", 17),
-        LogFieldPattern("warn", "\\b(?:WARN(?:ING)?)\\b", "1;33", 20),
-        LogFieldPattern("notice", "\\bNOTICE\\b", "1;32", 25),
-        LogFieldPattern("success", "\\b(?:SUCCESS|COMPLETED|CONNECTED)\\b", "1;32", 26),
-        LogFieldPattern("info", "\\b(?:INFO(?:RMATIONAL)?)\\b", "1;34", 30),
-        LogFieldPattern("debug", "\\b(?:DEBUG|TRACE)\\b", "2", 35),
+        LogFieldPattern("emerg", "(?<![A-Za-z0-9_\\-])(?:EMERG(?:ENCY)?|PANIC)(?![A-Za-z0-9_\\-])", "1;41;97", 10),
+        LogFieldPattern("alert", "(?<![A-Za-z0-9_\\-])ALERT(?![A-Za-z0-9_\\-])", "1;41;97", 11),
+        LogFieldPattern("crit", "(?<![A-Za-z0-9_\\-])(?:CRIT(?:ICAL)?)(?![A-Za-z0-9_\\-])", "1;91", 12),
+        LogFieldPattern("fatal", "(?<![A-Za-z0-9_\\-])FATAL(?![A-Za-z0-9_\\-])", "1;91", 13),
+        LogFieldPattern("error", "(?<![A-Za-z0-9_\\-])(?:ERR(?:OR)?)(?![A-Za-z0-9_\\-])", "1;31", 14),
+        LogFieldPattern("fail", "(?<![A-Za-z0-9_\\-])(?:FAIL(?:ED)?|FAILURE)(?![A-Za-z0-9_\\-])", "1;31", 15),
+        LogFieldPattern("timeout", "(?<![A-Za-z0-9_\\-])TIMEOUT(?![A-Za-z0-9_\\-])", "1;31", 16),
+        LogFieldPattern("refused", "(?<![A-Za-z0-9_\\-])REFUSED(?![A-Za-z0-9_\\-])", "1;31", 17),
+        LogFieldPattern("warn", "(?<![A-Za-z0-9_\\-])(?:WARN(?:ING)?)(?![A-Za-z0-9_\\-])", "1;33", 20),
+        LogFieldPattern("notice", "(?<![A-Za-z0-9_\\-])NOTICE(?![A-Za-z0-9_\\-])", "1;32", 25),
+        LogFieldPattern("success", "(?<![A-Za-z0-9_\\-])(?:SUCCESS|COMPLETED|CONNECTED)(?![A-Za-z0-9_\\-])", "1;32", 26),
+        LogFieldPattern("info", "(?<![A-Za-z0-9_\\-])(?:INFO(?:RMATIONAL)?)(?![A-Za-z0-9_\\-])", "1;34", 30),
+        LogFieldPattern("debug", "(?<![A-Za-z0-9_\\-])(?:DEBUG|TRACE)(?![A-Za-z0-9_\\-])", "2", 35),
     ]
 
     // MARK: - Inline Fields
@@ -168,8 +170,23 @@ enum LogPatterns {
     /// `\"\"\"` form with embedded newlines fails with Code=2048 on
     /// some ICU versions (reported on real device). Lazy closure logs
     /// the compilation error via os_log instead of silently returning nil.
+    // Heuristic cached regexes for LogColorizer — avoid per-line compilation (perf).
+    static let logAnchorRegex1: NSRegularExpression = {
+        // swiftlint:disable:next force_try
+        try! NSRegularExpression(pattern: #"^\s*(?:<\d+>|\d{4}[-/]\d{2}|\[)"#)
+    }()
+    static let timeRegex: NSRegularExpression = {
+        // swiftlint:disable:next force_try
+        try! NSRegularExpression(pattern: #"\d{2}:\d{2}:\d{2}"#)
+    }()
+    static let levelAtStartRegex: NSRegularExpression = {
+        // swiftlint:disable:next force_try
+        try! NSRegularExpression(pattern: #"^\s*(?:EMERG|PANIC|ALERT|CRIT|FATAL|ERROR|FAIL|WARN|NOTICE|SUCCESS|INFO|DEBUG|TRACE)\b"#, options: [.caseInsensitive])
+    }()
+
     static let quickSignatureRegex: NSRegularExpression? = {
-        let pattern = "(?:\\b(?:EMERG(?:ENCY)?|PANIC|ALERT|CRIT(?:ICAL)?|FATAL|ERR(?:OR)?|FAIL(?:ED)?|FAILURE|TIMEOUT|REFUSED|WARN(?:ING)?|NOTICE|SUCCESS|COMPLETED|CONNECTED|INFO(?:RMATIONAL)?|DEBUG|TRACE)\\b|\\b(?:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\b|\\b[0-9A-Fa-f]{1,2}(?::[0-9A-Fa-f]{1,2}){5}\\b|\\d{4}[-/]\\d{2}[-/]\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?|\\d{1,2}月\\s*\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2}|[A-Z][a-z]{2}\\s+\\d{1,2}\\s+\\d{2}:\\d{2}(?::\\d{2})?|\\b\\w+\\[\\d+\\]|\\b[a-zA-Z][\\w]*(?:-\\d+)+\\b|\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b|\\[(?:emerg|alert|crit(?:ical)?|err(?:or)?|warn(?:ing)?|notice|info(?:rmational)?|debug|trace|fatal)\\]|level=(?:emerg|alert|crit|error|warn|notice|info|debug)|<\\d{1,3}>)"
+        // Level part uses (?<![A-Za-z0-9_\-]) to avoid hyphenated false positives (docker/k8s names).
+        let pattern = "(?:(?<![A-Za-z0-9_\\-])(?:EMERG(?:ENCY)?|PANIC|ALERT|CRIT(?:ICAL)?|FATAL|ERR(?:OR)?|FAIL(?:ED)?|FAILURE|TIMEOUT|REFUSED|WARN(?:ING)?|NOTICE|SUCCESS|COMPLETED|CONNECTED|INFO(?:RMATIONAL)?|DEBUG|TRACE)(?![A-Za-z0-9_\\-])|\\b(?:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\b|\\b[0-9A-Fa-f]{1,2}(?::[0-9A-Fa-f]{1,2}){5}\\b|\\d{4}[-/]\\d{2}[-/]\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?|\\d{1,2}月\\s*\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2}|[A-Z][a-z]{2}\\s+\\d{1,2}\\s+\\d{2}:\\d{2}(?::\\d{2})?|\\b\\w+\\[\\d+\\]|\\b[a-zA-Z][\\w]*(?:-\\d+)+\\b|\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b|\\[(?:emerg|alert|crit(?:ical)?|err(?:or)?|warn(?:ing)?|notice|info(?:rmational)?|debug|trace|fatal)\\]|level=(?:emerg|alert|crit|error|warn|notice|info|debug)|<\\d{1,3}>)"
         do {
             return try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
         } catch {

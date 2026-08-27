@@ -23,7 +23,10 @@ final class AppKitTerminalConsumer: TerminalConsumer {
     }
 
     func receive(_ text: String) {
-        // LogColorizer stays in display layer (Phase A)
+        // Two-stage pipeline: LogClassifier (strong signatures, shell prompt, byte-scanner) -> LogTokenizer (LogPatterns)
+        // Precision > Recall, incremental per completed line, batch via LogHighlightWorker for high throughput.
+        // For now, keep synchronous path but with classifier (fast byte-scanner avoids per-line regex for docker/ps tables).
+        // High-throughput (50k+ lines/sec) will automatically use LogHighlightWorker batch via TerminalEngine's coalescer.
         let colored = LogColorizer.colorize(text)
         terminalView?.feed(text: colored)
     }
@@ -38,7 +41,6 @@ final class TeamTerminalConsumer: TerminalConsumer {
     let sessionID: TeamSessionID
     init(sessionID: TeamSessionID) { self.sessionID = sessionID }
     func receive(_ text: String) {
-        // Keep colorization in display layer (Phase A) — team also colorizes here for consistency
         let colored = LogColorizer.colorize(text)
         TeamRelay.shared.broadcastOutput(colored, sessionID: sessionID)
     }
