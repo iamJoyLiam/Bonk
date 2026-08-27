@@ -3,8 +3,7 @@
 //  Bonk
 //
 //  Single lifecycle stream for SSH session (Phase 3).
-//  Replaces 4 phase sources (phase/connectionState/terminalState/isClosed)
-//  with one `Phase` stream observed by SessionManager.
+//  Replaces 4 phase sources with one `Phase` stream observed by SessionManager.
 //
 
 import Foundation
@@ -24,6 +23,7 @@ enum SSHLifecyclePhase: Sendable, Equatable {
 }
 
 /// Owns the current SSHSession and its phase, single source of truth.
+/// Coordinator stays pure decision, ReconnectPolicy single backoff.
 @MainActor
 final class SSHSessionLifecycle: ObservableObject {
     @Published var phase: SSHLifecyclePhase = .idle
@@ -31,19 +31,29 @@ final class SSHSessionLifecycle: ObservableObject {
 
     private let coordinator: SSHSessionCoordinator
     private let networkService: SSHNetworkService
+    private let reconnectPolicy = ReconnectPolicy.default
 
-    init(coordinator: SSHSessionCoordinator, networkService: SSHNetworkService) {
+    init(coordinator: SSHSessionCoordinator = SSHSessionCoordinator(),
+         networkService: SSHNetworkService) {
         self.coordinator = coordinator
         self.networkService = networkService
     }
 
-    func connect(host: HostItem) async throws {
+    func connect(host: HostItem, profileStore: SSHProfileStore?) async throws {
         phase = .resolving
-        // 1. Build requirements via mapper (host -> requirements)
-        // 2. Resolve via coordinator (pure decision)
-        // 3. Establish via networkService (single reconnect policy)
-        // Placeholder: delegates to existing SessionManager flow until T3.2
+        // 1. Requirements via mapper
+        // 2. Resolve via coordinator (pure)
+        // 3. Establish via networkService (single policy)
+        // For now, delegates to existing flow; deepening will inline 6 hops here.
+        phase = .connectingTransport
+        // Placeholder: actual connection will be via coordinator + networkService
+        // with SocketNaming for ControlMaster and single Phase observation.
         phase = .ready
+    }
+
+    func reconnect() async {
+        phase = .reconnecting(attempt: 1, max: reconnectPolicy.maxAttempts)
+        // Will use reconnectPolicy.delay(for:) and single Phase
     }
 
     func disconnect() async {
