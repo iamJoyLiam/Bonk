@@ -319,10 +319,7 @@ private final class ProgressParser: @unchecked Sendable {
     private let regex = try? NSRegularExpression(pattern: #"\b([0-9]{1,3})%"#)
 
     func progress(from data: Data) -> Double? {
-        guard let text = String(data: data, encoding: .utf8), !text.isEmpty else {
-            return nil
-        }
-
+        guard let text = String(data: data, encoding: .utf8), !text.isEmpty else { return nil }
         let value = buffer.withLock { current in
             current.append(text)
             if current.count > 2048 {
@@ -336,10 +333,9 @@ private final class ProgressParser: @unchecked Sendable {
         guard let match = regex.matches(in: value, range: range).last,
               let percentRange = Range(match.range(at: 1), in: value),
               let percent = Double(value[percentRange])
-        else {
-            return nil
-        }
-        return min(max(percent / 100.0, 0), 1)
+        else { return nil }
+        let p = min(max(percent / 100.0, 0), 1)
+        return p
     }
 }
 

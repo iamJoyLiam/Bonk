@@ -200,7 +200,6 @@ final class SFTPService {
                 Log.sftp.debug("[DOWNLOAD] unified ch.download call for \(entry.name, privacy: .public)")
                 try await ch.download(entry.path, to: localURL, operationID: transferID, onProgress: { [weak self] progress in
                     let clamped = min(max(progress, 0), 1)
-                    // Aggregate BEFORE MainActor hop (50ms, ≈20 FPS, never drop 1.0)
                     guard SFTPProgressThrottler.shared.shouldEmit(id: transferID, progress: clamped) else { return }
                     Task { @MainActor [weak self] in
                         guard let self, let idx = self.transfers.firstIndex(where: { $0.id == transferID }) else { return }

@@ -232,7 +232,7 @@ private final class CitadelSFTPChannel: SFTPChannel {
         var pending = 0
         var lastProgress: Double = -1
         var lastEmit = Date.distantPast
-        let throttle: TimeInterval = 0.05
+        let throttle: TimeInterval = 0.0 // 1:1
         try await withThrowingTaskGroup(of: Int.self) { group in
             while true {
                 while pending < pipelineDepth {
@@ -251,7 +251,7 @@ private final class CitadelSFTPChannel: SFTPChannel {
                 completedBytes += UInt64(written)
                 let progress = total > 0 ? Double(completedBytes) / Double(total) : 1.0
                 let now = Date()
-                if progress >= 1.0 || (progress - lastProgress >= 0.01 && now.timeIntervalSince(lastEmit) >= throttle) {
+                if progress >= 1.0 || now.timeIntervalSince(lastEmit) >= throttle {
                     lastProgress = progress; lastEmit = now
                     onProgress(min(progress, 1.0))
                 }
@@ -358,7 +358,7 @@ private final class CitadelSFTPChannel: SFTPChannel {
         var inFlight = 0
         var lastProgress: Double = -1
         var lastEmit = Date.distantPast
-        let throttle: TimeInterval = 0.05
+        let throttle: TimeInterval = 0.0 // 1:1
         try await withThrowingTaskGroup(of: (UInt64, Data).self) { group in
             while !readDone || inFlight > 0 {
                 while !readDone && inFlight < pipelineDepth {
@@ -384,7 +384,7 @@ private final class CitadelSFTPChannel: SFTPChannel {
                     // Unknown size: indeterminate ProgressView (total==0) — don't fake real %.
                     let progress: Double = total > 0 ? Double(nextWriteOffset) / Double(total) : (readDone ? 1.0 : Double(nextWriteOffset) / Double(nextWriteOffset + UInt64(chunkSize)))
                     let now2 = Date()
-                    if progress >= 1.0 || (progress - lastProgress >= 0.01 && now2.timeIntervalSince(lastEmit) >= throttle) {
+                    if progress >= 1.0 || now2.timeIntervalSince(lastEmit) >= throttle {
                         lastProgress = progress; lastEmit = now2
                         onProgress(min(progress, 1.0))
                     }

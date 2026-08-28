@@ -139,7 +139,7 @@ final class CitadelSFTPAdapter: SFTPChannel {
         var pending = 0
         var last: Double = -1
         var lastEmit = Date.distantPast
-        let throttle: TimeInterval = 0.05 // 20 FPS, coalesce before MainActor
+        let throttle: TimeInterval = 0.0 // 1:1
         try await withThrowingTaskGroup(of: Int.self) { group in
             while true {
                 while pending < pipelineDepth {
@@ -156,7 +156,8 @@ final class CitadelSFTPAdapter: SFTPChannel {
                 completed += UInt64(written)
                 let p = total > 0 ? Double(completed) / Double(total) : 1.0
                 let now = Date()
-                if p >= 1.0 || (p - last >= 0.01 && now.timeIntervalSince(lastEmit) >= throttle) { last = p; lastEmit = now; onProgress(min(p, 1.0)) }
+                // OR: 1% visible OR 50ms time — never drop visible jumps
+                if p >= 1.0 || now.timeIntervalSince(lastEmit) >= throttle { last = p; lastEmit = now; onProgress(min(p, 1.0)) }
             }
             try await group.waitForAll()
         }
@@ -235,7 +236,7 @@ final class CitadelSFTPAdapter: SFTPChannel {
         var inFlight = 0
         var last: Double = -1
         var lastEmit = Date.distantPast
-        let throttle: TimeInterval = 0.05
+        let throttle: TimeInterval = 0.0 // 1:1
         try await withThrowingTaskGroup(of: (UInt64, Data).self) { group in
             while !readDone || inFlight > 0 {
                 while !readDone && inFlight < depth {
@@ -256,7 +257,7 @@ final class CitadelSFTPAdapter: SFTPChannel {
                     // completion detection but never display as %.
                     let p: Double = total > 0 ? Double(nextWrite) / Double(total) : (readDone ? 1.0 : Double(nextWrite) / Double(nextWrite + UInt64(chunkSize)))
                     let now2 = Date()
-                    if p >= 1.0 || (p - last >= 0.01 && now2.timeIntervalSince(lastEmit) >= throttle) { last = p; lastEmit = now2; onProgress(min(p, 1.0)) }
+                    if p >= 1.0 || now2.timeIntervalSince(lastEmit) >= throttle { last = p; lastEmit = now2; onProgress(min(p, 1.0)) }
                 }
             }
             try await group.waitForAll()

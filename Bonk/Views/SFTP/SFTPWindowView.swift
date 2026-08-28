@@ -217,6 +217,9 @@ struct SFTPWindowView: View {
                         if let progress = transfer.progress {
                             ProgressView(value: progress)
                                 .progressViewStyle(.linear)
+                                // Elegant: 1:1 model + 60 FPS display + 0.5s interpolation for 10Gbps bursts
+                                .animation(.easeOut(duration: 0.5), value: progress)
+                                .transaction { t in t.animation = .easeOut(duration: 0.5) }
                         } else {
                             // Unknown size: indeterminate + bytes (never fake %)
                             ProgressView()

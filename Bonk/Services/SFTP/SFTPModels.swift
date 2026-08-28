@@ -49,16 +49,19 @@ public struct SFTPFileEntry: Identifiable, Sendable, Equatable {
 final class SFTPProgressThrottler: @unchecked Sendable {
     static let shared = SFTPProgressThrottler()
     private let lock = NSLock()
-    private var last: [UUID: Date] = [:]
-    private let interval: TimeInterval = 0.05 // 20 FPS, as spec: 50~100ms
+    private var last: [UUID: (date: Date, progress: Double)] = [:]
+    private let interval: TimeInterval = 0.0 // 1:1 — no throttling, display interpolates
+    private let delta: Double = 0.0
     func shouldEmit(id: UUID, progress: Double) -> Bool {
-        if progress >= 1.0 { // always pass completion
-            lock.lock(); last[id] = Date(); lock.unlock(); return true
+        if progress >= 1.0 {
+            lock.lock(); last[id] = (Date(), progress); lock.unlock()
+            return true
         }
         let now = Date()
         lock.lock(); defer { lock.unlock() }
-        if let prev = last[id], now.timeIntervalSince(prev) < interval { return false }
-        last[id] = now; return true
+        if let prev = last[id], now.timeIntervalSince(prev.date) < interval { return false }
+        last[id] = (now, progress)
+        return true
     }
     func remove(id: UUID) { lock.lock(); last.removeValue(forKey: id); lock.unlock() }
 }
