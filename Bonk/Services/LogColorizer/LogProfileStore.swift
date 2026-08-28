@@ -95,13 +95,14 @@ final class LogProfileStore: @unchecked Sendable {
     }
 
     @MainActor
-    func create(name: String) {
-        guard let container else { return }
+    func create(name: String) -> LogProfile? {
+        guard let container else { return nil }
         let ctx = ModelContext(container)
         let p = LogProfile(name: name)
         ctx.insert(p)
         try? ctx.save()
         Task { await load() }
+        return p
     }
 
     @MainActor

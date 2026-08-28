@@ -69,9 +69,9 @@ extension Color {
         #endif
         return String(
             format: "#%02X%02X%02X",
-            Int(components[0] * 255),
-            Int(components[safe: 1, default: components[0]] * 255),
-            Int(components[safe: 2, default: components[0]] * 255)
+            Int(round(components[0] * 255)),
+            Int(round(components[safe: 1, default: components[0]] * 255)),
+            Int(round(components[safe: 2, default: components[0]] * 255))
         )
     }
 }
