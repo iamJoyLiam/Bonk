@@ -26,6 +26,13 @@ enum SFTPParallelStrategy {
     static let parallelThreshold: UInt64 = 50 * 1024 * 1024
     /// 验证后调至 1MB + pipeline 128，以覆盖 SFTP 64KB 包限制下的 warm-up
     static let chunkSize: Int = 1024 * 1024
+    /// Adaptive chunk: small files use small chunks for lower TTFB/memory, large files use large chunks for throughput
+    static func chunkSize(for totalBytes: UInt64) -> Int {
+        if totalBytes == 0 { return 256 * 1024 } // Unknown size, conservative
+        if totalBytes < 5 * 1024 * 1024 { return 256 * 1024 }
+        if totalBytes < 50 * 1024 * 1024 { return 512 * 1024 }
+        return 1024 * 1024
+    }
 
     /// 根据文件大小决定分片数
     static func shardCount(for totalBytes: UInt64) -> Int {
@@ -167,10 +174,11 @@ enum SFTPParallelTransferEngine {
                 if await isCancelled() { group.cancelAll(); throw SFTPServiceError.transferCancelled }
                 if Task.isCancelled { group.cancelAll(); throw CancellationError() }
 
-                // 填充 pipeline
+                // Fill pipeline — adaptive small chunks
                 while pending < pipeline && offset < range.upperBound {
                     let remaining = range.upperBound - offset
-                    let length = Int(min(UInt64(SFTPParallelStrategy.chunkSize), remaining))
+                    let adaptiveChunk = SFTPParallelStrategy.chunkSize(for: range.upperBound - range.lowerBound)
+                    let length = Int(min(UInt64(adaptiveChunk), remaining))
                     let buffer = try reader.readByteBuffer(offset: offset, length: length)
                     guard buffer.readableBytes > 0 else { break }
                     let chunkOffset = offset
@@ -254,7 +262,7 @@ enum SFTPParallelTransferEngine {
     ) async throws {
         // downloadShard range \(range.lowerBound)-\(range.upperBound) shards=\(shards) — verbose
         let pipeline = SFTPParallelStrategy.pipelinePerShard(shards: shards, totalBytes: range.upperBound - range.lowerBound)
-        let chunkSize: UInt32 = UInt32(SFTPParallelStrategy.chunkSize)
+        let chunkSize: UInt32 = UInt32(SFTPParallelStrategy.chunkSize(for: range.upperBound - range.lowerBound))
 
         // 每个 shard 独立 fd，pwrite 随机写无 seek 竞态
         let fileDescriptor = Darwin.open(localURL.path, O_RDWR)

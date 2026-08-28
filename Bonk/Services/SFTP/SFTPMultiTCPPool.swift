@@ -34,32 +34,85 @@ final class PooledSFTPHandle: @unchecked Sendable {
 
 enum SFTPMultiTCPPool {
     /// 创建 N 条独立 SFTP 通道（每条新 TCP + SSH 握手 + SFTP 子系统）
+    /// With rate limiting and MaxSessions adaptation: concurrency ≤2, 100ms per batch; auto half-retry on MaxSessions
     static func makePool(
+        config: SSHConnectionConfig,
+        hostKeyStore: any SSHHostKeyStore,
+        count: Int
+    ) async throws -> [PooledSFTPHandle] {
+        // Adaptive: if request 8 but server MaxSessions=6, halve to 2
+        var attemptCount = max(1, count)
+        var lastError: Error?
+        while attemptCount >= 1 {
+            do {
+                let pool = try await makePoolInternal(config: config, hostKeyStore: hostKeyStore, count: attemptCount)
+                if attemptCount < count {
+                    Log.sftp.warning("[POOL] MaxSessions probe: requested \(count) failed, succeeded with \(attemptCount) host=\(config.host)")
+                }
+                Log.sftp.info("[POOL] N×TCP pool created count=\(pool.count) host=\(config.host)")
+                return pool
+            } catch {
+                lastError = error
+                // Check MaxSessions/concurrency limit error
+                if attemptCount > 2, isMaxSessionsError(error) {
+                    let retry = max(2, attemptCount / 2)
+                    Log.sftp.warning("[POOL] MaxSessions limit hit at \(attemptCount), retry \(retry) — \(String(describing: error))")
+                    attemptCount = retry
+                    // Backoff 300ms and retry to avoid immediate burst
+                    try? await Task.sleep(for: .milliseconds(300))
+                    continue
+                }
+                throw error
+            }
+        }
+        throw lastError ?? SFTPServiceError.operationFailed("pool creation failed")
+    }
+
+    /// Internal creation — rate-limited concurrency 2, 100ms between batches
+    private static func makePoolInternal(
         config: SSHConnectionConfig,
         hostKeyStore: any SSHHostKeyStore,
         count: Int
     ) async throws -> [PooledSFTPHandle] {
         var handles: [PooledSFTPHandle] = []
         handles.reserveCapacity(count)
-        do {
-            try await withThrowingTaskGroup(of: PooledSFTPHandle.self) { group in
-                for _ in 0..<count {
-                    group.addTask {
-                        let pair = try await makeOne(config: config, hostKeyStore: hostKeyStore)
-                        return pair
+        // Rate limit: concurrency 2, avoid burst hitting MaxStartups
+        let maxConcurrent = 2
+        var index = 0
+        while index < count {
+            let batchEnd = min(index + maxConcurrent, count)
+            let batchCount = batchEnd - index
+            do {
+                try await withThrowingTaskGroup(of: PooledSFTPHandle.self) { group in
+                    for _ in 0..<batchCount {
+                        group.addTask {
+                            let pair = try await makeOne(config: config, hostKeyStore: hostKeyStore)
+                            return pair
+                        }
+                    }
+                    for try await handle in group {
+                        handles.append(handle)
                     }
                 }
-                for try await handle in group {
-                    handles.append(handle)
-                }
+            } catch {
+                for handle in handles { await handle.close() }
+                throw error
             }
-        } catch {
-            // 清理已建半池
-            for handle in handles { await handle.close() }
-            throw error
+            index = batchEnd
+            if index < count {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            // Check cancellation between batches
+            if Task.isCancelled { throw CancellationError() }
         }
-        Log.sftp.info("[POOL] N×TCP pool created count=\(handles.count) host=\(config.host)")
         return handles
+    }
+
+    /// Check if error is MaxSessions/channel limit
+    private static func isMaxSessionsError(_ error: Error) -> Bool {
+        let msg = String(describing: error).lowercased()
+        let keywords = ["too many", "maxsessions", "administratively prohibited", "channel open failed", "too many sessions", "open failed", "session open error", "unable to open channel", "resource shortage"]
+        return keywords.contains { msg.contains($0) }
     }
 
     private static func makeOne(config: SSHConnectionConfig, hostKeyStore: any SSHHostKeyStore) async throws -> PooledSFTPHandle {

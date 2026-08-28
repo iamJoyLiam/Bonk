@@ -300,7 +300,7 @@ final class SFTPService {
             }
         }
 
-        let chunkSize: UInt32 = UInt32(SFTPParallelStrategy.chunkSize)
+        let chunkSize: UInt32 = UInt32(SFTPParallelStrategy.chunkSize(for: entry.size))
         let pipelineDepth: Int = SFTPParallelStrategy.pipelinePerShard(shards: 1, totalBytes: entry.size)
         var nextReadOffset: UInt64 = 0
         var nextWriteOffset: UInt64 = 0
@@ -532,7 +532,7 @@ final class SFTPService {
             }
         }
 
-        let chunkSize = SFTPParallelStrategy.chunkSize
+        let chunkSize = SFTPParallelStrategy.chunkSize(for: totalBytes)
         let pipelineDepth: Int = SFTPParallelStrategy.pipelinePerShard(shards: 1, totalBytes: totalBytes)
         let reader = try SFTPTransferActor(url: localURL)
         defer { Task { await reader.close() } }

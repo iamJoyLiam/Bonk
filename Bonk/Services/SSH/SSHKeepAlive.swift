@@ -2,7 +2,9 @@
 import Foundation
 import os.log
 
-/// L7 keepalive using lightweight SSH exec (echo).
+/// L7 keepalive — Lightweight probe (original `echo ok` creates channel each time, too heavy)
+/// Ideal is `SSH_MSG_IGNORE` / `keepalive@openssh.com` global request, not exposed by Citadel's NIOSSHHandler.sendGlobalRequestMessage
+/// Fallback: fast-path check `channel.isActive`, then use `true` (no output) + 5s timeout to avoid `echo` PTY echo and output copy
 actor SSHKeepAlive {
     private var keepaliveTask: Task<Void, Never>?
     private let interval: Duration = .seconds(30)
@@ -35,25 +37,23 @@ actor SSHKeepAlive {
         }
     }
 
-    /// One keepalive probe with a hard timeout. On a half-open connection
-    /// (peer gone, NAT dropped) `executeCommand` can hang forever waiting for
-    /// a channel response; the timeout turns that into a counted miss so the
-    /// reconnect path actually fires.
+    /// Lightweight probe: check TCP channel liveness first, then send lightest exec (`true` no output)
+    /// Half-open (NAT drop) exec will hang, use 5s timeout to convert to miss and trigger reconnect
     private func checkAlive(_ client: SSHClient) async -> Bool {
-        await withTaskGroup(of: Bool.self) { group in
+        // Fast-path: TCP channel dead, directly miss to avoid new channel
+        if !client.isConnected { return false }
+        return await withTaskGroup(of: Bool.self) { group in
             group.addTask {
                 do {
-                    _ = try await client.executeCommand("echo ok")
+                    // `true` lighter than `echo ok`: no output, no PTY echo, server returns exit 0 only
+                    _ = try await client.executeCommand("true")
                     return true
                 } catch {
-                    // A dead/half-open connection throws immediately — that is
-                    // a miss, not a success. (try? here previously masked the
-                    // failure and reconnect never fired.)
                     return false
                 }
             }
             group.addTask {
-                try? await Task.sleep(for: .seconds(10))
+                try? await Task.sleep(for: .seconds(5))
                 return false
             }
             let result = await group.next() ?? false

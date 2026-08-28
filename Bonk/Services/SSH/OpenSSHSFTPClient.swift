@@ -77,8 +77,26 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
         onProgress: @escaping @Sendable (Double) -> Void
     ) async throws {
         let parser = ProgressParser()
+        // Resume: use reput if remote already has partial
+        let total = (try? FileManager.default.attributesOfItem(atPath: localURL.path)[.size] as? UInt64) ?? 0
+        let remoteExists = await fileExists(at: remotePath)
+        var shouldResume = false
+        if remoteExists, total > 0 {
+            // Use ls to get remote size to determine if resume is possible
+            let entries = try? await listDirectory(at: (remotePath as NSString).deletingLastPathComponent)
+            let name = (remotePath as NSString).lastPathComponent
+            if let entry = entries?.first(where: { $0.name == name }), entry.size > 0, entry.size < total {
+                shouldResume = true
+                Log.sftp.info("[RESUME] OpenSSH upload reput \(remotePath) \(entry.size)/\(total)")
+            } else if let entry = entries?.first(where: { $0.name == name }), entry.size == total {
+                Log.sftp.info("[RESUME] OpenSSH upload already complete \(remotePath)")
+                onProgress(1.0)
+                return
+            }
+        }
+        let command = shouldResume ? "reput -p \(quote(localURL.path)) \(quote(remotePath))" : "put -p \(quote(localURL.path)) \(quote(remotePath))"
         _ = try await run(
-            ["put -p \(quote(localURL.path)) \(quote(remotePath))"],
+            [command],
             operationID: operationID,
             onOutput: { data in
                 if let progress = parser.progress(from: data) {
@@ -95,8 +113,24 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
         onProgress: @escaping @Sendable (Double) -> Void
     ) async throws {
         let parser = ProgressParser()
+        // Resume: use reget if local already has partial
+        var shouldResume = false
+        if let localAttrs = try? FileManager.default.attributesOfItem(atPath: localURL.path), let localSize = localAttrs[.size] as? UInt64, localSize > 0 {
+            // Remote size
+            let dir = (remotePath as NSString).deletingLastPathComponent
+            let name = (remotePath as NSString).lastPathComponent
+            if let entries = try? await listDirectory(at: dir.isEmpty ? "." : dir), let entry = entries.first(where: { $0.name == name }), entry.size > localSize {
+                shouldResume = true
+                Log.sftp.info("[RESUME] OpenSSH download reget \(remotePath) \(localSize)/\(entry.size)")
+            } else if let entries = try? await listDirectory(at: dir.isEmpty ? "." : dir), let entry = entries.first(where: { $0.name == name }), entry.size == localSize {
+                Log.sftp.info("[RESUME] OpenSSH download already complete \(remotePath)")
+                onProgress(1.0)
+                return
+            }
+        }
+        let command = shouldResume ? "reget -p \(quote(remotePath)) \(quote(localURL.path))" : "get -p \(quote(remotePath)) \(quote(localURL.path))"
         _ = try await run(
-            ["get -p \(quote(remotePath)) \(quote(localURL.path))"],
+            [command],
             operationID: operationID,
             onOutput: { data in
                 if let progress = parser.progress(from: data) {

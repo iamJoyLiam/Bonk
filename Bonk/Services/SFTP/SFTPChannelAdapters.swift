@@ -73,13 +73,26 @@ final class CitadelSFTPAdapter: SFTPChannel {
     func upload(_ localURL: URL, to remotePath: String, operationID: UUID, onProgress: @escaping @Sendable (Double) -> Void) async throws {
         let attrs = try FileManager.default.attributesOfItem(atPath: localURL.path)
         let total = (attrs[.size] as? UInt64) ?? 0
+        // Resume: resume if remote already has partial (single-stream to avoid shard complexity)
+        if let remoteAttrs = try? await sftp.getAttributes(at: remotePath), let remoteSize = remoteAttrs.size, remoteSize > 0, remoteSize < total {
+            Log.sftp.info("[RESUME] upload resume \(remotePath) \(remoteSize)/\(total)")
+            let file = try await sftp.openFile(filePath: remotePath, flags: [.write, .create])
+            let remoteFile = SendableSFTPFile(file)
+            defer { let rf = remoteFile; Task { [rf] in try? await rf.file.close() } }
+            try await resumeSingleStreamUpload(localURL: localURL, total: total, resumeOffset: remoteSize, remoteFile: remoteFile, onProgress: onProgress)
+            return
+        } else if let remoteAttrs = try? await sftp.getAttributes(at: remotePath), let remoteSize = remoteAttrs.size, remoteSize == total, total > 0 {
+            Log.sftp.info("[RESUME] upload already complete \(remotePath) \(total)")
+            onProgress(1.0)
+            return
+        }
         if SFTPParallelStrategy.shouldUseParallel(totalBytes: total) {
             if let cfg = pooledConfig, let store = pooledStore {
                 let shards = SFTPParallelStrategy.shardCount(for: total)
                 Log.sftp.info("[POOL] try N×TCP upload total=\(total) shards=\(shards)")
                 do {
                     let pool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
-                    defer { Task { for h in pool { await h.close() } } }
+                    defer { let p = pool; Task { [p] in for handle in p { await handle.close() } } }
                     try await SFTPParallelTransferEngine.parallelUploadMultiTCP(
                         handles: pool, remotePath: remotePath, localURL: localURL,
                         totalBytes: total, isCancelled: { false }, onProgress: onProgress
@@ -131,8 +144,8 @@ final class CitadelSFTPAdapter: SFTPChannel {
 
     private func singleStreamUpload(localURL: URL, total: UInt64, remoteFile: SendableSFTPFile, onProgress: @Sendable @escaping (Double) -> Void) async throws {
         let reader = try SFTPTransferActor(url: localURL)
-        defer { Task { await reader.close() } }
-        let chunkSize = SFTPParallelStrategy.chunkSize
+        defer { let r = reader; Task { [r] in await r.close() } }
+        let chunkSize = SFTPParallelStrategy.chunkSize(for: total)
         let pipelineDepth = SFTPParallelStrategy.pipelinePerShard(shards: 1, totalBytes: total)
         var offset: UInt64 = 0
         var completed: UInt64 = 0
@@ -167,13 +180,26 @@ final class CitadelSFTPAdapter: SFTPChannel {
         let attrs = try? await sftp.getAttributes(at: remotePath)
         let total = attrs?.size ?? 0
         Log.sftp.debug("[ADAPTER] download \(remotePath, privacy: .public) total=\(total)")
+        // Resume: resume if local already has partial
+        if let localAttrs = try? FileManager.default.attributesOfItem(atPath: localURL.path), let localSize = localAttrs[.size] as? UInt64, localSize > 0, localSize < total {
+            Log.sftp.info("[RESUME] download resume \(localURL.lastPathComponent) \(localSize)/\(total)")
+            let file = try await sftp.openFile(filePath: remotePath, flags: [.read])
+            let remoteFile = SendableSFTPFile(file)
+            defer { let rf = remoteFile; Task { [rf] in try? await rf.file.close() } }
+            try await resumeSingleStreamDownload(total: total, resumeOffset: localSize, remoteFile: remoteFile, localURL: localURL, onProgress: onProgress)
+            return
+        } else if let localAttrs = try? FileManager.default.attributesOfItem(atPath: localURL.path), let localSize = localAttrs[.size] as? UInt64, localSize == total, total > 0 {
+            Log.sftp.info("[RESUME] download already complete \(localURL.lastPathComponent) \(total)")
+            onProgress(1.0)
+            return
+        }
         if total > 0, SFTPParallelStrategy.shouldUseParallel(totalBytes: total) {
             if let cfg = pooledConfig, let store = pooledStore {
                 let shards = SFTPParallelStrategy.shardCount(for: total)
                 Log.sftp.info("[POOL] try N×TCP download total=\(total) shards=\(shards)")
                 do {
                     let pool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
-                    defer { Task { for h in pool { await h.close() } } }
+                    defer { let p = pool; Task { [p] in for handle in p { await handle.close() } } }
                     try await SFTPParallelTransferEngine.parallelDownloadMultiTCP(
                         handles: pool, remotePath: remotePath, localURL: localURL,
                         totalBytes: total, isCancelled: { false }, onProgress: onProgress
@@ -227,7 +253,7 @@ final class CitadelSFTPAdapter: SFTPChannel {
         FileManager.default.createFile(atPath: localURL.path, contents: nil)
         guard let handle = FileHandle(forWritingAtPath: localURL.path) else { return }
         defer { handle.closeFile() }
-        let chunkSize: UInt32 = UInt32(SFTPParallelStrategy.chunkSize)
+        let chunkSize: UInt32 = UInt32(SFTPParallelStrategy.chunkSize(for: total))
         let depth = SFTPParallelStrategy.pipelinePerShard(shards: 1, totalBytes: total)
         var nextRead: UInt64 = 0
         var nextWrite: UInt64 = 0
@@ -250,7 +276,7 @@ final class CitadelSFTPAdapter: SFTPChannel {
                 if data.isEmpty || data.count < Int(chunkSize) { readDone = true }
                 if !data.isEmpty { pending[off] = data }
                 while let bytes = pending.removeValue(forKey: nextWrite) {
-                    try await Task.detached(priority: .userInitiated) { try handle.write(contentsOf: bytes) }.value
+                    try handle.write(contentsOf: bytes)
                     nextWrite += UInt64(bytes.count)
                     // Unknown size: don't synthesize "real" percentage — SFTPService/SFTPWindowView
                     // now shows indeterminate ProgressView for total==0. Keep internal p monotonic for
@@ -264,6 +290,81 @@ final class CitadelSFTPAdapter: SFTPChannel {
         }
         if total == 0 { onProgress(1.0) }
         if last < 1.0 { onProgress(1.0) }
+    }
+
+    // MARK: - Resume helpers (single-stream resume)
+    private func resumeSingleStreamUpload(localURL: URL, total: UInt64, resumeOffset: UInt64, remoteFile: SendableSFTPFile, onProgress: @Sendable @escaping (Double) -> Void) async throws {
+        let reader = try SFTPTransferActor(url: localURL)
+        defer { let r = reader; Task { [r] in await r.close() } }
+        let chunkSize = SFTPParallelStrategy.chunkSize(for: total - resumeOffset)
+        let pipelineDepth = SFTPParallelStrategy.pipelinePerShard(shards: 1, totalBytes: total - resumeOffset)
+        var offset = resumeOffset
+        var completed = resumeOffset
+        var pending = 0
+        // Completed progress
+        onProgress(Double(resumeOffset) / Double(total))
+        try await withThrowingTaskGroup(of: Int.self) { group in
+            while offset < total {
+                while pending < pipelineDepth && offset < total {
+                    let remaining = total - offset
+                    let len = Int(min(UInt64(chunkSize), remaining))
+                    let data = try await reader.readChunk(offset: offset, length: len)
+                    guard !data.isEmpty else { break }
+                    let off = offset
+                    offset += UInt64(data.count)
+                    pending += 1
+                    group.addTask { try await SFTPTransferEngine.writeChunk(remoteFile, data: data, at: off) }
+                }
+                if pending == 0 { break }
+                guard let written = try await group.next() else { break }
+                pending -= 1
+                completed += UInt64(written)
+                let p = Double(completed) / Double(total)
+                onProgress(min(p, 1.0))
+            }
+            try await group.waitForAll()
+        }
+    }
+
+    private func resumeSingleStreamDownload(total: UInt64, resumeOffset: UInt64, remoteFile: SendableSFTPFile, localURL: URL, onProgress: @Sendable @escaping (Double) -> Void) async throws {
+        guard let handle = FileHandle(forWritingAtPath: localURL.path) else { return }
+        defer { handle.closeFile() }
+        let chunkSize: UInt32 = UInt32(SFTPParallelStrategy.chunkSize(for: total - resumeOffset))
+        let depth = SFTPParallelStrategy.pipelinePerShard(shards: 1, totalBytes: total - resumeOffset)
+        var nextRead = resumeOffset
+        var nextWrite = resumeOffset
+        var pending: [UInt64: Data] = [:]
+        var readDone = false
+        var inFlight = 0
+        // Completed progress
+        onProgress(Double(resumeOffset) / Double(total))
+        try await withThrowingTaskGroup(of: (UInt64, Data).self) { group in
+            while !readDone || inFlight > 0 {
+                while !readDone && inFlight < depth {
+                    let off = nextRead
+                    if off >= total { readDone = true; break }
+                    let remaining = total - off
+                    let len = UInt32(min(UInt64(chunkSize), remaining))
+                    nextRead += UInt64(len)
+                    inFlight += 1
+                    group.addTask { try await SFTPTransferEngine.readChunk(remoteFile, offset: off, length: len) }
+                }
+                guard let (off, data) = try await group.next() else { break }
+                inFlight -= 1
+                if data.isEmpty || data.count < Int(chunkSize) { readDone = true }
+                if !data.isEmpty { pending[off] = data }
+                while let bytes = pending.removeValue(forKey: nextWrite) {
+                    try handle.seek(toOffset: nextWrite)
+                    try handle.write(contentsOf: bytes)
+                    nextWrite += UInt64(bytes.count)
+                    let p = Double(nextWrite) / Double(total)
+                    onProgress(min(p, 1.0))
+                    if nextWrite >= total { readDone = true }
+                }
+            }
+            try await group.waitForAll()
+        }
+        onProgress(1.0)
     }
 
     func fileExists(at path: String) async -> Bool {
