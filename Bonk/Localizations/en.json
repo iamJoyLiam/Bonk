@@ -577,5 +577,7 @@
   "copy_output": "Copy output",
   "copy_both": "Copy both",
   "search_in_terminal": "Search in terminal",
-  "guest_operating": "Guest is operating — host input paused"
+  "guest_operating": "Guest is operating — host input paused",
+  "zmodem": "Zmodem (rz/sz) File Transfer",
+  "zmodem_desc": "Only show when remote supports rz/sz, off by default to avoid confusion"
 }

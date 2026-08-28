@@ -603,6 +603,7 @@ final class SessionManager {
         pane.ptySession = ptySession
         session.ptySession = ptySession // Keep for backward compatibility
         ptySession.teamSessionID = TeamSessionID(tabID: tab.id, paneID: pane.id)
+        ptySession.hostItem = tab.hostItem
         Log.session.info("[PTY] PTY session assigned to pane")
 
         // Notify terminal views to connect output stream
@@ -707,6 +708,7 @@ final class SessionManager {
                             firstPane.ptySession = newPTY
                             session.ptySession = newPTY
                             newPTY.teamSessionID = TeamSessionID(tabID: tab.id, paneID: firstPane.id)
+                            newPTY.hostItem = tab.hostItem
                             TerminalViewCache.shared.rebindOutputStream(for: tab.id, to: newPTY)
                             TerminalViewCache.shared.rebindOutputStream(for: firstPane.id, to: newPTY)
                             syncPTYSize(for: firstPane.id, ptySession: newPTY)
@@ -774,6 +776,7 @@ final class SessionManager {
             if let firstPane = tab.layout.root.paneState {
                 firstPane.ptySession = ptySession
                 ptySession.teamSessionID = TeamSessionID(tabID: tab.id, paneID: firstPane.id)
+                ptySession.hostItem = tab.hostItem
             }
             session.ptySession = ptySession
             session.connectionState = .connected

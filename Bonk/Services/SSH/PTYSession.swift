@@ -114,6 +114,13 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// actor queue pressure during high-volume commands.
     private let teamOutputCoalescer = TeamOutputCoalescer()
 
+    /// Host for per-host log profile resolution (set by SessionManager).
+    private let hostItemBox = NIOLockedValueBox<HostItem?>(nil)
+    var hostItem: HostItem? {
+        get { hostItemBox.withLockedValue { $0 } }
+        set { hostItemBox.withLockedValue { $0 = newValue } }
+    }
+
     /// Pending PTY size — caches resize requests when SSH channel is not yet ready.
     /// Prevents window-change packets from being silently dropped during connection setup.
     private let pendingSize = NIOLockedValueBox<(cols: Int, rows: Int)?>(nil)
@@ -140,9 +147,10 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// `onBytesProcessed(byteCount)` after consuming each chunk so the backpressure
     /// tracking stays accurate. When pending bytes exceed the high watermark,
     /// the producer skips this consumer until it catches up.
-    public func makeOutputStream() -> (stream: AsyncStream<String>, onBytesProcessed: @Sendable (Int) -> Void) {
+    func makeOutputStream(host: HostItem? = nil) -> (stream: AsyncStream<String>, onBytesProcessed: @Sendable (Int) -> Void) {
         let buffer = outputBuffer.withLock { $0 }
         let consumerID = UUID()
+        let effectiveHost = host ?? hostItem
 
         Log.ssh.info("[PTY] Creating output stream for consumer \(consumerID.uuidString.prefix(8)), replaying \(buffer.count) buffered lines")
 
@@ -152,7 +160,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             // display. The buffer itself stays raw.
             for line in buffer {
                 let filtered = Self.filterOSCSequences(line)
-                continuation.yield(LogColorizer.colorize(filtered))
+                continuation.yield(LogColorizer.colorize(filtered, host: effectiveHost))
             }
 
             // Register as live consumer

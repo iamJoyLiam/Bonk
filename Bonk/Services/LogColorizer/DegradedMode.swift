@@ -29,19 +29,18 @@ final class DegradedMode: @unchecked Sendable {
         return .full
     }
 
+    private var counter: Int = 0
     func shouldDropLogHighlight(lineCount: Int) -> Bool {
         lock.lock()
         let now = Date()
         for _ in 0..<lineCount { lineCountWindow.append(now) }
-        // Trim old
         lineCountWindow = lineCountWindow.filter { now.timeIntervalSince($0) < windowSeconds }
         let c = lineCountWindow.count
+        counter &+= lineCount
+        let n = counter
         lock.unlock()
-        if c >= disableThreshold { return true } // drop all log highlight, keep terminal
-        if c >= fullThreshold {
-            // Reduced: only highlight every 10th line
-            return Int.random(in: 0..<10) != 0
-        }
+        if c >= disableThreshold { return true }
+        if c >= fullThreshold { return n % 10 != 0 } // deterministic 1/10 sampling
         return false
     }
 

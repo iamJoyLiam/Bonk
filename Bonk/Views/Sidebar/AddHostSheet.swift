@@ -13,6 +13,8 @@ struct AddHostSheet: View {
     private var hostGroups: [HostGroup]
     @Query(sort: \JumpHost.sortOrder)
     private var jumpHosts: [JumpHost]
+    @Query(sort: \LogProfile.createdAt)
+    private var logProfiles: [LogProfile]
 
     let existingHost: HostItem?
     let onSave: (HostItem) -> Void
@@ -180,6 +182,14 @@ struct AddHostSheet: View {
                             Text(i18n.t(.noJumpHosts)).font(.caption).foregroundStyle(.secondary)
                         }
                     }
+                }
+
+                Section("日志着色") {
+                    Picker("着色配置", selection: $vm.selectedLogProfile) {
+                        Text("跟随默认").tag(LogProfile?.none)
+                        ForEach(logProfiles, id: \.self) { p in Text(p.name).tag(LogProfile?.some(p)) }
+                    }
+                    Text("为该主机单独指定着色规则，留空则使用全局默认").font(.caption).foregroundStyle(.secondary)
                 }
 
                 if let existing = existingHost {

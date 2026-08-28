@@ -577,5 +577,7 @@
   "copy_output": "复制输出",
   "copy_both": "复制全部",
   "search_in_terminal": "在终端中搜索",
-  "guest_operating": "访客正在操作 — 主机输入已暂停"
+  "guest_operating": "访客正在操作 — 主机输入已暂停",
+  "zmodem": "Zmodem (rz/sz) 文件传输",
+  "zmodem_desc": "仅远端支持 rz/sz 时显示，默认关闭避免误触"
 }

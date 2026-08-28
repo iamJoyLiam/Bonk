@@ -49,6 +49,8 @@ final class UserPreferences {
     var autoSyncSSHConfig: Bool?
     /// Team max guests (optional, default 3, range 1...8)
     var teamMaxGuests: Int?
+    /// Zmodem file transfer via terminal (optional, default false)
+    var isZmodemEnabled: Bool?
 
     init(
         fontSize: Double = 14,
@@ -74,7 +76,8 @@ final class UserPreferences {
         reconnectBaseDelay: Double? = 1.0,
         autoRecord: Bool? = nil,
         autoSyncSSHConfig: Bool? = nil,
-        teamMaxGuests: Int? = nil
+        teamMaxGuests: Int? = nil,
+        isZmodemEnabled: Bool? = nil
     ) {
         self.fontSize = fontSize
         self.fontFamily = fontFamily
@@ -100,5 +103,6 @@ final class UserPreferences {
         self.autoRecord = autoRecord
         self.autoSyncSSHConfig = autoSyncSSHConfig
         self.teamMaxGuests = teamMaxGuests
+        self.isZmodemEnabled = isZmodemEnabled
     }
 }

@@ -2,8 +2,6 @@
 //  TerminalEngineAdapter.swift
 //  Bonk
 //
-//  Adapters behind TerminalConsumer seam.
-//
 
 import Foundation
 
@@ -11,16 +9,17 @@ import Foundation
 import AppKit
 import SwiftTerm
 
-/// Adapter for real SwiftTerm view. Keeps AppKit out of Engine.
-/// Ultimate: off MainActor heavy regex → utility queue 16ms batch, never blocks renderer.
+/// Adapter for real SwiftTerm view.
 @MainActor
 final class AppKitTerminalConsumer: TerminalConsumer {
     weak var terminalView: SwiftTerm.TerminalView?
     private var onBytesConsumed: (@Sendable (Int) -> Void)?
     private let worker = LogHighlightWorker.shared
+    private let host: HostItem?
 
-    init(terminalView: SwiftTerm.TerminalView, onBytesProcessed: (@Sendable (Int) -> Void)? = nil) {
+    init(terminalView: SwiftTerm.TerminalView, host: HostItem? = nil, onBytesProcessed: (@Sendable (Int) -> Void)? = nil) {
         self.terminalView = terminalView
+        self.host = host
         self.onBytesConsumed = onBytesProcessed
     }
 
@@ -30,26 +29,22 @@ final class AppKitTerminalConsumer: TerminalConsumer {
             onBytesConsumed?(text.utf8.count)
             return
         }
-        // Fast-path: ANSI already present (e.g. ls --color) — bypass highlight
         if text.contains("\u{1B}") {
             terminalView?.feed(text: text)
             onBytesConsumed?(text.utf8.count)
             return
         }
-        // High-flood: degraded mode protects renderer (50k lines/sec)
         let lineCount = max(1, text.filter { $0 == "\n" }.count + 1)
         if DegradedMode.shared.shouldDropLogHighlight(lineCount: lineCount) {
             terminalView?.feed(text: text)
             onBytesConsumed?(text.utf8.count)
             return
         }
-        // Background: byte-scanner + token regex on utility queue (never MainActor)
-        // 16ms coalesce ≈ 60 FPS terminal tick, matches Engine's displayLink
         let bytes = text.utf8.count
         let view = terminalView
         let onConsumed = onBytesConsumed
-        worker.enqueue(text: text) { colored in
-            // Ensure ordering: view may have been recycled (tab switch)
+        let h = host
+        worker.enqueue(text: text, host: h) { colored in
             view?.feed(text: colored)
             onConsumed?(bytes)
         }
@@ -60,12 +55,12 @@ final class AppKitTerminalConsumer: TerminalConsumer {
 #endif
 
 /// Team adapter — same coalesced text as local view, broadcast to guests.
-/// Off MainActor like local path: avoid blocking Engine tick.
 @MainActor
 final class TeamTerminalConsumer: TerminalConsumer {
     let sessionID: TeamSessionID
     private let worker = LogHighlightWorker.shared
-    init(sessionID: TeamSessionID) { self.sessionID = sessionID }
+    private let host: HostItem?
+    init(sessionID: TeamSessionID, host: HostItem? = nil) { self.sessionID = sessionID; self.host = host }
     func receive(_ text: String) {
         guard LogColorizerConfig.isEnabled else {
             TeamRelay.shared.broadcastOutput(text, sessionID: sessionID)
@@ -81,7 +76,8 @@ final class TeamTerminalConsumer: TerminalConsumer {
             return
         }
         let sid = sessionID
-        worker.enqueue(text: text) { colored in
+        let h = host
+        worker.enqueue(text: text, host: h) { colored in
             TeamRelay.shared.broadcastOutput(colored, sessionID: sid)
         }
     }
@@ -100,7 +96,7 @@ final class HeadlessTerminalConsumer: TerminalConsumer {
         onReceive?(text)
     }
 
-    func didConsume(bytes: Int) { totalBytes += 0 } // already counted
+    func didConsume(bytes: Int) { totalBytes += 0 }
 
     var joined: String { received.joined() }
     func clear() { received.removeAll(); totalBytes = 0 }

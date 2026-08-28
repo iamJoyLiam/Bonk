@@ -27,6 +27,7 @@ final class HostFormViewModel {
     var showJumpHost = false
     var selectedJumpHost: JumpHost?
     var forceCompatibilityToggle = false
+    var selectedLogProfile: LogProfile?
 
     // Secure Enclave
     var secureEnclaveKeyTag: String?
@@ -87,6 +88,7 @@ final class HostFormViewModel {
         selectedJumpHost = existing.jumpHostRef
         showJumpHost = existing.jumpHostRef != nil
         forceCompatibilityToggle = existing.forceCompatibility == true
+        selectedLogProfile = existing.logProfile
 
         // If editing a vault-backed host, keep custom fields as backup (already loaded)
         // so toggling back to custom restores them.
@@ -180,6 +182,7 @@ final class HostFormViewModel {
             existing.credentialRef = selectedCredential
             existing.jumpHostRef = showJumpHost ? selectedJumpHost : nil
             existing.groupRef = groupRef
+            existing.logProfile = selectedLogProfile
 
             // Elegant: only overwrite the current authType's Keychain entry, never delete all.
             // Embedded credentials remain as backup when using vault.
@@ -214,6 +217,7 @@ final class HostFormViewModel {
                 jumpHostRef: showJumpHost ? selectedJumpHost : nil
             )
             if forceCompatibilityToggle { item.forceCompatibility = true }
+            item.logProfile = selectedLogProfile
             onSave(item)
         }
     }

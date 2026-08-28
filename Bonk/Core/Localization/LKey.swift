@@ -549,6 +549,9 @@ enum LKey: String, CaseIterable {
     case showAll = "show_all"
     case rec = "rec"
 
+    case zmodem = "zmodem"
+    case zmodemDesc = "zmodem_desc"
+
     // General — Recording / SSH Config (GeneralSettingsView)
     case autoRecordSessions = "auto_record_sessions"
     case autoRecordDesc = "auto_record_desc"

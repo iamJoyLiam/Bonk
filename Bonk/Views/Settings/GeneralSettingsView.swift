@@ -28,6 +28,11 @@ struct GeneralSettingsView: View {
             }
 
             Section(i18n.t(.sftp)) {
+                Toggle(i18n.t(.zmodem), isOn: Binding(
+                    get: { preferences.isZmodemEnabled ?? false },
+                    set: { preferences.isZmodemEnabled = $0 }
+                ))
+                Text(i18n.t(.zmodemDesc)).font(.caption).foregroundStyle(.secondary)
                 Toggle(i18n.t(.sftpOverwriteAlways), isOn: Binding(
                     get: { preferences.sftpOverwriteAlways ?? false },
                     set: { preferences.sftpOverwriteAlways = $0 }

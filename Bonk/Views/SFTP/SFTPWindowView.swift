@@ -53,27 +53,29 @@ struct SFTPWindowView: View {
                     Divider()
                     transferPanel(sftp: sftp)
                 }
-                // Zmodem explicit UI
-                if let zmodem = tab.session?.ptySession?.zmodemHandler, zmodem.state != .idle {
-                    Divider()
-                    HStack(spacing: 8) {
-                        Image(systemName: "arrow.up.arrow.down.circle.fill").foregroundStyle(.purple)
-                        Text("Zmodem \(String(describing: zmodem.state))")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                        Button("取消") { tab.session?.ptySession?.cancelZmodem() }
-                            .buttonStyle(.bordered).controlSize(.small)
-                    }.padding(.horizontal, AppStyle.spacingL).padding(.vertical, 4)
-                } else if tab.session?.ptySession != nil {
-                    Divider()
-                    HStack(spacing: 8) {
-                        Button { Task { tab.session?.ptySession?.startZmodemReceive() } } label: { Label("接收 (rz)", systemImage: "arrow.down.doc") }
-                            .buttonStyle(.bordered).controlSize(.small)
-                        Button { showZmodemSendPicker(for: tab) } label: { Label("发送 (sz)", systemImage: "arrow.up.doc") }
-                            .buttonStyle(.bordered).controlSize(.small)
-                        Spacer()
-                        Text("Zmodem 直传").font(.caption).foregroundStyle(.secondary)
-                    }.padding(.horizontal, AppStyle.spacingL).padding(.vertical, 4)
+                // Zmodem — only when enabled in Settings
+                if preferences.isZmodemEnabled ?? false {
+                    if let zmodem = tab.session?.ptySession?.zmodemHandler, zmodem.state != .idle {
+                        Divider()
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.up.arrow.down.circle.fill").foregroundStyle(.purple)
+                            Text("\(i18n.t(.fileTransfer)) \(String(describing: zmodem.state))")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                            Button(i18n.t(.cancel)) { tab.session?.ptySession?.cancelZmodem() }
+                                .buttonStyle(.bordered).controlSize(.small)
+                        }.padding(.horizontal, AppStyle.spacingL).padding(.vertical, 4)
+                    } else if tab.session?.ptySession != nil {
+                        Divider()
+                        HStack(spacing: 8) {
+                            Button { Task { tab.session?.ptySession?.startZmodemReceive() } } label: { Label(i18n.t(.receiveFile), systemImage: "arrow.down.doc") }
+                                .buttonStyle(.bordered).controlSize(.small)
+                            Button { showZmodemSendPicker(for: tab) } label: { Label(i18n.t(.sendFile), systemImage: "arrow.up.doc") }
+                                .buttonStyle(.bordered).controlSize(.small)
+                            Spacer()
+                            Text(i18n.t(.fileTransfer)).font(.caption).foregroundStyle(.secondary)
+                        }.padding(.horizontal, AppStyle.spacingL).padding(.vertical, 4)
+                    }
                 }
             } else {
                 ContentUnavailableView(

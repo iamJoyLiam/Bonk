@@ -2,57 +2,59 @@
 //  LogHighlightWorker.swift
 //  Bonk
 //
-//  Background log highlight pipeline: PTY -> TerminalEngine -> LogHighlightWorker
-//  Batch + incremental + byte-scanner + cache + overlay, never blocks renderer.
-//
 
 import Foundation
 import os
 
 final class LogHighlightWorker: @unchecked Sendable {
-    nonisolated(unsafe) static let shared = LogHighlightWorker()
+    static let shared = LogHighlightWorker()
 
     private let queue = DispatchQueue(label: "com.bonk.logHighlight", qos: .utility, attributes: [])
-    private let batchSize = 128 // tuned for 5000 lines <0.3s, 100 lines <3ms
-    private var pending: [(id: UUID, text: String, completion: @MainActor @Sendable (String) -> Void)] = []
+    private let batchSize = 128
+    private struct Job: @unchecked Sendable {
+        let id: UUID
+        let text: String
+        let patterns: [LogFieldPattern]
+        let cacheKey: String
+        let completion: @MainActor @Sendable (String) -> Void
+    }
+    private var pending: [Job] = []
     private var scheduled = false
     private let lock = NSLock()
-    private var cache: [String: String] = [:] // line -> highlighted (LRU, 2000)
+    private var cache: [String: String] = [:]
     private let cacheLimit = 2000
-    private let classifier = LogClassifier()
     private let logger = Logger(subsystem: "com.bonk", category: "LogHighlightWorker")
 
     private init() {}
 
     // MARK: - Public
 
-    /// Enqueue a chunk (many logical lines) for background highlight.
-    /// Called from TerminalEngine on MainActor, but work happens on utility queue.
-    /// Completion is called on MainActor with highlighted text for dirty rows.
-    func enqueue(text: String, completion: @escaping @MainActor @Sendable (String) -> Void) {
-        let id = UUID()
+    func enqueue(text: String, host: HostItem? = nil, completion: @escaping @MainActor @Sendable (String) -> Void) {
+        let patterns = LogSnapshot.patterns(for: host)
+        let key = (host?.logProfile?.id.uuidString ?? "active") + "|" + text
+        let job = Job(id: UUID(), text: text, patterns: patterns, cacheKey: key, completion: completion)
         lock.lock()
-        pending.append((id, text, completion))
+        pending.append(job)
         let shouldSchedule = !scheduled
         if shouldSchedule { scheduled = true }
         lock.unlock()
         if shouldSchedule {
-            // Ultimate low latency: 0-delay coalesce — Engine already coalesced to tick.
-            // Extra 16ms here would double latency (Engine 16ms + Worker 16ms = 2 frames).
             queue.async { [weak self] in self?.flush() }
         }
     }
 
-    /// Synchronous fallback for tests or small chunks (uses same pipeline but inline)
-    func highlightSync(_ text: String) -> String {
-        // Directly use LogColorizer which now uses LogClassifier (two-stage)
-        return LogColorizer.colorize(text)
+    func enqueue(text: String, completion: @escaping @MainActor @Sendable (String) -> Void) {
+        enqueue(text: text, host: nil, completion: completion)
+    }
+
+    func highlightSync(_ text: String, host: HostItem? = nil) -> String {
+        LogColorizer.colorize(text, host: host)
     }
 
     // MARK: - Private
 
     private func flush() {
-        var batch: [(UUID, String, @MainActor @Sendable (String) -> Void)] = []
+        var batch: [Job] = []
         lock.lock()
         let count = min(pending.count, batchSize)
         batch = Array(pending.prefix(count))
@@ -61,45 +63,31 @@ final class LogHighlightWorker: @unchecked Sendable {
         scheduled = hasMore
         lock.unlock()
 
-        // Process batch incrementally, only completed lines (with \n)
-        for (_, text, completion) in batch {
-            let highlighted = highlightIncremental(text)
-            Task { @MainActor in
-                completion(highlighted)
-            }
+        for job in batch {
+            let highlighted = highlightIncremental(job.text, patterns: job.patterns, cacheKey: job.cacheKey)
+            Task { @MainActor in job.completion(highlighted) }
         }
-
-        if hasMore {
-            queue.async { [weak self] in self?.flush() }
-        }
+        if hasMore { queue.async { [weak self] in self?.flush() } }
     }
 
-    private func highlightIncremental(_ text: String) -> String {
-        // Only highlight completed lines (with \n), leave tail raw (as LogColorizer does)
-        // Check cache first
+    private func highlightIncremental(_ text: String, patterns: [LogFieldPattern], cacheKey: String) -> String {
         lock.lock()
-        if let cached = cache[text] {
-            lock.unlock()
-            return cached
-        }
+        if let cached = cache[cacheKey] { lock.unlock(); return cached }
         lock.unlock()
 
-        let result = LogColorizer.colorize(text)
+        let result = LogColorizer.colorize(text, patterns: patterns)
 
         lock.lock()
         if cache.count >= cacheLimit {
-            // Remove oldest 20%
             let toRemove = cache.keys.prefix(cacheLimit / 5)
             for k in toRemove { cache.removeValue(forKey: k) }
         }
-        cache[text] = result
+        cache[cacheKey] = result
         lock.unlock()
         return result
     }
 
     func clearCache() {
-        lock.lock()
-        cache.removeAll()
-        lock.unlock()
+        lock.lock(); cache.removeAll(); lock.unlock()
     }
 }

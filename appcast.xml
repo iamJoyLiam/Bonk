@@ -6,6 +6,37 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.2.5</title>
+            <pubDate>Fri, 28 Aug 2026 16:16:48 +0800</pubDate>
+            <sparkle:version>20262005</sparkle:version>
+            <sparkle:shortVersionString>2026.2.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## 更新内容
+- 日志着色重构：快照隔离 + per-host 真生效，修复跨 tab 串扰与配置漂移
+- 修复 `logfmtLevel` 编辑预览无匹配、`IP`/`logfmt` 颜色重复，旧 `Default` 自动迁移
+- 设置重构：日志面板拆分 4 文件、颜色中枢统一、主机维度着色选择
+- Zmodem：SFTP 窗口收发改为设置开关控制，显式取消与本地化
+- 清理：移除未接线 Overlay/Cache/Detector，DegradedMode 确定性采样
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.5/Bonk-2026.2.5-arm64.dmg"
+                length="25785157"
+                type="application/octet-stream"
+                sparkle:edSignature="vI3eBOj6wJl5OKv5QmdUs355wh2qPCsZE5qbjx0KOvdx5EUkHQleLXlD80omQvR9YvBLZXphVTah1g5C1YmADw=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.5/Bonk-2026.2.5-x86_64.dmg"
+                length="26887026"
+                type="application/octet-stream"
+                sparkle:edSignature="21irCbpi15oz45VQuccxh+1plEGBqK1AU/3FwHQ72VVxl0koj6zX/CwJafPpAg671+R2KXRx7hPJdOX7eBA4AQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.2.4</title>
             <pubDate>Wed, 26 Aug 2026 17:20:00 +0800</pubDate>
             <sparkle:version>20262004</sparkle:version>

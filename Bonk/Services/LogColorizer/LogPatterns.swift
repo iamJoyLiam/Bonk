@@ -161,6 +161,26 @@ enum LogPatterns {
         threadInfo,
     ] + levelKeywords
 
+    // MARK: - Seed Source
+    /// 用于 SwiftData 播种的最小可用定义，Store 不再手写 12 条
+    static let seedDefinitions: [(name: String, pattern: String, ansi: String, priority: Int)] = [
+        ("emerg",       "(?<![A-Za-z0-9_\\-])(?:EMERG(?:ENCY)?|PANIC)(?![A-Za-z0-9_\\-])", "1;41;97", 10),
+        ("alert",       "(?<![A-Za-z0-9_\\-])ALERT(?![A-Za-z0-9_\\-])",                   "1;41;97", 11),
+        ("crit",        "(?<![A-Za-z0-9_\\-])(?:CRIT(?:ICAL)?)(?![A-Za-z0-9_\\-])",       "1;91",    12),
+        ("fatal",       "(?<![A-Za-z0-9_\\-])FATAL(?![A-Za-z0-9_\\-])",                  "1;91",    13),
+        ("error",       "(?<![A-Za-z0-9_\\-])(?:ERR(?:OR)?)(?![A-Za-z0-9_\\-])",          "1;31",    14),
+        ("warn",        "(?<![A-Za-z0-9_\\-])(?:WARN(?:ING)?)(?![A-Za-z0-9_\\-])",        "1;33",    20),
+        ("info",        "(?<![A-Za-z0-9_\\-])(?:INFO(?:RMATIONAL)?)(?![A-Za-z0-9_\\-])",  "1;34",    30),
+        ("debug",       "(?<![A-Za-z0-9_\\-])(?:DEBUG|TRACE)(?![A-Za-z0-9_\\-])",         "2",       35),
+        ("ip",          "\\b(?:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\b", "38;2;0;199;190", 50),
+        ("timestamp",   "\\d{4}[-/]\\d{2}[-/]\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?", "2;32", 60),
+        ("jsonLevel",   "\"(?:level|severity)\"\\s*:\\s*\"[^\"]+\"",                   "1;35", 40),
+        ("logfmtLevel", "\\blevel=(?:error|warn|info|debug|trace|fatal|emerg|alert|crit)\\b", "38;2;255;149;0", 41),
+    ]
+
+    /// 完整播种（含 uuid/pid/thread 等元数据），用于“Full”模板，按需可扩展
+    static let fullSeedDefinitions: [(String, String, String, Int)] = allPatterns.map { ($0.name, $0.regex.pattern, $0.ansiCode, $0.priority) }
+
     /// ONE regex that recognizes ANY signature a log line can carry.
     /// A line that fails this scan cannot match any pattern above, so it is
     /// returned untouched after a single regex pass (the hot path for

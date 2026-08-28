@@ -128,12 +128,13 @@ import SwiftUI
                     }
 
                     if cached.outputStream == nil {
-                        let result = ptySession.makeOutputStream()
+                        let result = ptySession.makeOutputStream(host: tab.hostItem)
                         TerminalViewCache.shared.connectOutputStream(
                             result.stream,
                             onBytesProcessed: result.onBytesProcessed,
                             to: paneState.id
                         )
+                        if let coord = cached.coordinator as? ContainerTerminalCoordinator { coord.hostItem = tab.hostItem }
                         Log.session.info("[PTY-RETRY] Connected output stream on attempt \(attempt + 1)")
                         return
                     }
@@ -144,6 +145,7 @@ import SwiftUI
                        let bytesProcessed = cached.onBytesProcessed
                     {
                         Log.session.info("[PTY-RETRY] Output stream exists but feed task nil, restarting for pane \(paneState.id.uuidString.prefix(8))")
+                        coordinator.hostItem = tab.hostItem
                         coordinator.startFeeding(from: stream, onBytesProcessed: bytesProcessed)
                     } else {
                         Log.session.info("[PTY-RETRY] Already connected for pane \(paneState.id.uuidString.prefix(8))")

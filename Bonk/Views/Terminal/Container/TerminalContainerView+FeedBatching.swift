@@ -47,7 +47,7 @@ import SwiftTerm
                 let engine = await MainActor.run { self.getOrCreateEngine() }
                 await MainActor.run {
                     guard let view = self.terminalView else { return }
-                    let consumer = AppKitTerminalConsumer(terminalView: view, onBytesProcessed: onBytesProcessed)
+                    let consumer = AppKitTerminalConsumer(terminalView: view, host: self.hostItem, onBytesProcessed: onBytesProcessed)
                     self.engineConsumer = consumer
                     engine.subscribe(newID, consumer: consumer)
                 }

@@ -88,20 +88,23 @@ import SwiftUI
                 return
             }
             let cached = TerminalViewCache.shared.retrieve(activeTab.id)
+            if let coord = cached?.coordinator as? ContainerTerminalCoordinator { coord.hostItem = activeTab.hostItem }
             if cached?.outputStream == nil {
                 Log.ui.info("[TerminalContainer] connectOutputStreamIfNeeded: creating output stream for tab \(activeTab.id.uuidString.prefix(8))")
-                let result = ptySession.makeOutputStream()
+                let result = ptySession.makeOutputStream(host: activeTab.hostItem)
                 TerminalViewCache.shared.connectOutputStream(
                     result.stream,
                     onBytesProcessed: result.onBytesProcessed,
                     to: activeTab.id
                 )
+                if let coord = cached?.coordinator as? ContainerTerminalCoordinator { coord.hostItem = activeTab.hostItem }
             } else if let coordinator = cached?.coordinator as? ContainerTerminalCoordinator,
                       coordinator.feedTask == nil,
                       let stream = cached?.outputStream,
                       let bytesProcessed = cached?.onBytesProcessed
             {
                 Log.ui.info("[TerminalContainer] connectOutputStreamIfNeeded: feed task nil for tab \(activeTab.id.uuidString.prefix(8)), restarting")
+                coordinator.hostItem = activeTab.hostItem
                 coordinator.startFeeding(from: stream, onBytesProcessed: bytesProcessed)
             }
         }
@@ -324,6 +327,7 @@ import SwiftUI
         nonisolated(unsafe) var engineConsumer: (any TerminalConsumer)?
         nonisolated(unsafe) var teamConsumerID: UUID?
         nonisolated(unsafe) var teamConsumer: (any TerminalConsumer)?
+        nonisolated(unsafe) var hostItem: HostItem?
         /// Access engine only on MainActor; creates lazily.
         @MainActor func getOrCreateEngine() -> TerminalEngine {
             if let e = terminalEngine { return e }
@@ -344,7 +348,7 @@ import SwiftUI
             }
             guard let sessionID else { return }
             let id = UUID()
-            let consumer = TeamTerminalConsumer(sessionID: sessionID)
+            let consumer = TeamTerminalConsumer(sessionID: sessionID, host: hostItem)
             teamConsumer = consumer
             teamConsumerID = id
             engine.subscribe(id, consumer: consumer)
