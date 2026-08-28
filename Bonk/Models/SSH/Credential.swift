@@ -33,6 +33,8 @@ final class Credential {
     var keyTypeRaw: String?
     var publicKey: String?
     var fingerprint: String?
+    /// FIDO2 / YubiKey security key (sk-ssh-ed25519 / sk-ecdsa) — additive, default false
+    var isSecurityKey: Bool = false
 
     @Relationship(inverse: \HostItem.credentialRef)
     var hosts: [HostItem]

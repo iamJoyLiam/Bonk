@@ -6,6 +6,7 @@
 //  Left: local files, Right: remote files, Bottom: transfer progress.
 //
 
+import AppKit
 import SwiftData
 import SwiftUI
 
@@ -51,6 +52,28 @@ struct SFTPWindowView: View {
                 if let sftp = tab.session?.sftpService, !sftp.transfers.isEmpty {
                     Divider()
                     transferPanel(sftp: sftp)
+                }
+                // Zmodem explicit UI
+                if let zmodem = tab.session?.ptySession?.zmodemHandler, zmodem.state != .idle {
+                    Divider()
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.up.arrow.down.circle.fill").foregroundStyle(.purple)
+                        Text("Zmodem \(String(describing: zmodem.state))")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("取消") { tab.session?.ptySession?.cancelZmodem() }
+                            .buttonStyle(.bordered).controlSize(.small)
+                    }.padding(.horizontal, AppStyle.spacingL).padding(.vertical, 4)
+                } else if tab.session?.ptySession != nil {
+                    Divider()
+                    HStack(spacing: 8) {
+                        Button { Task { tab.session?.ptySession?.startZmodemReceive() } } label: { Label("接收 (rz)", systemImage: "arrow.down.doc") }
+                            .buttonStyle(.bordered).controlSize(.small)
+                        Button { showZmodemSendPicker(for: tab) } label: { Label("发送 (sz)", systemImage: "arrow.up.doc") }
+                            .buttonStyle(.bordered).controlSize(.small)
+                        Spacer()
+                        Text("Zmodem 直传").font(.caption).foregroundStyle(.secondary)
+                    }.padding(.horizontal, AppStyle.spacingL).padding(.vertical, 4)
                 }
             } else {
                 ContentUnavailableView(
@@ -375,6 +398,22 @@ struct SFTPWindowView: View {
             for try await _ in sftp.upload(url) {}
         } catch {
             sftp.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func showZmodemSendPicker(for tab: TerminalTab) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        if panel.runModal() == .OK {
+            let urls = panel.urls
+            Task { @MainActor in
+                if let pty = tab.session?.ptySession {
+                    if pty.zmodemHandler == nil { pty.setupZmodem() }
+                    pty.startZmodemSend(files: urls)
+                }
+            }
         }
     }
 

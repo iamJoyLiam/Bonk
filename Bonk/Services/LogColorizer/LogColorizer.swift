@@ -71,7 +71,13 @@ enum LogColorizer {
         guard classification == .log || classification == .continuation else { return line }
 
         // Only LOG lines reach here — use zero-copy scanner (single regex pass per token)
-        let spans = scanner.scan(line: line)
+        // If user has custom profile, use it; else fallback to static LogPatterns
+        let spans: [HighlightSpan]
+        if let storePatterns = LogProfileStore.shared.activeProfile?.patterns, !storePatterns.isEmpty {
+            spans = scanner.scan(line: line, patterns: LogProfileStore.shared.patterns(for: nil))
+        } else {
+            spans = scanner.scan(line: line)
+        }
         if spans.isEmpty { return line }
         let merged = ZeroCopyScanner.Dedup.toANSIRanges(spans)
         return applyAnnotations(to: line, annotations: merged)

@@ -41,7 +41,7 @@ enum ZmodemConstants {
 
 // MARK: - Zmodem State
 
-enum ZmodemState {
+enum ZmodemState: Equatable {
     case idle
     case waitingForInit
     case receivingFile

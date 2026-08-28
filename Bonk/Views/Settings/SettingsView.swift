@@ -41,6 +41,10 @@ struct SettingsView: View {
             ExportHostsView()
                 .tabItem { Label("导出", systemImage: "square.and.arrow.up") }
                 .tag("export")
+
+            LogPatternSettingsView()
+                .tabItem { Label("日志着色", systemImage: "paintbrush.pointed") }
+                .tag("log")
         }
         .frame(width: AppStyle.settingsWindowWidth, height: 500)
         .environment(\.locale, Locale(identifier: i18n.lang))

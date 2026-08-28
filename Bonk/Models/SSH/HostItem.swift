@@ -38,6 +38,9 @@ final class HostItem {
     var jumpHostRef: JumpHost?
     /// VNext — manual override: always use Compatibility engine (§6.4 forcedCompatibility)
     var forceCompatibility: Bool?
+    /// Log coloring profile per-host (optional, additive, nil = use default)
+    @Relationship(deleteRule: .nullify)
+    var logProfile: LogProfile?
 
     var authType: AuthType {
         get { AuthType(rawValue: authTypeRaw) ?? .password }

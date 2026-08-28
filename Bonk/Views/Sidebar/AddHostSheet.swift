@@ -93,6 +93,18 @@ struct AddHostSheet: View {
                             LabeledSecureField(title: i18n.t(.password), text: $vm.password)
                         case .privateKey:
                             PEMEditorField(text: $vm.privateKeyPEM, detectedType: detectedPrivateKeyType.map { i18n.tr(.detectedKeyType, args: $0) }, hint: i18n.t(.pastePemKey))
+                            if let t = detectedPrivateKeyType, t.contains("sk-") {
+                                Label("检测到 Security Key (sk-)，需触摸 YubiKey", systemImage: "key.viewfinder").font(.caption).foregroundStyle(.orange)
+                            }
+                            Toggle(isOn: Binding(
+                                get: { vm.selectedCredential?.isSecurityKey ?? false },
+                                set: { vm.selectedCredential?.isSecurityKey = $0 }
+                            )) {
+                                Label("FIDO2 / YubiKey (sk-)", systemImage: "key.viewfinder")
+                            }.help("Security Key 需触摸确认")
+                            if let cred = vm.selectedCredential, cred.isSecurityKey {
+                                Text("将使用 SecurityKeyProvider，需按 YubiKey").font(.caption).foregroundStyle(.orange)
+                            }
                         case .certificate:
                             HStack {
                                 Text(i18n.t(.privateKey)).font(.headline)

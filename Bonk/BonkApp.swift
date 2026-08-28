@@ -28,6 +28,7 @@ struct BonkApp: App {
             AIConversationRecord.self, AIMessageRecord.self, AIProviderRecord.self,
             Snippet.self, PortForward.self, JumpHost.self, InlineSuggestionRecord.self,
             SSHBackendProfile.self, TriggerRule.self,
+            LogProfile.self, LogPatternRow.self,
         ])
         // AGENTS.md: never change storeName — always use default. DEBUG uses in-memory store to avoid touching real DB (Xcode runs).
         #if DEBUG
@@ -345,7 +346,10 @@ struct BonkApp: App {
 
         var body: some View {
             SettingsView(preferences: preferences, quakeController: quakeController)
-                .onAppear { ensurePreferences() }
+                .onAppear {
+                    ensurePreferences()
+                    LogProfileStore.shared.configure(container: modelContext.container)
+                }
         }
     }
 #endif

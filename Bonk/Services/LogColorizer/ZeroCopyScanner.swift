@@ -23,9 +23,13 @@ final class ZeroCopyScanner: @unchecked Sendable {
     // Scanner is only called after LogClassifier says LOG.
 
     func scan(line: String) -> [HighlightSpan] {
+        scan(line: line, patterns: LogPatterns.allPatterns)
+    }
+
+    func scan(line: String, patterns: [LogFieldPattern]) -> [HighlightSpan] {
         var spans: [HighlightSpan] = []
         let fullRange = NSRange(line.startIndex..., in: line)
-        for pattern in LogPatterns.allPatterns {
+        for pattern in patterns {
             let matches = pattern.regex.matches(in: line, options: [], range: fullRange)
             for m in matches {
                 spans.append(HighlightSpan(offset: m.range.location, length: m.range.length, ansiCode: pattern.ansiCode, priority: pattern.priority))
