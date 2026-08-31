@@ -1,0 +1,30 @@
+[package]
+name = "bonk-win"
+version = "0.1.0"
+description = "Bonk for Windows - Tauri shell over bonk-core"
+authors = ["Bonk"]
+edition = "2021"
+repository = ""
+rust-version = "1.77"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v4"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dirs-next = "2"
+chrono = { version = "0.4", features = ["serde"] }
+
+# Link bonk-core directly (same process, no IPC overhead)
+bonk-core = { path = "../../bonk-core", features = ["storage-sqlite", "keychain-os"] }
+
+[features]
+default = ["custom-protocol", "storage-sqlite"]
+custom-protocol = ["tauri/custom-protocol"]
+storage-sqlite = ["bonk-core/storage-sqlite"]

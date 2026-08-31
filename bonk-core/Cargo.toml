@@ -1,0 +1,66 @@
+[package]
+name = "bonk-core"
+version = "0.1.0"
+edition = "2021"
+description = "Bonk cross-platform core - SSH/SFTP/PTY/AI - Rust implementation for Mac/Windows/Linux"
+license = "MIT"
+repository = "https://github.com/your-org/bonk"
+keywords = ["ssh", "sftp", "pty", "terminal"]
+categories = ["network-programming"]
+
+[lib]
+name = "bonk_core"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+default = ["ssh-russh"]
+ssh-russh = ["dep:russh", "dep:russh-keys"]
+storage-sqlite = ["dep:rusqlite"]
+keychain-os = ["dep:keyring"]
+serial = ["dep:serialport"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# SSH - russh is the most mature cross-platform (Win/Linux/mac) pure Rust SSH
+russh = { version = "0.45", optional = true }
+russh-keys = { version = "0.45", optional = true }
+
+# PTY - cross-platform pseudoterminal
+portable-pty = "0.8"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+bytes = "1"
+
+# Storage (SQLite replaces SwiftData on Win/Linux)
+rusqlite = { version = "0.31", features = ["bundled"], optional = true }
+
+# Keychain abstraction (Security.framework on mac, Credential Manager on Win, Secret Service on Linux)
+keyring = { version = "3", optional = true }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# AI - pure HTTP cross-platform
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+
+# Serial - cross-platform COM enumeration
+serialport = { version = "4", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+
+[build-dependencies]
+cbindgen = "0.27"

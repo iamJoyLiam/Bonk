@@ -1,0 +1,68 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+
+/* Windows 11 Fluent — Mica + Segoe UI Variable */
+:root {
+  --win-bg: #f3f3f3;
+  --win-bg-mica: rgba(243, 243, 243, 0.85);
+  --win-sidebar-bg: #fafafa;
+  --win-sidebar-hover: #f0f0f0;
+  --win-sidebar-active: #e5e5e5;
+  --win-border: #e5e5e5;
+  --win-border-strong: #d1d1d1;
+  --win-text-primary: #1a1a1a;
+  --win-text-secondary: #605e5c;
+  --win-text-tertiary: #8a8886;
+  --win-accent: #0078d4;
+  --win-accent-hover: #106ebe;
+  --win-accent-light: #deecf9;
+  --win-success: #107c10;
+  --win-warning: #d83b01;
+  --win-danger: #e81123;
+  --win-card-bg: #ffffff;
+  --win-card-border: #edebe9;
+  --win-shadow: 0 1.6px 3.6px rgba(0,0,0,0.13), 0 0.3px 0.9px rgba(0,0,0,0.11);
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--win-bg);
+  color: var(--win-text-primary);
+  font-family: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  font-size: 13px;
+}
+
+/* Windows 11 scrollbar - thin, Fluent */
+* { scrollbar-width: thin; scrollbar-color: #c8c8c8 transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #c8c8c8; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+
+[data-tauri-drag-region] { app-region: drag; }
+[data-tauri-drag-region] button,
+[data-tauri-drag-region] a,
+[data-tauri-drag-region] input { app-region: no-drag; }
+
+.xterm { height: 100%; padding: 6px; }
+.xterm-viewport { scrollbar-width: thin; }
+.thin-scrollbar { scrollbar-width: thin; scrollbar-color: #c8c8c8 transparent; }
+.thin-scrollbar::-webkit-scrollbar { width: 6px; }
+.thin-scrollbar::-webkit-scrollbar-thumb { background: #c8c8c8; border-radius: 3px; }
+
+/* Fluent card */
+.win-card {
+  background: var(--win-card-bg);
+  border: 1px solid var(--win-card-border);
+  border-radius: 8px;
+  box-shadow: var(--win-shadow);
+}
+
+/* Windows button hover */
+.win-btn { border-radius: 4px; transition: background 120ms, border-color 120ms; }
+.win-btn:hover { background: #f0f0f0; }
+.win-btn:active { background: #e5e5e5; }
+.win-btn-primary { background: var(--win-accent); color: white; border-radius: 4px; }
+.win-btn-primary:hover { background: var(--win-accent-hover); }

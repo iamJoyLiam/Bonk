@@ -1,0 +1,45 @@
+{
+  "name": "bonk-win",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "dependencies": {
+    "@heroui/react": "^3.2.4",
+    "@heroui/styles": "^3.2.4",
+    "@react-aria/i18n": "^3.13.1",
+    "@react-aria/ssr": "^3.10.1",
+    "@react-aria/utils": "^3.34.1",
+    "@tauri-apps/api": "^2.5.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/xterm": "^5.3.0",
+    "framer-motion": "^12.43.0",
+    "lucide-react": "^1.37.0",
+    "motion": "^13.1.1",
+    "react": "^19.2.8",
+    "react-aria": "^3.51.0",
+    "react-aria-components": "^1.20.0",
+    "react-dom": "^19.2.8",
+    "tailwind-variants": "^3.1.1",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.12",
+    "@tauri-apps/cli": "^2.7.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^4.3.3",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^4.1.12",
+    "typescript": "^5.7.3",
+    "vite": "^6.3.5"
+  }
+}

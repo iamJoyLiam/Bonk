@@ -88,8 +88,11 @@ releases/
 CLAUDE.md
 AGENTS.md
 
-# Documents
+# Documents (keep windows adaptation docs)
 docs/
+!docs/windows-adaptation-standard.md
+!docs/windows-p0-impl.md
+!docs/windows-ui-blueprint.md
 
 # Web
 docs/FEATURE_ROADMAP.md
@@ -100,3 +103,14 @@ docs/FEATURE_ROADMAP.md
 
 # Derived data
 /build2/
+
+# Bonk Win / Core (Rust + Tauri + Node)
+bonk-win/node_modules/
+bonk-win/dist/
+bonk-win/src-tauri/target/
+bonk-core/target/
+bonk-mac-ffi/target/
+.playwright-cli/
+*.db
+bonk.db
+
