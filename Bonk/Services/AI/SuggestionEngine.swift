@@ -59,16 +59,16 @@ final class SuggestionEngine: ObservableObject {
     }
 
     func accept() -> String {
-        guard let s = suggestion else { return "" }
-        let text = s.text
+        guard let currentSuggestion = suggestion else { return "" }
+        let text = currentSuggestion.text
         if let key = activeKey { rejected.remove(key + "|" + text) }
         cancel()
         return text
     }
 
     func rejectCurrent() {
-        guard let s = suggestion, let key = activeKey else { return }
-        rejected.insert(key + "|" + s.text)
+        guard let currentSuggestion = suggestion, let key = activeKey else { return }
+        rejected.insert(key + "|" + currentSuggestion.text)
         cancel()
     }
 
@@ -182,7 +182,7 @@ final class SuggestionEngine: ObservableObject {
     private func trimCache() {
         if cache.count > Self.cacheLimit {
             let oldest = cache.keys.prefix(cache.count - Self.cacheLimit)
-            for k in oldest { cache.removeValue(forKey: k) }
+            for oldKey in oldest { cache.removeValue(forKey: oldKey) }
         }
     }
 
@@ -193,15 +193,15 @@ final class SuggestionEngine: ObservableObject {
 
     nonisolated static func localSuggestion(history: [String], typed: String) -> String {
         // Most recent command that has typed as prefix and is longer
-        for cmd in history.reversed() {
-            if cmd.hasPrefix(typed), cmd.count > typed.count {
-                return String(cmd.dropFirst(typed.count))
+        for command in history.reversed() {
+            if command.hasPrefix(typed), command.count > typed.count {
+                return String(command.dropFirst(typed.count))
             }
             // also try case-insensitive prefix
-            if cmd.lowercased().hasPrefix(typed.lowercased()), cmd.count > typed.count {
+            if command.lowercased().hasPrefix(typed.lowercased()), command.count > typed.count {
                 // preserve original casing from history
-                let idx = cmd.index(cmd.startIndex, offsetBy: typed.count)
-                return String(cmd[idx...])
+                let dropIndex = command.index(command.startIndex, offsetBy: typed.count)
+                return String(command[dropIndex...])
             }
         }
         return ""

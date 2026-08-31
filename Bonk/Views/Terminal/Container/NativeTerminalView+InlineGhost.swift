@@ -16,6 +16,10 @@ extension NativeTerminalView {
         return overlay
     }
 
+    // Ghost updates coalesced to display tick — LLM streams many deltas per frame, but overlay
+    // should only commit once per frame (shared single presentation clock).
+    private static let ghostCoalesceInterval: Duration = .milliseconds(16)
+
     @MainActor
     func showGhost(text: String) {
         Self.inlineLogger.debug("showGhost len=\(text.count, privacy: .public)")
@@ -27,17 +31,16 @@ extension NativeTerminalView {
         let overlay = ensureGhostOverlay()
         overlay.font = font
         overlay.waiting = false
-        // Skip redundant updates — same text re-renders on every stream
-        // chunk and that is what makes the ghost look like it is jittering.
         if overlay.text == text { return }
         overlay.text = text
         overlay.isHidden = false
-        positionGhostOverlay()
+        scheduleGhostPositionCoalesced()
     }
 
     @MainActor
     func hideGhost(reason: String) {
         Self.inlineLogger.debug("hideGhost reason=\(reason, privacy: .public)")
+        cancelGhostCoalesceIfNeeded()
         ghostOverlay?.isHidden = true
         ghostOverlay?.text = ""
         ghostOverlay?.waiting = false
@@ -52,7 +55,24 @@ extension NativeTerminalView {
         overlay.text = ""
         overlay.waiting = true
         overlay.isHidden = false
-        positionGhostOverlay()
+        scheduleGhostPositionCoalesced()
+    }
+
+    @MainActor
+    private func scheduleGhostPositionCoalesced() {
+        // Single clock: coalesce rapid LLM deltas to one frame, avoid MainActor thrash.
+        if ghostCoalesceTask != nil { return }
+        ghostCoalesceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.ghostCoalesceInterval)
+            self?.ghostCoalesceTask = nil
+            self?.positionGhostOverlay()
+        }
+    }
+
+    @MainActor
+    private func cancelGhostCoalesceIfNeeded() {
+        ghostCoalesceTask?.cancel()
+        ghostCoalesceTask = nil
     }
 
     /// Place the ghost text right after the terminal cursor.

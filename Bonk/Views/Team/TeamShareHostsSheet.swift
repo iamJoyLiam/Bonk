@@ -17,19 +17,19 @@ struct TeamShareHostsSheet: View {
                         Text("暂无已保存主机")
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(allHosts) { host in
+                        ForEach(allHosts) { hostItem in
                             HStack {
-                                Image(systemName: selectedIDs.contains(host.id) ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(selectedIDs.contains(host.id) ? .blue : .secondary)
+                                Image(systemName: selectedIDs.contains(hostItem.id) ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(selectedIDs.contains(hostItem.id) ? .blue : .secondary)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(host.name).lineLimit(1)
-                                    Text("\(host.username)@\(host.host):\(host.port)").font(.caption).foregroundStyle(.secondary)
+                                    Text(hostItem.name).lineLimit(1)
+                                    Text("\(hostItem.username)@\(hostItem.host):\(hostItem.port)").font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer()
                             }
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                if selectedIDs.contains(host.id) { selectedIDs.remove(host.id) } else { selectedIDs.insert(host.id) }
+                                if selectedIDs.contains(hostItem.id) { selectedIDs.remove(hostItem.id) } else { selectedIDs.insert(hostItem.id) }
                             }
                         }
                     }
@@ -63,36 +63,36 @@ struct TeamShareHostsSheet: View {
 
     private func share() {
         let hosts = allHosts.filter { selectedIDs.contains($0.id) }
-        let exports: [HostItemExport] = hosts.compactMap { h in
-            var credExport: CredentialExport?
-            if let cred = h.credentialRef {
-                if cred.type == .apiKey { return nil } // skip apiKey
+        let exports: [HostItemExport] = hosts.compactMap { hostItem in
+            var credentialExport: CredentialExport?
+            if let credential = hostItem.credentialRef {
+                if credential.type == .apiKey { return nil } // skip apiKey
                 // SecureEnclave cannot be exported
-                if h.authType == .secureEnclave || cred.type == .privateKey && h.loadPrivateKey() == nil {
+                if hostItem.authType == .secureEnclave || credential.type == .privateKey && hostItem.loadPrivateKey() == nil {
                     // still allow host without secret
                 }
-                var secret: String? = nil
+                var secretValue: String? = nil
                 if includeSecrets {
-                    if let c = h.credentialRef, let s = c.loadSecret(), !s.isEmpty {
-                        secret = s
-                    } else if h.authType == .password, let s = h.loadPassword() {
-                        secret = s
-                    } else if h.authType == .privateKey, let s = h.loadPrivateKey() {
-                        secret = s
+                    if let credentialForSecret = hostItem.credentialRef, let loadedSecret = credentialForSecret.loadSecret(), !loadedSecret.isEmpty {
+                        secretValue = loadedSecret
+                    } else if hostItem.authType == .password, let loadedSecret = hostItem.loadPassword() {
+                        secretValue = loadedSecret
+                    } else if hostItem.authType == .privateKey, let loadedSecret = hostItem.loadPrivateKey() {
+                        secretValue = loadedSecret
                     }
                     // SecureEnclave tag is not a secret, skip
-                    if h.authType == .secureEnclave { secret = nil }
+                    if hostItem.authType == .secureEnclave { secretValue = nil }
                 }
-                credExport = CredentialExport(name: cred.name, type: cred.type.rawValue, username: cred.username, secret: secret)
+                credentialExport = CredentialExport(name: credential.name, type: credential.type.rawValue, username: credential.username, secret: secretValue)
             } else if includeSecrets {
-                var secret: String? = nil
-                if h.authType == .password { secret = h.loadPassword() }
-                else if h.authType == .privateKey { secret = h.loadPrivateKey() }
-                if let s = secret, !s.isEmpty {
-                    credExport = CredentialExport(name: h.name, type: h.authType.rawValue, username: h.username, secret: s)
+                var secretValue: String? = nil
+                if hostItem.authType == .password { secretValue = hostItem.loadPassword() }
+                else if hostItem.authType == .privateKey { secretValue = hostItem.loadPrivateKey() }
+                if let unwrappedSecret = secretValue, !unwrappedSecret.isEmpty {
+                    credentialExport = CredentialExport(name: hostItem.name, type: hostItem.authType.rawValue, username: hostItem.username, secret: unwrappedSecret)
                 }
             }
-            return HostItemExport(name: h.name, host: h.host, port: h.port, username: h.username, authType: h.authType.rawValue, credential: credExport)
+            return HostItemExport(name: hostItem.name, host: hostItem.host, port: hostItem.port, username: hostItem.username, authType: hostItem.authType.rawValue, credential: credentialExport)
         }
         relay.shareHosts(exports)
         dismiss()

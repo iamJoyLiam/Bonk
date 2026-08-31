@@ -6,47 +6,60 @@
 //
 
 import Foundation
+import os
 
 final class DegradedMode: @unchecked Sendable {
     nonisolated(unsafe) static let shared = DegradedMode()
 
-    private var lineCountWindow: [Date] = []
-    private let lock = NSLock()
+    // Fixed-window counter — O(1), zero allocation per call.
+    // Replaces previous [Date] array which did O(N) append+filter on MainActor per chunk.
+    private struct WindowState {
+        var count: Int = 0
+        var windowStart: Date = Date()
+        var totalCount: Int = 0 // deterministic sampling counter
+    }
+    private let state = OSAllocatedUnfairLock<WindowState>(uncheckedState: WindowState())
     private let windowSeconds: TimeInterval = 1.0
-    private let fullThreshold = 5000 // lines/sec -> reduced
+    private let fullThreshold = 5000 // lines/sec -> reduced (1/10 sampling)
     private let disableThreshold = 50000 // lines/sec -> disabled
 
     enum Mode { case full, reduced, disabled }
 
     var current: Mode {
-        lock.lock()
-        defer { lock.unlock() }
-        let now = Date()
-        lineCountWindow = lineCountWindow.filter { now.timeIntervalSince($0) < windowSeconds }
-        let c = lineCountWindow.count
-        if c >= disableThreshold { return .disabled }
-        if c >= fullThreshold { return .reduced }
-        return .full
+        state.withLock { windowState in
+            let now = Date()
+            if now.timeIntervalSince(windowState.windowStart) >= windowSeconds {
+                return .full
+            }
+            let windowCount = windowState.count
+            if windowCount >= disableThreshold { return .disabled }
+            if windowCount >= fullThreshold { return .reduced }
+            return .full
+        }
     }
 
-    private var counter: Int = 0
+    /// Returns true when decoration should be skipped (feed raw, keep VT bytes intact).
+    /// Never drops bytes — only skips regex coloring at the decoration layer.
     func shouldDropLogHighlight(lineCount: Int) -> Bool {
-        lock.lock()
-        let now = Date()
-        for _ in 0..<lineCount { lineCountWindow.append(now) }
-        lineCountWindow = lineCountWindow.filter { now.timeIntervalSince($0) < windowSeconds }
-        let c = lineCountWindow.count
-        counter &+= lineCount
-        let n = counter
-        lock.unlock()
-        if c >= disableThreshold { return true }
-        if c >= fullThreshold { return n % 10 != 0 } // deterministic 1/10 sampling
+        let (windowCount, totalSampleCount): (Int, Int) = state.withLock { windowState in
+            let now = Date()
+            if now.timeIntervalSince(windowState.windowStart) >= windowSeconds {
+                windowState.count = 0
+                windowState.windowStart = now
+            }
+            windowState.count += lineCount
+            windowState.totalCount &+= lineCount
+            return (windowState.count, windowState.totalCount)
+        }
+        if windowCount >= disableThreshold { return true }
+        if windowCount >= fullThreshold { return totalSampleCount % 10 != 0 } // 1/10 sampling
         return false
     }
 
     func reset() {
-        lock.lock()
-        lineCountWindow.removeAll()
-        lock.unlock()
+        state.withLock { windowState in
+            windowState.count = 0
+            windowState.windowStart = Date()
+        }
     }
 }

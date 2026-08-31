@@ -55,6 +55,8 @@ import SwiftTerm
         let completionService = InlineCompletionService.shared
         private nonisolated(unsafe) var completionDebounceTask: Task<Void, Never>?
         var ghostOverlay: InlineGhostOverlay?
+        // Ghost updates coalesced to display tick — LLM streams many deltas per frame.
+        nonisolated(unsafe) var ghostCoalesceTask: Task<Void, Never>?
         private nonisolated(unsafe) var resignObserver: NSObjectProtocol?
         nonisolated(unsafe) var rightClickMonitor: Any?
 
@@ -138,6 +140,7 @@ import SwiftTerm
         deinit {
             completionDebounceTask?.cancel()
             resizeDebounceTask?.cancel()
+            ghostCoalesceTask?.cancel()
             if let observer = resignObserver {
                 NotificationCenter.default.removeObserver(observer)
             }
@@ -241,6 +244,7 @@ import SwiftTerm
         /// terminal should handle normally (or that the menu handles).
         /// Reads the user's configured shortcuts, so custom key bindings work
         /// even when the menu FocusedValue chain is broken.
+        /// Linear scan over ~10 cases is negligible per keyDown (<0.01ms).
         private func shortcutNotification(
             for keyCode: UInt16,
             modifiers: NSEvent.ModifierFlags

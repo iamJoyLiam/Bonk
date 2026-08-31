@@ -70,13 +70,21 @@ final class TerminalEngine {
             && state.buffer.utf8.count >= 1
             && incoming.utf8.first != 0x0A
 
-        // Watermark check before append (count as display bytes after decode)
+        // Watermark — never drop VT control or tiny interactive echo (preserves VT semantics).
+        // Bulk logs may be dropped/degraded later at decoration layer, not transport.
         let incomingBytes = incoming.utf8.count
+        let isVTControl = incoming.contains("\u{1B}") // CSI/OSC/SGR — must not be split/dropped
+        let isTinyInteractive = incomingBytes <= 64 && !incoming.contains("\n")
         if state.pendingBytes + incomingBytes >= watermark.high {
-            state.droppedBytes += incomingBytes
-            state.droppedChunks += 1
-            // Drop newest tail; keep buffer for consistent rendering
-            return
+            if isVTControl || isTinyInteractive {
+                // Force flush to make room, then allow append (exceed watermark briefly rather than corrupt VT state)
+                flush()
+            } else {
+                state.droppedBytes += incomingBytes
+                state.droppedChunks += 1
+                // Drop newest bulk tail; keep VT state intact
+                return
+            }
         }
 
         state.buffer += incoming
@@ -140,9 +148,10 @@ final class TerminalEngine {
     private func scheduleFlush() {
         guard !state.flushScheduled else { return }
         state.flushScheduled = true
-        // Fallback timer if display ticks stall (e.g. app in background, CADisplayLink paused)
+        // Single display tick drives flush (CVDisplayLink @ 60/120Hz via DisplaySource).
+        // Fallback only if ticks stall (app background / link paused) — 32ms, not 16ms double-throttle.
         Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(16))
+            try? await Task.sleep(for: .milliseconds(32))
             self?.flushIfNeeded()
         }
     }
@@ -163,9 +172,9 @@ final class TerminalEngine {
         state.buffer = ""
         state.pendingBytes = 0
         pruneConsumers()
-        for weak in state.consumers.values {
-            weak.consumer?.receive(text)
-            weak.consumer?.didConsume(bytes: bytes)
+        for weakConsumer in state.consumers.values {
+            weakConsumer.consumer?.receive(text)
+            weakConsumer.consumer?.didConsume(bytes: bytes)
         }
     }
 

@@ -29,24 +29,40 @@ final class AppKitTerminalConsumer: TerminalConsumer {
             onBytesConsumed?(text.utf8.count)
             return
         }
+        // Tier 1 — TERMINAL CONTROL: CSI/OSC/SGR must bypass decoration, VT semantics intact.
         if text.contains("\u{1B}") {
             terminalView?.feed(text: text)
             onBytesConsumed?(text.utf8.count)
             return
         }
+        // Tier 1b — Alternate screen (vim/less/top/fzf) is terminal control, never regex-color.
+        if let terminalViewForCheck = terminalView, terminalViewForCheck.terminal.isCurrentBufferAlternate {
+            terminalViewForCheck.feed(text: text)
+            onBytesConsumed?(text.utf8.count)
+            return
+        }
+        // Tier 3 — BULK degrades at decoration layer (never drop bytes, only skip coloring).
         let lineCount = max(1, text.filter { $0 == "\n" }.count + 1)
         if DegradedMode.shared.shouldDropLogHighlight(lineCount: lineCount) {
             terminalView?.feed(text: text)
             onBytesConsumed?(text.utf8.count)
             return
         }
+        // Tier 2 — INTERACTIVE fast-path: tiny single-line echo bypasses worker queue.
+        // Heuristic only affects decoration (missing color is safe), never VT correctness.
+        // Covers shell echo `a`/`ls` without blocking behind 32-job backlog.
+        if text.utf8.count <= 64, !text.contains("\n") {
+            terminalView?.feed(text: text)
+            onBytesConsumed?(text.utf8.count)
+            return
+        }
         let bytes = text.utf8.count
-        let view = terminalView
-        let onConsumed = onBytesConsumed
-        let h = host
-        worker.enqueue(text: text, host: h) { colored in
-            view?.feed(text: colored)
-            onConsumed?(bytes)
+        let terminalViewForWorker = terminalView
+        let onConsumedForWorker = onBytesConsumed
+        let hostForWorker = host
+        worker.enqueue(text: text, host: hostForWorker) { colored in
+            terminalViewForWorker?.feed(text: colored)
+            onConsumedForWorker?(bytes)
         }
     }
 
@@ -70,15 +86,21 @@ final class TeamTerminalConsumer: TerminalConsumer {
             TeamRelay.shared.broadcastOutput(text, sessionID: sessionID)
             return
         }
-        let lines = max(1, text.filter { $0 == "\n" }.count + 1)
-        if DegradedMode.shared.shouldDropLogHighlight(lineCount: lines) {
+        // Alternate screen content is terminal control, not log bulk.
+        // TeamRelay host view may still be in alt screen; skip coloring for it.
+        let lineCountForTeam = max(1, text.filter { $0 == "\n" }.count + 1)
+        if DegradedMode.shared.shouldDropLogHighlight(lineCount: lineCountForTeam) {
             TeamRelay.shared.broadcastOutput(text, sessionID: sessionID)
             return
         }
-        let sid = sessionID
-        let h = host
-        worker.enqueue(text: text, host: h) { colored in
-            TeamRelay.shared.broadcastOutput(colored, sessionID: sid)
+        if text.utf8.count <= 64, !text.contains("\n") {
+            TeamRelay.shared.broadcastOutput(text, sessionID: sessionID)
+            return
+        }
+        let sessionIDForWorker = sessionID
+        let hostForTeamWorker = host
+        worker.enqueue(text: text, host: hostForTeamWorker) { colored in
+            TeamRelay.shared.broadcastOutput(colored, sessionID: sessionIDForWorker)
         }
     }
 }

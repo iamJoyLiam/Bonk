@@ -9,8 +9,10 @@ import os
 final class LogHighlightWorker: @unchecked Sendable {
     static let shared = LogHighlightWorker()
 
-    private let queue = DispatchQueue(label: "com.bonk.logHighlight", qos: .utility, attributes: [])
-    private let batchSize = 128
+    // userInitiated + smaller batch keeps interactive echo from starving behind 128-job backlog.
+    // Bulk logs are still utility-like throughput, but interactive tiny chunks bypass this queue entirely (see TerminalEngineAdapter fast-path).
+    private let queue = DispatchQueue(label: "com.bonk.logHighlight", qos: .userInitiated, attributes: [])
+    private let batchSize = 32
     private struct Job: @unchecked Sendable {
         let id: UUID
         let text: String

@@ -41,36 +41,36 @@ struct PatternEditSheet: View {
                     Picker("预设", selection: $preset) {
                         ForEach(LogColor.presetRows, id: \.title) { p in Text(p.title).tag(p.title) }
                     }.onChange(of: preset) { _, v in
-                        if let p = LogColor.presetRows.first(where: { $0.title == v }) {
-                            if !p.pattern.isEmpty { pattern = p.pattern }
-                            if !p.testLine.isEmpty { testLine = p.testLine }
-                            if !isEdit, !p.ansi.isEmpty { picked = LogColor.color(for: p.ansi); hex = (picked.hexString ?? "#FF3B30").uppercased() }
+                        if let matchedPreset = LogColor.presetRows.first(where: { $0.title == v }) {
+                            if !matchedPreset.pattern.isEmpty { pattern = matchedPreset.pattern }
+                            if !matchedPreset.testLine.isEmpty { testLine = matchedPreset.testLine }
+                            if !isEdit, !matchedPreset.ansi.isEmpty { picked = LogColor.color(for: matchedPreset.ansi); hex = (picked.hexString ?? "#FF3B30").uppercased() }
                         }
                     }
                     TextField("正则表达式", text: $pattern).font(.system(size: AppStyle.fontSmall, design: .monospaced))
-                    if let e = error { Text(e).foregroundStyle(.red).font(.system(size: AppStyle.fontCaption)) }
+                    if let displayError = error { Text(displayError).foregroundStyle(.red).font(.system(size: AppStyle.fontCaption)) }
                 }
                 Section("颜色") {
                     let defaults = LogColor.palette
                     let isCustom = !defaults.contains(where: { $0.uppercased() == hex.uppercased() })
                     HStack(spacing: AppStyle.spacingS) {
-                        ForEach(defaults, id: \.self) { h in
-                            Circle().fill(Color(hex: h)).frame(width: 28, height: 28)
-                                .overlay(Circle().stroke(hex.uppercased() == h.uppercased() ? Color.primary : Color.clear, lineWidth: 2))
-                                .onTapGesture { hex = h.uppercased(); picked = Color(hex: h) }
+                        ForEach(defaults, id: \.self) { hexValue in
+                            Circle().fill(Color(hex: hexValue)).frame(width: 28, height: 28)
+                                .overlay(Circle().stroke(hex.uppercased() == hexValue.uppercased() ? Color.primary : Color.clear, lineWidth: 2))
+                                .onTapGesture { hex = hexValue.uppercased(); picked = Color(hex: hexValue) }
                         }
                         ZStack {
                             Capsule().fill(picked).frame(width: 44, height: 24)
                                 .overlay(Capsule().stroke(isCustom ? Color.primary : Color.clear, lineWidth: 2))
                                 .allowsHitTesting(false)
                             ColorPicker("", selection: $picked).labelsHidden().opacity(0.02).frame(width: 44, height: 24)
-                                .onChange(of: picked) { _, c in
-                                    let nh = (c.hexString ?? hex).uppercased()
-                                    if isCustom || !defaults.contains(where: { $0.uppercased() == nh.uppercased() }) { hex = nh }
+                                .onChange(of: picked) { _, newColor in
+                                    let newHex = (newColor.hexString ?? hex).uppercased()
+                                    if isCustom || !defaults.contains(where: { $0.uppercased() == newHex.uppercased() }) { hex = newHex }
                                 }
                         }.help("自定义取色")
                         TextField("", text: $hex).font(.system(size: AppStyle.fontSmall, design: .monospaced)).frame(width: 86, alignment: .leading).lineLimit(1).textFieldStyle(.plain)
-                            .onChange(of: hex) { _, h in if h.hasPrefix("#") && h.count == 7 { picked = Color(hex: h) } }
+                            .onChange(of: hex) { _, newHex in if newHex.hasPrefix("#") && newHex.count == 7 { picked = Color(hex: newHex) } }
                     }
                 }
                 Section("实时预览") {
@@ -79,11 +79,11 @@ struct PatternEditSheet: View {
                     } else if (try? NSRegularExpression(pattern: pattern)) == nil {
                         Label("正则非法", systemImage: "xmark.octagon.fill").font(.system(size: AppStyle.fontCaption)).foregroundStyle(.red)
                     } else {
-                        let m = (try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]))?.matches(in: testLine, range: NSRange(testLine.startIndex..., in: testLine))
+                        let matchResult = (try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]))?.matches(in: testLine, range: NSRange(testLine.startIndex..., in: testLine))
                         SingleLineHighlightField(text: $testLine, pattern: pattern, color: picked).frame(height: 22)
                         HStack {
-                            Label((m?.isEmpty ?? true) ? "无匹配" : "\(m!.count) 处匹配", systemImage: (m?.isEmpty ?? true) ? "exclamationmark.triangle" : "checkmark.circle.fill")
-                                .font(.system(size: AppStyle.fontSmall, weight: .medium)).foregroundStyle((m?.isEmpty ?? true) ? .orange : .green)
+                            Label((matchResult?.isEmpty ?? true) ? "无匹配" : "\(matchResult!.count) 处匹配", systemImage: (matchResult?.isEmpty ?? true) ? "exclamationmark.triangle" : "checkmark.circle.fill")
+                                .font(.system(size: AppStyle.fontSmall, weight: .medium)).foregroundStyle((matchResult?.isEmpty ?? true) ? .orange : .green)
                             Spacer()
                             Text("优先级 \(priority)").font(.system(size: AppStyle.fontCaption)).foregroundStyle(.secondary)
                             Stepper("", value: $priority, in: 1...100).labelsHidden().controlSize(.small)
@@ -101,15 +101,15 @@ struct PatternEditSheet: View {
             name = row.name; pattern = row.pattern; priority = row.priority
             hex = LogColor.hex(for: row.ansiCode).uppercased()
             picked = Color(hex: hex)
-            if let p = LogColor.presetRows.first(where: { $0.pattern == row.pattern }) {
-                preset = p.title
-                testLine = p.testLine
+            if let matchedPreset = LogColor.presetRows.first(where: { $0.pattern == row.pattern }) {
+                preset = matchedPreset.title
+                testLine = matchedPreset.testLine
             } else {
                 // No preset match: keep current pattern but ensure preview has some content
                 if testLine.trimmingCharacters(in: .whitespaces).isEmpty { testLine = row.pattern }
             }
-        } else if let p = LogColor.presetRows.first(where: { $0.title == preset }) {
-            picked = LogColor.color(for: p.ansi)
+        } else if let matchedPreset = LogColor.presetRows.first(where: { $0.title == preset }) {
+            picked = LogColor.color(for: matchedPreset.ansi)
             hex = (picked.hexString ?? "#FF3B30").uppercased()
         }
     }

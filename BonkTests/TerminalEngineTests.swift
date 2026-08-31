@@ -49,12 +49,29 @@ final class TerminalEngineTests: XCTestCase {
         let consumer = HeadlessTerminalConsumer()
         engine.subscribe(UUID(), consumer: consumer)
 
-        engine.push(String(repeating: "a", count: 90)) // pending 90
-        engine.push(String(repeating: "b", count: 20)) // 110 > high 100 → drop
+        // Bulk chunks (>64B) are dropped when over high watermark; tiny interactive (<=64B single-line)
+        // and VT control are preserved (flush to make room) to keep shell echo responsive.
+        engine.push(String(repeating: "a", count: 90)) // pending 90, bulk
+        engine.push(String(repeating: "b", count: 70)) // 160 > high 100, bulk -> drop
         display.tick()
         try? await Task.sleep(for: .milliseconds(30))
         XCTAssertEqual(consumer.joined, String(repeating: "a", count: 90))
-        XCTAssertEqual(engine.droppedBytesForTest, 20)
+        XCTAssertEqual(engine.droppedBytesForTest, 70)
+    }
+
+    func testWatermarkPreservesTinyInteractive() async {
+        let display = TestDisplaySource()
+        let watermark = Watermark(high: 100, low: 50)
+        let engine = TerminalEngine(displaySource: display, watermark: watermark)
+        let consumer = HeadlessTerminalConsumer()
+        engine.subscribe(UUID(), consumer: consumer)
+
+        engine.push(String(repeating: "a", count: 90)) // bulk, pending 90
+        engine.push("hi") // tiny interactive (<=64B, no newline) -> preserved, flushed first chunk to make room
+        display.tick()
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(consumer.joined, String(repeating: "a", count: 90) + "hi")
+        XCTAssertEqual(engine.droppedBytesForTest, 0)
     }
 
     func testBareCRHeldUntilNextPush() async {

@@ -9,6 +9,8 @@
 import Foundation
 
 /// Produces a tick stream. Engine flushes at most once per tick.
+/// Domain abstraction — Engine knows only DisplaySource, never CVDisplayLink/CADisplayLink directly.
+/// ProMotion 120Hz ticks at 8.33ms automatically via CVDisplayLink; no hardcoded 16ms in business logic.
 protocol DisplaySource: Sendable {
     var ticks: AsyncStream<Void> { get }
 }
@@ -58,6 +60,8 @@ final class AppKitDisplaySource: DisplaySource, @unchecked Sendable {
     }
 
     private func startFallback() {
+        // Fallback only when CVDisplayLink unavailable (headless). Engine also has its own
+        // 32ms fallback when ticks stall (app background), so this loop can stay at ~60Hz.
         fallbackTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(16))

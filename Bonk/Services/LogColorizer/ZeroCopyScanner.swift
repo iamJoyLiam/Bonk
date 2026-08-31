@@ -51,10 +51,10 @@ final class ZeroCopyScanner: @unchecked Sendable {
             }
             var result: [HighlightSpan] = []
             var lastEnd = -1
-            for s in sorted {
-                if s.offset < lastEnd { continue }
-                result.append(s)
-                lastEnd = s.offset + s.length
+            for span in sorted {
+                if span.offset < lastEnd { continue }
+                result.append(span)
+                lastEnd = span.offset + span.length
             }
             return result
         }
