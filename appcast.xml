@@ -6,6 +6,35 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.2.6</title>
+            <pubDate>Mon, 31 Aug 2026 20:00:00 +0800</pubDate>
+            <sparkle:version>20262006</sparkle:version>
+            <sparkle:shortVersionString>2026.2.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Changes
+- Fixed terminal input lag with 3-tier priority, single display tick and background highlighting
+- Upgraded SwiftTerm from 1.19.0 to 1.20.0 with bounds and selection fixes
+- Improved ghost overlay coalescing and removed single-letter variable names
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.6/Bonk-2026.2.6-arm64.dmg"
+                length="22690652"
+                type="application/octet-stream"
+                sparkle:edSignature="O2HpGpUsiDd80B7AH1M0kzhiAq2+ojx+heagEVAe+icFoL2RT6uiZbYSn3GTC/fSjz2GxaJvFExCvKhBdzwJBw=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.6/Bonk-2026.2.6-x86_64.dmg"
+                length="25273427"
+                type="application/octet-stream"
+                sparkle:edSignature="NF4IvdwnJSSktaBSIZ6xTRys2TGJGKLHX6JaojrWy7+C933C2hMzcLRHfpY0aQR9Sq/cBkdF83dRuUvKrilEBA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.2.5</title>
             <pubDate>Fri, 28 Aug 2026 16:16:48 +0800</pubDate>
             <sparkle:version>20262005</sparkle:version>
