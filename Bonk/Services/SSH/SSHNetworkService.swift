@@ -58,6 +58,12 @@ public actor SSHNetworkService {
     /// Per-session supervisor - replaces isHandlingDisconnect Bool with state machine per P0 spec.
     private let supervisor = SSHConnectionSupervisor()
     private var wakeMonitorTask: Task<Void, Never>?
+    /// ConnectionAttemptID per hard constraint 3 - old callbacks with stale ID are discarded
+    private let attemptIDBox = NIOLockedValueBox<UUID>(UUID())
+    private var currentAttemptID: UUID {
+        get { attemptIDBox.withLockedValue { $0 } }
+        set { attemptIDBox.withLockedValue { $0 = newValue } }
+    }
     /// Current reconnection loop, so manual disconnect/reconnect can cancel it.
     private var reconnectTask: Task<Void, Never>?
 
@@ -133,6 +139,8 @@ public actor SSHNetworkService {
         }
 
         self.config = config
+        currentAttemptID = UUID()
+        Log.ssh.info("[CONNECT] new attemptID=\(self.currentAttemptID.uuidString.prefix(8), privacy: .public) host=\(config.host, privacy: .public)")
         usesOpenSSHTransport = false
         try? await sftpNativeClient?.close()
         sftpNativeClient = nil
@@ -175,8 +183,12 @@ public actor SSHNetworkService {
             }
 
             Log.ssh.info("[CONNECT] Starting keepAlive...")
+            let keepAliveAttemptID = currentAttemptID
             await keepAlive.settimeoutHandler { [weak self] in
-                guard let self else { return }
+                guard let self, self.attemptIDBox.withLockedValue { $0 } == keepAliveAttemptID else {
+                    Log.ssh.info("[RECOVERY] discard stale keepAlive old=\(keepAliveAttemptID.uuidString.prefix(8), privacy: .public)")
+                    return
+                }
                 Task { await self.supervisor.requestRecovery(reason: .keepAliveTimeout) }
             }
             await keepAlive.start(client: client)
@@ -351,6 +363,7 @@ public actor SSHNetworkService {
         termType: String = "xterm-256color",
         onError: (@Sendable (String) -> Void)? = nil
     ) async throws -> PTYSession {
+        let capturedAttemptID = currentAttemptID
         #if os(macOS)
             if usesOpenSSHTransport, let openSSHBackend {
                 openSSHBackend.onManualPasswordVerified = onManualPasswordVerified
@@ -359,7 +372,11 @@ public actor SSHNetworkService {
                     rows: rows,
                     termType: termType
                 ) { [weak self] in
-                    Task { await self?.handleDisconnect() }
+                    guard let self, self.attemptIDBox.withLockedValue { $0 } == capturedAttemptID else {
+                        Log.ssh.info("[RECOVERY] discard stale HUP old=\(capturedAttemptID.uuidString.prefix(8), privacy: .public)")
+                        return
+                    }
+                    Task { await self.handleDisconnect() }
                 } onError: { message in
                     Task { @MainActor in
                         onError?(message)
@@ -367,7 +384,10 @@ public actor SSHNetworkService {
                 }
                 lastPTYConfig = PTYConfig(cols: cols, rows: rows, termType: termType)
                 activePTYSession = session
-                session.onWriteFailed = { [weak self] in Task { await self?.supervisor.requestRecovery(reason: .writeFailed) } }
+                session.onWriteFailed = { [weak self] in
+                    guard let self, self.attemptIDBox.withLockedValue { $0 } == capturedAttemptID else { return }
+                    Task { await self.supervisor.requestRecovery(reason: .writeFailed) }
+                }
                 return session
             }
         #endif
@@ -376,7 +396,10 @@ public actor SSHNetworkService {
 
         lastPTYConfig = PTYConfig(cols: cols, rows: rows, termType: termType)
         let session = PTYSession()
-        session.onWriteFailed = { [weak self] in Task { await self?.supervisor.requestRecovery(reason: .writeFailed) } }
+        session.onWriteFailed = { [weak self] in
+            guard let self, self.attemptIDBox.withLockedValue { $0 } == capturedAttemptID else { return }
+            Task { await self.supervisor.requestRecovery(reason: .writeFailed) }
+        }
         session.start(client: client, cols: cols, rows: rows, termType: termType)
         activePTYSession = session
         return session
@@ -564,8 +587,13 @@ public actor SSHNetworkService {
     // MARK: - Disconnect Monitor
 
     private func startMonitoringDisconnect(_ sshClient: SSHClient) {
+        let capturedID = currentAttemptID
         sshClient.onDisconnect { [weak self] in
             guard let self else { return }
+            guard self.attemptIDBox.withLockedValue { $0 } == capturedID else {
+                Log.ssh.info("[RECOVERY] discard stale disconnect old=\(capturedID.uuidString.prefix(8), privacy: .public)")
+                return
+            }
             Task { await self.handleDisconnect() }
         }
     }
@@ -636,25 +664,39 @@ public actor SSHNetworkService {
         wakeMonitorTask = nil
     }
 
-    /// Liveness probe per P0: OpenSSH uses `ssh -S -O check`, Citadel uses `client.isConnected`.
+    /// Liveness probe per hard constraint 1: Transport alive != Session/PTY ready.
+    /// OpenSSH: check ControlMaster then validate PTY; Citadel: check isConnected then PTY.
     /// Never uses kill(pid,0) or exec true as health (spec).
     private func probeLiveness() async -> Bool {
         if usesOpenSSHTransport {
-            if let backend = openSSHBackend {
-                let alive = await backend.checkControlMasterLiveness()
-                Log.ssh.info("[PROBE] openssh check host=\(backend.config.host, privacy: .public) alive=\(alive, privacy: .public)")
-                return alive
+            guard let backend = openSSHBackend else {
+                Log.ssh.warning("[PROBE] openssh no backend -> dead")
+                return false
             }
-            Log.ssh.warning("[PROBE] openssh no backend -> dead")
-            return false
+            let transportAlive = await backend.checkControlMasterLiveness()
+            Log.ssh.info("[PROBE] openssh transport host=\(backend.config.host, privacy: .public) alive=\(transportAlive, privacy: .public)")
+            guard transportAlive else { return false }
+            // Transport alive -> validate Session/PTY (hard constraint 1)
+            if let pty = activePTYSession {
+                let ptyAlive = !pty.isClosed
+                Log.ssh.info("[PROBE] openssh PTY alive=\(ptyAlive, privacy: .public)")
+                return ptyAlive
+            }
+            return true // no PTY yet, transport alive is enough
         } else {
-            if let client = client {
-                let connected = client.isConnected
-                Log.ssh.info("[PROBE] citadel isConnected=\(connected, privacy: .public)")
-                return connected
+            guard let client else {
+                Log.ssh.warning("[PROBE] citadel no client -> dead")
+                return false
             }
-            Log.ssh.warning("[PROBE] citadel no client -> dead")
-            return false
+            let transportAlive = client.isConnected
+            Log.ssh.info("[PROBE] citadel transport alive=\(transportAlive, privacy: .public)")
+            guard transportAlive else { return false }
+            if let pty = activePTYSession {
+                let ptyAlive = !pty.isClosed
+                Log.ssh.info("[PROBE] citadel PTY alive=\(ptyAlive, privacy: .public)")
+                return ptyAlive
+            }
+            return true
         }
     }
 
@@ -662,6 +704,9 @@ public actor SSHNetworkService {
     /// MUST recreate PTY on success (spec: dead -> reconnect -> SSH auth -> open channel -> recreate PTY -> restore size -> reattach -> ready)
     private func performSingleReconnect() async -> Bool {
         guard let config else { return false }
+        let newAttemptID = UUID()
+        currentAttemptID = newAttemptID
+        Log.ssh.info("[RECOVERY] new attemptID=\(newAttemptID.uuidString.prefix(8), privacy: .public) host=\(config.host, privacy: .public)")
         // Tear down stale resources before new attempt
         await keepAlive.stop()
         activePTYSession?.close()
@@ -683,10 +728,20 @@ public actor SSHNetworkService {
                 Log.ssh.info("[RECOVERY] OpenSSH reconnect success")
                 if let ptyConfig = lastPTYConfig {
                     do {
+                        let capturedID = newAttemptID
                         let session = try backend.openPTY(
                             cols: ptyConfig.cols, rows: ptyConfig.rows, termType: ptyConfig.termType
-                        ) { [weak self] in Task { await self?.supervisor.requestRecovery(reason: .channelClosed) } } onError: { _ in }
-                        session.onWriteFailed = { [weak self] in Task { await self?.supervisor.requestRecovery(reason: .writeFailed) } }
+                        ) { [weak self] in
+                            guard let self, self.attemptIDBox.withLockedValue { $0 } == capturedID else {
+                                Log.ssh.info("[RECOVERY] discard stale HUP old=\(capturedID.uuidString.prefix(8), privacy: .public)")
+                                return
+                            }
+                            Task { await self.supervisor.requestRecovery(reason: .channelClosed) }
+                        } onError: { _ in }
+                        session.onWriteFailed = { [weak self] in
+                            guard let self, self.attemptIDBox.withLockedValue { $0 } == capturedID else { return }
+                            Task { await self.supervisor.requestRecovery(reason: .writeFailed) }
+                        }
                         activePTYSession = session
                         pendingPTYSession = session
                         // PTY recreated - ready will be set by state observer
@@ -703,15 +758,23 @@ public actor SSHNetworkService {
                     try await self.establishConnection(config: config)
                 }
                 if let client {
+                    let capturedKeepAliveID = newAttemptID
                     await keepAlive.settimeoutHandler { [weak self] in
-                        guard let self else { return }
+                        guard let self, self.attemptIDBox.withLockedValue { $0 } == capturedKeepAliveID else {
+                            Log.ssh.info("[RECOVERY] discard stale keepAlive old=\(capturedKeepAliveID.uuidString.prefix(8), privacy: .public)")
+                            return
+                        }
                         Task { await self.supervisor.requestRecovery(reason: .keepAliveTimeout) }
                     }
                     await keepAlive.start(client: client)
                 }
                 if let ptyConfig = lastPTYConfig, let client {
+                    let capturedID = newAttemptID
                     let session = PTYSession()
-                    session.onWriteFailed = { [weak self] in Task { await self?.supervisor.requestRecovery(reason: .writeFailed) } }
+                    session.onWriteFailed = { [weak self] in
+                        guard let self, self.attemptIDBox.withLockedValue { $0 } == capturedID else { return }
+                        Task { await self.supervisor.requestRecovery(reason: .writeFailed) }
+                    }
                     session.start(client: client, cols: ptyConfig.cols, rows: ptyConfig.rows, termType: ptyConfig.termType)
                     activePTYSession = session
                     pendingPTYSession = session

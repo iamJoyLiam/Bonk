@@ -20,7 +20,7 @@ final class SSHVNextRoutingTests: XCTestCase {
     func testClassifierHostKeyIdentityMismatchIsAuthentication() {
         let err = SSHServiceError.hostKeyMismatch(expected: "a", received: "b")
         let ctx = SSHFailureContext(phase: .hostKeyVerification, underlyingError: err)
-        XCTAssertEqual(NativeErrorClassifier().classify(ctx), .authentication)
+        XCTAssertEqual(NativeErrorClassifier().classify(ctx), .hostKeyVerification)
         XCTAssertFalse(NativeErrorClassifier().classify(ctx).canFallbackToCompatibility)
     }
 

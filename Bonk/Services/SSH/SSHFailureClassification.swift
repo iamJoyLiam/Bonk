@@ -19,10 +19,27 @@ public enum SSHProtocolPhase: String, Sendable, Hashable, Codable {
     case session
 }
 
+// MARK: - Operation (what was being done when failure occurred) per hard constraint 2
+
+public enum SSHOperation: String, Sendable, Hashable, Codable {
+    case connect
+    case authenticate
+    case openSession
+    case terminalInput
+    case terminalOutput
+    case exec
+    case sftpRead
+    case sftpWrite
+    case portForward
+    case reconnect
+}
+
 // MARK: - Context (what the classifier sees)
 
 public struct SSHFailureContext: Sendable {
     public let phase: SSHProtocolPhase
+    public let operation: SSHOperation
+    public let backend: SSHBackendType?
     public let underlyingError: Error
     public let endpoint: SSHEndpoint?
     public let negotiatedKEX: String?
@@ -33,6 +50,8 @@ public struct SSHFailureContext: Sendable {
     public init(
         phase: SSHProtocolPhase,
         underlyingError: Error,
+        operation: SSHOperation = .connect,
+        backend: SSHBackendType? = nil,
         endpoint: SSHEndpoint? = nil,
         negotiatedKEX: String? = nil,
         negotiatedHostKey: String? = nil,
@@ -40,6 +59,8 @@ public struct SSHFailureContext: Sendable {
         negotiatedMAC: String? = nil
     ) {
         self.phase = phase
+        self.operation = operation
+        self.backend = backend
         self.underlyingError = underlyingError
         self.endpoint = endpoint
         self.negotiatedKEX = negotiatedKEX
@@ -56,6 +77,8 @@ public enum SSHFailureClassification: String, Sendable, Hashable, Codable {
     case protocolCompatibility  // KEX / HostKey / Cipher / MAC 协商失败 — 可切 Compatibility
     case backendCapability      // 引擎能力缺失（如 no supported auth methods + password→kbd）
     case authentication         // 凭据错误 — 绝不切
+    case hostKeyVerification    // HostKey 不匹配 — Security Boundary，绝不切且最高优
+    case channel                // Channel/SFTP 资源错误 — 不自动 reconnect，需 Policy 决定
     case configuration          // 本地配置错误
     case unknown
 
@@ -63,7 +86,7 @@ public enum SSHFailureClassification: String, Sendable, Hashable, Codable {
     public var canFallbackToCompatibility: Bool {
         switch self {
         case .protocolCompatibility, .backendCapability: return true
-        case .transport, .authentication, .configuration, .unknown: return false
+        case .transport, .authentication, .hostKeyVerification, .channel, .configuration, .unknown: return false
         }
     }
 }
@@ -87,9 +110,14 @@ public struct NativeErrorClassifier: SSHErrorClassifier {
         let msg = context.underlyingError.localizedDescription.lowercased()
         let desc = String(describing: context.underlyingError).lowercased()
 
-        // Host key identity mismatch is authentication (security), never compatibility
+        // Host key identity mismatch is hostKeyVerification (security), never compatibility nor authentication
         if isHostKeyIdentityMismatch(context.underlyingError, msg: msg, desc: desc) {
-            return .authentication
+            return .hostKeyVerification
+        }
+
+        // Operation-aware: sftp/channel errors must not be treated as authentication even if string contains permission denied
+        if context.operation == .sftpRead || context.operation == .sftpWrite || context.operation == .portForward {
+            if isAuthenticationFailure(msg: msg, desc: desc) { return .channel }
         }
 
         switch context.phase {
@@ -101,13 +129,20 @@ public struct NativeErrorClassifier: SSHErrorClassifier {
         case .hostKeyVerification:
             // Algorithm unsupported → compatibility; identity mismatch already handled above
             if isNegotiationFailure(msg: msg, desc: desc) { return .protocolCompatibility }
-            return .authentication
+            return .hostKeyVerification
         case .userAuthentication:
             if isBackendCapabilityAuthFailure(msg: msg, desc: desc) { return .backendCapability }
-            if isAuthenticationFailure(msg: msg, desc: desc) { return .authentication }
+            // For userAuthentication phase, permission denied is authentication unless it's explicitly sftp operation (hard constraint 2 refined)
+            if context.operation == .sftpRead || context.operation == .sftpWrite {
+                if isAuthenticationFailure(msg: msg, desc: desc) { return .channel }
+            } else {
+                if isAuthenticationFailure(msg: msg, desc: desc) { return .authentication }
+            }
             if isNegotiationFailure(msg: msg, desc: desc) { return .protocolCompatibility }
             return .authentication
         case .session:
+            // Channel failures during session should be channel, not transport
+            if context.operation == .sftpRead || context.operation == .sftpWrite { return .channel }
             return .unknown
         }
     }
@@ -160,11 +195,17 @@ public struct CompatibilityErrorClassifier: SSHErrorClassifier {
     public func classify(_ context: SSHFailureContext) -> SSHFailureClassification {
         let msg = context.underlyingError.localizedDescription.lowercased()
         // OpenSSH failures are already post-fallback; they should not trigger further fallback
-        if msg.contains("permission denied") || msg.contains("authentication failed") {
-            return .authentication
+        // HostKey mismatch is security boundary, not authentication
+        if msg.contains("host key mismatch") || msg.contains("host key verification failed") || msg.contains("fingerprint mismatch") {
+            return .hostKeyVerification
         }
-        if msg.contains("host key mismatch") || msg.contains("host key verification failed") {
-            return .authentication
+        if context.operation == .sftpRead || context.operation == .sftpWrite || context.operation == .portForward {
+            if msg.contains("permission denied") { return .channel }
+        }
+        if msg.contains("permission denied") || msg.contains("authentication failed") {
+            // Only authenticate if operation is authenticate, otherwise channel
+            if context.operation == .authenticate || context.phase == .userAuthentication { return .authentication }
+            return .channel
         }
         return .unknown
     }
