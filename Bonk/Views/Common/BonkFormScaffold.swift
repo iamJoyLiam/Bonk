@@ -11,6 +11,7 @@ struct BonkFormScaffold<Content: View>: View {
     let title: String
     var minWidth: CGFloat = AppStyle.panelWidthMedium
     var idealHeight: CGFloat?
+    var maxHeight: CGFloat? = 640
     var content: Content
 
     /// When nil, no toolbar is rendered (caller owns toolbar).
@@ -23,6 +24,7 @@ struct BonkFormScaffold<Content: View>: View {
         title: String,
         minWidth: CGFloat = AppStyle.panelWidthMedium,
         idealHeight: CGFloat? = nil,
+        maxHeight: CGFloat? = 640,
         onCancel: (() -> Void)? = nil,
         onSave: (() -> Void)? = nil,
         saveTitle: String? = nil,
@@ -32,6 +34,7 @@ struct BonkFormScaffold<Content: View>: View {
         self.title = title
         self.minWidth = minWidth
         self.idealHeight = idealHeight
+        self.maxHeight = maxHeight
         self.onCancel = onCancel
         self.onSave = onSave
         self.saveTitle = saveTitle
@@ -61,7 +64,7 @@ struct BonkFormScaffold<Content: View>: View {
                     }
                 }
         }
-        .frame(minWidth: minWidth, idealWidth: minWidth, idealHeight: idealHeight)
+        .frame(minWidth: minWidth, idealWidth: minWidth, idealHeight: idealHeight, maxHeight: maxHeight)
         .environment(\.locale, Locale(identifier: i18n.lang))
     }
 }

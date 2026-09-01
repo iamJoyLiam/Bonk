@@ -207,8 +207,8 @@ struct AddHostSheet: View {
             }
             .formStyle(.grouped)
         }
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(minWidth: AppStyle.panelWidthMedium)
+        .frame(minWidth: AppStyle.panelWidthMedium, maxHeight: 640)
+        .fixedSize(horizontal: false, vertical: false)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) { Button(i18n.t(.cancel)) { dismiss() } }
             ToolbarItem(placement: .confirmationAction) {
