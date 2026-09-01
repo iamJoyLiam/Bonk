@@ -388,6 +388,11 @@ final class SessionManager {
 
     func reconnectTab(_ id: UUID) async {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        // P0 per-session isolation: userRequested via supervisor, not global disconnect
+        if let service = tab.session?.sshService {
+            await service.requestRecovery(reason: .userRequested)
+            return
+        }
         await disconnectTab(id)
         if tab.serialConfig != nil {
             await connectSerialTab(tab)

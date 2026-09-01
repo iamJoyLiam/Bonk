@@ -61,6 +61,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// input right after a reconnect is never silently dropped.
     private let pendingInputBox = NIOLockedValueBox<[ByteBuffer]>([])
     private let onUnexpectedCloseBox = NIOLockedValueBox<(@Sendable () -> Void)?>(nil)
+    private let onWriteFailedBox = NIOLockedValueBox<(@Sendable () -> Void)?>(nil)
     /// Set by close() so the reader task knows the close was user-initiated
     /// and must NOT report an unexpected disconnect.
     private let userClosedBox = NIOLockedValueBox<Bool>(false)
@@ -129,6 +130,12 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     public var onUnexpectedClose: (@Sendable () -> Void)? {
         get { onUnexpectedCloseBox.withLockedValue { $0 } }
         set { onUnexpectedCloseBox.withLockedValue { $0 = newValue } }
+    }
+
+    /// Called when PTY write fails (EPIPE/broken pipe) - triggers recovery via supervisor.
+    public var onWriteFailed: (@Sendable () -> Void)? {
+        get { onWriteFailedBox.withLockedValue { $0 } }
+        set { onWriteFailedBox.withLockedValue { $0 = newValue } }
     }
 
     init() {
@@ -456,7 +463,13 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         if let writer = writerBox.withLockedValue({ $0 }) {
             var buffer = ByteBuffer()
             buffer.writeBytes(bytes)
-            try await writer.write(buffer)
+            do {
+                try await writer.write(buffer)
+            } catch {
+                Log.ssh.warning("[PTY] writeFailed trigger recovery: \(error.localizedDescription, privacy: .public)")
+                onWriteFailedBox.withLockedValue { $0 }?()
+                throw error
+            }
             return
         }
 
@@ -480,6 +493,8 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                     try await Task.sleep(for: .milliseconds(5))
                     continue
                 }
+                Log.ssh.warning("[PTY] serial writeFailed trigger recovery: \(String(cString: strerror(errno)), privacy: .public)")
+                onWriteFailedBox.withLockedValue { $0 }?()
                 throw SerialPortError.writeFailed(String(cString: strerror(errno)))
             }
             offset += written

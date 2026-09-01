@@ -11,7 +11,7 @@ import Foundation
 import os.log
 
 /// Reason for recovery - diagnostics and de-duplication.
-enum RecoveryReason: Sendable, Equatable, CustomStringConvertible {
+public enum RecoveryReason: Sendable, Equatable, CustomStringConvertible {
     case channelClosed
     case keepAliveTimeout
     case wakeProbeFailed(sleepDuration: TimeInterval?)
@@ -20,7 +20,7 @@ enum RecoveryReason: Sendable, Equatable, CustomStringConvertible {
     case readTimeout
     case userRequested
 
-    var description: String {
+    public var description: String {
         switch self {
         case .channelClosed: return "channelClosed"
         case .keepAliveTimeout: return "keepAliveTimeout"
@@ -36,13 +36,13 @@ enum RecoveryReason: Sendable, Equatable, CustomStringConvertible {
 }
 
 /// Recovery state machine - replaces isHandlingDisconnect Bool.
-enum RecoveryState: Sendable, Equatable, CustomStringConvertible {
+public enum RecoveryState: Sendable, Equatable, CustomStringConvertible {
     case idle
     case probing
     case reconnecting(attempt: Int)
     case backoff(delay: Duration)
 
-    var description: String {
+    public var description: String {
         switch self {
         case .idle: return "idle"
         case .probing: return "probing"

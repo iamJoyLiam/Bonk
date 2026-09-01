@@ -367,6 +367,7 @@ public actor SSHNetworkService {
                 }
                 lastPTYConfig = PTYConfig(cols: cols, rows: rows, termType: termType)
                 activePTYSession = session
+                session.onWriteFailed = { [weak self] in Task { await self?.supervisor.requestRecovery(reason: .writeFailed) } }
                 return session
             }
         #endif
@@ -375,6 +376,7 @@ public actor SSHNetworkService {
 
         lastPTYConfig = PTYConfig(cols: cols, rows: rows, termType: termType)
         let session = PTYSession()
+        session.onWriteFailed = { [weak self] in Task { await self?.supervisor.requestRecovery(reason: .writeFailed) } }
         session.start(client: client, cols: cols, rows: rows, termType: termType)
         activePTYSession = session
         return session
@@ -387,6 +389,11 @@ public actor SSHNetworkService {
     }
 
     // MARK: - Disconnect
+
+    /// Public recovery entry for SessionManager userRequested - per-session isolation, idempotent per P0.
+    public func requestRecovery(reason: RecoveryReason) async {
+        await supervisor.requestRecovery(reason: reason)
+    }
 
     public func disconnect() async {
         await keepAlive.stop()
@@ -679,6 +686,7 @@ public actor SSHNetworkService {
                         let session = try backend.openPTY(
                             cols: ptyConfig.cols, rows: ptyConfig.rows, termType: ptyConfig.termType
                         ) { [weak self] in Task { await self?.supervisor.requestRecovery(reason: .channelClosed) } } onError: { _ in }
+                        session.onWriteFailed = { [weak self] in Task { await self?.supervisor.requestRecovery(reason: .writeFailed) } }
                         activePTYSession = session
                         pendingPTYSession = session
                         // PTY recreated - ready will be set by state observer
@@ -703,6 +711,7 @@ public actor SSHNetworkService {
                 }
                 if let ptyConfig = lastPTYConfig, let client {
                     let session = PTYSession()
+                    session.onWriteFailed = { [weak self] in Task { await self?.supervisor.requestRecovery(reason: .writeFailed) } }
                     session.start(client: client, cols: ptyConfig.cols, rows: ptyConfig.rows, termType: ptyConfig.termType)
                     activePTYSession = session
                     pendingPTYSession = session
