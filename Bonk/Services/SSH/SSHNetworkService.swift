@@ -55,8 +55,9 @@ public actor SSHNetworkService {
     #endif
     private var usesOpenSSHTransport = false
     private let keepAlive = SSHKeepAlive()
-    /// Guard against duplicate handleDisconnect calls (keepalive timeout + onDisconnect).
-    private var isHandlingDisconnect = false
+    /// Per-session supervisor - replaces isHandlingDisconnect Bool with state machine per P0 spec.
+    private let supervisor = SSHConnectionSupervisor()
+    private var wakeMonitorTask: Task<Void, Never>?
     /// Current reconnection loop, so manual disconnect/reconnect can cancel it.
     private var reconnectTask: Task<Void, Never>?
 
@@ -152,6 +153,9 @@ public actor SSHNetworkService {
                     connectionState = .connected
                     stateContinuation.yield(.connected)
                     Log.ssh.info("[CONNECT] Using system OpenSSH transport")
+                    configureSupervisorForCurrentConnection()
+                    startWakeMonitoring()
+                    startNetworkMonitor()
                     return
                 }
             #endif
@@ -173,11 +177,13 @@ public actor SSHNetworkService {
             Log.ssh.info("[CONNECT] Starting keepAlive...")
             await keepAlive.settimeoutHandler { [weak self] in
                 guard let self else { return }
-                Task { await self.handleDisconnect() }
+                Task { await self.supervisor.requestRecovery(reason: .keepAliveTimeout) }
             }
             await keepAlive.start(client: client)
             Log.ssh.info("[CONNECT] keepAlive started, connection complete")
             startNetworkMonitor()
+            configureSupervisorForCurrentConnection()
+            startWakeMonitoring()
         } catch {
             Log.ssh.error("[CONNECT] Connection failed: \(error.localizedDescription)")
 
@@ -384,6 +390,8 @@ public actor SSHNetworkService {
 
     public func disconnect() async {
         await keepAlive.stop()
+        await supervisor.reset()
+        stopWakeMonitoring()
 
         stopNetworkMonitor()
         reconnectTask?.cancel()
@@ -435,17 +443,12 @@ public actor SSHNetworkService {
         isWaitingForNetwork = false
     }
 
-    /// Handle network connectivity changes.
+    /// Handle network connectivity changes - funnel through supervisor per P0.
     private func handleNetworkChange(_ path: NWPath) async {
-        // Only act if we're in a disconnected/reconnecting state and waiting for network
-        guard isWaitingForNetwork, path.status == .satisfied else { return }
-
-        Log.ssh.info("[NETWORK] Network restored, attempting reconnection...")
-        isWaitingForNetwork = false
-
-        // Network is back — attempt immediate reconnection
+        guard path.status == .satisfied else { return }
         guard config != nil else { return }
-        startReconnect()
+        Log.ssh.info("[NETWORK] Network restored, probing liveness...")
+        await supervisor.requestRecovery(reason: .networkChanged)
     }
 
     // MARK: - Reconnection State Machine
@@ -561,50 +564,158 @@ public actor SSHNetworkService {
     }
 
     private func handleDisconnect() async {
-        // Guard against duplicate calls (keepalive timeout + onDisconnect may fire close together).
-        guard !isHandlingDisconnect else { return }
-        isHandlingDisconnect = true
-        defer { isHandlingDisconnect = false }
-
         guard let config else { return }
-
-        // Stop the keepalive loop immediately: it polls the old (dead) client
-        // and could otherwise fire onTimeout after a reconnect started.
-        await keepAlive.stop()
-
-        activePTYSession?.close()
-        activePTYSession = nil
-        client = nil
-
-        if usesOpenSSHTransport {
-            // For OpenSSH, tear down the backend (temp files, ControlMaster) but
-            // allow reconnect when the disconnect is a network drop (not an
-            // interactive auth failure). maxReconnectAttempts==0 means "do not
-            // reconnect" (e.g. user cancelled or auth failed before enableReconnection).
-            openSSHBackend?.close()
-            openSSHBackend = nil
-            guard config.maxReconnectAttempts > 0 else {
-                usesOpenSSHTransport = false
-                connectionState = .disconnected
-                stateContinuation.yield(.disconnected)
-                return
-            }
-            // Keep usesOpenSSHTransport true so reconnect() takes the OpenSSH path (via connect)
-            isWaitingForNetwork = true
-            startReconnect()
-            return
-        }
-
         guard config.maxReconnectAttempts > 0 else {
             connectionState = .disconnected
             stateContinuation.yield(.disconnected)
             return
         }
+        // All disconnects funnel through per-session supervisor - idempotent, non-blocking per P0
+        await supervisor.requestRecovery(reason: .channelClosed)
+    }
 
-        // Wait for the network to come back: the monitor fires when the
-        // path is satisfied again and kicks off an immediate reconnect.
-        isWaitingForNetwork = true
-        startReconnect()
+    // MARK: - P0 Wake & Probe Integration
+
+    private func configureSupervisorForCurrentConnection() {
+        guard let config else { return }
+        let hostLabel = "\(config.username)@\(config.host):\(config.port)"
+        let engineLabel = usesOpenSSHTransport ? "openssh" : "citadel"
+        Task {
+            await supervisor.configure(
+                host: hostLabel,
+                engine: engineLabel,
+                probe: { [weak self] in
+                    guard let self else { return false }
+                    return await self.probeLiveness()
+                },
+                reconnect: { [weak self] in
+                    guard let self else { return false }
+                    return await self.performSingleReconnect()
+                },
+                onProbedAlive: { [weak self] in
+                    guard let self else { return }
+                    // Probe alive -> no state change, remain ready; log for diagnostics
+                    Log.ssh.info("[RECOVERY] probe alive keep ready host=\(hostLabel, privacy: .public)")
+                    Task { await self.supervisor.reset() }
+                }
+            )
+        }
+    }
+
+    private func startWakeMonitoring() {
+        #if os(macOS)
+        wakeMonitorTask?.cancel()
+        wakeMonitorTask = Task { [weak self] in
+            guard let self else { return }
+            for await event in SystemWakeMonitor.shared.events {
+                guard !Task.isCancelled else { break }
+                switch event {
+                case .systemWake(_, let duration):
+                    Log.ssh.info("[WAKE] systemWake -> probe sleepDuration=\(duration ?? -1, privacy: .public)")
+                    await self.supervisor.requestRecovery(reason: .wakeProbeFailed(sleepDuration: duration))
+                case .appDidBecomeActive:
+                    Log.ssh.debug("[WAKE] appDidBecomeActive -> probe")
+                    await self.supervisor.requestRecovery(reason: .wakeProbeFailed(sleepDuration: nil))
+                default:
+                    break
+                }
+            }
+        }
+        #endif
+    }
+
+    private func stopWakeMonitoring() {
+        wakeMonitorTask?.cancel()
+        wakeMonitorTask = nil
+    }
+
+    /// Liveness probe per P0: OpenSSH uses `ssh -S -O check`, Citadel uses `client.isConnected`.
+    /// Never uses kill(pid,0) or exec true as health (spec).
+    private func probeLiveness() async -> Bool {
+        if usesOpenSSHTransport {
+            if let backend = openSSHBackend {
+                let alive = await backend.checkControlMasterLiveness()
+                Log.ssh.info("[PROBE] openssh check host=\(backend.config.host, privacy: .public) alive=\(alive, privacy: .public)")
+                return alive
+            }
+            Log.ssh.warning("[PROBE] openssh no backend -> dead")
+            return false
+        } else {
+            if let client = client {
+                let connected = client.isConnected
+                Log.ssh.info("[PROBE] citadel isConnected=\(connected, privacy: .public)")
+                return connected
+            }
+            Log.ssh.warning("[PROBE] citadel no client -> dead")
+            return false
+        }
+    }
+
+    /// Single reconnect attempt - supervisor handles backoff loop.
+    /// MUST recreate PTY on success (spec: dead -> reconnect -> SSH auth -> open channel -> recreate PTY -> restore size -> reattach -> ready)
+    private func performSingleReconnect() async -> Bool {
+        guard let config else { return false }
+        // Tear down stale resources before new attempt
+        await keepAlive.stop()
+        activePTYSession?.close()
+        activePTYSession = nil
+        client = nil
+        if usesOpenSSHTransport {
+            openSSHBackend?.close()
+            openSSHBackend = nil
+        }
+        // Single attempt (no loop) - supervisor will retry with backoff
+        do {
+            if usesOpenSSHTransport {
+                try? await Task.sleep(for: .milliseconds(200))
+                let backend = try OpenSSHBackend(config: config)
+                openSSHBackend = backend
+                usesOpenSSHTransport = true
+                connectionState = .connected
+                stateContinuation.yield(.connected)
+                Log.ssh.info("[RECOVERY] OpenSSH reconnect success")
+                if let ptyConfig = lastPTYConfig {
+                    do {
+                        let session = try backend.openPTY(
+                            cols: ptyConfig.cols, rows: ptyConfig.rows, termType: ptyConfig.termType
+                        ) { [weak self] in Task { await self?.supervisor.requestRecovery(reason: .channelClosed) } } onError: { _ in }
+                        activePTYSession = session
+                        pendingPTYSession = session
+                        // PTY recreated - ready will be set by state observer
+                    } catch {
+                        Log.ssh.warning("[RECOVERY] OpenSSH PTY recreate failed: \(error.localizedDescription, privacy: .public)")
+                        return false
+                    }
+                }
+                await keepAlive.stop()
+                startNetworkMonitor()
+                return true
+            } else {
+                try await withThrowingTimeout(of: .seconds(Self.connectionTimeoutSeconds)) {
+                    try await self.establishConnection(config: config)
+                }
+                if let client {
+                    await keepAlive.settimeoutHandler { [weak self] in
+                        guard let self else { return }
+                        Task { await self.supervisor.requestRecovery(reason: .keepAliveTimeout) }
+                    }
+                    await keepAlive.start(client: client)
+                }
+                if let ptyConfig = lastPTYConfig, let client {
+                    let session = PTYSession()
+                    session.start(client: client, cols: ptyConfig.cols, rows: ptyConfig.rows, termType: ptyConfig.termType)
+                    activePTYSession = session
+                    pendingPTYSession = session
+                }
+                startNetworkMonitor()
+                return true
+            }
+        } catch is CancellationError {
+            return false
+        } catch {
+            Log.ssh.warning("[RECOVERY] single reconnect failed: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
     }
 
     #if os(macOS)

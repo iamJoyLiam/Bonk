@@ -51,5 +51,33 @@ extension OpenSSHBackend {
         process.waitUntilExit()
         try? FileManager.default.removeItem(atPath: controlPath)
     }
+
+    /// Liveness probe for Wake recovery - checks ControlMaster without creating new channel.
+    /// Returns true if ControlMaster is alive, false otherwise.
+    /// Used only on Wake/suspicious, not every 30s (per P0 spec).
+    func checkControlMasterLiveness() async -> Bool {
+        guard FileManager.default.fileExists(atPath: controlPath) else { return false }
+        return await withCheckedContinuation { continuation in
+            Task.detached(priority: .utility) {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+                process.arguments = [
+                    "-S", self.controlPath,
+                    "-O", "check",
+                    "-p", String(self.config.port),
+                    "\(self.config.username)@\(self.config.host)",
+                ]
+                process.standardOutput = Pipe()
+                process.standardError = Pipe()
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                    continuation.resume(returning: process.terminationStatus == 0)
+                } catch {
+                    continuation.resume(returning: false)
+                }
+            }
+        }
+    }
 }
 #endif
