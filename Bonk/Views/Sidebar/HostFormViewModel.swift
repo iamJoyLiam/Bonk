@@ -4,7 +4,7 @@ import Observation
 
 /// Elegant form model for Add / Edit Host.
 /// - Single source of truth for UI state, independent of Keychain.
-/// - Preserves custom credentials when switching to vault and back (往返不丢).
+/// - Preserves custom credentials when switching to vault and back (no loss).
 /// - Never deletes embedded Keychain entries unconditionally; only overwrites current type.
 @Observable
 final class HostFormViewModel {
@@ -76,7 +76,7 @@ final class HostFormViewModel {
         username = existing.username
         authType = existing.authType
         lastCustomAuthType = existing.authType
-        // 修复你说的“再次弹还不是第一次输入的密码”：若外层传入 overridePassword（如上次 retry 的 len 16），优先用它回显，而非 HostItem 旧 1234
+        // “prefill last retry”： overridePassword retry  len 16，， HostItem  1234
         password = overridePassword ?? (existing.loadPassword() ?? "")
         customPasswordBackup = password
         privateKeyPEM = existing.loadPrivateKey() ?? ""

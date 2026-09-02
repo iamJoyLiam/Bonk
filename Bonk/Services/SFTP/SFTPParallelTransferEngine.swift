@@ -2,13 +2,13 @@
 //  SFTPParallelTransferEngine.swift
 //  Bonk — P2 Parallel SFTP (Multi-Segment)
 //
-//  最优架构：单连接 pipeline 已到天花板，P2 通过分片并行突破 SSH/TCP 单流瓶颈。
-//  策略：
-//    • 阈值 500MB 以下保持原单流自适应 pipeline（128/512/1024）
-//    • 500MB 以上启用分片并行：4 shards (500MB-2GB) / 8 shards (>2GB)
-//    • 单 TCP 复用多 SFTP 写入 (Citadel SFTPFile 并发 offset 写已通过 requestID 串行化，安全)
-//    • 未来扩展 N×TCP 时仅需替换 shard 的 SSHSession 获取，不动调度层
-//    • 进步合并、取消、回退单流已封装
+//  Optimal: shard parallel to break bottleneck
+//  
+//    • Threshold 500M single stream
+//    • Enable sharding above 500M
+//    • Reuse single TCP multi-write safe
+//    • Future N×TCP only replace session
+//    • Progress, cancel, fallback encapsulated
 
 import Darwin
 import Foundation
@@ -22,9 +22,9 @@ import Citadel
 // MARK: - Strategy
 
 enum SFTPParallelStrategy {
-    /// 单流阈值（字节）— 28× 差距下 500MB 过高，50MB 起并行才能覆盖常见文件
+    /// Single threshold
     static let parallelThreshold: UInt64 = 50 * 1024 * 1024
-    /// 验证后调至 1MB + pipeline 128，以覆盖 SFTP 64KB 包限制下的 warm-up
+    /// Tune 1M + pipeline 128
     static let chunkSize: Int = 1024 * 1024
     /// Adaptive chunk: small files use small chunks for lower TTFB/memory, large files use large chunks for throughput
     static func chunkSize(for totalBytes: UInt64) -> Int {
@@ -34,7 +34,7 @@ enum SFTPParallelStrategy {
         return 1024 * 1024
     }
 
-    /// 根据文件大小决定分片数
+    /// Shard count by size
     static func shardCount(for totalBytes: UInt64) -> Int {
         if totalBytes <= parallelThreshold { return 1 }
         if totalBytes <= 200 * 1024 * 1024 { return 4 }
@@ -47,15 +47,15 @@ enum SFTPParallelStrategy {
         totalBytes > parallelThreshold
     }
 
-    /// 每 shard 的 pipeline 深度，目标总窗口 64MB 以覆盖 64KB 小包
-    /// 1MB×128=128MB 单流；4×128×1MB 需限流，实为 64MB outstanding
+    /// Pipeline depth per shard
+    /// 1M*128 single; 4*128 limit 64M
     static func pipelinePerShard(shards: Int, totalBytes: UInt64) -> Int {
         switch shards {
         case 1:
             if totalBytes > 100 * 1024 * 1024 { return 128 } // 128MB
             if totalBytes > 10 * 1024 * 1024 { return 64 }  // 64MB
             return 32 // 32MB
-        case 4: return 128  // 4×128×64KB≈32MB 实际包小，窗口 32MB
+        case 4: return 128  // 4×128×64KB≈32MB ， 32MB
         case 8: return 64  // 8×64×64KB≈32MB
         default: return 64
         }
@@ -110,7 +110,7 @@ enum SFTPParallelTransferEngine {
 
     // MARK: Upload — parallel shards over single SFTP file (offset writes)
 
-    /// 并行上传：N shards 同时读取本地不同 range 并并发 SFTP WRITE(offset)
+    /// Parallel upload
     static func parallelUpload(
         localURL: URL,
         remoteFile: SendableSFTPFile,
@@ -124,7 +124,7 @@ enum SFTPParallelTransferEngine {
         }
         let shards = SFTPParallelStrategy.shardCount(for: totalBytes)
         guard shards > 1 else {
-            // fallback 单流（不应进入此分支，仅防御）
+            // fallback ，
             throw SFTPServiceError.operationFailed("parallelUpload called with single shard")
         }
         let shardSize = (totalBytes + UInt64(shards) - 1) / UInt64(shards) // ceil
@@ -149,7 +149,7 @@ enum SFTPParallelTransferEngine {
             }
             try await group.waitForAll()
         }
-        // 确保 100%
+        // Ensure 100%
         if merger.completed < totalBytes { onProgress(1.0) }
     }
 
@@ -162,7 +162,7 @@ enum SFTPParallelTransferEngine {
         isCancelled: @Sendable () async -> Bool
     ) async throws {
         let pipeline = SFTPParallelStrategy.pipelinePerShard(shards: shards, totalBytes: range.upperBound - range.lowerBound + 1)
-        // P0 DispatchIO：每 shard 独立 fd，pread 直写 ByteBuffer 零拷贝
+        // P0 DispatchIO：Per shard fd, zero-copy
         let reader = try SFTPDispatchReader(url: localURL)
         defer { reader.close() }
 
@@ -194,7 +194,7 @@ enum SFTPParallelTransferEngine {
                 pending -= 1
                 merger.add(UInt64(written))
             }
-            // 排空剩余
+            // Drain remaining
             while let written = try await group.next() {
                 pending -= 1
                 merger.add(UInt64(written))
@@ -224,7 +224,7 @@ enum SFTPParallelTransferEngine {
         let merger = ProgressMerger(total: totalBytes, onProgress: onProgress)
         Log.sftp.info("[P2] parallelDownload total=\(totalBytes) shards=\(shards)")
 
-        // 预分配文件大小，避免多 handle 并发追加时的竞态
+        // Preallocate to avoid race
         FileManager.default.createFile(atPath: localURL.path, contents: nil)
         if let fileHandle = try? FileHandle(forWritingTo: localURL) {
             try? fileHandle.truncate(atOffset: totalBytes)
@@ -266,7 +266,7 @@ enum SFTPParallelTransferEngine {
         let pipeline = SFTPParallelStrategy.pipelinePerShard(shards: shards, totalBytes: range.upperBound - range.lowerBound)
         let chunkSize: UInt32 = UInt32(SFTPParallelStrategy.chunkSize(for: range.upperBound - range.lowerBound))
 
-        // 每个 shard 独立 fd，pwrite 随机写无 seek 竞态
+        // Per shard pwrite no seek race
         let fileDescriptor = Darwin.open(localURL.path, O_RDWR)
         guard fileDescriptor >= 0 else {
             throw SFTPServiceError.operationFailed("Cannot open local file for writing: \(localURL.path)")
@@ -285,7 +285,7 @@ enum SFTPParallelTransferEngine {
                 if Task.isCancelled { group.cancelAll(); throw CancellationError() }
 
                 while !readDone && inFlight < pipeline {
-                    // 已到 shard 末尾则标记完成，不再发请求
+                    // Mark done at shard end
                     if nextReadOffset >= range.upperBound {
                         readDone = true
                         break
@@ -298,14 +298,14 @@ enum SFTPParallelTransferEngine {
                     group.addTask {
                         try await SFTPTransferEngine.readChunk(remoteFile, offset: readOffset, length: length)
                     }
-                    // 若剩余不足一个 chunk，下一次循环会自然结束
+                    // Next loop ends if less than chunk
                 }
 
                 guard let (readOffset, data) = try await group.next() else { break }
                 inFlight -= 1
                 if data.isEmpty || UInt64(data.count) < UInt64(chunkSize) {
-                    // shard 内遇到 EOF（通常仅最后一个 shard 末尾）
-                    // 但仍需处理已读数据
+                    // shard  EOF shard
+                    // Still need data
                     if data.isEmpty {
                         if readOffset >= range.upperBound - UInt64(chunkSize) {
                             readDone = true
@@ -317,7 +317,7 @@ enum SFTPParallelTransferEngine {
                     pending[readOffset] = data
                 }
 
-                // 批量 pwrite：每 1MB 合并一次，降低小 IO 次数
+                // Batch pwrite per 1M
                 var batch = Data()
                 var batchStart = nextWriteOffset
                 var batchBytes: UInt64 = 0
@@ -325,7 +325,7 @@ enum SFTPParallelTransferEngine {
                     batch.append(bytes)
                     batchBytes += UInt64(bytes.count)
                     nextWriteOffset += UInt64(bytes.count)
-                    // 满 1MB 或到 shard 末尾再刷盘
+                    // Flush at 1M or end
                     if batchBytes >= 1024 * 1024 || nextWriteOffset >= range.upperBound || pending[ nextWriteOffset] == nil {
                         let written = batch.withUnsafeBytes { ptr -> Int in
                             guard let base = ptr.baseAddress else { return 0 }
@@ -341,7 +341,7 @@ enum SFTPParallelTransferEngine {
                     }
                     if nextWriteOffset >= range.upperBound { readDone = true }
                 }
-                // 刷剩余 batch
+                // Flush remaining
                 if !batch.isEmpty {
                     let written = batch.withUnsafeBytes { ptr -> Int in
                         guard let base = ptr.baseAddress else { return 0 }
@@ -350,9 +350,9 @@ enum SFTPParallelTransferEngine {
                     if written < 0 { throw SFTPServiceError.operationFailed("pwrite failed at \(batchStart)") }
                     merger.add(batchBytes)
                 }
-                // 若 pending 非空但下一个 offset 未就绪，继续等待网络
+                // Wait if next not ready
             }
-            // flush 剩余乱序块（防御）
+            // flush
             let sortedKeys = pending.keys.sorted()
             for key in sortedKeys {
                 if let bytes = pending.removeValue(forKey: key) {
@@ -372,7 +372,7 @@ enum SFTPParallelTransferEngine {
 
     // MARK: - Multi-Channel Upload (N SFTPFile, N Channel)
 
-    /// 真正多 Channel：每 shard 独立 SFTPFile handle（若提供 sftp 则新建多 handle，否则共享单 handle）
+    /// Multi-channel per shard
     static func parallelUploadMultiChannel(
         sftp: Any?,
         remotePath: String,
@@ -383,13 +383,13 @@ enum SFTPParallelTransferEngine {
     ) async throws {
         #if canImport(Citadel)
         guard let client = sftp as? SFTPClient else {
-            // 回退单 handle
+            // Fallback single
             throw SFTPServiceError.operationFailed("SFTPClient unavailable for multi-channel")
         }
         let shards = SFTPParallelStrategy.shardCount(for: totalBytes)
         let shardSize = (totalBytes + UInt64(shards) - 1) / UInt64(shards)
         var files: [SendableSFTPFile] = []
-        // 顺序打开，保证首个 truncate 先完成
+        // Open sequentially
         for idx in 0..<shards {
             let file = try await client.openFile(
                 filePath: remotePath,
@@ -453,7 +453,7 @@ enum SFTPParallelTransferEngine {
         defer {
             for file in files { Task { try? await file.file.close() } }
         }
-        // 预分配
+        // Preallocate
         FileManager.default.createFile(atPath: localURL.path, contents: nil)
         if let fileHandle = try? FileHandle(forWritingTo: localURL) {
             try? fileHandle.truncate(atOffset: totalBytes)
@@ -488,7 +488,7 @@ enum SFTPParallelTransferEngine {
         #endif
     }
 
-    // MARK: - N×TCP 真并行（多 SSHClient + 多 SFTPClient）
+    // MARK: - N×TCP  SSHClient +  SFTPClient
 
     #if os(macOS)
     static func parallelUploadMultiTCP(
@@ -501,7 +501,7 @@ enum SFTPParallelTransferEngine {
     ) async throws {
         let shards = handles.count
         let shardSize = (totalBytes + UInt64(shards) - 1) / UInt64(shards)
-        // 每 handle 独立开文件，首个 truncate
+        // handle ， truncate
         var files: [SendableSFTPFile] = []
         for (idx, handle) in handles.enumerated() {
             let file = try await handle.sftpClient.openFile(

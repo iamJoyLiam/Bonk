@@ -73,13 +73,13 @@ public struct SSHFailureContext: Sendable {
 // MARK: - Classification (Router's only switch)
 
 public enum SSHFailureClassification: String, Sendable, Hashable, Codable {
-    case transport              // TCP/DNS/超时 — 与引擎无关
-    case protocolCompatibility  // KEX / HostKey / Cipher / MAC 协商失败 — 可切 Compatibility
-    case backendCapability      // 引擎能力缺失（如 no supported auth methods + password→kbd）
-    case authentication         // 凭据错误 — 绝不切
-    case hostKeyVerification    // HostKey 不匹配 — Security Boundary，绝不切且最高优
-    case channel                // Channel/SFTP 资源错误 — 不自动 reconnect，需 Policy 决定
-    case configuration          // 本地配置错误
+    case transport              // TCP/DNS/ —
+    case protocolCompatibility  // KEX / HostKey / Cipher / MAC  —  Compatibility
+    case backendCapability      // no supported auth methods + password→kbd
+    case authentication         //  
+    case hostKeyVerification    // HostKey  — Security Boundary，
+    case channel                // Channel/SFTP  —  reconnect， Policy
+    case configuration          //  
     case unknown
 
     /// Only these two trigger Native → Compatibility

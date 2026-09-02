@@ -273,7 +273,7 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
         let rawName = String(fields[8])
         let baseName = rawName.components(separatedBy: " -> ").first ?? rawName
         // OpenSSH sftp-server octal-escapes non-ASCII filename bytes in the
-        // longname it returns (e.g. \344\270\213 for 不). Decode them back
+        // longname it returns e.g. \344\270\213 for . Decode them back
         // into UTF-8 or the listing shows raw escape codes.
         let name = unescapeOctal(baseName)
         guard !name.isEmpty, name != ".", name != ".." else { return nil }

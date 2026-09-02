@@ -3,10 +3,10 @@ import Foundation
 /// Classifies shell commands by risk level for Agent mode.
 /// Handles pipes, chains (&&, ||, ;), and sudo subcommands.
 enum CommandSafety {
-    case safe // 直接执行
-    case moderate // 显示警告，用户可一键确认
-    case dangerous // 必须手动确认
-    case blocked // 永远不允许
+    case safe //  
+    case moderate //  
+    case dangerous //  
+    case blocked //  
 
     static func classify(_ command: String) -> CommandSafety {
         let trimmed = command.trimmingCharacters(in: .whitespaces)

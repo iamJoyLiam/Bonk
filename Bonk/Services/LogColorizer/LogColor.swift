@@ -17,7 +17,7 @@ enum LogColor {
         return "38;2;\(Int(ns.redComponent * 255));\(Int(ns.greenComponent * 255));\(Int(ns.blueComponent * 255))"
     }
 
-    /// "38;2;R;G;B" 或 "#RRGGBB" → "#RRGGBB"（规范大写）
+    // / "38;2;R;G;B"  "#RRGGBB" → "#RRGGBB"
     static func hex(for ansiCode: String) -> String {
         let t = ansiCode.trimmingCharacters(in: .whitespacesAndNewlines)
         if t.hasPrefix("#"), t.count == 7 { return t.uppercased() }
@@ -27,11 +27,11 @@ enum LogColor {
                 return String(format: "#%02X%02X%02X", p[2], p[3], p[4])
             }
         }
-        // 256/基础色 → 近似映射为可见色，避免返回空
+        // 256/ → ，
         return color(for: t).hexString?.uppercased() ?? "#FF3B30"
     }
 
-    /// ansiCode → SwiftUI Color（支持 38;2 / #hex / 基础码）
+    // / ansiCode → SwiftUI Color 38;2 / #hex /
     static func color(for ansiCode: String) -> Color {
         let t = ansiCode.trimmingCharacters(in: .whitespacesAndNewlines)
         if t.hasPrefix("38;2;") {
@@ -42,7 +42,7 @@ enum LogColor {
         }
         if t.hasPrefix("#") { return Color(hex: t) }
         switch t {
-        case "1;41;97": return Color.red // emerg/alert 白字红底 → 展示用红
+        case "1;41;97": return Color.red // emerg/alert  →
         case "1;91":    return Color.red.opacity(0.95)
         case "1;31":    return .red
         case "1;33":    return .yellow
@@ -65,7 +65,7 @@ enum LogColor {
 
     // MARK: - Presets
 
-    /// 6 常用 + 1 自定义 占位
+    // / 6  + 1
     static let palette: [String] = ["#FF3B30", "#FF9500", "#FFCC02", "#34C759", "#007AFF", "#AF52DE"]
 
     static let presetRows: [(title: String, pattern: String, ansi: String, testLine: String)] = [

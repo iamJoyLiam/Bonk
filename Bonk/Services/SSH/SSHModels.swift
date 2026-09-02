@@ -20,9 +20,9 @@ public struct SSHConnectionConfig: Sendable, Hashable {
     public let baseReconnectDelay: Duration
     /// VNext — per-endpoint algorithm overrides for legacy hosts (T3.1). Nil = system defaults.
     public let algorithmRequirements: SSHAlgorithmRequirements?
-    /// 重试正密时强制旁路 ControlMaster，避免失败后 Master 复用导致正密也 Permission（进程级缓存）
+    /// Bypass ControlMaster on retry to avoid stale master
     public let bypassControlMaster: Bool
-    /// 全链路 generation — 穿透 SessionManager → SSHNetworkService → OpenSSHBackend → PTYSession，用于丢弃旧 Attempt 回写
+    // /  generation —  SessionManager → SSHNetworkService → OpenSSHBackend → PTYSession， Attempt
     public let generation: UUID?
 
     public init(
@@ -139,10 +139,10 @@ public enum SSHConnectionPhase: Sendable, Equatable {
     case resolving
     case connectingTransport
     case negotiatingSSH
-    case authenticating // 密码/KbdInteractive 阶段，未经此阶段不得直接 ready
+    case authenticating // /KbdInteractive ， ready
     case fallbacking(destination: SSHBackendType) // Hybrid: Native→Compatibility
     case openingChannel
-    case openingPTY // PTY 已创建但认证结果待定，ready 前最后一道门限
+    case openingPTY // PTY ，ready gate
     case ready // SSH usable, PTY-agnostic (SFTP/Exec may use without PTY)
     case failed(String)
     case reconnecting(attempt: Int, maxAttempts: Int)

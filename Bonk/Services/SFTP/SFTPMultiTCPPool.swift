@@ -1,9 +1,9 @@
 //
 //  SFTPMultiTCPPool.swift
-//  Bonk — N×TCP 真并行连接池
+// Bonk — N×TCP
 //
-//  为 >500MB 巨文件提供 N 条独立 SSH+ SFTP TCP 通道，突破单 TCP 拥塞窗口。
-//  复用 SSHNetworkService.makeNativeClient 的认证与 HostKey 校验逻辑。
+//  N×TCP for large files to bypass congestion
+//  Reuse auth and hostkey logic
 
 #if os(macOS)
 import Citadel
@@ -16,7 +16,7 @@ import os.log
 
 // MARK: - Pooled SFTP Handle
 
-/// 持有独立 SSHClient + SFTPClient，关闭时双关
+/// Holds client + SFTP
 final class PooledSFTPHandle: @unchecked Sendable {
     let sshClient: SSHClient
     let sftpClient: SFTPClient
@@ -33,7 +33,7 @@ final class PooledSFTPHandle: @unchecked Sendable {
 // MARK: - Factory
 
 enum SFTPMultiTCPPool {
-    /// 创建 N 条独立 SFTP 通道（每条新 TCP + SSH 握手 + SFTP 子系统）
+    /// Create N SFTP channels
     /// With rate limiting and MaxSessions adaptation: concurrency ≤2, 100ms per batch; auto half-retry on MaxSessions
     static func makePool(
         config: SSHConnectionConfig,
@@ -121,7 +121,7 @@ enum SFTPMultiTCPPool {
         return PooledSFTPHandle(sshClient: sshClient, sftpClient: sftpClient)
     }
 
-    // 复刻 SSHNetworkService.makeNativeClient（保持 HostKey TOFU 一致）
+    // Replicate TOFU
     private static func makeNativeClient(config: SSHConnectionConfig, hostKeyStore: any SSHHostKeyStore) async throws -> SSHClient {
         let citadelAuth = try mapAuthMethod(config.authMethod, username: config.username)
         let fingerprintBox = NIOLockedValueBox<SSHHostFingerprint?>(nil)

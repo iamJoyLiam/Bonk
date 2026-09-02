@@ -26,16 +26,16 @@ final class LogClassifier: Sendable {
         // 0.5 continuation
         if previousWasLog, isContinuation(line) { return .continuation }
 
-        // 1. Byte scanner 快路径（零分配）
+        // 1. Byte scanner
         if let strong = byteScannerStrongMatch(line) { return strong ? .log : .notLog }
 
-        // 2. 强签名兜底
+        // 2.
         if hasStrongSignature(line) { return .log }
 
         return .notLog
     }
 
-    /// 兼容旧调用（无 prev 时视为 false），逐步迁移后可删除
+    // /  prev  false，
     func classify(_ line: String) -> LogClassification { classify(line, previousWasLog: false) }
 
     func isContinuationLine(_ line: String) -> Bool { isContinuation(line) }

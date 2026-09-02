@@ -252,7 +252,7 @@ final class SFTPService {
     /// Download file chunks with progress updates.
     /// Reads are pipelined (multiple in flight) so throughput isn't limited to one
     /// round trip per chunk, then reassembled in order locally.
-    /// P2: >500MB 自动分片并行（已知大小），否则单流 EOF 自适应。
+    /// P2 auto sharding
     private func downloadChunks(
         file: SFTPFile, entry: SFTPFileEntry, localURL: URL,
         transferID: UUID
@@ -260,7 +260,7 @@ final class SFTPService {
         // Sendable wrapper for the off-MainActor network reads below.
         let remoteFile = SendableSFTPFile(file)
 
-        // P2 parallel download — 仅当大小已知且超过阈值
+        // P2 parallel download —
         if entry.size > 0, SFTPParallelStrategy.shouldUseParallel(totalBytes: entry.size) {
             Log.sftp.info("[P2] SFTPService downloadChunks parallel total=\(entry.size)")
             do {
@@ -479,7 +479,7 @@ final class SFTPService {
 
     /// Write file chunks with pipelined concurrent writes.
     /// File IO is off MainActor via SFTPTransferActor (DispatchIO), pipeline 1024×32KB=32MB.
-    /// P2: >500MB 自动切分片并行（4/8 shards），否则保持原自适应单流。
+    // / P2: >500MB 4/8 shards，。
     private func writeChunks(
         localURL: URL,
         file: SFTPFile,
@@ -489,7 +489,7 @@ final class SFTPService {
     ) async throws {
         let remoteFile = SendableSFTPFile(file)
 
-        // P2 parallel path — 仅 Citadel Native 路径，OpenSSH 路径已在 performUpload 分流
+        // P2 parallel path —  Citadel Native ，OpenSSH  performUpload
         if SFTPParallelStrategy.shouldUseParallel(totalBytes: totalBytes) {
             Log.sftp.info("[P2] SFTPService writeChunks parallel total=\(totalBytes)")
             do {
@@ -500,7 +500,7 @@ final class SFTPService {
                     isCancelled: { [weak self] in
                         if Task.isCancelled { return true }
                         guard let self else { return false }
-                        // Hop 到 MainActor 读取取消标记
+                        // Hop  MainActor
                         return await MainActor.run {
                             self.transfers.first(where: { $0.id == transferID })?.isCancelled ?? false
                         }
@@ -516,7 +516,7 @@ final class SFTPService {
                         }
                     }
                 )
-                // 额外 MainActor 取消检查（用户点取消按钮）
+                // Cancel check
                 if transfers.first(where: { $0.id == transferID })?.isCancelled == true {
                     throw SFTPServiceError.transferCancelled
                 }

@@ -37,9 +37,9 @@ extension SessionManager {
             let credDesc = result.credentialID == nil ? "nil" : "\(String(describing: result.credentialID))"
             Log.session.info("[AUTH] ephemeral auth override type=\(result.authType.rawValue, privacy: .public) credID=\(credDesc, privacy: .public) pwLen=\(pwLen) fp=\(pwFp, privacy: .public) pemLen=\(result.privateKeyPEM.count) certLen=\(result.certificatePEM.count) tag=\(result.secureEnclaveTag ?? "nil", privacy: .public) host=\(tab.hostItem.host, privacy: .public) user=\(tab.hostItem.username, privacy: .public)")
             if let resolved = authMethod(from: result) {
-                // Auth Retry = isolated OpenSSH process，按指导彻底禁用 multiplexing，不删 sock 也不 pkill，避免 race
+                // Isolated retry: bypass ControlMaster, fresh process
                 Log.session.info("[AUTH_RETRY] isolated retry bypassControlMaster host=\(config.host, privacy: .public) user=\(config.username, privacy: .public) newAuth=\(result.authType.rawValue, privacy: .public)")
-                return SSHConnectionConfig(host: config.host, port: config.port, username: config.username, authMethod: resolved, jumpHost: config.jumpHost, maxReconnectAttempts: config.maxReconnectAttempts, baseReconnectDelay: config.baseReconnectDelay, bypassControlMaster: true)
+                return SSHConnectionConfig(host: config.host, port: config.port, username: config.username, authMethod: resolved, jumpHost: config.jumpHost, maxReconnectAttempts: config.maxReconnectAttempts, baseReconnectDelay: config.baseReconnectDelay, algorithmRequirements: config.algorithmRequirements, bypassControlMaster: true, generation: config.generation)
             } else {
                 Log.session.error("[AUTH] ephemeral authMethod nil! type=\(result.authType.rawValue, privacy: .public) pwLen=\(pwLen) credID=\(credDesc, privacy: .public) — fallback to base config")
             }
@@ -50,12 +50,12 @@ extension SessionManager {
             host: config.host, port: config.port, username: config.username,
             authMethod: .password(override), jumpHost: config.jumpHost,
             maxReconnectAttempts: config.maxReconnectAttempts, baseReconnectDelay: config.baseReconnectDelay,
-            bypassControlMaster: ephemeralResult != nil // 仅重试旁路，普通 override 仍 auto
+            bypassControlMaster: ephemeralResult != nil
         )
     }
 
     private func authMethod(from result: AuthRetryResult) -> SSHAuthMethod? {
-        // 新输优先：重试 Sheet 上刚输的正密必须覆盖旧 vault 错密，否则正密也 Permission
+        // New input first: typed password overrides vault stale one
         switch result.authType {
         case .password:
             if !result.password.isEmpty { return .password(result.password) }
@@ -66,7 +66,7 @@ extension SessionManager {
         case .secureEnclave:
             if let tag = result.secureEnclaveTag, !tag.isEmpty { return .secureEnclaveKey(keyTag: tag) }
         }
-        // 无新输则回退 vault（初次错密时 vault 仍有效）
+        // Fallback to vault if no new input
         if let credID = result.credentialID, let ctx = modelContext, let cred = try? ctx.fetch(FetchDescriptor<Credential>(predicate: #Predicate { $0.persistentModelID == credID })).first, let secret = cred.loadSecret(), !secret.isEmpty {
             switch cred.type {
             case .password: return .password(secret)
@@ -74,7 +74,7 @@ extension SessionManager {
             case .apiKey: return nil
             }
         }
-        // 兜底：仍按 authType 取一次（兼容空 vault 且空新输的非法结果为 nil）
+        // Fallback per authType
         switch result.authType {
         case .password: guard !result.password.isEmpty else { return nil }; return .password(result.password)
         case .privateKey: guard !result.privateKeyPEM.isEmpty else { return nil }; return .privateKey(pemString: result.privateKeyPEM)
@@ -143,8 +143,14 @@ extension SessionManager {
     func attachManualPasswordHandler(to service: SSHNetworkService, tab: TerminalTab) async {
         await service.setManualPasswordHandler { [weak tab] password in
             Task { @MainActor in
-                tab?.hostItem.updateSavedPassword(password)
-                Log.session.info("[CONNECT] Manual password accepted; saved credential updated")
+                guard let tab else { return }
+                if let cred = tab.hostItem.credentialRef {
+                    cred.storeSecret(password)
+                    Log.session.info("[CONNECT] Manual password accepted; updated vault \(cred.name, privacy: .public)")
+                } else {
+                    tab.hostItem.updateSavedPassword(password)
+                    Log.session.info("[CONNECT] Manual password accepted; saved credential updated")
+                }
             }
         }
     }
@@ -217,9 +223,9 @@ extension SessionManager {
         guard tabs.contains(where: { $0.id == tab.id }) else { return }
         await service.enableReconnection(attempts: 3)
         guard tabs.contains(where: { $0.id == tab.id }) else { return }
-        // 状态机修正：authenticating → openingChannel → openingPTY → ready（ready 前必须通过 PTY 认证门限）
+        // State: authenticating -> openingChannel -> openingPTY -> ready
         setPhase(session, to: .authenticating, host: context.config.host, engine: "Session", reason: "auth")
-        // 确定性门限：awaitAuthFailure 替代固定 sleep，避免 ready 闪烁（错密 400-800ms 内 onFailure 已 signal）
+        // Deterministic gate: awaitAuthFailure instead of fixed sleep
         let earlyAuthFailed = await session.awaitAuthFailure(timeout: .milliseconds(400))
         if earlyAuthFailed || isPhaseFailed(session.phase) { Log.session.info("[FINALIZE] early auth failed before PTY"); return }
         if session.generation != capturedGen { Log.session.info("[FINALIZE] discard stale gen before PTY"); return }
@@ -229,27 +235,26 @@ extension SessionManager {
         if let firstPane = tab.layout.root.paneState {
             try await setupPTYSession(for: tab, pane: firstPane, session: session, service: service)
         }
-        // PTY 已创建但认证结果仍可能在 300-800ms 后到（OpenSSH tail 异步），再等一次确定性信号
-        let ptyAuthFailed = await session.awaitAuthFailure(timeout: .milliseconds(600))
+        // PTY auth may arrive 300-1200ms later; wait 1000ms and keep waitingPTY to block input
+        let ptyAuthFailed = await session.awaitAuthFailure(timeout: .milliseconds(1000))
         if ptyAuthFailed || isPhaseFailed(session.phase) { Log.session.info("[FINALIZE] PTY auth failed, suppress ready"); return }
         if session.generation != capturedGen { Log.session.info("[FINALIZE] discard stale gen before ready"); return }
         session.terminalState = .ready
         setPhase(session, to: .ready, host: context.config.host, engine: "Session", reason: "PTY ready")
         session.connectedAt = Date()
-        // Fix: 不再立即 persistPassword — 延迟 5s 后确认 session 仍然 ready 才写入 Keychain，
-        // 防止竞态导致的"先 ready 后 failed"脏写入。
+        // Deferred persist: write Keychain after 300ms only if still ready
         let passwordOverride = context.passwordOverride
         let ephemeralResult = context.ephemeralResult
         let tabID = tab.id
         Task { @MainActor [weak self, weak tab] in
-            try? await Task.sleep(for: .seconds(10))
+            try? await Task.sleep(for: .milliseconds(300))
             guard let self, let tab, self.tabs.contains(where: { $0.id == tabID }) else { return }
             guard let currentSession = tab.session, currentSession.generation == capturedGen else { return }
             guard currentSession.phase.isReady else {
                 Log.session.info("[CRED] deferred persist cancelled — session no longer ready (gen=\(capturedGen.uuidString.prefix(8)))")
                 return
             }
-            Log.session.info("[CRED] deferred persist confirmed — session still ready after 10s")
+            Log.session.info("[CRED] deferred persist confirmed — session still ready after 300ms gen=\(capturedGen.uuidString.prefix(8))")
             if let override = passwordOverride, !override.isEmpty {
                 self.persistPassword(override, for: tab)
             }

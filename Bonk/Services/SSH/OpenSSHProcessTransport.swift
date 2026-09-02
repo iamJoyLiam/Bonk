@@ -73,7 +73,7 @@ final class OpenSSHProcessTransport: @unchecked Sendable {
                     // retry succeeded
                 } else {
                     throw SSHServiceError.connectionFailed(
-                        "Pseudo Terminal Setup Error ErrorCode: 7 Errno: \(errorCode) (\(String(cString: strerror(errorCode)))). PTY 耗尽：已自动清理残留的 bonk-ssh 进程，请关闭部分标签页后重试，或重启 App。若频繁出现，检查是否有大量未关闭的 SSH 标签/分屏。"
+                        "Pseudo Terminal Setup Error ErrorCode: 7 Errno: \(errorCode) (\(String(cString: strerror(errorCode)))). PTY 耗尽：已自动cleanup残留的 bonk-ssh 进程，请关闭部分标签页后重试，或重启 App。若频繁出现，检查是否有大量未关闭的 SSH 标签/分屏。"
                     )
                 }
             } else {

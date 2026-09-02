@@ -277,16 +277,16 @@ final class CitadelSFTPAdapter: SFTPChannel {
             guard size == expectedBytes else {
                 throw SFTPServiceError.operationFailed("Download incomplete: expected \(expectedBytes) got \(size)")
             }
-            // fsync 保证落盘
+            // fsync
             if let fh = FileHandle(forReadingAtPath: tempURL.path) {
                 try? fh.synchronizeFile()
                 fh.closeFile()
             }
-            // Darwin fsync 额外保障
+            // Darwin fsync
             let fd = Darwin.open(tempURL.path, O_RDONLY)
             if fd >= 0 { _ = Darwin.fsync(fd); Darwin.close(fd) }
         } else {
-            // 未知大小：仅 fsync
+            // Unknown size fsync
             if let fh = FileHandle(forReadingAtPath: tempURL.path) { try? fh.synchronizeFile(); fh.closeFile() }
         }
         if FileManager.default.fileExists(atPath: finalURL.path) {

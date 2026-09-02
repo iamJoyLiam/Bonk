@@ -18,7 +18,7 @@ final class TerminalSession {
     var outputStream: AsyncStream<String>?
     var connectedAt: Date?
     var errorMessage: String?
-    /// 全链路 generation — 与 SSHConnectionConfig.generation 互通，用于旧 Attempt 丢弃
+    /// Full-chain generation for stale attempt discard
     var generation: UUID = UUID()
     /// Typed failure for Recovery gate — authenticationFailed NEVER recovery
     var failureReason: SSHFailure?

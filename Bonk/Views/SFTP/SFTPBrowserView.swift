@@ -102,7 +102,7 @@ struct SFTPBrowserView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
-            // Transfer progress 已移至 SFTPWindowView 统一显示
+            // Progress moved to SFTPWindowView
         }
         .frame(minWidth: 240)
         .overlay(alignment: .top) {

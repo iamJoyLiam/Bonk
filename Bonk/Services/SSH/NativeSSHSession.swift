@@ -17,7 +17,7 @@ final class NativeSSHSession: SSHSession, @unchecked Sendable {
     let client: SSHClient
     private let _endpoint: SSHEndpoint
     private let stateBox = NIOLockedValueBox<SSHSessionState>(.connected)
-    /// 供 N×TCP 池复用认证与 HostKey（可选，兼容旧 init）
+    // /  N×TCP  HostKey， init
     private let pooledConfig: SSHConnectionConfig?
     private let pooledHostKeyStore: (any SSHHostKeyStore)?
 
@@ -142,7 +142,7 @@ private final class CitadelSFTPChannel: SFTPChannel {
         try? await sftp.remove(at: tempRemotePath)
         do {
             if SFTPParallelStrategy.shouldUseParallel(totalBytes: total) {
-                // 1) N×TCP 池化（独立 SSH+TCP，突破单 TCP 拥塞）
+                // 1 N×TCP  SSH+TCP， TCP
                 if let cfg = pooledConfig, let store = pooledHostKeyStore {
                     let shards = SFTPParallelStrategy.shardCount(for: total)
                     Log.sftp.info("[POOL] try N×TCP upload total=\(total) shards=\(shards)")
@@ -171,7 +171,7 @@ private final class CitadelSFTPChannel: SFTPChannel {
                         try? await sftp.remove(at: tempRemotePath)
                     }
                 }
-                // 2) 多 Channel 单 TCP
+                // 2  Channel  TCP
                 Log.sftp.info("[P2] Native upload multi-channel total=\(total)")
                 do {
                     try await SFTPParallelTransferEngine.parallelUploadMultiChannel(
@@ -223,7 +223,7 @@ private final class CitadelSFTPChannel: SFTPChannel {
                     return
                 }
             }
-            // 单流路径
+            //  
             let file = try await sftp.openFile(filePath: tempRemotePath, flags: [.write, .create, .truncate])
             let remoteFile = SendableSFTPFile(file)
             do {
@@ -299,7 +299,7 @@ private final class CitadelSFTPChannel: SFTPChannel {
         try? FileManager.default.removeItem(at: tempURL)
         do {
             if total > 0, SFTPParallelStrategy.shouldUseParallel(totalBytes: total) {
-                // 1) N×TCP 真并行 -> temp
+                // 1 N×TCP  -> temp
                 if let cfg = pooledConfig, let store = pooledHostKeyStore {
                     let shards = SFTPParallelStrategy.shardCount(for: total)
                     Log.sftp.info("[POOL] try N×TCP download total=\(total) shards=\(shards)")
@@ -328,7 +328,7 @@ private final class CitadelSFTPChannel: SFTPChannel {
                         try? FileManager.default.removeItem(at: tempURL)
                     }
                 }
-                // 2) 多 Channel 单 TCP -> temp
+                // 2  Channel  TCP -> temp
                 Log.sftp.info("[P2] Native download multi-channel total=\(total)")
                 do {
                     try await SFTPParallelTransferEngine.parallelDownloadMultiChannel(
@@ -380,7 +380,7 @@ private final class CitadelSFTPChannel: SFTPChannel {
                     return
                 }
             }
-            // 单流 -> temp
+            // -> temp
             let file = try await sftp.openFile(filePath: remotePath, flags: [.read])
             let remoteFile = SendableSFTPFile(file)
             do {

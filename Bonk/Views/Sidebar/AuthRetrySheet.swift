@@ -118,7 +118,7 @@ struct AuthRetrySheet: View {
                         if let credUsername = cred.username, !credUsername.isEmpty {
                             LabeledContent(i18n.t(.username), value: credUsername)
                         }
-                        // 覆盖 vault 错密：vault 选中时仍允许当次输入正密（不持久化到 vault 直到 10s 成功后）
+                        // Allow vault override (persist after 300ms)
                         LabeledSecureField(title: i18n.t(.password) + " (\(i18n.t(.retry)))", text: $viewModelBindable.password)
                             .onChange(of: viewModel.password) { _, nv in Log.session.info("[AUTH_RETRY_SHEET] vault override password changed len=\(nv.count) fp=\(nv.isEmpty ? "-" : OpenSSHBackend.passwordFingerprint(nv))") }
                     }

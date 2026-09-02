@@ -69,7 +69,7 @@ final class SessionManager {
     var authRetryRequest: AuthRetryRequest?
     var hostToEdit: HostItem?
     private var authRetryContinuation: CheckedContinuation<AuthRetryResult?, Never>?
-    /// 记住上次弹窗输入的密码，用于二次弹时回显（治你说的“再次弹还不是第一次输入的密码”）
+    /// Last retry password per tab for sheet prefill
     private var lastRetryPassword: [UUID: String] = [:]
 
     // VNext — Hybrid SSH coordinator (T1.4+). Used for routing decision logging in T2.1,
@@ -245,13 +245,12 @@ final class SessionManager {
         let session = sessionStore.session(for: tab)
         tab.session = session
         
-        // 生成全链路 generation，写入 session 与 config
+        // New generation for full-chain isolation
         let generation = UUID()
         session.generation = generation
-        // 清理上一轮残留的 auth 信号，避免新重试被 stale pending 误判为 early 失败
         session.cancelAuthFailureWaiter()
         
-        // 杀旧 service：避免旧 ssh 进程/askpass 与新 Attempt 并发
+        // Disconnect old service to avoid concurrent ssh/askpass
         if let oldService = session.sshService {
             await oldService.disconnect()
         }
@@ -261,15 +260,14 @@ final class SessionManager {
         session.errorMessage = nil
         session.failureReason = nil
 
-        // Merge transient retry result if present (bug 3: full auth support)
+        // Merge transient retry result; keep for cleaning retry, clear on success (300ms)
         let effectiveEphemeral = ephemeralResult ?? transientAuthResults[tab.id]
         if let er = effectiveEphemeral { transientAuthResults[tab.id] = er }
-        defer { if ephemeralResult != nil { transientAuthResults[tab.id] = nil } }
         guard let config = preparedConfig(for: tab, session: session, passwordOverride: passwordOverride, ephemeralResult: effectiveEphemeral) else {
             setPhase(session, to: .failed("resolve config"), host: tab.hostItem.host, engine: "Resolver", reason: "config")
             return
         }
-        // 将 generation 注入 config，透传给 SSHNetworkService → OpenSSHBackend → PTYSession
+        // Inject generation for full-chain propagation
         var configWithGen = config
         configWithGen = SSHConnectionConfig(
             host: config.host,
@@ -284,7 +282,7 @@ final class SessionManager {
             generation: generation
         )
         setPhase(session, to: .connectingTransport, host: configWithGen.host, engine: "Resolver", reason: "VNext routing")
-        // 架构优化：Lifecycle 直接 consume 已含 ephemeralResult 的 config，避免 HostItem 覆盖
+        // Lifecycle consumes config with ephemeralResult to avoid HostItem overwrite
         let lifecycle = SSHSessionLifecycle(networkService: SSHNetworkService(hostKeyStore: hostKeyStore), hostKeyStore: hostKeyStore)
         guard let resolved = await lifecycle.resolve(config: configWithGen, forcedCompatibility: tab.hostItem.forceCompatibility == true) else {
             setPhase(session, to: .failed("resolve"), host: tab.hostItem.host, engine: "Lifecycle", reason: "resolve")
@@ -296,7 +294,7 @@ final class SessionManager {
         logVNextDecision(vnextDecision, config: config, requirements: vnextReq)
         var service = resolved.service
         var effectiveConfig = resolved.effectiveConfig
-        // 确保 generation 透传到 effectiveConfig（覆盖 cached 丢失的 generation）
+        // Ensure generation forwarded to effectiveConfig
         if effectiveConfig.generation == nil {
             effectiveConfig = SSHConnectionConfig(
                 host: effectiveConfig.host,
@@ -323,7 +321,7 @@ final class SessionManager {
         session.sshService = service
         observeStateChanges(for: tab, session: session, service: service)
         await attachManualPasswordHandler(to: service, tab: tab)
-        // 关键：reconnect PTY 的 auth 失败也需弹 sheet（service 内部 PTY 不经过 setupPTYSession）
+        // Reconnect PTY auth failure must also show sheet
         await service.setAuthFailureHandler { [weak self, weak tab] failure in
             guard let self, let tab else { return }
             Task { @MainActor in
@@ -356,7 +354,7 @@ final class SessionManager {
                     algorithms: result.algorithms,
                     reason: result.reason
                 )
-                // 兼容回退后新 service 也需注册 auth sheet 回调
+                // Register auth handler for fallback service
                 await service.setAuthFailureHandler { [weak self, weak tab] failure in
                     guard let self, let tab else { return }
                     Task { @MainActor in await self.handleServiceAuthFailure(failure, for: tab) }
@@ -400,16 +398,20 @@ final class SessionManager {
                     Log.session.error("[AUTH] Citadel reconnect failed; cleaning and retry once")
                     OpenSSHBackend.cleanupOrphanedMuxes()
                     setRetryState(.cleanupDone, for: tab.id)
-                    await connectTab(tab, passwordOverride: nil, resetAuthRetry: false)
+                    sessionStore.markConnected(tab.id)
+                    let reuse = transientAuthResults[tab.id]
+                    if let r = reuse, r.authType == .password, !r.password.isEmpty {
+                        await connectTab(tab, passwordOverride: r.password, ephemeralResult: r, resetAuthRetry: false)
+                    } else {
+                        await connectTab(tab, ephemeralResult: reuse, resetAuthRetry: false)
+                    }
                     if case .failed = tab.session?.phase {
                     } else { setRetryState(.idle, for: tab.id) }
                     return
                 }
                 if retryState(for: tab.id) == .cleanupDone {
-                    Log.session.error("[AUTH] giving up Citadel")
+                    Log.session.error("[AUTH] Citadel second failure; re-show sheet")
                     setRetryState(.idle, for: tab.id)
-                    lastError = displayError; showError = true
-                    return
                 }
                 setRetryState(.dialogShown, for: tab.id)
                 guard let result = await requestAuthRetry(for: tab, rawError: rawError) else {
@@ -443,16 +445,18 @@ final class SessionManager {
     }
 
     func setPhase(_ session: TerminalSession, to newPhase: SSHConnectionPhase, host: String, engine: String, reason: String) {
+        // Avoid modifying @Observable during view update
         let old = String(describing: session.phase)
-        session.phase = newPhase
-        // Keep legacy connectionState in sync for non-phase-aware UI
-        switch newPhase {
-        case .idle, .failed: session.connectionState = .disconnected
-        case .ready: session.connectionState = .connected
-        case .reconnecting(let attempt, let maxAttempts): session.connectionState = .reconnecting(attempt: attempt, maxAttempts: maxAttempts)
-        default: session.connectionState = .connecting
+        Task { @MainActor in
+            session.phase = newPhase
+            switch newPhase {
+            case .idle, .failed: session.connectionState = .disconnected
+            case .ready: session.connectionState = .connected
+            case .reconnecting(let attempt, let maxAttempts): session.connectionState = .reconnecting(attempt: attempt, maxAttempts: maxAttempts)
+            default: session.connectionState = .connecting
+            }
+            Log.session.info("[SSH_STATE] host:\(host) engine:\(engine) old:\(old) new:\(String(describing: newPhase)) reason:\(reason)")
         }
-        Log.session.info("[SSH_STATE] host:\(host) engine:\(engine) old:\(old) new:\(String(describing: newPhase)) reason:\(reason)")
     }
 
     /// Save a password to the credential source this host actually uses:
@@ -573,6 +577,10 @@ final class SessionManager {
     func sendInput(_ bytes: ArraySlice<UInt8>, to tabID: UUID, paneID: UUID? = nil) async throws {
         guard let tab = tabs.first(where: { $0.id == tabID }),
               let targetPaneID = paneID ?? tab.activePaneID else { return }
+        // Block input during auth gate to avoid command typed as password
+        if let s = tab.session, s.terminalState == .waitingPTY || s.phase == .authenticating || s.phase == .openingPTY || s.phase == .openingChannel {
+            return
+        }
 
         // Use inputHandler to record command history and broadcast
         try await inputHandler.sendInput(
@@ -666,8 +674,8 @@ final class SessionManager {
             || lower.contains("allauthenticationoptionsfailed")
             || lower.contains("all authentication options failed")
             || lower.contains("no authentication methods")
-            || lower.contains("认证失败")
-            || lower.contains("用户名或密码")
+            || lower.contains("auth failed")
+            || lower.contains("username or password")
     }
 
     /// Show a modal dialog asking for the password of `username@host`
@@ -709,7 +717,7 @@ final class SessionManager {
         if let r = result, !r.password.isEmpty, let tabID = authRetryRequest?.tab.id {
             lastRetryPassword[tabID] = r.password
         } else if result == nil, let tabID = authRetryRequest?.tab.id {
-            // 取消时保留，下次仍回显最近一次输入，避免旧 1234 覆盖
+            // Keep last input for next prefill
         }
         authRetryContinuation?.resume(returning: result)
         authRetryContinuation = nil
@@ -727,14 +735,13 @@ final class SessionManager {
         authRetryRequest = nil
     }
 
-    /// Service 侧 reconnect PTY 的 typed auth 失败（不经过 setupPTYSession）也需弹 sheet
-    /// OpenSSH 比 Citadel 难：Citadel 是 throw 同步（connect 直接抛 isAuthFailure），OpenSSH 是 PTY tail 异步（onExit 400-800ms 后才到），
-    /// 且 NumberOfPasswordPrompts=2 会先走 askpass 再走 keyboard-interactive，需给第二轮提示留窗口，避免弹窗与手动输入抢焦点
+    /// Typed auth failure from reconnect PTY (not via setupPTYSession) must show sheet
+    /// Citadel throws sync, OpenSSH tails async; Prompts=1 fails fast to sheet
     private func handleServiceAuthFailure(_ failure: SSHFailure, for tab: TerminalTab) async {
         guard tabs.contains(where: { $0.id == tab.id }), let session = tab.session else { return }
         guard case .authentication(let af) = failure else { return }
         let display = SSHErrorMessageParser.explain(af.message, host: tab.hostItem.host, jumpHost: tab.hostItem.jumpHostRef?.host) ?? af.message
-        // 去重后的单路径：即使 onFailure 已 setPhase/signal，仍需在此弹 Sheet（onFailure 已去对话框）
+        // Single sheet path
         if case .authentication = session.failureReason, session.phase == .failed(display), isShowingDialog(for: tab.id) { return }
         session.failureReason = failure
         setPhase(session, to: .failed(display), host: tab.hostItem.host, engine: "OpenSSH", reason: "authFailed")
@@ -750,17 +757,23 @@ final class SessionManager {
             OpenSSHBackend.cleanupOrphanedMuxes()
             setRetryState(.cleanupDone, for: tab.id)
             guard tabs.contains(where: { $0.id == tab.id }) else { return }
-            await connectTab(tab, passwordOverride: nil, resetAuthRetry: false)
+            sessionStore.markConnected(tab.id)
+            let reuse = transientAuthResults[tab.id]
+            if let r = reuse, r.authType == .password, !r.password.isEmpty {
+                await connectTab(tab, passwordOverride: r.password, ephemeralResult: r, resetAuthRetry: false)
+            } else {
+                await connectTab(tab, ephemeralResult: reuse, resetAuthRetry: false)
+            }
             if case .failed = tab.session?.phase {
-                // 清理重试仍失败，保留 cleanupDone 供下一次 giving up
+                // Keep cleanupDone for next failure
             } else {
                 setRetryState(.idle, for: tab.id)
             }
             return
         }
         if retryState(for: tab.id) == .cleanupDone {
-            Log.session.error("[AUTH_RETRY] service giving up")
-            setRetryState(.idle, for: tab.id); return
+            Log.session.error("[AUTH_RETRY] service second failure; re-show sheet")
+            setRetryState(.idle, for: tab.id)
         }
         setRetryState(.dialogShown, for: tab.id)
         guard let result = await requestAuthRetry(for: tab, rawError: af.message) else {
@@ -770,7 +783,7 @@ final class SessionManager {
         let fp = pwLen>0 ? OpenSSHBackend.passwordFingerprint(result.password) : "-"
         Log.session.info("[AUTH_RETRY] source=ephemeral (service) passwordLength=\(pwLen) passwordFingerprint=\(fp, privacy: .public) authType=\(result.authType.rawValue, privacy: .public)")
         transientAuthResults[tab.id] = result
-        // 隔离重试：仅靠 OpenSSH 层 ControlMaster=no + ControlPath=none 保证全新 TCP/SSH 握手，不做 Session/Service 重置
+        // Isolated retry via ControlMaster bypass
         if result.authType == .password, !result.password.isEmpty {
             await connectTab(tab, passwordOverride: result.password, ephemeralResult: result, resetAuthRetry: false)
         } else {
@@ -779,7 +792,6 @@ final class SessionManager {
         if case .failed = tab.session?.phase {
             transientAuthResults[tab.id] = nil
         } else {
-            // 成功后重置状态机，下一次失败应立即弹 Sheet 而非 cleaning 重试
             setRetryState(.idle, for: tab.id)
         }
     }
@@ -808,8 +820,7 @@ final class SessionManager {
                     self.setPhase(session, to: .failed(displayForPhase), host: tab.hostItem.host, engine: "OpenSSH", reason: "authFailed")
                     session.signalAuthFailure()
                     session.errorMessage = displayForPhase
-                    Log.session.error("[AUTH] OpenSSH authFailed -> failed (suppress recovery): \(displayForPhase.prefix(120), privacy: .public)")
-                    // 去重：onError 仅信号，Sheet 统一由 service.handleTypedFailure -> handleServiceAuthFailure 单路径弹出
+                    Log.session.error("[AUTH] OpenSSH authFailed -> failed: \(displayForPhase.prefix(120), privacy: .public)")
                 }
             },
             onFailure: { [weak self, weak tab] failure in
@@ -824,8 +835,7 @@ final class SessionManager {
                         session.signalAuthFailure()
                         session.errorMessage = display
                         Log.session.error("[SSH_FAILURE] type=authentication backend=openssh msg=\(display.prefix(120), privacy: .public)")
-                        Log.session.info("[RECOVERY_GATE] blocked=true reason=authenticationFailed (dedup: Sheet 统一由 handleServiceAuthFailure 弹出，此处仅信号)")
-                        // 去重：初始 PTY 失败仅信号，不在此弹 Sheet，避免与 handleServiceAuthFailure 双弹
+                        Log.session.debug("[RECOVERY_GATE] blocked authFailed (dedup sheet via handleServiceAuthFailure)")
                         
                     case .hostKey(let msg):
                         await service.suppressRecoveryForAuth()
@@ -953,7 +963,7 @@ final class SessionManager {
                 guard !Task.isCancelled else { break }
                 guard session.stateObserverToken == token else { return }
                 guard tab.session === session else { break }
-                // Generation 隔离：旧 service 的旧 generation 状态不回写新 session
+                // Generation isolation: discard stale state
                 guard session.generation == capturedGen else {
                     Log.session.info("[OBSERVER] discard stale state gen=\(capturedGen.uuidString.prefix(8)) != current=\(session.generation.uuidString.prefix(8))")
                     return

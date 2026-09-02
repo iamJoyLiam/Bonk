@@ -13,7 +13,7 @@ extension OpenSSHBackend {
     }
 
     /// Writes a 0700 script that echoes the password once via SSH_ASKPASS.
-    /// 修复：密码不再直接嵌入脚本单引号（避免 ' $ ` \ ! 换行等转义遗漏），改为写入 0600 临时 secret 文件，脚本 cat 该文件，确保 stdout 仅为密码本身
+    // / ： ' $ ` \ ! ， 0600  secret ， cat ， stdout
     func writeAskPassScript(
         _ password: String,
         attemptID: String,
@@ -22,7 +22,7 @@ extension OpenSSHBackend {
     ) -> String {
         let path = "/tmp/bonk-ssh-askpass-\(attemptID)"
         let secretPath = "/tmp/bonk-ssh-askpass-\(attemptID).secret"
-        // 0600 secret 文件，避免 shell 转义问题
+        // 0600 secret ， shell
         if let data = password.data(using: .utf8) {
             try? data.write(to: URL(fileURLWithPath: secretPath), options: [.atomic])
             _ = chmod(secretPath, mode_t(0o600))

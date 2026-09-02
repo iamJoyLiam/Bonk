@@ -91,13 +91,13 @@ public enum SSHBackendType: String, Sendable, Hashable, Codable, CaseIterable {
 }
 
 public enum SSHBackendReason: String, Sendable, Hashable, Codable, CaseIterable {
-    case modern                 // native 成功
+    case modern                 // native
     case kexMismatch            // capability
     case hostKeyMismatch
     case cipherMismatch
     case noKbdInteractive       // capability (no supported auth methods)
     case jumpHost               // policy
-    case forcedCompatibility    // 用户手动指定
+    case forcedCompatibility    //  
 }
 
 // MARK: - Connection Requirements (input to Router, §5.1)

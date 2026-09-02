@@ -40,13 +40,13 @@ extension OpenSSHBackend {
             "-o", "StrictHostKeyChecking=accept-new",
             "-o", "UserKnownHostsFile=\(knownHostsPath)",
             "-o", "GlobalKnownHostsFile=/dev/null",
-            "-o", "NumberOfPasswordPrompts=2",
+            "-o", "NumberOfPasswordPrompts=1",
             "-o", "ConnectTimeout=10",
-            // 防空闲假死：30s 心跳，3 次无响应断开后触发重连
+            // Keepalive 30s，3 reconnect
             "-o", "ServerAliveInterval=30",
             "-o", "ServerAliveCountMax=3",
             "-o", "TCPKeepAlive=yes",
-            // P2 加密与 QoS 择优：GCM 硬件加速优先，批量传输 QoS
+            // P2  QoS ：GCM ， QoS
             "-o", "Ciphers=\(SFTPCompressionStrategy.preferredCiphers)",
             "-o", "MACs=\(SFTPCompressionStrategy.preferredMACs)",
             "-o", "IPQoS=throughput",
@@ -102,7 +102,7 @@ extension OpenSSHBackend {
         var args = [
             "/usr/bin/ssh", "-o", "ControlMaster=no", "-o", "ControlPath=none",
             "-o", "StrictHostKeyChecking=accept-new", "-o", "UserKnownHostsFile=\(knownHostsPath)",
-            "-o", "GlobalKnownHostsFile=/dev/null", "-o", "NumberOfPasswordPrompts=2",
+            "-o", "GlobalKnownHostsFile=/dev/null", "-o", "NumberOfPasswordPrompts=1",
             "-o", "ConnectTimeout=10", "-p", String(jumpHost.port),
         ]
         args += legacyRSACompatibilityArguments()
@@ -116,7 +116,7 @@ extension OpenSSHBackend {
             jumpAskpassPath = askpassPath
             command = "env SSH_ASKPASS=\(Self.shellQuote(askpassPath)) SSH_ASKPASS_REQUIRE=force DISPLAY=:0 " + command
             Log.ssh.info("[ASKPASS] attempt=\(attemptID) script=\(askpassPath) host=\(jumpHost.host) username=\(jumpHost.username) passwordLength=\(jumpPassword.count) fp=\(Self.passwordFingerprint(jumpPassword)) DISPLAY=:0")
-            // 跳板机 askpass 同样要求无 stdout 污染（cat secret 版）
+            // askpass  stdout cat secret
             if let data = try? Data(contentsOf: URL(fileURLWithPath: askpassPath)), let txt = String(data: data, encoding: .utf8), !(txt.contains("cat \"") || txt.contains("printf '%s\\n'")) {
                 Log.ssh.error("[ASKPASS] jump script polluted \(txt.prefix(120), privacy: .public)")
             }

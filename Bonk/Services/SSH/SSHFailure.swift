@@ -1,6 +1,6 @@
 import Foundation
 
-// MARK: - Typed failure — 认证失败必须 NEVER 进入 Recovery
+// MARK: - Typed failure — auth failed NEVER  Recovery
 
 public enum AuthenticationFailure: Sendable, Equatable, Hashable, CustomStringConvertible {
     case permissionDenied(String)          // Permission denied, publickey/password
@@ -40,7 +40,7 @@ public enum TransportFailure: Sendable, Equatable, Hashable, CustomStringConvert
     public var description: String { message }
 }
 
-/// 顶层 typed error — OpenSSHBackend 不再只返回 String
+// /  typed error — OpenSSHBackend  String
 public enum SSHFailure: Error, Sendable, Equatable, Hashable, CustomStringConvertible {
     case authentication(AuthenticationFailure)
     case transport(TransportFailure)
@@ -81,12 +81,12 @@ public enum SSHFailure: Error, Sendable, Equatable, Hashable, CustomStringConver
 
 enum SSHFailureClassifier {
     static func classify(tail: String, stderr: String, terminationStatus: Int32, wasUserClosed: Bool) -> SSHFailure? {
-        // 关键修复：即使 wasUserClosed / SIGHUP，若 tail 明确含 Permission denied 等认证失败，必须优先判为 authentication，
-        // 否则 reconnect teardown 时 close() 置 isClosed=true 会把真·认证失败误判为 cancelled，导致不弹 AuthRetrySheet 而直接进 RECOVERY_GATE blocked
+        // ： wasUserClosed / SIGHUP， tail  Permission denied auth failed， authentication，
+        // reconnect teardown  close  isClosed=true ·auth failed cancelled， AuthRetrySheet  RECOVERY_GATE blocked
         let preCombined = (tail + "\n" + stderr).lowercased()
         let hasAuthSignal = preCombined.contains("permission denied") || preCombined.contains("authentication failed") || preCombined.contains("allauthenticationoptionsfailed") || preCombined.contains("too many authentication failures")
         if hasAuthSignal {
-            // 不提前 return cancelled，让下文 auth 分支优先命中
+            // return cancelled， auth
         } else {
             if wasUserClosed { return .cancelled }
             if terminationStatus == 130 || terminationStatus == 143 || terminationStatus == 129 {
@@ -111,7 +111,7 @@ enum SSHFailureClassifier {
             if lower.contains("host key verification failed") || lower.contains("remote host identification has changed") {
                 return .hostKey(line)
             }
-            // authentication — Permission denied/publickey/password 必须映射 .authentication
+            // authentication — Permission denied/publickey/password  .authentication
             if lower.contains("permission denied") || lower.contains("authentication failed") || lower.contains("authentication failure")
                 || lower.contains("allauthenticationoptionsfailed") || lower.contains("all authentication options failed")
                 || lower.contains("no supported authentication methods") || lower.contains("too many authentication failures")
@@ -162,7 +162,7 @@ enum SSHFailureClassifier {
         return nil
     }
 
-    /// 将老的 SSHProcessFailure 映射到新 SSHFailure（兼容）
+    // /  SSHProcessFailure  SSHFailure
     static func from(_ old: SSHProcessFailure) -> SSHFailure {
         switch old {
         case .authentication(let m):
@@ -172,7 +172,7 @@ enum SSHFailureClassifier {
             return .authentication(.permissionDenied(m))
         case .hostKey(let m): return .hostKey(m)
         case .network(let m):
-            // 粗略映射到 transport
+            // transport
             let lower = m.lowercased()
             if lower.contains("refused") { return .transport(.connectionRefused(m)) }
             if lower.contains("timed out") { return .transport(.timedOut(m)) }

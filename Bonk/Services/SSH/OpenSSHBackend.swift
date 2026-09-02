@@ -68,7 +68,7 @@ final class OpenSSHBackend: @unchecked Sendable {
     ) throws -> PTYSession {
         let attemptID = UUID().uuidString
         var environment: [String: String] = [:]
-        // PTY 统一走 responder TTY 直输（hook 已验证 + 手点触发器 SUCCESS），askpass 仅用于非 PTY 的 executeCommand/sftp
+        // PTY  responder TTY hook  +  SUCCESS，askpass  PTY  executeCommand/sftp
         let useAskPassForPTY = false
         if let targetPassword = password(from: config.authMethod), useAskPassForPTY {
             let askpassPath = writeAskPassScript(
@@ -81,7 +81,7 @@ final class OpenSSHBackend: @unchecked Sendable {
             environment["SSH_ASKPASS"] = askpassPath
             environment["SSH_ASKPASS_REQUIRE"] = "force"
             environment["DISPLAY"] = ":0"
-            // 验证脚本内容：仅允许 cat secret + printf 换行，无其他 stdout（logger 仅写 syslog）
+            // ： cat secret + printf ， stdoutlogger  syslog
             if let scriptData = try? Data(contentsOf: URL(fileURLWithPath: askpassPath)),
                let scriptText = String(data: scriptData, encoding: .utf8) {
                 let lines = scriptText.components(separatedBy: "\n").filter { !$0.isEmpty && !$0.hasPrefix("#") }
@@ -136,7 +136,7 @@ final class OpenSSHBackend: @unchecked Sendable {
         Log.ssh.info("[OPENSSH-CONFIG] host=\(self.config.host):\(self.config.port) user=\(self.config.username) authType=\(authDesc, privacy: .public) jump=\(self.config.jumpHost?.host ?? "nil", privacy: .public) attempt=\(attemptID, privacy: .public)")
         let ptyTail = OSAllocatedUnfairLock<String>(initialState: "")
         let stderrTail = OSAllocatedUnfairLock<String>(initialState: "")
-        // 记录 attempt 供 onExit 关联日志（避免 11s 后 SIGHUP 被误判为 auth）
+        // attempt  onExit  11s  SIGHUP  auth
         let capturedAttemptID = attemptID
         let capturedPID = process.processID
         session.startProcess(
@@ -144,10 +144,10 @@ final class OpenSSHBackend: @unchecked Sendable {
             onExit: {
                 let tail = ptyTail.withLock { String($0.suffix(4096)) }
                 let errTail = stderrTail.withLock { String($0.suffix(4096)) }
-                // wasUserClosed 来自 PTYSession.userClosedBox（close() 置 true 时 onUnexpectedClose 不会回调，但此处为保险）
+                // wasUserClosed  PTYSession.userClosedBoxclose  true  onUnexpectedClose ，
                 let wasClosed = session.isClosed
-                // 同步尝试取已缓存的 exitStatus，否则回落 1；异步 waitForExit 会在后台更新但此处需同步判定以避免 400ms 窗口误判
-                // 为精确，尝试非阻塞地取同步值（若 reap 已完成），否则用 1 兜底，后续 handleTypedFailure 会结合 wasClosed 二次校验
+                // exitStatus， 1； waitForExit  400ms
+                // ， reap ， 1 ， handleTypedFailure  wasClosed second
                 let status: Int32 = 1
                 let typed: SSHFailure? = SSHFailureClassifier.classify(tail: tail, stderr: errTail, terminationStatus: status, wasUserClosed: wasClosed)
                 Log.ssh.info("[PTY_EXIT] attempt=\(capturedAttemptID, privacy: .public) pid=\(capturedPID) wasClosed=\(wasClosed) status=\(status) tailPrefix=\(tail.prefix(80), privacy: .public)")
@@ -173,13 +173,13 @@ final class OpenSSHBackend: @unchecked Sendable {
                         Log.ssh.error("[SSH_FAILURE] type=hostKey backend=openssh msg=\(m, privacy: .public)")
                         onFailure?(.hostKey(m))
                         onError?(m)
-                        // hostKey 不恢复，但仍需让上层关闭，RECOVERY_GATE 会 block
+                        // hostKey ，，RECOVERY_GATE  block
                         onExit()
                         return
                     case .transport(let tf):
                         Log.ssh.error("[SSH_FAILURE] type=transport backend=openssh msg=\(tf.message, privacy: .public)")
                         onFailure?(typed)
-                        // transport 允许 recovery，落到 onExit
+                        // transport  recovery， onExit
                         break
                     case .unknown(let m):
                         Log.ssh.error("[SSH_FAILURE] type=unknown backend=openssh msg=\(m, privacy: .public)")
@@ -375,7 +375,7 @@ final class OpenSSHBackend: @unchecked Sendable {
         var authUserHosts: [String] = []
         if let jumpHost = config.jumpHost { authUserHosts.append("\(jumpHost.username)@\(jumpHost.host)") }
         authUserHosts.append("\(config.username)@\(config.host)")
-        let effectiveCreds = includePassword ? authCredentials() : [] // askpass 接管时，stdin 不再自动回显 password，避免双写污染
+        let effectiveCreds = includePassword ? authCredentials() : [] // askpass ，stdin  password，
         return OpenSSHAuthPromptResponder(
             credentials: effectiveCreds,
             authUserHosts: authUserHosts,

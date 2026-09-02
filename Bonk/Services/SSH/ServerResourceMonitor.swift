@@ -85,10 +85,10 @@ final class ServerResourceMonitor {
             }
         }
 
-        // P0: 只在 ready 且已稳定 3s 后才允许业务 command，避免 auth 阶段的 Server info fetch 与主 PTY 抢 password（双 responder）
+        // P0:  ready  3s  command， auth  Server info fetch  PTY  password responder
         let candidates: [(tab: TerminalTab, service: SSHNetworkService)] = tabs.compactMap { tab in
             guard let session = tab.session, session.isReady, let svc = session.sshService else { return nil }
-            // ready 后 3s 内不拉取，给 PTY 认证窗口充分时间
+            // ready  3s ， PTY
             if let at = session.connectedAt, Date().timeIntervalSince(at) < 3 { return nil }
             return (tab, svc)
         }

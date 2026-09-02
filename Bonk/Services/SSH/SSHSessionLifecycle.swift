@@ -64,7 +64,7 @@ final class SSHSessionLifecycle: ObservableObject {
         return await resolve(config: config, forcedCompatibility: host.forceCompatibility == true)
     }
 
-    /// VNext 优化：直接传入已含 ephemeralResult 的 SSHConnectionConfig，避免 HostItem 持久化 credential 覆盖 retry credential
+    // / VNext ： ephemeralResult  SSHConnectionConfig， HostItem  credential  retry credential
     func resolve(config: SSHConnectionConfig, forcedCompatibility: Bool = false) async -> ResolvedConnection? {
         phase = .resolving
         let req = SSHRequirementsMapper.requirements(from: config)
@@ -89,7 +89,9 @@ final class SSHSessionLifecycle: ObservableObject {
                 host: config.host, port: config.port, username: config.username,
                 authMethod: config.authMethod, jumpHost: config.jumpHost,
                 maxReconnectAttempts: config.maxReconnectAttempts, baseReconnectDelay: config.baseReconnectDelay,
-                algorithmRequirements: algos
+                algorithmRequirements: algos,
+                bypassControlMaster: config.bypassControlMaster,
+                generation: config.generation
             )
         } else {
             effective = config

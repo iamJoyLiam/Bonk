@@ -154,7 +154,7 @@ extension AIProviderDetailSheet {
                 domain: "Bonk.AI",
                 code: http.statusCode,
                 userInfo: [
-                    NSLocalizedDescriptionKey: "认证失败（HTTP \(http.statusCode)）：检查 API Key（litellm 需填 master_key）",
+                    NSLocalizedDescriptionKey: "auth failed（HTTP \(http.statusCode)）：检查 API Key（litellm 需填 master_key）",
                 ]
             )
         }

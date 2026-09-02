@@ -26,7 +26,7 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
     private var promptBuffer = ""
     private var credentials: [OpenSSHPasswordCredential]
     private var autoAnsweredCount = 0
-    private let maxAutoAnswers = 1 // 一进程只自动送1次：同进程二连击同错密会耗尽 NumberOfPasswordPrompts=2，二次应走新进程重试
+    private let maxAutoAnswers = 1 // Single auto-send per process to align with Prompts=1
     private var lastSentAt = Date.distantPast
     private let id = String(UUID().uuidString.prefix(8))
     /// Generic `Password:` prompts are ambiguous when a ProxyCommand is
@@ -85,13 +85,12 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
     func observe(_ data: Data) {
         guard let text = String(data: data, encoding: .utf8), !text.isEmpty else { return }
         let preview = String(text.prefix(80)).replacingOccurrences(of: "\n", with: "\\n").replacingOccurrences(of: "\r", with: "\\r")
-        Log.ssh.info("[RESPONDER observe] raw=\(preview, privacy: .public) len=\(text.count)")
         var isMatch = false
         var candidateCopy = ""
         lock.lock()
         promptBuffer.append(text)
         let normalized = Self.stripANSI(promptBuffer)
-        // P1: 行式解析，只看最后一行是否以 password: 结尾，避免 suffix 跨 banner 误判导致双发
+        // Line-based parse: only last line ending with password: avoids banner cross-match
         let lines = normalized.components(separatedBy: "\n")
         let lastLine = lines.last ?? normalized
         let lastTrimmed = lastLine.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -100,7 +99,6 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
         isMatch = self.matchesPasswordPrompt(candidate)
         candidateCopy = candidate
         let suffixPreview = candidate.suffix(80).replacingOccurrences(of: "\n", with: "\\n").replacingOccurrences(of: "\r", with: "\\r")
-        Log.ssh.info("[RESPONDER] lastLine=\(suffixPreview, privacy: .public) matches=\(isMatch)")
         lock.unlock()
 
         // A manually typed password is pending: decide acceptance over a short
@@ -195,7 +193,6 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
         // Dedup: same prompt within 800ms (chunked banner+password) should not double-send
         if Date().timeIntervalSince(lastSentAt) < 0.8 {
             lock.unlock()
-            Log.ssh.info("[RESPONDER \(self.id)] dedup skip prompt=\(prompt.suffix(40), privacy: .public)")
             return false
         }
         let promptLowercased = prompt.lowercased()
@@ -208,21 +205,18 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
             let av = self.autoAnsweredCount
             let cnt = self.credentials.count
             lock.unlock()
-            Log.ssh.info("[RESPONDER \(self.id)] no credential for prompt=\(prompt.suffix(80), privacy: .public) av=\(av) cnt=\(cnt)")
             return false
         }
         guard self.autoAnsweredCount < self.maxAutoAnswers else {
             lock.unlock()
-            Log.ssh.info("[RESPONDER \(self.id)] maxAutoAnswers hit")
             return false
         }
         let credential = self.credentials[credentialIndex]
         let fp = OpenSSHBackend.passwordFingerprint(credential.password)
-        Log.ssh.info("[RESPONDER \(self.id)] sending password fp=\(fp, privacy: .public) len=\(credential.password.count) av=\(self.autoAnsweredCount) prompt=\(prompt.suffix(60), privacy: .public)")
         self.promptBuffer = ""
         self.autoAnsweredCount += 1
         self.lastSentAt = Date()
-        // 送过即删：避免同进程内二次自动送同错密耗尽 NumberOfPasswordPrompts
+        // Remove after send to avoid exhausting prompts
         self.credentials.remove(at: credentialIndex)
         lock.unlock()
 

@@ -23,8 +23,8 @@ final class SSHBackendProfile {
     var expiresAt: Date
     var citadelVersion: String?
     var niosshVersion: String?
-    // MARK: - M4 Full画像增量（全可选，旧库兼容，轻量迁移）
-    var hitCount: Int? // nil→1，Adaptive TTL 1d→7d→30d 累进
+    // MARK: - M4 full profile incremental
+    var hitCount: Int? // nil→1，Adaptive TTL 1d→7d→30d
     var lastHitAt: Date?
     var negotiatedKEX: String?
     var negotiatedHostKey: String?
@@ -74,7 +74,7 @@ final class SSHBackendProfile {
         self.negotiatedHostKey = negotiatedHostKey
         self.negotiatedCipher = negotiatedCipher
         self.negotiatedMAC = negotiatedMAC
-        // Adaptive TTL：1d→7d→30d，policy 永不过期（由 isValid 忽略 TTL），指纹另行失效
+        // Adaptive TTL
         if let exp = expiresAt {
             self.expiresAt = exp
         } else {
@@ -121,7 +121,7 @@ final class SSHBackendProfile {
         return true
     }
 
-    // MARK: - Adaptive TTL (M4 Full画像)
+    // MARK: - Adaptive TTL M4 Full
 
     var effectiveHitCount: Int { hitCount ?? 1 }
 
@@ -136,7 +136,7 @@ final class SSHBackendProfile {
 
     var adaptiveTTL: TimeInterval { Self.adaptiveTTL(forHitCount: effectiveHitCount, isPolicy: isPolicyReason) }
 
-    /// 命中时累进：hitCount+1 并重算 expiresAt=now+adaptiveTTL，指纹保持当前
+    /// Hit recalc TTL
     func bumpHit() {
         let nextHit = effectiveHitCount + 1
         hitCount = min(nextHit, 100) // cap
@@ -144,13 +144,13 @@ final class SSHBackendProfile {
         if !isPolicyReason {
             expiresAt = Date().addingTimeInterval(adaptiveTTL)
         }
-        // 刷新指纹到当前版本，避免旧版本残留误判失效
+        // Refresh fingerprint
         let cur = SSHCapabilityFingerprint.current
         citadelVersion = cur.citadelVersion
         niosshVersion = cur.niosshVersion
     }
 
-    /// 重探测后重置为 1d 起步
+    /// Reset to 1d
     func resetToFirstHit() {
         hitCount = 1
         lastHitAt = nil

@@ -109,7 +109,7 @@ enum LogPatterns {
         "2;32", 60
     )
 
-    /// Chinese date: 7月 24 16:07:53
+    // / Chinese date: 7 24 16:07:53
     static let chineseTimestamp = LogFieldPattern(
         "chinese_ts", "\\d{1,2}月\\s*\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2}", "2;32", 60
     )
@@ -162,7 +162,7 @@ enum LogPatterns {
     ] + levelKeywords
 
     // MARK: - Seed Source
-    /// 用于 SwiftData 播种的最小可用定义，Store 不再手写 12 条
+    // /  SwiftData ，Store  12
     static let seedDefinitions: [(name: String, pattern: String, ansi: String, priority: Int)] = [
         ("emerg",       "(?<![A-Za-z0-9_\\-])(?:EMERG(?:ENCY)?|PANIC)(?![A-Za-z0-9_\\-])", "1;41;97", 10),
         ("alert",       "(?<![A-Za-z0-9_\\-])ALERT(?![A-Za-z0-9_\\-])",                   "1;41;97", 11),
@@ -178,7 +178,7 @@ enum LogPatterns {
         ("logfmtLevel", "\\blevel=(?:error|warn|info|debug|trace|fatal|emerg|alert|crit)\\b", "38;2;255;149;0", 41),
     ]
 
-    /// 完整播种（含 uuid/pid/thread 等元数据），用于“Full”模板，按需可扩展
+    // /  uuid/pid/thread ，“Full”，
     static let fullSeedDefinitions: [(String, String, String, Int)] = allPatterns.map { ($0.name, $0.regex.pattern, $0.ansiCode, $0.priority) }
 
     /// ONE regex that recognizes ANY signature a log line can carry.

@@ -172,7 +172,7 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 sessionManager.completeAuthRetry(with: result)
             } else if let req = sessionManager.authRetryRequest, !didRetry, !autoRetry {
                 Log.session.info("[TEST_TRIGGER_UI] sheet appeared, waiting for real UI typing...")
-                // 不自动 complete，留给 cliclick/osascript 真实输入
+                // No auto complete
                 didRetry = true
             }
             if let p = phase, case .ready = p {

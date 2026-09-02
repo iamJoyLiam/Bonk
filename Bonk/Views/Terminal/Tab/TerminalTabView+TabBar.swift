@@ -26,7 +26,7 @@ extension TerminalTabView {
             .padding(.horizontal, AppStyle.spacingL)
             .padding(.vertical, AppStyle.tabBarHPadding)
 
-            // Overflow: scroll tabs, plus固定右端
+            // Overflow: scroll tabs, plus pinned
             HStack(spacing: 0) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: AppStyle.tabSpacing) {

@@ -99,7 +99,7 @@ struct SFTPWindowView: View {
             Button(i18n.t(.alwaysOverwrite)) {
                 if let url = pendingUploadURL {
                     overwriteAlways = true
-                    preferences.sftpOverwriteAlways = true // 同步到设置
+                    preferences.sftpOverwriteAlways = true // Sync to settings
                     pendingUploadURL = nil
                     showOverwriteAlert = false
                     Task { await performUpload(url) }

@@ -66,18 +66,18 @@ import SwiftUI
             .background(terminalBackground)
             .onChange(of: activeTab.session?.ptySession != nil) { _, hasSession in
                 if hasSession {
-                    connectOutputStreamIfNeeded()
+                    Task { @MainActor in connectOutputStreamIfNeeded() }
                 }
             }
             .onChange(of: activeTab.id) { _, _ in
-                connectOutputStreamIfNeeded()
+                Task { @MainActor in connectOutputStreamIfNeeded() }
             }
             .onAppear {
-                connectOutputStreamIfNeeded()
+                Task { @MainActor in connectOutputStreamIfNeeded() }
             }
             .onReceive(NotificationCenter.default.publisher(for: .terminalPTYSessionReady)) { notification in
                 if let tabID = notification.userInfo?["tabID"] as? UUID, tabID == activeTab.id {
-                    connectOutputStreamIfNeeded()
+                    Task { @MainActor in connectOutputStreamIfNeeded() }
                 }
             }
         }
@@ -225,7 +225,7 @@ import SwiftUI
             terminal.bellStyle = .none
             terminal.configureNativeColors()
 
-            // 滚动条：初始隐藏，滚动时显示，使用小尺寸
+            // Scrollbar: hidden initially, show on scroll, small
             for subview in terminal.subviews {
                 if let scroller = subview as? NSScroller {
                     scroller.controlSize = .small

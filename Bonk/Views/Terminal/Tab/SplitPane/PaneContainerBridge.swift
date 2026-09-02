@@ -285,7 +285,7 @@ import SwiftUI
             terminal.configureNativeColors()
             terminal.completionContextProvider = completionContext
 
-            // 滚动条：初始隐藏，滚动时显示，使用小尺寸
+            // Scrollbar: hidden initially, show on scroll, small
             for subview in terminal.subviews {
                 if let scroller = subview as? NSScroller {
                     scroller.controlSize = .small

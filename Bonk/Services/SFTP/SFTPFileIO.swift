@@ -1,12 +1,12 @@
 //
 //  SFTPFileIO.swift
-//  Bonk — DispatchIO + pread/pwrite 零拷贝本盘 IO
+// Bonk — DispatchIO + pread/pwrite  IO
 //
-//  目标：
-//    • 替换 FileHandle.seek+read 的阻塞与多拷贝，达到：Disk -> Kernel PageCache -> ByteBuffer -> SSH Channel
-//    • Upload：pread(fd) 直接写入 ByteBuffer，无 Data 中间体
-//    • Download：pwrite(fd, bytes, offset) 随机写，无 seek 竞态
-//    • 兼容现有 SFTPTransferActor 接口，供单流与并行复用
+//  
+// •  FileHandle.seek+read ，：Disk -> Kernel PageCache -> ByteBuffer -> SSH Channel
+// • Upload：preadfd  ByteBuffer， Data
+// • Download：pwritefd, bytes, offset ， seek
+// •  SFTPTransferActor ，
 
 import Darwin
 import Foundation
@@ -14,9 +14,9 @@ import NIOConcurrencyHelpers
 import NIOCore
 import os.log
 
-// MARK: - DispatchIO Reader (零拷贝)
+// MARK: - DispatchIO Reader
 
-/// 本盘并发读：每 shard 独立 fd，pread 直写 ByteBuffer
+// / ： shard  fd，pread  ByteBuffer
 final class SFTPDispatchReader: @unchecked Sendable {
     private let fileDescriptor: Int32
     private let closed = NIOLockedValueBox<Bool>(false)
@@ -42,7 +42,7 @@ final class SFTPDispatchReader: @unchecked Sendable {
         if shouldClose { Darwin.close(fileDescriptor) }
     }
 
-    /// 零拷贝读：分配 ByteBuffer，直接 pread 填充
+    // / ： ByteBuffer， pread
     func readByteBuffer(offset: UInt64, length: Int) throws -> ByteBuffer {
         var buffer = ByteBufferAllocator().buffer(capacity: length)
         let bytesRead = try buffer.withUnsafeMutableWritableBytes { ptr -> Int in
@@ -57,36 +57,36 @@ final class SFTPDispatchReader: @unchecked Sendable {
         return buffer
     }
 
-    /// 兼容 Data 接口（仅用于回退）
+    // /  Data
     func readData(offset: UInt64, length: Int) throws -> Data {
         let buffer = try readByteBuffer(offset: offset, length: length)
-        // ByteBuffer -> Data 无额外拷贝（共享 bytes）
+        // ByteBuffer -> Data  bytes
         if buffer.readableBytes == 0 { return Data() }
         return Data(buffer.readableBytesView)
     }
 }
 
-// MARK: - pwrite Writer (并行下载)
+// MARK: - pwrite Writer
 
 final class SFTPPWriteHelper: @unchecked Sendable {
     private let fileDescriptor: Int32
     private let closed = NIOLockedValueBox<Bool>(false)
 
     init(url: URL, totalBytes: UInt64) throws {
-        // 创建并预分配
+        // Preallocate
         FileManager.default.createFile(atPath: url.path, contents: nil)
         let descriptor = Darwin.open(url.path, O_RDWR | O_CREAT, 0o644)
         guard descriptor >= 0 else {
             throw SFTPServiceError.operationFailed("open for write \(url.path) failed: \(String(cString: strerror(errno)))")
         }
-        // 预分配大小，避免多 shard 追加竞态
+        // Preallocate， shard
         if totalBytes > 0 {
             _ = Darwin.ftruncate(descriptor, off_t(totalBytes))
         }
         fileDescriptor = descriptor
     }
 
-    /// 随机写 Data 到 offset，无 seek
+    // /  Data  offset， seek
     func writeData(_ data: Data, at offset: UInt64) throws {
         let result = data.withUnsafeBytes { ptr -> Int in
             guard let base = ptr.baseAddress else { return 0 }
@@ -97,7 +97,7 @@ final class SFTPPWriteHelper: @unchecked Sendable {
         }
     }
 
-    /// 随机写 ByteBuffer 到 offset
+    // /  ByteBuffer  offset
     func writeBuffer(_ buffer: ByteBuffer, at offset: UInt64) throws {
         let result = buffer.withUnsafeReadableBytes { ptr -> Int in
             guard let base = ptr.baseAddress else { return 0 }
@@ -108,7 +108,7 @@ final class SFTPPWriteHelper: @unchecked Sendable {
         }
     }
 
-    /// 周期性 fsync，减少崩溃丢数据窗口（每 64MB 调用一次）
+    // /  fsync， 64MB
     func sync() {
         _ = Darwin.fsync(fileDescriptor)
     }
@@ -127,9 +127,9 @@ final class SFTPPWriteHelper: @unchecked Sendable {
     }
 }
 
-// MARK: - Legacy Actor 迁移到 DispatchIO（保持接口）
+// MARK: - Legacy Actor  DispatchIO
 
-/// P0 升级版：内部用 pread，接口仍返回 Data 以兼容单流旧调用
+// / P0 ： pread， Data
 actor SFTPTransferActor {
     private let reader: SFTPDispatchReader
 
@@ -141,7 +141,7 @@ actor SFTPTransferActor {
         try reader.readData(offset: offset, length: length)
     }
 
-    /// 零拷贝新接口，供 P2 并行直接拿 ByteBuffer
+    // / ， P2  ByteBuffer
     func readByteBuffer(offset: UInt64, length: Int) throws -> ByteBuffer {
         try reader.readByteBuffer(offset: offset, length: length)
     }

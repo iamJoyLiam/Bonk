@@ -58,9 +58,9 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
         [.addHost,
          .toggleSidebar,
          .sidebarTrackingSeparator,
-         .serverCPU, .serverMemory, .serverDisk,   // 服务器资源：球形百分比
+         .serverCPU, .serverMemory, .serverDisk,   // Server resources: spherical progress
          .space,
-         .broadcast, .sftp, .workspaces,    // 常用：广播、SFTP、工作区（录制仅自定义）
+         .broadcast, .sftp, .workspaces,    // Common: broadcast, SFTP, workspaces
          .flexibleSpace,
          .ai, .snippets]
     }
@@ -71,7 +71,7 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
         [.addHost, .toggleSidebar,
          .serverCPU, .serverMemory, .serverDisk,
          .broadcast, .sftp, .workspaces, .recording, .jumpHosts,
-         .serialPort, .portForward,         // 不常用：保留在自定义中
+         .serialPort, .portForward,         // Uncommon: keep in customize
          .keyGenerator, .importSessions, .triggers, .team,
          .ai, .snippets,
          .space, .flexibleSpace]

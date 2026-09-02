@@ -121,7 +121,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         get { hostItemBox.withLockedValue { $0 } }
         set { hostItemBox.withLockedValue { $0 = newValue } }
     }
-    /// 全链路 generation — 与 SSHConnectionConfig.generation 互通，用于旧 Attempt 丢弃
+    // /  generation —  SSHConnectionConfig.generation ， Attempt
     private let generationBox = NIOLockedValueBox<UUID?>(nil)
     var generation: UUID? {
         get { generationBox.withLockedValue { $0 } }
@@ -554,12 +554,10 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         guard let writer = writerBox.withLockedValue({ $0 }) else {
             // SSH channel not ready — queue resize for later, never discard
             pendingSize.withLockedValue { $0 = (safeCols, safeRows) }
-            Log.ssh.debug("[PTY] SSH channel not ready, queued resize: \(safeCols)x\(safeRows)")
             return
         }
 
         try await writer.changeSize(cols: safeCols, rows: safeRows, pixelWidth: 0, pixelHeight: 0)
-        Log.ssh.debug("[PTY] Resize sent: \(safeCols)x\(safeRows)")
     }
 
     /// Query the terminal's current working directory by sending `pwd` and parsing output.

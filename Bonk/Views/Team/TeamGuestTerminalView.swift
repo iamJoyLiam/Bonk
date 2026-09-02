@@ -13,7 +13,7 @@ struct TeamGuestTerminalView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 顶部状态栏：无气泡、无撑大，原样文本+图标（替换 toolbar 气泡方案）
+            // Top bar: plain text+icon
             HStack(spacing: 6) {
                 Image(systemName: relay.isConnected ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
                     .font(.system(size: 11, weight: .regular))

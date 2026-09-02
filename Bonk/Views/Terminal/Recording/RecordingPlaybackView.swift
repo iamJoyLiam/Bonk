@@ -339,7 +339,7 @@ private struct PlaybackTerminalBridge: NSViewRepresentable {
         scroll.autohidesScrollers = false
         scroll.borderType = .noBorder
         scroll.drawsBackground = false
-        // Inset content so text never kisses the rounded border (was 貼邊)
+        // Inset content so text never kisses the rounded border was
         scroll.contentInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
         scroll.automaticallyAdjustsContentInsets = false
         // Match scrollView background to terminal so no dark gutter shows

@@ -18,7 +18,7 @@ struct HostConnectionDiagnosisView: View {
                 set: { newValue in
                     host.forceCompatibility = newValue ? true : nil
                     if !newValue {
-                        // 关闭即清空历史强制诊断，下一连回 nativeWithFallback 试探
+                        // Clear diagnosis on close
                         let store = SSHProfileStore(context: modelContext)
                         let forced = store.profiles(forHost: host.host, port: host.port)
                             .filter { $0.reasonRaw == SSHBackendReason.forcedCompatibility.rawValue }
@@ -108,7 +108,7 @@ struct HostConnectionDiagnosisView: View {
             .font(.system(size: AppStyle.fontCaption))
             .foregroundStyle(.secondary)
 
-            // Adaptive TTL detail (M4 Full画像)
+            // Adaptive TTL detail M4 Full
             HStack(spacing: 8) {
                 Label("hit \(profile.effectiveHitCount) · TTL \(ttlLabel(profile))", systemImage: "arrow.triangle.2.circlepath")
                 if let last = profile.lastHitAt {
@@ -129,7 +129,7 @@ struct HostConnectionDiagnosisView: View {
                     .tint(profile.isValid ? Color.green : Color.orange)
             }
 
-            // Negotiated (full画像) — nil when not yet captured
+            // Negotiated full — nil when not yet captured
             if profile.negotiatedKEX != nil || profile.negotiatedHostKey != nil || profile.negotiatedCipher != nil || profile.negotiatedMAC != nil {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Negotiated").font(.system(size: AppStyle.fontCaption, weight: .medium))
