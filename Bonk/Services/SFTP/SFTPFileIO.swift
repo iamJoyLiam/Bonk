@@ -19,6 +19,7 @@ import os.log
 /// 本盘并发读：每 shard 独立 fd，pread 直写 ByteBuffer
 final class SFTPDispatchReader: @unchecked Sendable {
     private let fileDescriptor: Int32
+    private let closed = NIOLockedValueBox<Bool>(false)
 
     init(url: URL) throws {
         let descriptor = Darwin.open(url.path, O_RDONLY)
@@ -28,9 +29,18 @@ final class SFTPDispatchReader: @unchecked Sendable {
         fileDescriptor = descriptor
     }
 
-    deinit { Darwin.close(fileDescriptor) }
+    deinit {
+        if !closed.withLockedValue({ $0 }) { Darwin.close(fileDescriptor) }
+    }
 
-    func close() { Darwin.close(fileDescriptor) }
+    func close() {
+        let shouldClose = closed.withLockedValue { flag -> Bool in
+            if flag { return false }
+            flag = true
+            return true
+        }
+        if shouldClose { Darwin.close(fileDescriptor) }
+    }
 
     /// 零拷贝读：分配 ByteBuffer，直接 pread 填充
     func readByteBuffer(offset: UInt64, length: Int) throws -> ByteBuffer {
@@ -60,6 +70,7 @@ final class SFTPDispatchReader: @unchecked Sendable {
 
 final class SFTPPWriteHelper: @unchecked Sendable {
     private let fileDescriptor: Int32
+    private let closed = NIOLockedValueBox<Bool>(false)
 
     init(url: URL, totalBytes: UInt64) throws {
         // 创建并预分配
@@ -97,8 +108,23 @@ final class SFTPPWriteHelper: @unchecked Sendable {
         }
     }
 
-    func close() { Darwin.close(fileDescriptor) }
-    deinit { Darwin.close(fileDescriptor) }
+    /// 周期性 fsync，减少崩溃丢数据窗口（每 64MB 调用一次）
+    func sync() {
+        _ = Darwin.fsync(fileDescriptor)
+    }
+
+    func close() {
+        let shouldClose = closed.withLockedValue { flag -> Bool in
+            if flag { return false }
+            flag = true
+            return true
+        }
+        if shouldClose { Darwin.close(fileDescriptor) }
+    }
+
+    deinit {
+        if !closed.withLockedValue({ $0 }) { Darwin.close(fileDescriptor) }
+    }
 }
 
 // MARK: - Legacy Actor 迁移到 DispatchIO（保持接口）

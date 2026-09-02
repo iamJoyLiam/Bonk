@@ -73,6 +73,10 @@ enum SSHErrorMessageParser {
                 || lower.contains("authentication failure")
                 || lower.contains("no supported authentication methods")
                 || lower.contains("too many authentication failures")
+                || lower.contains("allauthenticationoptionsfailed")
+                || lower.contains("all authentication options failed")
+                || lower.contains("no authentication methods")
+                || lower.contains("no auth")
             {
                 return i18n.tr(.sshErrorAuthentication, args: line)
             }

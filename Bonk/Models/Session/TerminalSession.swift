@@ -18,6 +18,57 @@ final class TerminalSession {
     var outputStream: AsyncStream<String>?
     var connectedAt: Date?
     var errorMessage: String?
+    /// 全链路 generation — 与 SSHConnectionConfig.generation 互通，用于旧 Attempt 丢弃
+    var generation: UUID = UUID()
+    /// Typed failure for Recovery gate — authenticationFailed NEVER recovery
+    var failureReason: SSHFailure?
+    /// Deterministic PTY auth outcome signal — replaces unreliable 2s polling.
+    /// `finalizeConnection` installs a continuation; `onFailure` callbacks resume it.
+    /// `true` = auth failure detected; `false` = timeout (no failure, assume success).
+    private var authFailureContinuation: CheckedContinuation<Bool, Never>?
+    /// If auth fails before waiter is installed, remember it so next waiter returns immediately.
+    private var pendingAuthFailed: Bool = false
+
+    /// Install a one-shot waiter for PTY auth failure. Returns true if auth failed within the timeout.
+    func awaitAuthFailure(timeout: Duration) async -> Bool {
+        // If failure already arrived before waiter, return immediately (fix lost-signal race)
+        if pendingAuthFailed {
+            pendingAuthFailed = false
+            return true
+        }
+        return await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            self.authFailureContinuation = cont
+            Task {
+                try? await Task.sleep(for: timeout)
+                await MainActor.run {
+                    if let pending = self.authFailureContinuation {
+                        self.authFailureContinuation = nil
+                        pending.resume(returning: false)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Signal that an auth failure was detected (called from onFailure callbacks).
+    func signalAuthFailure() {
+        if let cont = authFailureContinuation {
+            authFailureContinuation = nil
+            cont.resume(returning: true)
+        } else {
+            // Waiter not yet installed — remember for next await (fix race where PTY exits before finalize installs waiter)
+            pendingAuthFailed = true
+        }
+    }
+
+    /// Cancel any pending auth failure waiter (on disconnect/generation change).
+    func cancelAuthFailureWaiter() {
+        pendingAuthFailed = false
+        if let cont = authFailureContinuation {
+            authFailureContinuation = nil
+            cont.resume(returning: false)
+        }
+    }
     var serverInfo: ServerInfo?
     var commandHistory = CommandHistory()
     /// Accumulated input buffer for command history recording.
@@ -112,6 +163,7 @@ final class TerminalSession {
 
     /// Tear down all connection resources.
     func disconnect() {
+        cancelAuthFailureWaiter()
         stateObservationTask?.cancel()
         stateObservationTask = nil
         stateObserverToken = UUID()

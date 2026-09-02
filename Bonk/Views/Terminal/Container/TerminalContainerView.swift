@@ -36,7 +36,7 @@ import SwiftUI
                 switch phase {
                 case .idle, .failed:
                     disconnectedView
-                case .resolving, .connectingTransport, .negotiatingSSH, .authenticating, .fallbacking, .openingChannel:
+                case .resolving, .connectingTransport, .negotiatingSSH, .authenticating, .fallbacking, .openingChannel, .openingPTY:
                     TerminalStateViews.fallbackingView(for: phase, host: activeTab.hostItem.host, username: activeTab.hostItem.username, port: activeTab.hostItem.port, i18n: i18n)
                 case .ready:
                     if activeTab.session?.terminalState == .ready {

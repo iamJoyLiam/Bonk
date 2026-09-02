@@ -108,6 +108,87 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         installToolbar(on: window)
         startToolbarKeepAlive(on: window)
+
+        #if DEBUG
+        // --- Hand UI 5-step test trigger (DEBUG only, remove after fix) ---
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard FileManager.default.fileExists(atPath: "/tmp/bonk_test_trigger") else { return }
+            Log.session.info("[TEST_TRIGGER] hand UI 5-step test starting via file trigger")
+            try? FileManager.default.removeItem(atPath: "/tmp/bonk_test_trigger")
+            await self?.runHandUITest()
+        }
+        #endif
+    }
+
+    func runHandUITest() async {
+        guard let sessionManager else { return }
+        let container = BonkApp.sharedModelContainer
+        let ctx = ModelContext(container)
+        // Cleanup old test hosts
+        if let existing = try? ctx.fetch(FetchDescriptor<HostItem>()) {
+            for h in existing where h.host == "192.168.100.50" && h.username == "root" {
+                ctx.delete(h)
+            }
+            try? ctx.save()
+        }
+        // Create host via HostFormViewModel path (hand UI simulation)
+        let vm = HostFormViewModel(existingHost: nil)
+        vm.name = "192.168.100.50"
+        vm.host = "192.168.100.50"
+        vm.port = "22"
+        vm.username = "root"
+        vm.authType = .password
+        vm.password = "1234"
+        vm.forceCompatibilityToggle = true
+        let hostGroups: [HostGroup] = (try? ctx.fetch(FetchDescriptor<HostGroup>())) ?? []
+        var createdHost: HostItem?
+        vm.save(hostGroups: hostGroups, modelContext: ctx, onSave: { item in
+            ctx.insert(item)
+            createdHost = item
+        }, i18n: I18n.shared)
+        try? ctx.save()
+        guard let host = createdHost else {
+            Log.session.error("[TEST_TRIGGER] failed to create host")
+            return
+        }
+        // Ensure SessionManager has modelContext (normally set via View)
+        sessionManager.setModelContext(ctx)
+        Log.session.info("[TEST_TRIGGER] created host \(host.name) pwLen=\(vm.password.count) forceCompat=\(host.forceCompatibility == true)")
+        sessionManager.openTab(for: host)
+        // Monitor phases and auto-retry when auth fails (file trigger auto path)
+        var didRetry = false
+        let autoRetry = !FileManager.default.fileExists(atPath: "/tmp/bonk_test_ui_only")
+        for _ in 0..<30 {
+            try? await Task.sleep(for: .milliseconds(500))
+            guard let tab = sessionManager.tabs.last else { continue }
+            let phase = tab.session?.phase
+            Log.session.info("[TEST_TRIGGER] poll phase=\(String(describing: phase)) host=\(tab.hostItem.host) auto=\(autoRetry)")
+            if let req = sessionManager.authRetryRequest, !didRetry, autoRetry {
+                didRetry = true
+                Log.session.info("[TEST_TRIGGER] sheet appeared rawError=\(req.rawError.prefix(80)) -> retry with Nextenso")
+                // Build retry result as AuthRetrySheet does (trimmed)
+                let result = SessionManager.AuthRetryResult(password: "Nextenso_33@2025", privateKeyPEM: "", certificatePEM: "", secureEnclaveTag: nil, credentialID: nil, authType: .password)
+                sessionManager.completeAuthRetry(with: result)
+            } else if let req = sessionManager.authRetryRequest, !didRetry, !autoRetry {
+                Log.session.info("[TEST_TRIGGER_UI] sheet appeared, waiting for real UI typing...")
+                // 不自动 complete，留给 cliclick/osascript 真实输入
+                didRetry = true
+            }
+            if let p = phase, case .ready = p {
+                Log.session.info("[TEST_TRIGGER] SUCCESS ready after hand UI 5-step!")
+                try? "SUCCESS".write(toFile: "/tmp/bonk_test_result", atomically: true, encoding: .utf8)
+                return
+            }
+            if let p = phase, case .failed(let msg) = p, didRetry {
+                // After retry still failed -> capture
+                Log.session.error("[TEST_TRIGGER] FAILED after retry msg=\(msg.prefix(120))")
+                try? "FAILED:\(msg)".write(toFile: "/tmp/bonk_test_result", atomically: true, encoding: .utf8)
+                return
+            }
+        }
+        Log.session.error("[TEST_TRIGGER] TIMEOUT no ready")
+        try? "TIMEOUT".write(toFile: "/tmp/bonk_test_result", atomically: true, encoding: .utf8)
     }
 
     // MARK: - Window Closing

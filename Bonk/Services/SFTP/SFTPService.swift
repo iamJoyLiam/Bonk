@@ -295,7 +295,6 @@ final class SFTPService {
                 throw err
             } catch {
                 Log.sftp.warning("[P2] SFTPService parallelDownload failed, fallback: \(String(describing: error))")
-                // 清理残留文件，准备单流重试
                 try? FileManager.default.removeItem(at: localURL)
             }
         }

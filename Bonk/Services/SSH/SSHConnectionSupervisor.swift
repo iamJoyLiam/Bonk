@@ -19,6 +19,7 @@ public enum RecoveryReason: Sendable, Equatable, CustomStringConvertible {
     case writeFailed
     case readTimeout
     case userRequested
+    case authFailed // explicit auth failure — must NOT trigger recovery
 
     public var description: String {
         switch self {
@@ -31,6 +32,7 @@ public enum RecoveryReason: Sendable, Equatable, CustomStringConvertible {
         case .writeFailed: return "writeFailed"
         case .readTimeout: return "readTimeout"
         case .userRequested: return "userRequested"
+        case .authFailed: return "authFailed"
         }
     }
 }
@@ -58,6 +60,7 @@ actor SSHConnectionSupervisor {
     private var state: RecoveryState = .idle
     private var currentTask: Task<Void, Never>?
     private var attemptCount: Int = 0
+    private var suppressRecoveryUntil: Date? = nil // authFailed gate
 
     // Injected dependencies - set by owning SSHNetworkService
     private var probe: (@Sendable () async -> Bool)?
@@ -91,11 +94,34 @@ actor SSHConnectionSupervisor {
         attemptCount = 0
         currentTask?.cancel()
         currentTask = nil
+        suppressRecoveryUntil = nil
+    }
+
+    /// Auth failure gate — suppress any RECOVERY for this session until next user-initiated connect.
+    func suppressRecoveryForAuth() {
+        Log.ssh.info("[RECOVERY] suppress for authFailed host=\(self.hostIdentifier, privacy: .public)")
+        state = .idle
+        currentTask?.cancel()
+        currentTask = nil
+        attemptCount = 0
+        // Suppress for 60s or until next configure/reset (which clears it)
+        suppressRecoveryUntil = Date().addingTimeInterval(60)
     }
 
     /// Idempotent recovery entry - all triggers funnel here.
     /// Concurrent calls while probing/reconnecting/backoff are ignored (1 pipeline).
     func requestRecovery(reason: RecoveryReason) {
+        // AuthFailed/hostKey/cancelled gate — never recover automatically
+        if let until = suppressRecoveryUntil, Date() < until {
+            Log.ssh.info("[RECOVERY_GATE] blocked=true reason=authenticationFailed host=\(self.hostIdentifier, privacy: .public) reasonDetail=\(String(describing: reason), privacy: .public) state=\(String(describing: self.state), privacy: .public) engine=\(self.engineName, privacy: .public)")
+            Log.ssh.info("[RECOVERY] suppressed host=\(self.hostIdentifier, privacy: .public) reason=\(String(describing: reason), privacy: .public) state=\(String(describing: self.state), privacy: .public) engine=\(self.engineName, privacy: .public) (authFailed gate)")
+            return
+        }
+        if case .authFailed = reason {
+            Log.ssh.info("[RECOVERY_GATE] blocked=true reason=authenticationFailed host=\(self.hostIdentifier, privacy: .public)")
+            Log.ssh.info("[RECOVERY] ignore authFailed host=\(self.hostIdentifier, privacy: .public) (sheet, not recovery)")
+            return
+        }
         // Idempotent: only idle can start new pipeline
         guard case .idle = state else {
             Log.ssh.info("[RECOVERY] ignore duplicate host=\(self.hostIdentifier, privacy: .public) reason=\(String(describing: reason), privacy: .public) state=\(String(describing: self.state), privacy: .public) engine=\(self.engineName, privacy: .public)")

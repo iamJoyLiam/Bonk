@@ -36,10 +36,41 @@ final class SessionManager {
     /// dialog → reconnect → (fail) → cleanup+reconnect → (fail) → STOP. The
     /// user must start a fresh connect to try again.
     private enum AuthRetryState { case idle, dialogShown, cleanupDone }
-    private var authRetryState: AuthRetryState = .idle
-    private var authRetryTabID: UUID?
-    private var isShowingAuthDialog = false
+    // Per-tab isolation — fix global singleton causing second tab Sheet suppressed
+    private var authRetryStates: [UUID: AuthRetryState] = [:]
+    private var showingAuthDialogs: Set<UUID> = []
     private var connectTasks: [UUID: Task<Void, Never>] = [:]
+    var transientAuthResults: [UUID: AuthRetryResult] = [:]
+    private func retryState(for tabID: UUID) -> AuthRetryState { authRetryStates[tabID] ?? .idle }
+    private func setRetryState(_ state: AuthRetryState, for tabID: UUID) {
+        if case .idle = state { authRetryStates.removeValue(forKey: tabID) } else { authRetryStates[tabID] = state }
+    }
+    private func isShowingDialog(for tabID: UUID) -> Bool { showingAuthDialogs.contains(tabID) }
+    private func setShowingDialog(_ showing: Bool, for tabID: UUID) {
+        if showing { showingAuthDialogs.insert(tabID) } else { showingAuthDialogs.remove(tabID) }
+    }
+
+    // MARK: - Auth Retry Sheet (P1 bug 2/3/4)
+    struct AuthRetryRequest: Identifiable, @unchecked Sendable {
+        let id = UUID()
+        let tab: TerminalTab
+        let host: HostItem
+        let rawError: String
+        let lastAttemptPassword: String?
+    }
+    struct AuthRetryResult: Sendable {
+        let password: String
+        let privateKeyPEM: String
+        let certificatePEM: String
+        let secureEnclaveTag: String?
+        let credentialID: PersistentIdentifier?
+        let authType: AuthType
+    }
+    var authRetryRequest: AuthRetryRequest?
+    var hostToEdit: HostItem?
+    private var authRetryContinuation: CheckedContinuation<AuthRetryResult?, Never>?
+    /// 记住上次弹窗输入的密码，用于二次弹时回显（治你说的“再次弹还不是第一次输入的密码”）
+    private var lastRetryPassword: [UUID: String] = [:]
 
     // VNext — Hybrid SSH coordinator (T1.4+). Used for routing decision logging in T2.1,
     // full native-first wiring lands in T2.2.
@@ -147,6 +178,9 @@ final class SessionManager {
     func closeTab(_ id: UUID) async {
         connectTasks[id]?.cancel()
         connectTasks[id] = nil
+        authRetryStates.removeValue(forKey: id)
+        showingAuthDialogs.remove(id)
+        transientAuthResults.removeValue(forKey: id)
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
         await disconnectTab(id)
         // Clean up all pane views
@@ -182,9 +216,9 @@ final class SessionManager {
     // MARK: - Connection
 
     func connectTab(_ tab: TerminalTab) async {
-        // A fresh manual connect resets the auth-retry state machine.
-        authRetryState = .idle
-        authRetryTabID = nil
+        // A fresh manual connect resets the auth-retry state machine (per-tab).
+        setRetryState(.idle, for: tab.id)
+        setShowingDialog(false, for: tab.id)
         await connectTab(tab, passwordOverride: nil, resetAuthRetry: false)
     }
 
@@ -194,7 +228,8 @@ final class SessionManager {
     /// or host-embedded Keychain entry) so the next connect works silently.
     func connectTab(
         _ tab: TerminalTab,
-        passwordOverride: String?,
+        passwordOverride: String? = nil,
+        ephemeralResult: AuthRetryResult? = nil,
         resetAuthRetry: Bool = true
     ) async {
         Log.session.info("[CONNECT] Starting connectTab for \(tab.hostItem.host):\(tab.hostItem.port)")
@@ -209,33 +244,92 @@ final class SessionManager {
 
         let session = sessionStore.session(for: tab)
         tab.session = session
+        
+        // 生成全链路 generation，写入 session 与 config
+        let generation = UUID()
+        session.generation = generation
+        // 清理上一轮残留的 auth 信号，避免新重试被 stale pending 误判为 early 失败
+        session.cancelAuthFailureWaiter()
+        
+        // 杀旧 service：避免旧 ssh 进程/askpass 与新 Attempt 并发
+        if let oldService = session.sshService {
+            await oldService.disconnect()
+        }
+        
         session.connectionState = .connecting
         session.phase = .resolving
         session.errorMessage = nil
+        session.failureReason = nil
 
-        guard let config = preparedConfig(for: tab, session: session, passwordOverride: passwordOverride) else {
+        // Merge transient retry result if present (bug 3: full auth support)
+        let effectiveEphemeral = ephemeralResult ?? transientAuthResults[tab.id]
+        if let er = effectiveEphemeral { transientAuthResults[tab.id] = er }
+        defer { if ephemeralResult != nil { transientAuthResults[tab.id] = nil } }
+        guard let config = preparedConfig(for: tab, session: session, passwordOverride: passwordOverride, ephemeralResult: effectiveEphemeral) else {
             setPhase(session, to: .failed("resolve config"), host: tab.hostItem.host, engine: "Resolver", reason: "config")
             return
         }
-        setPhase(session, to: .connectingTransport, host: config.host, engine: "Resolver", reason: "VNext routing")
-        // 6-hop collapse via Lifecycle (Phase 3) — single resolve call
+        // 将 generation 注入 config，透传给 SSHNetworkService → OpenSSHBackend → PTYSession
+        var configWithGen = config
+        configWithGen = SSHConnectionConfig(
+            host: config.host,
+            port: config.port,
+            username: config.username,
+            authMethod: config.authMethod,
+            jumpHost: config.jumpHost,
+            maxReconnectAttempts: config.maxReconnectAttempts,
+            baseReconnectDelay: config.baseReconnectDelay,
+            algorithmRequirements: config.algorithmRequirements,
+            bypassControlMaster: config.bypassControlMaster,
+            generation: generation
+        )
+        setPhase(session, to: .connectingTransport, host: configWithGen.host, engine: "Resolver", reason: "VNext routing")
+        // 架构优化：Lifecycle 直接 consume 已含 ephemeralResult 的 config，避免 HostItem 覆盖
         let lifecycle = SSHSessionLifecycle(networkService: SSHNetworkService(hostKeyStore: hostKeyStore), hostKeyStore: hostKeyStore)
-        guard let resolved = await lifecycle.resolve(host: tab.hostItem) else {
+        guard let resolved = await lifecycle.resolve(config: configWithGen, forcedCompatibility: tab.hostItem.forceCompatibility == true) else {
             setPhase(session, to: .failed("resolve"), host: tab.hostItem.host, engine: "Lifecycle", reason: "resolve")
             return
         }
         let vnextReq = resolved.requirements
-        let vnextCached: SSHSessionCoordinator.CachedProfile? = nil // already consumed in Lifecycle
+        let vnextCached: SSHSessionCoordinator.CachedProfile? = nil
         let vnextDecision = resolved.decision
         logVNextDecision(vnextDecision, config: config, requirements: vnextReq)
         var service = resolved.service
         var effectiveConfig = resolved.effectiveConfig
+        // 确保 generation 透传到 effectiveConfig（覆盖 cached 丢失的 generation）
+        if effectiveConfig.generation == nil {
+            effectiveConfig = SSHConnectionConfig(
+                host: effectiveConfig.host,
+                port: effectiveConfig.port,
+                username: effectiveConfig.username,
+                authMethod: effectiveConfig.authMethod,
+                jumpHost: effectiveConfig.jumpHost,
+                maxReconnectAttempts: effectiveConfig.maxReconnectAttempts,
+                baseReconnectDelay: effectiveConfig.baseReconnectDelay,
+                algorithmRequirements: effectiveConfig.algorithmRequirements,
+                bypassControlMaster: effectiveConfig.bypassControlMaster,
+                generation: generation
+            )
+        }
+        if let er = effectiveEphemeral {
+            let src = ephemeralResult == nil ? "transient" : "ephemeral"
+            let pwLen = er.password.count
+            let fp = pwLen>0 ? OpenSSHBackend.passwordFingerprint(er.password) : "-"
+            Log.session.info("[AUTH_RETRY] source=\(src, privacy: .public) passwordLength=\(pwLen) passwordFingerprint=\(fp, privacy: .public) authType=\(er.authType.rawValue, privacy: .public) effectiveHost=\(effectiveConfig.host, privacy: .public)")
+        }
         if case .compatibility = vnextDecision, let algos = vnextCached?.algorithms, !algos.isEmpty {
             Log.session.info("[VNext] Using cached compat algorithms: kex=\(algos.kex)")
         }
         session.sshService = service
         observeStateChanges(for: tab, session: session, service: service)
         await attachManualPasswordHandler(to: service, tab: tab)
+        // 关键：reconnect PTY 的 auth 失败也需弹 sheet（service 内部 PTY 不经过 setupPTYSession）
+        await service.setAuthFailureHandler { [weak self, weak tab] failure in
+            guard let self, let tab else { return }
+            Task { @MainActor in
+                await self.handleServiceAuthFailure(failure, for: tab)
+            }
+        }
 
         var fallbackInfo: FallbackInfo?
         let transportEngine: String = {
@@ -245,13 +339,13 @@ final class SessionManager {
             case .nativeWithCompatibilityFallback: return "Native"
             }
         }()
-        setPhase(session, to: .negotiatingSSH, host: config.host, engine: transportEngine, reason: "transport connect")
+        setPhase(session, to: .negotiatingSSH, host: configWithGen.host, engine: transportEngine, reason: "transport connect")
         do {
             do {
                 try await service.connect(config: effectiveConfig)
             } catch {
                 let result = try await handleNativeFallback(
-                    error: error, decision: vnextDecision, config: config,
+                    error: error, decision: vnextDecision, config: configWithGen,
                     requirements: vnextReq, currentService: service,
                     session: session, tab: tab
                 )
@@ -262,12 +356,17 @@ final class SessionManager {
                     algorithms: result.algorithms,
                     reason: result.reason
                 )
+                // 兼容回退后新 service 也需注册 auth sheet 回调
+                await service.setAuthFailureHandler { [weak self, weak tab] failure in
+                    guard let self, let tab else { return }
+                    Task { @MainActor in await self.handleServiceAuthFailure(failure, for: tab) }
+                }
             }
 
             let finalizeCtx = FinalizeContext(
                 config: config, effectiveConfig: effectiveConfig,
                 vnextReq: vnextReq, vnextDecision: vnextDecision,
-                fallback: fallbackInfo, passwordOverride: passwordOverride
+                fallback: fallbackInfo, passwordOverride: passwordOverride, ephemeralResult: effectiveEphemeral
             )
             try await finalizeConnection(tab: tab, session: session, service: service, context: finalizeCtx)
             // Auto-record if enabled
@@ -284,9 +383,61 @@ final class SessionManager {
         } catch {
             Log.session.error("[CONNECT] Connection failed: \(error.localizedDescription)")
             guard tabs.contains(where: { $0.id == tab.id }) else { return }
-            setPhase(session, to: .failed(error.localizedDescription), host: config.host, engine: "Session", reason: "failed")
-            session.errorMessage = error.localizedDescription
-            lastError = error.localizedDescription
+            let rawError = error.localizedDescription
+            let displayError = SSHErrorMessageParser.explain(rawError, host: config.host, jumpHost: config.jumpHost?.host) ?? rawError
+            if Self.isAuthFailure(rawError) || Self.isAuthFailure(displayError) {
+                Log.session.info("[SSH_FAILURE] type=authentication backend=citadel msg=\(displayError.prefix(120), privacy: .public)")
+                Log.session.info("[RECOVERY_GATE] blocked=true reason=authenticationFailed")
+                await service.suppressRecoveryForAuth()
+                session.failureReason = .authentication(.permissionDenied(displayError))
+                session.errorMessage = displayError
+                setPhase(session, to: .failed(displayError), host: configWithGen.host, engine: "Session", reason: "authFailed")
+                session.signalAuthFailure()
+                guard !isShowingDialog(for: tab.id) else { return }
+                setShowingDialog(true, for: tab.id)
+                defer { setShowingDialog(false, for: tab.id) }
+                if retryState(for: tab.id) == .dialogShown {
+                    Log.session.error("[AUTH] Citadel reconnect failed; cleaning and retry once")
+                    OpenSSHBackend.cleanupOrphanedMuxes()
+                    setRetryState(.cleanupDone, for: tab.id)
+                    await connectTab(tab, passwordOverride: nil, resetAuthRetry: false)
+                    if case .failed = tab.session?.phase {
+                    } else { setRetryState(.idle, for: tab.id) }
+                    return
+                }
+                if retryState(for: tab.id) == .cleanupDone {
+                    Log.session.error("[AUTH] giving up Citadel")
+                    setRetryState(.idle, for: tab.id)
+                    lastError = displayError; showError = true
+                    return
+                }
+                setRetryState(.dialogShown, for: tab.id)
+                guard let result = await requestAuthRetry(for: tab, rawError: rawError) else {
+                    setRetryState(.idle, for: tab.id); lastError = displayError; showError = true; return
+                }
+                sessionStore.markConnected(tab.id)
+                transientAuthResults[tab.id] = result
+                if result.authType == .password, !result.password.isEmpty {
+                    await connectTab(tab, passwordOverride: result.password, ephemeralResult: result, resetAuthRetry: false)
+                } else {
+                    await connectTab(tab, ephemeralResult: result, resetAuthRetry: false)
+                }
+                if case .failed = tab.session?.phase { transientAuthResults[tab.id] = nil } else { setRetryState(.idle, for: tab.id) }
+                return
+            }
+            if let svc = error as? SSHServiceError, case .hostKeyMismatch = svc {
+                session.failureReason = .hostKey(displayError)
+                Log.session.info("[SSH_FAILURE] type=hostKey backend=citadel msg=\(displayError.prefix(120), privacy: .public)")
+                Log.session.info("[RECOVERY_GATE] blocked=true reason=hostKey")
+                await service.suppressRecoveryForAuth()
+            } else {
+                session.failureReason = .transport(.unknown(displayError))
+                Log.session.info("[SSH_FAILURE] type=transport backend=citadel msg=\(displayError.prefix(120), privacy: .public)")
+                Log.session.info("[RECOVERY_GATE] blocked=false reason=transportFailed")
+            }
+            setPhase(session, to: .failed(displayError), host: configWithGen.host, engine: "Session", reason: "failed")
+            session.errorMessage = displayError
+            lastError = displayError
             showError = true
         }
     }
@@ -375,6 +526,7 @@ final class SessionManager {
 
     func disconnectTab(_ id: UUID) async {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        if let svc = tab.session?.sshService { await svc.setAuthFailureHandler(nil) }
         await sessionStore.disconnect(id)
         // Close all pane PTY sessions and clean up cached views
         for paneID in tab.paneIDs {
@@ -511,6 +663,11 @@ final class SessionManager {
             || lower.contains("authentication failed")
             || lower.contains("authentication failure")
             || lower.contains("no supported authentication methods")
+            || lower.contains("allauthenticationoptionsfailed")
+            || lower.contains("all authentication options failed")
+            || lower.contains("no authentication methods")
+            || lower.contains("认证失败")
+            || lower.contains("用户名或密码")
     }
 
     /// Show a modal dialog asking for the password of `username@host`
@@ -524,7 +681,7 @@ final class SessionManager {
         alert.informativeText = "\(displayUser)@\(host)\n\(I18n.shared.t(.authFailedMessage))"
 
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 26))
-        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        let field = AutoEnglishSecureTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
         field.placeholderString = I18n.shared.t(.password)
         container.addSubview(field)
         alert.accessoryView = container
@@ -539,6 +696,94 @@ final class SessionManager {
         return value.isEmpty ? nil : value
     }
 
+    /// New auth retry via sheet - shows AuthRetrySheet with full auth methods and raw error detail.
+    func requestAuthRetry(for tab: TerminalTab, rawError: String) async -> AuthRetryResult? {
+        let last = lastRetryPassword[tab.id]
+        return await withCheckedContinuation { continuation in
+            authRetryContinuation = continuation
+            authRetryRequest = AuthRetryRequest(tab: tab, host: tab.hostItem, rawError: rawError, lastAttemptPassword: last)
+        }
+    }
+
+    func completeAuthRetry(with result: AuthRetryResult?) {
+        if let r = result, !r.password.isEmpty, let tabID = authRetryRequest?.tab.id {
+            lastRetryPassword[tabID] = r.password
+        } else if result == nil, let tabID = authRetryRequest?.tab.id {
+            // 取消时保留，下次仍回显最近一次输入，避免旧 1234 覆盖
+        }
+        authRetryContinuation?.resume(returning: result)
+        authRetryContinuation = nil
+        authRetryRequest = nil
+    }
+
+    func completeAuthRetry(with host: HostItem) {
+        let result = AuthRetryResult(password: host.loadPassword() ?? "", privateKeyPEM: host.loadPrivateKey() ?? "", certificatePEM: host.loadCertificate() ?? "", secureEnclaveTag: host.loadSecureEnclaveKeyTag(), credentialID: host.credentialRef?.persistentModelID, authType: host.authType)
+        completeAuthRetry(with: result)
+    }
+
+    func cancelAuthRetry() {
+        authRetryContinuation?.resume(returning: nil)
+        authRetryContinuation = nil
+        authRetryRequest = nil
+    }
+
+    /// Service 侧 reconnect PTY 的 typed auth 失败（不经过 setupPTYSession）也需弹 sheet
+    /// OpenSSH 比 Citadel 难：Citadel 是 throw 同步（connect 直接抛 isAuthFailure），OpenSSH 是 PTY tail 异步（onExit 400-800ms 后才到），
+    /// 且 NumberOfPasswordPrompts=2 会先走 askpass 再走 keyboard-interactive，需给第二轮提示留窗口，避免弹窗与手动输入抢焦点
+    private func handleServiceAuthFailure(_ failure: SSHFailure, for tab: TerminalTab) async {
+        guard tabs.contains(where: { $0.id == tab.id }), let session = tab.session else { return }
+        guard case .authentication(let af) = failure else { return }
+        let display = SSHErrorMessageParser.explain(af.message, host: tab.hostItem.host, jumpHost: tab.hostItem.jumpHostRef?.host) ?? af.message
+        // 去重后的单路径：即使 onFailure 已 setPhase/signal，仍需在此弹 Sheet（onFailure 已去对话框）
+        if case .authentication = session.failureReason, session.phase == .failed(display), isShowingDialog(for: tab.id) { return }
+        session.failureReason = failure
+        setPhase(session, to: .failed(display), host: tab.hostItem.host, engine: "OpenSSH", reason: "authFailed")
+        session.signalAuthFailure()
+        session.errorMessage = display
+        Log.session.error("[SSH_FAILURE] type=authentication backend=openssh (service) msg=\(display.prefix(120), privacy: .public)")
+        Log.session.info("[RECOVERY_GATE] blocked=true reason=authenticationFailed (service)")
+        guard !isShowingDialog(for: tab.id) else { return }
+        setShowingDialog(true, for: tab.id)
+        defer { setShowingDialog(false, for: tab.id) }
+        if retryState(for: tab.id) == .dialogShown {
+            Log.session.error("[AUTH_RETRY] service reconnect failed; cleaning")
+            OpenSSHBackend.cleanupOrphanedMuxes()
+            setRetryState(.cleanupDone, for: tab.id)
+            guard tabs.contains(where: { $0.id == tab.id }) else { return }
+            await connectTab(tab, passwordOverride: nil, resetAuthRetry: false)
+            if case .failed = tab.session?.phase {
+                // 清理重试仍失败，保留 cleanupDone 供下一次 giving up
+            } else {
+                setRetryState(.idle, for: tab.id)
+            }
+            return
+        }
+        if retryState(for: tab.id) == .cleanupDone {
+            Log.session.error("[AUTH_RETRY] service giving up")
+            setRetryState(.idle, for: tab.id); return
+        }
+        setRetryState(.dialogShown, for: tab.id)
+        guard let result = await requestAuthRetry(for: tab, rawError: af.message) else {
+            setRetryState(.idle, for: tab.id); return
+        }
+        let pwLen = result.password.count
+        let fp = pwLen>0 ? OpenSSHBackend.passwordFingerprint(result.password) : "-"
+        Log.session.info("[AUTH_RETRY] source=ephemeral (service) passwordLength=\(pwLen) passwordFingerprint=\(fp, privacy: .public) authType=\(result.authType.rawValue, privacy: .public)")
+        transientAuthResults[tab.id] = result
+        // 隔离重试：仅靠 OpenSSH 层 ControlMaster=no + ControlPath=none 保证全新 TCP/SSH 握手，不做 Session/Service 重置
+        if result.authType == .password, !result.password.isEmpty {
+            await connectTab(tab, passwordOverride: result.password, ephemeralResult: result, resetAuthRetry: false)
+        } else {
+            await connectTab(tab, ephemeralResult: result, resetAuthRetry: false)
+        }
+        if case .failed = tab.session?.phase {
+            transientAuthResults[tab.id] = nil
+        } else {
+            // 成功后重置状态机，下一次失败应立即弹 Sheet 而非 cleaning 重试
+            setRetryState(.idle, for: tab.id)
+        }
+    }
+
     func setupPTYSession(
         for tab: TerminalTab,
         pane: PaneState,
@@ -550,51 +795,54 @@ final class SessionManager {
             onError: { [weak self, weak tab] message in
                 Task { @MainActor in
                     guard let self, let tab else { return }
-                    session.errorMessage = message
-                    Log.session.error("[AUTH] onError: \(message.prefix(120))")
-                    // Authentication was rejected (wrong saved password).
-                    guard Self.isAuthFailure(message) else {
-                        Log.session.error("[AUTH] not an auth failure, no dialog")
+                    if case .authentication = session.failureReason { return }
+                    let displayForPhase = SSHErrorMessageParser.explain(message, host: tab.hostItem.host, jumpHost: tab.hostItem.jumpHostRef?.host) ?? message
+                    let isAuth = Self.isAuthFailure(message) || Self.isAuthFailure(displayForPhase)
+                    guard isAuth else {
+                        session.errorMessage = message
+                        Log.session.error("[AUTH] not an auth failure, no dialog: \(message.prefix(120))")
                         return
                     }
-                    guard !self.isShowingAuthDialog else {
-                        Log.session.warning("[AUTH] dialog already showing, ignoring duplicate failure")
-                        return
+                    await service.suppressRecoveryForAuth()
+                    session.failureReason = .authentication(.permissionDenied(displayForPhase))
+                    self.setPhase(session, to: .failed(displayForPhase), host: tab.hostItem.host, engine: "OpenSSH", reason: "authFailed")
+                    session.signalAuthFailure()
+                    session.errorMessage = displayForPhase
+                    Log.session.error("[AUTH] OpenSSH authFailed -> failed (suppress recovery): \(displayForPhase.prefix(120), privacy: .public)")
+                    // 去重：onError 仅信号，Sheet 统一由 service.handleTypedFailure -> handleServiceAuthFailure 单路径弹出
+                }
+            },
+            onFailure: { [weak self, weak tab] failure in
+                Task { @MainActor in
+                    guard let self, let tab else { return }
+                    switch failure {
+                    case .authentication(let af):
+                        await service.suppressRecoveryForAuth()
+                        session.failureReason = failure
+                        let display = SSHErrorMessageParser.explain(af.message, host: tab.hostItem.host, jumpHost: tab.hostItem.jumpHostRef?.host) ?? af.message
+                        self.setPhase(session, to: .failed(display), host: tab.hostItem.host, engine: "OpenSSH", reason: "authFailed")
+                        session.signalAuthFailure()
+                        session.errorMessage = display
+                        Log.session.error("[SSH_FAILURE] type=authentication backend=openssh msg=\(display.prefix(120), privacy: .public)")
+                        Log.session.info("[RECOVERY_GATE] blocked=true reason=authenticationFailed (dedup: Sheet 统一由 handleServiceAuthFailure 弹出，此处仅信号)")
+                        // 去重：初始 PTY 失败仅信号，不在此弹 Sheet，避免与 handleServiceAuthFailure 双弹
+                        
+                    case .hostKey(let msg):
+                        await service.suppressRecoveryForAuth()
+                        session.failureReason = failure
+                        self.setPhase(session, to: .failed(msg), host: tab.hostItem.host, engine: "OpenSSH", reason: "hostKey")
+                        session.errorMessage = msg
+                        Log.session.info("[RECOVERY_GATE] blocked=true reason=hostKey")
+                    case .cancelled:
+                        session.failureReason = .cancelled
+                        Log.session.info("[RECOVERY_GATE] blocked=true reason=cancelled")
+                    case .transport(let tf):
+                        session.failureReason = failure
+                        Log.session.info("[RECOVERY_GATE] blocked=false reason=transportFailed detail=\(tf.message.prefix(80), privacy: .public)")
+                    case .unknown(let m):
+                        session.failureReason = failure
+                        Log.session.warning("[SSH_FAILURE] type=unknown msg=\(m.prefix(80), privacy: .public)")
                     }
-                    self.isShowingAuthDialog = true
-                    defer { self.isShowingAuthDialog = false }
-                    // State machine: at most dialog -> reconnect -> (fail) ->
-                    // cleanup+reconnect -> (fail) -> STOP.
-                    if self.authRetryState == .dialogShown, self.authRetryTabID == tab.id {
-                        Log.session.error("[AUTH] reconnect failed; cleaning stale SSH state and retrying once")
-                        OpenSSHBackend.cleanupOrphanedMuxes()
-                        self.authRetryState = .cleanupDone
-                        guard self.tabs.contains(where: { $0.id == tab.id }) else { return }
-                        await self.connectTab(tab, passwordOverride: nil, resetAuthRetry: false)
-                        return
-                    }
-                    if self.authRetryState == .cleanupDone, self.authRetryTabID == tab.id {
-                        Log.session.error("[AUTH] giving up: reconnect failed after cleanup. Manual reconnect required.")
-                        self.authRetryState = .idle
-                        self.authRetryTabID = nil
-                        return
-                    }
-                    self.authRetryState = .dialogShown
-                    self.authRetryTabID = tab.id
-                    guard self.tabs.contains(where: { $0.id == tab.id }) else { return }
-                    guard let password = await self.promptForPassword(
-                        username: tab.hostItem.resolveUsername(),
-                        host: tab.hostItem.host
-                    ) else {
-                        Log.session.error("[AUTH] dialog cancelled/empty")
-                        self.authRetryState = .idle
-                        self.authRetryTabID = nil
-                        return
-                    }
-                    Log.session.info("[AUTH] dialog returned password len=\(password.count) fp=\(OpenSSHBackend.passwordFingerprint(password))")
-                    // Reconnect with the typed password; on success it is
-                    // persisted to the credential source.
-                    await self.connectTab(tab, passwordOverride: password, resetAuthRetry: false)
                 }
             }
         )
@@ -698,12 +946,18 @@ final class SessionManager {
         session.stateObservationTask?.cancel()
         let token = UUID()
         session.stateObserverToken = token
+        let capturedGen = session.generation
         session.stateObservationTask = Task { [weak self, weak tab, weak session] in
             guard let self, let tab, let session else { return }
             for await state in service.stateStream {
                 guard !Task.isCancelled else { break }
                 guard session.stateObserverToken == token else { return }
                 guard tab.session === session else { break }
+                // Generation 隔离：旧 service 的旧 generation 状态不回写新 session
+                guard session.generation == capturedGen else {
+                    Log.session.info("[OBSERVER] discard stale state gen=\(capturedGen.uuidString.prefix(8)) != current=\(session.generation.uuidString.prefix(8))")
+                    return
+                }
 
                 switch state {
                 case .connected:

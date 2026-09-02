@@ -18,6 +18,7 @@ enum SSHLifecyclePhase: Sendable, Equatable {
     case negotiatingSSH
     case authenticating
     case openingChannel
+    case openingPTY
     case ready
     case reconnecting(attempt: Int, max: Int)
     case failed(String)
@@ -56,13 +57,18 @@ final class SSHSessionLifecycle: ObservableObject {
 
     /// 6-hop collapse: HostItem → Config → Requirements → Profile → Coordinator → effectiveConfig → Service
     func resolve(host: HostItem) async -> ResolvedConnection? {
-        phase = .resolving
         guard case .success(let config) = SSHConnectionConfigBuilder.makeConfig(for: host) else {
             phase = .failed("resolve config")
             return nil
         }
+        return await resolve(config: config, forcedCompatibility: host.forceCompatibility == true)
+    }
+
+    /// VNext 优化：直接传入已含 ephemeralResult 的 SSHConnectionConfig，避免 HostItem 持久化 credential 覆盖 retry credential
+    func resolve(config: SSHConnectionConfig, forcedCompatibility: Bool = false) async -> ResolvedConnection? {
+        phase = .resolving
         let req = SSHRequirementsMapper.requirements(from: config)
-        let isForced = host.forceCompatibility == true
+        let isForced = forcedCompatibility
         let cached: SSHSessionCoordinator.CachedProfile? = {
             if isForced {
                 return SSHSessionCoordinator.CachedProfile(backend: .compatibility, reason: .forcedCompatibility, isValid: true)

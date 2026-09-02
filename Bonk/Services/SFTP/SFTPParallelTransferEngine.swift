@@ -249,7 +249,9 @@ enum SFTPParallelTransferEngine {
             }
             try await group.waitForAll()
         }
-        if merger.completed < totalBytes { onProgress(1.0) }
+        if merger.completed != totalBytes {
+            throw SFTPServiceError.operationFailed("Download incomplete: expected \(totalBytes) got \(merger.completed)")
+        }
     }
 
     private static func downloadShard(
@@ -419,7 +421,9 @@ enum SFTPParallelTransferEngine {
             }
             try await group.waitForAll()
         }
-        if merger.completed < totalBytes { onProgress(1.0) }
+        if merger.completed != totalBytes {
+            throw SFTPServiceError.operationFailed("Upload incomplete: expected \(totalBytes) got \(merger.completed)")
+        }
         #else
         throw SFTPServiceError.operationFailed("Citadel unavailable")
         #endif
@@ -476,7 +480,9 @@ enum SFTPParallelTransferEngine {
             }
             try await group.waitForAll()
         }
-        if merger.completed < totalBytes { onProgress(1.0) }
+        if merger.completed != totalBytes {
+            throw SFTPServiceError.operationFailed("Download incomplete: expected \(totalBytes) got \(merger.completed)")
+        }
         #else
         throw SFTPServiceError.operationFailed("Citadel unavailable")
         #endif
@@ -528,7 +534,9 @@ enum SFTPParallelTransferEngine {
             }
             try await group.waitForAll()
         }
-        if merger.completed < totalBytes { onProgress(1.0) }
+        if merger.completed != totalBytes {
+            throw SFTPServiceError.operationFailed("Upload incomplete: expected \(totalBytes) got \(merger.completed)")
+        }
     }
 
     static func parallelDownloadMultiTCP(
@@ -575,7 +583,9 @@ enum SFTPParallelTransferEngine {
             }
             try await group.waitForAll()
         }
-        if merger.completed < totalBytes { onProgress(1.0) }
+        if merger.completed != totalBytes {
+            throw SFTPServiceError.operationFailed("Download incomplete: expected \(totalBytes) got \(merger.completed)")
+        }
     }
     #endif
 }

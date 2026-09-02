@@ -16,6 +16,7 @@ import SwiftUI
     struct PaneContainerBridge: View {
         let paneState: PaneState
         let tab: TerminalTab
+        @State private var retryTask: Task<Void, Never>?
         let colorScheme: TerminalColorScheme
         let fontSize: Double
         let fontFamily: String
@@ -105,13 +106,21 @@ import SwiftUI
         /// Connect output stream with retry mechanism.
         /// Retries until both the PTY session and the terminal view exist
         /// (increasing delay, ~30s window), then attaches the output stream.
+        /// FIX: cancel previous retry task when a new connection starts (wrong→correct password)
         private func connectOutputStreamWithRetry() {
-            Task { @MainActor in
+            retryTask?.cancel()
+            retryTask = Task { @MainActor in
                 let maxRetries = 10
                 var delay: UInt64 = 100
 
                 for attempt in 0 ..< maxRetries {
+                    if Task.isCancelled { Log.session.info("[PTY-RETRY] cancelled at attempt \(attempt + 1)"); return }
+                    // If tab already failed/disconnected, no PTY will ever appear — stop retrying
+                    if let state = tab.session?.connectionState, case .disconnected = state {
+                        if let phase = tab.session?.phase, case .failed = phase { Log.session.info("[PTY-RETRY] tab failed, abort retry"); return }
+                    }
                     try? await Task.sleep(for: .milliseconds(Double(delay)))
+                    if Task.isCancelled { return }
 
                     guard let ptySession = paneState.ptySession else {
                         Log.session.info("[PTY-RETRY] No PTY session yet, retry \(attempt + 1)/\(maxRetries)")

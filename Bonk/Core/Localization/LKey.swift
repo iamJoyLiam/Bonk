@@ -625,4 +625,6 @@ enum LKey: String, CaseIterable {
     case copyBoth = "copy_both"
     case searchInTerminal = "search_in_terminal"
     case guestOperating = "guest_operating"
+    case showDetails = "show_details"
+    case hideDetails = "hide_details"
 }

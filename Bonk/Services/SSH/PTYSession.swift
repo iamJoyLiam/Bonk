@@ -121,6 +121,12 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         get { hostItemBox.withLockedValue { $0 } }
         set { hostItemBox.withLockedValue { $0 = newValue } }
     }
+    /// 全链路 generation — 与 SSHConnectionConfig.generation 互通，用于旧 Attempt 丢弃
+    private let generationBox = NIOLockedValueBox<UUID?>(nil)
+    var generation: UUID? {
+        get { generationBox.withLockedValue { $0 } }
+        set { generationBox.withLockedValue { $0 = newValue } }
+    }
 
     /// Pending PTY size — caches resize requests when SSH channel is not yet ready.
     /// Prevents window-change packets from being silently dropped during connection setup.
@@ -720,22 +726,29 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         onExit: @escaping @Sendable () -> Void,
         onOutput: (@Sendable (Data) -> Void)? = nil
     ) {
+        let capturedGeneration = generation
         serialFDBox.withLockedValue { $0 = fileDescriptor }
         ownsFDBox.withLock { $0 = false }
         processModeBox.withLock { $0 = true }
         processOutputHandlerBox.withLockedValue { $0 = onOutput }
         onUnexpectedClose = onExit
-        startReading(fileDescriptor: fileDescriptor)
+        startReading(fileDescriptor: fileDescriptor, generation: capturedGeneration)
     }
 
     private func startReading(fileDescriptor: Int32) {
+        startReading(fileDescriptor: fileDescriptor, generation: nil)
+    }
+
+    private func startReading(fileDescriptor: Int32, generation: UUID?) {
         let task = Task.detached(priority: .userInitiated) { [weak self] in
             let bufferSize = 4096
             var buffer = [UInt8](repeating: 0, count: bufferSize)
 
             while !Task.isCancelled {
-                // Wait for readable data in 100 ms slices so cancellation and
-                // disconnect stay responsive while the port stays non-blocking.
+                if let gen = generation, let currentGen = self?.generation, gen != currentGen {
+                    Log.ssh.info("[PTY] Discard stale read task: gen=\(gen.uuidString.prefix(8)) != current=\(currentGen.uuidString.prefix(8))")
+                    break
+                }
                 var pollDescriptor = pollfd(
                     fd: fileDescriptor,
                     events: Int16(POLLIN),
@@ -747,9 +760,6 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                     break
                 }
                 if pollResult == 0 { continue }
-                // POLLNVAL means the fd was closed underneath us (e.g. the
-                // transport was closed while this reader was polling); treat
-                // it as EOF instead of looping forever on an invalid fd.
                 if pollDescriptor.revents & Int16(POLLHUP | POLLERR | POLLNVAL) != 0 {
                     break
                 }
@@ -761,7 +771,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                 } else if bytesRead < 0 {
                     if errno != EINTR { break }
                 } else {
-                    break // EOF
+                    break
                 }
             }
 

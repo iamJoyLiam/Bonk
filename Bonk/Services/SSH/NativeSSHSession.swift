@@ -137,102 +137,121 @@ private final class CitadelSFTPChannel: SFTPChannel {
     func upload(_ localURL: URL, to remotePath: String, operationID: UUID, onProgress: @escaping @Sendable (Double) -> Void) async throws {
         let attrs = try FileManager.default.attributesOfItem(atPath: localURL.path)
         let total = (attrs[.size] as? UInt64) ?? 0
-        // Resume: resume if remote already has partial (single-stream)
-        if let remoteAttrs = try? await sftp.getAttributes(at: remotePath), let remoteSize = remoteAttrs.size, remoteSize > 0, remoteSize < total {
-            Log.sftp.info("[RESUME] upload resume \(remotePath) \(remoteSize)/\(total)")
-            let file = try await sftp.openFile(filePath: remotePath, flags: [.write, .create])
-            let remoteFile = SendableSFTPFile(file)
-            defer { let rf = remoteFile; Task { [rf] in try? await rf.file.close() } }
-            try await resumeSingleStreamUpload(localURL: localURL, total: total, resumeOffset: remoteSize, remoteFile: remoteFile, onProgress: onProgress)
-            return
-        } else if let remoteAttrs = try? await sftp.getAttributes(at: remotePath), let remoteSize = remoteAttrs.size, remoteSize == total, total > 0 {
-            Log.sftp.info("[RESUME] upload already complete \(remotePath) \(total)")
-            onProgress(1.0)
-            return
-        }
-        // P2: >500MB 优先 N×TCP 真并行，其次多 Channel 单 TCP，再回退单流
-        if SFTPParallelStrategy.shouldUseParallel(totalBytes: total) {
-            // 1) N×TCP 池化（独立 SSH+TCP，突破单 TCP 拥塞）
-            if let cfg = pooledConfig, let store = pooledHostKeyStore {
-                let shards = SFTPParallelStrategy.shardCount(for: total)
-                Log.sftp.info("[POOL] try N×TCP upload total=\(total) shards=\(shards)")
+        // Atomic: upload to .bonk.part, verify, then rename
+        let tempRemotePath = remotePath + ".bonk.part"
+        try? await sftp.remove(at: tempRemotePath)
+        do {
+            if SFTPParallelStrategy.shouldUseParallel(totalBytes: total) {
+                // 1) N×TCP 池化（独立 SSH+TCP，突破单 TCP 拥塞）
+                if let cfg = pooledConfig, let store = pooledHostKeyStore {
+                    let shards = SFTPParallelStrategy.shardCount(for: total)
+                    Log.sftp.info("[POOL] try N×TCP upload total=\(total) shards=\(shards)")
+                    do {
+                        let pool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
+                        defer { let p = pool; Task { [p] in for handle in p { await handle.close() } } }
+                        try await SFTPParallelTransferEngine.parallelUploadMultiTCP(
+                            handles: pool,
+                            remotePath: tempRemotePath,
+                            localURL: localURL,
+                            totalBytes: total,
+                            isCancelled: { false },
+                            onProgress: onProgress
+                        )
+                        try await verifyAndRenameRemote(tempPath: tempRemotePath, finalPath: remotePath, expectedBytes: total, sftp: sftp)
+                        if total == 0 { onProgress(1.0) }
+                        return
+                    } catch is CancellationError {
+                        try? await sftp.remove(at: tempRemotePath)
+                        throw SFTPServiceError.transferCancelled
+                    } catch let err as SFTPServiceError where err == .transferCancelled {
+                        try? await sftp.remove(at: tempRemotePath)
+                        throw err
+                    } catch {
+                        Log.sftp.warning("[POOL] N×TCP upload failed, fallback to multi-channel: \(String(describing: error))")
+                        try? await sftp.remove(at: tempRemotePath)
+                    }
+                }
+                // 2) 多 Channel 单 TCP
+                Log.sftp.info("[P2] Native upload multi-channel total=\(total)")
                 do {
-                    let pool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
-                    defer { let p = pool; Task { [p] in for handle in p { await handle.close() } } }
-                    try await SFTPParallelTransferEngine.parallelUploadMultiTCP(
-                        handles: pool,
-                        remotePath: remotePath,
+                    try await SFTPParallelTransferEngine.parallelUploadMultiChannel(
+                        sftp: sftp,
+                        remotePath: tempRemotePath,
                         localURL: localURL,
                         totalBytes: total,
                         isCancelled: { false },
                         onProgress: onProgress
                     )
+                    try await verifyAndRenameRemote(tempPath: tempRemotePath, finalPath: remotePath, expectedBytes: total, sftp: sftp)
                     if total == 0 { onProgress(1.0) }
                     return
                 } catch is CancellationError {
+                    try? await sftp.remove(at: tempRemotePath)
                     throw SFTPServiceError.transferCancelled
                 } catch let err as SFTPServiceError where err == .transferCancelled {
+                    try? await sftp.remove(at: tempRemotePath)
                     throw err
                 } catch {
-                    Log.sftp.warning("[POOL] N×TCP upload failed, fallback to multi-channel: \(String(describing: error))")
-                }
-            }
-            // 2) 多 Channel 单 TCP
-            Log.sftp.info("[P2] Native upload multi-channel total=\(total)")
-            do {
-                try await SFTPParallelTransferEngine.parallelUploadMultiChannel(
-                    sftp: sftp,
-                    remotePath: remotePath,
-                    localURL: localURL,
-                    totalBytes: total,
-                    isCancelled: { false },
-                    onProgress: onProgress
-                )
-                if total == 0 { onProgress(1.0) }
-                return
-            } catch is CancellationError {
-                throw SFTPServiceError.transferCancelled
-            } catch let err as SFTPServiceError where err == .transferCancelled {
-                throw err
-            } catch {
-                Log.sftp.warning("[P2] multiChannel upload failed, fallback to single-handle parallel: \(String(describing: error))")
-                // 回退：单 handle 并行
-                let file = try await sftp.openFile(filePath: remotePath, flags: [.write, .create, .truncate])
-                let remoteFile = SendableSFTPFile(file)
-                do {
-                    try await SFTPParallelTransferEngine.parallelUpload(
-                        localURL: localURL,
-                        remoteFile: remoteFile,
-                        totalBytes: total,
-                        isCancelled: { false },
-                        onProgress: onProgress
-                    )
-                    try? await file.close()
-                } catch {
-                    Log.sftp.warning("[P2] single-handle parallel failed, fallback to single stream: \(String(describing: error))")
+                    Log.sftp.warning("[P2] multiChannel upload failed, fallback to single-handle parallel: \(String(describing: error))")
+                    try? await sftp.remove(at: tempRemotePath)
+                    let file = try await sftp.openFile(filePath: tempRemotePath, flags: [.write, .create, .truncate])
+                    let remoteFile = SendableSFTPFile(file)
                     do {
-                        try await singleStreamUpload(localURL: localURL, total: total, remoteFile: remoteFile, onProgress: onProgress)
+                        try await SFTPParallelTransferEngine.parallelUpload(
+                            localURL: localURL,
+                            remoteFile: remoteFile,
+                            totalBytes: total,
+                            isCancelled: { false },
+                            onProgress: onProgress
+                        )
                         try? await file.close()
+                        try await verifyAndRenameRemote(tempPath: tempRemotePath, finalPath: remotePath, expectedBytes: total, sftp: sftp)
                     } catch {
-                        try? await file.close()
-                        throw error
+                        Log.sftp.warning("[P2] single-handle parallel failed, fallback to single stream: \(String(describing: error))")
+                        try? await sftp.remove(at: tempRemotePath)
+                        do {
+                            try await singleStreamUpload(localURL: localURL, total: total, remoteFile: remoteFile, onProgress: onProgress)
+                            try? await file.close()
+                            try await verifyAndRenameRemote(tempPath: tempRemotePath, finalPath: remotePath, expectedBytes: total, sftp: sftp)
+                        } catch {
+                            try? await file.close()
+                            try? await sftp.remove(at: tempRemotePath)
+                            throw error
+                        }
                     }
+                    if total == 0 { onProgress(1.0) }
+                    return
                 }
-                if total == 0 { onProgress(1.0) }
-                return
             }
-        }
-        // 单流路径
-        let file = try await sftp.openFile(filePath: remotePath, flags: [.write, .create, .truncate])
-        let remoteFile = SendableSFTPFile(file)
-        do {
-            try await singleStreamUpload(localURL: localURL, total: total, remoteFile: remoteFile, onProgress: onProgress)
-            if total == 0 { onProgress(1.0) }
-            try? await file.close()
+            // 单流路径
+            let file = try await sftp.openFile(filePath: tempRemotePath, flags: [.write, .create, .truncate])
+            let remoteFile = SendableSFTPFile(file)
+            do {
+                try await singleStreamUpload(localURL: localURL, total: total, remoteFile: remoteFile, onProgress: onProgress)
+                if total == 0 { onProgress(1.0) }
+                try? await file.close()
+                try await verifyAndRenameRemote(tempPath: tempRemotePath, finalPath: remotePath, expectedBytes: total, sftp: sftp)
+            } catch {
+                try? await file.close()
+                try? await sftp.remove(at: tempRemotePath)
+                throw error
+            }
         } catch {
-            try? await file.close()
+            try? await sftp.remove(at: tempRemotePath)
             throw error
         }
+    }
+
+    private func verifyAndRenameRemote(tempPath: String, finalPath: String, expectedBytes: UInt64, sftp: SFTPClient) async throws {
+        if expectedBytes > 0 {
+            let attrs = try await sftp.getAttributes(at: tempPath)
+            guard let size = attrs.size, size == expectedBytes else {
+                let got = attrs.size ?? 0
+                try? await sftp.remove(at: tempPath)
+                throw SFTPServiceError.operationFailed("Upload incomplete: expected \(expectedBytes) got \(got)")
+            }
+        }
+        try await sftp.rename(at: tempPath, to: finalPath, flags: 0)
     }
 
     private func singleStreamUpload(localURL: URL, total: UInt64, remoteFile: SendableSFTPFile, onProgress: @Sendable @escaping (Double) -> Void) async throws {
@@ -276,104 +295,131 @@ private final class CitadelSFTPChannel: SFTPChannel {
     func download(_ remotePath: String, to localURL: URL, operationID: UUID, onProgress: @escaping @Sendable (Double) -> Void) async throws {
         let attrs = try? await sftp.getAttributes(at: remotePath)
         let total = attrs?.size ?? 0
-        // Resume: resume if local already has partial
-        if let localAttrs = try? FileManager.default.attributesOfItem(atPath: localURL.path), let localSize = localAttrs[.size] as? UInt64, localSize > 0, localSize < total {
-            Log.sftp.info("[RESUME] download resume \(localURL.lastPathComponent) \(localSize)/\(total)")
-            let file = try await sftp.openFile(filePath: remotePath, flags: [.read])
-            let remoteFile = SendableSFTPFile(file)
-            defer { let rf = remoteFile; Task { [rf] in try? await rf.file.close() } }
-            try await resumeSingleStreamDownload(total: total, resumeOffset: localSize, remoteFile: remoteFile, localURL: localURL, onProgress: onProgress)
-            return
-        } else if let localAttrs = try? FileManager.default.attributesOfItem(atPath: localURL.path), let localSize = localAttrs[.size] as? UInt64, localSize == total, total > 0 {
-            Log.sftp.info("[RESUME] download already complete \(localURL.lastPathComponent) \(total)")
-            onProgress(1.0)
-            return
-        }
-        if total > 0, SFTPParallelStrategy.shouldUseParallel(totalBytes: total) {
-            // 1) N×TCP 真并行
-            if let cfg = pooledConfig, let store = pooledHostKeyStore {
-                let shards = SFTPParallelStrategy.shardCount(for: total)
-                Log.sftp.info("[POOL] try N×TCP download total=\(total) shards=\(shards)")
+        let tempURL = URL(fileURLWithPath: localURL.path + ".bonk.part")
+        try? FileManager.default.removeItem(at: tempURL)
+        do {
+            if total > 0, SFTPParallelStrategy.shouldUseParallel(totalBytes: total) {
+                // 1) N×TCP 真并行 -> temp
+                if let cfg = pooledConfig, let store = pooledHostKeyStore {
+                    let shards = SFTPParallelStrategy.shardCount(for: total)
+                    Log.sftp.info("[POOL] try N×TCP download total=\(total) shards=\(shards)")
+                    do {
+                        let pool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
+                        defer { let p = pool; Task { [p] in for handle in p { await handle.close() } } }
+                        try await SFTPParallelTransferEngine.parallelDownloadMultiTCP(
+                            handles: pool,
+                            remotePath: remotePath,
+                            localURL: tempURL,
+                            totalBytes: total,
+                            isCancelled: { false },
+                            onProgress: onProgress
+                        )
+                        try await verifyAndMove(tempURL: tempURL, finalURL: localURL, expectedBytes: total)
+                        if total == 0 { onProgress(1.0) }
+                        return
+                    } catch is CancellationError {
+                        try? FileManager.default.removeItem(at: tempURL)
+                        throw SFTPServiceError.transferCancelled
+                    } catch let err as SFTPServiceError where err == .transferCancelled {
+                        try? FileManager.default.removeItem(at: tempURL)
+                        throw err
+                    } catch {
+                        Log.sftp.warning("[POOL] N×TCP download failed, fallback to multi-channel: \(String(describing: error))")
+                        try? FileManager.default.removeItem(at: tempURL)
+                    }
+                }
+                // 2) 多 Channel 单 TCP -> temp
+                Log.sftp.info("[P2] Native download multi-channel total=\(total)")
                 do {
-                    let pool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
-                    defer { let p = pool; Task { [p] in for handle in p { await handle.close() } } }
-                    try await SFTPParallelTransferEngine.parallelDownloadMultiTCP(
-                        handles: pool,
+                    try await SFTPParallelTransferEngine.parallelDownloadMultiChannel(
+                        sftp: sftp,
                         remotePath: remotePath,
-                        localURL: localURL,
+                        localURL: tempURL,
                         totalBytes: total,
                         isCancelled: { false },
                         onProgress: onProgress
                     )
+                    try await verifyAndMove(tempURL: tempURL, finalURL: localURL, expectedBytes: total)
                     if total == 0 { onProgress(1.0) }
                     return
                 } catch is CancellationError {
+                    try? FileManager.default.removeItem(at: tempURL)
                     throw SFTPServiceError.transferCancelled
                 } catch let err as SFTPServiceError where err == .transferCancelled {
+                    try? FileManager.default.removeItem(at: tempURL)
                     throw err
                 } catch {
-                    Log.sftp.warning("[POOL] N×TCP download failed, fallback to multi-channel: \(String(describing: error))")
-                }
-            }
-            // 2) 多 Channel 单 TCP
-            Log.sftp.info("[P2] Native download multi-channel total=\(total)")
-            do {
-                try await SFTPParallelTransferEngine.parallelDownloadMultiChannel(
-                    sftp: sftp,
-                    remotePath: remotePath,
-                    localURL: localURL,
-                    totalBytes: total,
-                    isCancelled: { false },
-                    onProgress: onProgress
-                )
-                if total == 0 { onProgress(1.0) }
-                return
-            } catch is CancellationError {
-                throw SFTPServiceError.transferCancelled
-            } catch let err as SFTPServiceError where err == .transferCancelled {
-                throw err
-            } catch {
-                Log.sftp.warning("[P2] multiChannel download failed, fallback to single-handle: \(String(describing: error))")
-                let file = try await sftp.openFile(filePath: remotePath, flags: [.read])
-                let remoteFile = SendableSFTPFile(file)
-                do {
-                    try await SFTPParallelTransferEngine.parallelDownload(
-                        remoteFile: remoteFile,
-                        localURL: localURL,
-                        totalBytes: total,
-                        isCancelled: { false },
-                        onProgress: onProgress
-                    )
-                    try? await file.close()
-                } catch {
-                    Log.sftp.warning("[P2] single-handle parallel failed, fallback to single stream: \(String(describing: error))")
+                    Log.sftp.warning("[P2] multiChannel download failed, fallback to single-handle: \(String(describing: error))")
+                    try? FileManager.default.removeItem(at: tempURL)
+                    let file = try await sftp.openFile(filePath: remotePath, flags: [.read])
+                    let remoteFile = SendableSFTPFile(file)
                     do {
-                        try await singleStreamDownload(total: total, remoteFile: remoteFile, localURL: localURL, onProgress: onProgress)
+                        try await SFTPParallelTransferEngine.parallelDownload(
+                            remoteFile: remoteFile,
+                            localURL: tempURL,
+                            totalBytes: total,
+                            isCancelled: { false },
+                            onProgress: onProgress
+                        )
                         try? await file.close()
+                        try await verifyAndMove(tempURL: tempURL, finalURL: localURL, expectedBytes: total)
                     } catch {
-                        try? await file.close()
-                        throw error
+                        Log.sftp.warning("[P2] single-handle parallel failed, fallback to single stream: \(String(describing: error))")
+                        try? FileManager.default.removeItem(at: tempURL)
+                        do {
+                            try await singleStreamDownload(total: total, remoteFile: remoteFile, localURL: tempURL, onProgress: onProgress)
+                            try? await file.close()
+                            try await verifyAndMove(tempURL: tempURL, finalURL: localURL, expectedBytes: total)
+                        } catch {
+                            try? await file.close()
+                            try? FileManager.default.removeItem(at: tempURL)
+                            throw error
+                        }
                     }
+                    if total == 0 { onProgress(1.0) }
+                    return
                 }
-                if total == 0 { onProgress(1.0) }
-                return
             }
-        }
-        // 单流
-        let file = try await sftp.openFile(filePath: remotePath, flags: [.read])
-        let remoteFile = SendableSFTPFile(file)
-        do {
-            try await singleStreamDownload(total: total, remoteFile: remoteFile, localURL: localURL, onProgress: onProgress)
-            try? await file.close()
+            // 单流 -> temp
+            let file = try await sftp.openFile(filePath: remotePath, flags: [.read])
+            let remoteFile = SendableSFTPFile(file)
+            do {
+                try await singleStreamDownload(total: total, remoteFile: remoteFile, localURL: tempURL, onProgress: onProgress)
+                try? await file.close()
+                try await verifyAndMove(tempURL: tempURL, finalURL: localURL, expectedBytes: total)
+            } catch {
+                try? await file.close()
+                try? FileManager.default.removeItem(at: tempURL)
+                throw error
+            }
         } catch {
-            try? await file.close()
+            try? FileManager.default.removeItem(at: tempURL)
             throw error
         }
     }
 
+    private func verifyAndMove(tempURL: URL, finalURL: URL, expectedBytes: UInt64) async throws {
+        if expectedBytes > 0 {
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: tempURL.path),
+                  let size = attrs[.size] as? UInt64, size == expectedBytes else {
+                let got = (try? FileManager.default.attributesOfItem(atPath: tempURL.path)[.size] as? UInt64) ?? 0
+                throw SFTPServiceError.operationFailed("Download incomplete: expected \(expectedBytes) got \(got)")
+            }
+            if let fh = FileHandle(forReadingAtPath: tempURL.path) { try? fh.synchronizeFile(); fh.closeFile() }
+            let fd = Darwin.open(tempURL.path, O_RDONLY)
+            if fd >= 0 { _ = Darwin.fsync(fd); Darwin.close(fd) }
+        } else {
+            if let fh = FileHandle(forReadingAtPath: tempURL.path) { try? fh.synchronizeFile(); fh.closeFile() }
+        }
+        if FileManager.default.fileExists(atPath: finalURL.path) { try? FileManager.default.removeItem(at: finalURL) }
+        try FileManager.default.moveItem(at: tempURL, to: finalURL)
+    }
+
     private func singleStreamDownload(total: UInt64, remoteFile: SendableSFTPFile, localURL: URL, onProgress: @Sendable @escaping (Double) -> Void) async throws {
         FileManager.default.createFile(atPath: localURL.path, contents: nil)
-        guard let handle = FileHandle(forWritingAtPath: localURL.path) else { return }
+        guard let handle = FileHandle(forWritingAtPath: localURL.path) else {
+            throw SFTPServiceError.operationFailed("Cannot open local file for writing: \(localURL.path)")
+        }
         defer { handle.closeFile() }
         let chunkSize: UInt32 = UInt32(SFTPParallelStrategy.chunkSize(for: total))
         let pipelineDepth: Int = SFTPParallelStrategy.pipelinePerShard(shards: 1, totalBytes: total)
@@ -418,9 +464,9 @@ private final class CitadelSFTPChannel: SFTPChannel {
             }
             try await group.waitForAll()
         }
-        if total == 0 { onProgress(1.0) }
-        if lastProgress < 1.0 {
-            onProgress(1.0)
+        if total == 0 { onProgress(1.0) } else if lastProgress < 1.0, nextWriteOffset == total { onProgress(1.0) }
+        if total > 0, nextWriteOffset != total {
+            throw SFTPServiceError.operationFailed("Download incomplete singleStream: expected \(total) got \(nextWriteOffset)")
         }
     }
 

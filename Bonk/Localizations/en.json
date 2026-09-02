@@ -579,5 +579,7 @@
   "search_in_terminal": "Search in terminal",
   "guest_operating": "Guest is operating — host input paused",
   "zmodem": "Zmodem (rz/sz) File Transfer",
-  "zmodem_desc": "Only show when remote supports rz/sz, off by default to avoid confusion"
+  "zmodem_desc": "Only show when remote supports rz/sz, off by default to avoid confusion",
+  "show_details": "Show Details",
+  "hide_details": "Hide Details"
 }

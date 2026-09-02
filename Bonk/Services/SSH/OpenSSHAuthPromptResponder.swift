@@ -25,6 +25,10 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
     private let lock = NSLock()
     private var promptBuffer = ""
     private var credentials: [OpenSSHPasswordCredential]
+    private var autoAnsweredCount = 0
+    private let maxAutoAnswers = 1 // 一进程只自动送1次：同进程二连击同错密会耗尽 NumberOfPasswordPrompts=2，二次应走新进程重试
+    private var lastSentAt = Date.distantPast
+    private let id = String(UUID().uuidString.prefix(8))
     /// Generic `Password:` prompts are ambiguous when a ProxyCommand is
     /// active. Only use them for single-hop commands that explicitly allow
     /// automatic password submission.
@@ -80,11 +84,23 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
 
     func observe(_ data: Data) {
         guard let text = String(data: data, encoding: .utf8), !text.isEmpty else { return }
-
+        let preview = String(text.prefix(80)).replacingOccurrences(of: "\n", with: "\\n").replacingOccurrences(of: "\r", with: "\\r")
+        Log.ssh.info("[RESPONDER observe] raw=\(preview, privacy: .public) len=\(text.count)")
+        var isMatch = false
+        var candidateCopy = ""
         lock.lock()
         promptBuffer.append(text)
         let normalized = Self.stripANSI(promptBuffer)
-        let suffix = String(normalized.suffix(256))
+        // P1: 行式解析，只看最后一行是否以 password: 结尾，避免 suffix 跨 banner 误判导致双发
+        let lines = normalized.components(separatedBy: "\n")
+        let lastLine = lines.last ?? normalized
+        let lastTrimmed = lastLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lastByCR = normalized.components(separatedBy: "\r").last?.trimmingCharacters(in: .whitespacesAndNewlines) ?? lastTrimmed
+        let candidate = lastTrimmed.isEmpty ? lastByCR : lastTrimmed
+        isMatch = self.matchesPasswordPrompt(candidate)
+        candidateCopy = candidate
+        let suffixPreview = candidate.suffix(80).replacingOccurrences(of: "\n", with: "\\n").replacingOccurrences(of: "\r", with: "\\r")
+        Log.ssh.info("[RESPONDER] lastLine=\(suffixPreview, privacy: .public) matches=\(isMatch)")
         lock.unlock()
 
         // A manually typed password is pending: decide acceptance over a short
@@ -116,17 +132,11 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
             // else: keep waiting for the rejection signal within the window.
         }
 
-        if matchesPasswordPrompt(suffix) {
-            if respondPasswordIfAvailable(for: suffix) {
+        if isMatch {
+            if respondPasswordIfAvailable(for: candidateCopy) {
                 return
             }
-
-            // No saved credential left — the prompt stays visible and the
-            // user types the password into the terminal. Keystrokes are
-            // captured for the credential-update flow, but only for host-auth
-            // prompts (containing `user@host`); sudo/passwd/mysql prompts
-            // never contain a host, so they can never be mistaken.
-            if promptContainsAuthHost(suffix) {
+            if promptContainsAuthHost(candidateCopy) {
                 awaitingManualPassword = true
                 manualPasswordBuffer = ""
                 captureExpiresAt = Date().addingTimeInterval(Self.captureTimeout)
@@ -182,28 +192,47 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
     @discardableResult
     private func respondPasswordIfAvailable(for prompt: String) -> Bool {
         lock.lock()
-        let promptLowercased = prompt.lowercased()
-        let credentialIndex = credentials.firstIndex {
-            let userHost = "\($0.username)@\($0.host)".lowercased()
-            return promptLowercased.contains(userHost)
-        } ?? (allowUnscopedPassword && credentials.count == 1 ? 0 : nil)
-
-        guard let credentialIndex else {
+        // Dedup: same prompt within 800ms (chunked banner+password) should not double-send
+        if Date().timeIntervalSince(lastSentAt) < 0.8 {
             lock.unlock()
+            Log.ssh.info("[RESPONDER \(self.id)] dedup skip prompt=\(prompt.suffix(40), privacy: .public)")
             return false
         }
+        let promptLowercased = prompt.lowercased()
+        let credentialIndex = self.credentials.firstIndex {
+            let userHost = "\($0.username)@\($0.host)".lowercased()
+            return promptLowercased.contains(userHost)
+        } ?? (self.allowUnscopedPassword && self.credentials.count >= 1 ? 0 : nil)
 
-        let credential = credentials.remove(at: credentialIndex)
-        promptBuffer = ""
+        guard let credentialIndex else {
+            let av = self.autoAnsweredCount
+            let cnt = self.credentials.count
+            lock.unlock()
+            Log.ssh.info("[RESPONDER \(self.id)] no credential for prompt=\(prompt.suffix(80), privacy: .public) av=\(av) cnt=\(cnt)")
+            return false
+        }
+        guard self.autoAnsweredCount < self.maxAutoAnswers else {
+            lock.unlock()
+            Log.ssh.info("[RESPONDER \(self.id)] maxAutoAnswers hit")
+            return false
+        }
+        let credential = self.credentials[credentialIndex]
+        let fp = OpenSSHBackend.passwordFingerprint(credential.password)
+        Log.ssh.info("[RESPONDER \(self.id)] sending password fp=\(fp, privacy: .public) len=\(credential.password.count) av=\(self.autoAnsweredCount) prompt=\(prompt.suffix(60), privacy: .public)")
+        self.promptBuffer = ""
+        self.autoAnsweredCount += 1
+        self.lastSentAt = Date()
+        // 送过即删：避免同进程内二次自动送同错密耗尽 NumberOfPasswordPrompts
+        self.credentials.remove(at: credentialIndex)
         lock.unlock()
 
-        write(Data((credential.password + "\n").utf8))
+        write(Data((credential.password + "\r").utf8))
         return true
     }
 
     private func matchesPasswordPrompt(_ text: String) -> Bool {
         text.range(
-            of: #"(?i)(password|passphrase)\s*:\s*$"#,
+            of: #"(?i)(password|passphrase|verification code|otp|token|2fa).*:\s*$"#,
             options: .regularExpression
         ) != nil
     }

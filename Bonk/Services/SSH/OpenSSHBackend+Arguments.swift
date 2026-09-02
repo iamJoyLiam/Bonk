@@ -29,10 +29,14 @@ extension OpenSSHBackend {
     }
 
     func commonOpenSSHArguments(additionalOptions: [String], attemptID: String) -> [String] {
-        var args: [String] = [
-            "-o", "ControlMaster=auto",
-            "-o", "ControlPersist=300",
-            "-o", "ControlPath=\(controlPath)",
+        var args: [String] = []
+        if config.bypassControlMaster {
+            args += ["-o", "ControlMaster=no", "-o", "ControlPath=none"]
+        } else {
+            args += ["-o", "ControlMaster=auto", "-o", "ControlPersist=300", "-o", "ControlPath=\(controlPath)"]
+        }
+        args += [
+            "-o", "StrictHostKeyChecking=accept-new",
             "-o", "StrictHostKeyChecking=accept-new",
             "-o", "UserKnownHostsFile=\(knownHostsPath)",
             "-o", "GlobalKnownHostsFile=/dev/null",
@@ -110,8 +114,12 @@ extension OpenSSHBackend {
         if let jumpPassword = password(from: jumpHost.authMethod) {
             let askpassPath = writeAskPassScript(jumpPassword, attemptID: attemptID, host: jumpHost.host, username: jumpHost.username)
             jumpAskpassPath = askpassPath
-            command = "env SSH_ASKPASS=\(Self.shellQuote(askpassPath)) SSH_ASKPASS_REQUIRE=force " + command
-            Log.ssh.info("[ASKPASS] attempt=\(attemptID) script=\(askpassPath) host=\(jumpHost.host) username=\(jumpHost.username) passwordLength=\(jumpPassword.count) fp=\(Self.passwordFingerprint(jumpPassword))")
+            command = "env SSH_ASKPASS=\(Self.shellQuote(askpassPath)) SSH_ASKPASS_REQUIRE=force DISPLAY=:0 " + command
+            Log.ssh.info("[ASKPASS] attempt=\(attemptID) script=\(askpassPath) host=\(jumpHost.host) username=\(jumpHost.username) passwordLength=\(jumpPassword.count) fp=\(Self.passwordFingerprint(jumpPassword)) DISPLAY=:0")
+            // 跳板机 askpass 同样要求无 stdout 污染（cat secret 版）
+            if let data = try? Data(contentsOf: URL(fileURLWithPath: askpassPath)), let txt = String(data: data, encoding: .utf8), !(txt.contains("cat \"") || txt.contains("printf '%s\\n'")) {
+                Log.ssh.error("[ASKPASS] jump script polluted \(txt.prefix(120), privacy: .public)")
+            }
         }
         Log.ssh.info("[JUMP] ProxyCommand: \(command)")
         return command

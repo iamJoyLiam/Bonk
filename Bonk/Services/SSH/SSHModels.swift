@@ -20,6 +20,10 @@ public struct SSHConnectionConfig: Sendable, Hashable {
     public let baseReconnectDelay: Duration
     /// VNext — per-endpoint algorithm overrides for legacy hosts (T3.1). Nil = system defaults.
     public let algorithmRequirements: SSHAlgorithmRequirements?
+    /// 重试正密时强制旁路 ControlMaster，避免失败后 Master 复用导致正密也 Permission（进程级缓存）
+    public let bypassControlMaster: Bool
+    /// 全链路 generation — 穿透 SessionManager → SSHNetworkService → OpenSSHBackend → PTYSession，用于丢弃旧 Attempt 回写
+    public let generation: UUID?
 
     public init(
         host: String,
@@ -29,7 +33,9 @@ public struct SSHConnectionConfig: Sendable, Hashable {
         jumpHost: SSHJumpHostConfig? = nil,
         maxReconnectAttempts: Int = 5,
         baseReconnectDelay: Duration = .seconds(1),
-        algorithmRequirements: SSHAlgorithmRequirements? = nil
+        algorithmRequirements: SSHAlgorithmRequirements? = nil,
+        bypassControlMaster: Bool = false,
+        generation: UUID? = nil
     ) {
         self.host = host
         self.port = port
@@ -39,6 +45,8 @@ public struct SSHConnectionConfig: Sendable, Hashable {
         self.maxReconnectAttempts = maxReconnectAttempts
         self.baseReconnectDelay = baseReconnectDelay
         self.algorithmRequirements = algorithmRequirements
+        self.bypassControlMaster = bypassControlMaster
+        self.generation = generation
     }
 }
 
@@ -131,9 +139,10 @@ public enum SSHConnectionPhase: Sendable, Equatable {
     case resolving
     case connectingTransport
     case negotiatingSSH
-    case authenticating
+    case authenticating // 密码/KbdInteractive 阶段，未经此阶段不得直接 ready
     case fallbacking(destination: SSHBackendType) // Hybrid: Native→Compatibility
     case openingChannel
+    case openingPTY // PTY 已创建但认证结果待定，ready 前最后一道门限
     case ready // SSH usable, PTY-agnostic (SFTP/Exec may use without PTY)
     case failed(String)
     case reconnecting(attempt: Int, maxAttempts: Int)
@@ -145,7 +154,7 @@ public enum SSHConnectionPhase: Sendable, Equatable {
 
     public var isConnecting: Bool {
         switch self {
-        case .resolving, .connectingTransport, .negotiatingSSH, .authenticating, .fallbacking, .openingChannel: return true
+        case .resolving, .connectingTransport, .negotiatingSSH, .authenticating, .fallbacking, .openingChannel, .openingPTY: return true
         default: return false
         }
     }

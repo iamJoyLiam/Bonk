@@ -106,6 +106,13 @@ struct TerminalTabView: View {
             .onDisappear {
                 TerminalSearchState.isActive = false
             }
+            .sheet(item: $sessionManager.authRetryRequest) { request in
+                AuthRetrySheet(host: request.host, rawError: request.rawError, lastAttemptPassword: request.lastAttemptPassword, onRetry: { host in sessionManager.completeAuthRetry(with: host) }, onCancel: { sessionManager.cancelAuthRetry() }, onEditFull: { sessionManager.hostToEdit = request.host; sessionManager.cancelAuthRetry() })
+                    .environment(sessionManager.modelContext.map { _ in I18n.shared } ?? I18n.shared)
+            }
+            .sheet(item: $sessionManager.hostToEdit) { host in
+                AddHostSheet(existingHost: host) { _ in sessionManager.hostToEdit = nil }
+            }
     }
 
     private var mainView: some View {

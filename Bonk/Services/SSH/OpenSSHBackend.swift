@@ -19,6 +19,7 @@ import os.log
 /// so MFA is normally completed once per target session.
 final class OpenSSHBackend: @unchecked Sendable {
     let config: SSHConnectionConfig
+    let generation: UUID
 
     private let lock = NSLock()
     private var activeProcess: OpenSSHProcessTransport?
@@ -41,7 +42,14 @@ final class OpenSSHBackend: @unchecked Sendable {
 
     init(config: SSHConnectionConfig) throws {
         self.config = config
-        controlPath = SocketNaming.controlPath(host: config.host, port: config.port, username: config.username)
+        self.generation = config.generation ?? UUID()
+        if config.bypassControlMaster {
+            let fresh = "/tmp/bonk-ssh-retry-\(UUID().uuidString).sock"
+            controlPath = fresh
+            Log.ssh.info("[CONTROLMASTER] bypass enabled, fresh controlPath=\(fresh, privacy: .public)")
+        } else {
+            controlPath = SocketNaming.controlPath(host: config.host, port: config.port, username: config.username)
+        }
         knownHostsPath = try Self.prepareKnownHostsPath()
         try prepareIdentityFiles()
     }
@@ -49,16 +57,20 @@ final class OpenSSHBackend: @unchecked Sendable {
     // MARK: - Terminal
 
     /// Open an interactive terminal.
+    /// Typed failure path: `onFailure` receives `SSHFailure` for Recovery gate; `onError` kept for legacy UI string.
     func openPTY(
         cols: Int,
         rows: Int,
         termType: String,
         onExit: @escaping @Sendable () -> Void,
-        onError: (@Sendable (String) -> Void)? = nil
+        onError: (@Sendable (String) -> Void)? = nil,
+        onFailure: (@Sendable (SSHFailure) -> Void)? = nil
     ) throws -> PTYSession {
         let attemptID = UUID().uuidString
         var environment: [String: String] = [:]
-        if let targetPassword = password(from: config.authMethod) {
+        // PTY 统一走 responder TTY 直输（hook 已验证 + 手点触发器 SUCCESS），askpass 仅用于非 PTY 的 executeCommand/sftp
+        let useAskPassForPTY = false
+        if let targetPassword = password(from: config.authMethod), useAskPassForPTY {
             let askpassPath = writeAskPassScript(
                 targetPassword,
                 attemptID: attemptID,
@@ -68,7 +80,20 @@ final class OpenSSHBackend: @unchecked Sendable {
             targetAskpassPath = askpassPath
             environment["SSH_ASKPASS"] = askpassPath
             environment["SSH_ASKPASS_REQUIRE"] = "force"
-            Log.ssh.info("[ASKPASS] attempt=\(attemptID) script=\(askpassPath) host=\(self.config.host) username=\(self.config.username) passwordLength=\(targetPassword.count) fp=\(Self.passwordFingerprint(targetPassword))")
+            environment["DISPLAY"] = ":0"
+            // 验证脚本内容：仅允许 cat secret + printf 换行，无其他 stdout（logger 仅写 syslog）
+            if let scriptData = try? Data(contentsOf: URL(fileURLWithPath: askpassPath)),
+               let scriptText = String(data: scriptData, encoding: .utf8) {
+                let lines = scriptText.components(separatedBy: "\n").filter { !$0.isEmpty && !$0.hasPrefix("#") }
+                let isCatVersion = scriptText.contains("cat \"") && scriptText.contains("printf '\\n'")
+                let isInlineVersion = scriptText.contains("printf '%s\\n'")
+                if !(isCatVersion || isInlineVersion) || !(lines.count == 3 || lines.count == 4) {
+                    Log.ssh.error("[ASKPASS] script polluted attempt=\(attemptID, privacy: .public) lines=\(lines.count) text=\(scriptText.prefix(200), privacy: .public)")
+                } else {
+                    Log.ssh.info("[ASKPASS] script verified clean attempt=\(attemptID, privacy: .public) catVersion=\(isCatVersion)")
+                }
+            }
+            Log.ssh.info("[ASKPASS] attempt=\(attemptID) script=\(askpassPath) host=\(self.config.host) username=\(self.config.username) passwordLength=\(targetPassword.count) fp=\(Self.passwordFingerprint(targetPassword)) DISPLAY=:0 SSH_ASKPASS_REQUIRE=force")
         }
 
         let arguments = sshArguments(
@@ -85,9 +110,10 @@ final class OpenSSHBackend: @unchecked Sendable {
             termType: termType,
             environment: environment
         )
-        Log.ssh.info("[CONNECT] attempt=\(attemptID) processPID=\(process.processID) host=\(self.config.host):\(self.config.port) username=\(self.config.username)")
+        Log.ssh.info("[CONNECT] attempt=\(attemptID) processPID=\(process.processID) host=\(self.config.host):\(self.config.port) username=\(self.config.username) gen=\(self.generation.uuidString.prefix(8))")
         let session = PTYSession()
-        let responder = makeAuthResponder(process: process, allowInteractivePrompt: false)
+        session.generation = generation
+        let responder = makeAuthResponder(process: process, allowInteractivePrompt: true)
         responder.onManualPasswordVerified = { [weak self] password in
             self?.onManualPasswordVerified?(password)
         }
@@ -99,22 +125,97 @@ final class OpenSSHBackend: @unchecked Sendable {
 
         session.setProcessCleanup { [weak process] in process?.close() }
         session.inputTap = { [weak responder] bytes in responder?.observeInput(bytes) }
+        // Secure log: authType / credential source / pw len+fp (no plaintext)
+        let authDesc: String
+        switch config.authMethod {
+        case .password(let p): authDesc = "password(len=\(p.count) fp=\(Self.passwordFingerprint(p)))"
+        case .privateKey(let pem): authDesc = "privateKey(pemLen=\(pem.count))"
+        case .certificate(let k, let c): authDesc = "certificate(kLen=\(k.count) cLen=\(c.count))"
+        case .secureEnclaveKey(let t): authDesc = "secureEnclave(\(t))"
+        }
+        Log.ssh.info("[OPENSSH-CONFIG] host=\(self.config.host):\(self.config.port) user=\(self.config.username) authType=\(authDesc, privacy: .public) jump=\(self.config.jumpHost?.host ?? "nil", privacy: .public) attempt=\(attemptID, privacy: .public)")
         let ptyTail = OSAllocatedUnfairLock<String>(initialState: "")
+        let stderrTail = OSAllocatedUnfairLock<String>(initialState: "")
+        // 记录 attempt 供 onExit 关联日志（避免 11s 后 SIGHUP 被误判为 auth）
+        let capturedAttemptID = attemptID
+        let capturedPID = process.processID
         session.startProcess(
             fileDescriptor: process.masterFD,
             onExit: {
                 let tail = ptyTail.withLock { String($0.suffix(4096)) }
+                let errTail = stderrTail.withLock { String($0.suffix(4096)) }
+                // wasUserClosed 来自 PTYSession.userClosedBox（close() 置 true 时 onUnexpectedClose 不会回调，但此处为保险）
+                let wasClosed = session.isClosed
+                // 同步尝试取已缓存的 exitStatus，否则回落 1；异步 waitForExit 会在后台更新但此处需同步判定以避免 400ms 窗口误判
+                // 为精确，尝试非阻塞地取同步值（若 reap 已完成），否则用 1 兜底，后续 handleTypedFailure 会结合 wasClosed 二次校验
+                let status: Int32 = 1
+                let typed: SSHFailure? = SSHFailureClassifier.classify(tail: tail, stderr: errTail, terminationStatus: status, wasUserClosed: wasClosed)
+                Log.ssh.info("[PTY_EXIT] attempt=\(capturedAttemptID, privacy: .public) pid=\(capturedPID) wasClosed=\(wasClosed) status=\(status) tailPrefix=\(tail.prefix(80), privacy: .public)")
+                let legacy: SSHProcessFailure? = SSHProcessFailureClassifier.classify(tail: tail, stderr: errTail, terminationStatus: status, wasUserClosed: false)
+                if let typed {
+                    Log.ssh.info("[SSH_FAILURE] type=\(typed.typeString, privacy: .public) backend=openssh host=\(self.config.host, privacy: .public)")
+                    switch typed {
+                    case .authentication(let af):
+                        let display = SSHErrorMessageParser.explain(tail + "\n" + errTail, host: self.config.host, jumpHost: self.config.jumpHost?.host) ?? af.message
+                        Log.ssh.error("[PTY] authFailed: \(display, privacy: .public) rawTail=\(tail.prefix(200), privacy: .public)")
+                        if onFailure != nil {
+                            onFailure?(.authentication(af))
+                        } else {
+                            onError?(display)
+                        }
+                        return
+                    case .cancelled:
+                        Log.ssh.info("[SSH_FAILURE] type=cancelled backend=openssh")
+                        onFailure?(.cancelled)
+                        onExit()
+                        return
+                    case .hostKey(let m):
+                        Log.ssh.error("[SSH_FAILURE] type=hostKey backend=openssh msg=\(m, privacy: .public)")
+                        onFailure?(.hostKey(m))
+                        onError?(m)
+                        // hostKey 不恢复，但仍需让上层关闭，RECOVERY_GATE 会 block
+                        onExit()
+                        return
+                    case .transport(let tf):
+                        Log.ssh.error("[SSH_FAILURE] type=transport backend=openssh msg=\(tf.message, privacy: .public)")
+                        onFailure?(typed)
+                        // transport 允许 recovery，落到 onExit
+                        break
+                    case .unknown(let m):
+                        Log.ssh.error("[SSH_FAILURE] type=unknown backend=openssh msg=\(m, privacy: .public)")
+                        onFailure?(typed)
+                        break
+                    }
+                } else if let legacy = legacy {
+                    // fallback to legacy classifier for any edge missed by typed
+                    switch legacy {
+                    case .authentication(let msg):
+                        let typedAF: SSHFailure = .authentication(.permissionDenied(msg))
+                        Log.ssh.info("[SSH_FAILURE] type=authentication backend=openssh (legacy)")
+                        let display = SSHErrorMessageParser.explain(tail + "\n" + errTail, host: self.config.host, jumpHost: self.config.jumpHost?.host) ?? msg
+                        onFailure?(typedAF)
+                        onError?(display)
+                        return
+                    case .cancelled:
+                        onFailure?(.cancelled)
+                        onExit()
+                        return
+                    default: break
+                    }
+                }
                 if let message = Self.extractConnectionError(from: tail) {
-                    Log.ssh.error("[PTY] Session failed: \(message)")
+                    Log.ssh.error("[PTY] Session failed (fallback): \(message, privacy: .public)")
                     onError?(SSHErrorMessageParser.explain(tail, host: self.config.host, jumpHost: self.config.jumpHost?.host) ?? message)
                 } else if !tail.isEmpty {
-                    Log.ssh.error("[PTY] Session exited. Raw tail:\n\(tail)")
+                    Log.ssh.error("[PTY] Session exited. Raw tail:\n\(tail, privacy: .public)")
                 }
                 onExit()
             },
             onOutput: { data in
                 responder.observe(data)
-                ptyTail.withLock { $0.append(String(data: data, encoding: .utf8) ?? "") }
+                let str = String(data: data, encoding: .utf8) ?? ""
+                ptyTail.withLock { $0.append(str) }
+                stderrTail.withLock { $0.append(str) }
             }
         )
         return session
@@ -262,20 +363,21 @@ final class OpenSSHBackend: @unchecked Sendable {
         for file in ([targetIdentityFile, targetCertificateFile, jumpIdentityFile, jumpCertificateFile] as [URL?]).compactMap(\.self) {
             try? FileManager.default.removeItem(at: file)
         }
-        if let askpass = jumpAskpassPath { try? FileManager.default.removeItem(atPath: askpass) }
-        if let askpass = targetAskpassPath { try? FileManager.default.removeItem(atPath: askpass) }
+        if let askpass = jumpAskpassPath { try? FileManager.default.removeItem(atPath: askpass); try? FileManager.default.removeItem(atPath: askpass + ".secret") }
+        if let askpass = targetAskpassPath { try? FileManager.default.removeItem(atPath: askpass); try? FileManager.default.removeItem(atPath: askpass + ".secret") }
         targetIdentityFile = nil; targetCertificateFile = nil; jumpIdentityFile = nil; jumpCertificateFile = nil
         jumpAskpassPath = nil; targetAskpassPath = nil
     }
 
     // MARK: - Helpers (kept here; arguments/identity/askpass/control in extensions)
 
-    func makeAuthResponder(process: OpenSSHProcessTransport, allowInteractivePrompt: Bool) -> OpenSSHAuthPromptResponder {
+    func makeAuthResponder(process: OpenSSHProcessTransport, allowInteractivePrompt: Bool, includePassword: Bool = true) -> OpenSSHAuthPromptResponder {
         var authUserHosts: [String] = []
         if let jumpHost = config.jumpHost { authUserHosts.append("\(jumpHost.username)@\(jumpHost.host)") }
         authUserHosts.append("\(config.username)@\(config.host)")
+        let effectiveCreds = includePassword ? authCredentials() : [] // askpass 接管时，stdin 不再自动回显 password，避免双写污染
         return OpenSSHAuthPromptResponder(
-            credentials: authCredentials(),
+            credentials: effectiveCreds,
             authUserHosts: authUserHosts,
             allowInteractivePrompt: allowInteractivePrompt,
             allowUnscopedPassword: allowInteractivePrompt && config.jumpHost == nil,

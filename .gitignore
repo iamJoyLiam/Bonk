@@ -114,3 +114,5 @@ bonk-mac-ffi/target/
 *.db
 bonk.db
 
+*.profraw
+default.profraw

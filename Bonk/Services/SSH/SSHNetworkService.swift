@@ -81,6 +81,11 @@ public actor SSHNetworkService {
     }
 
     private var lastPTYConfig: PTYConfig?
+    private var lastSuccessfulConnectionAt: Date?
+    /// Last typed failure for gate & debug — set by handleTypedFailure
+    private var pendingFailure: SSHFailure?
+    /// Callback for SessionManager to present AuthRetrySheet on typed auth failure (including reconnect PTYs)
+    private var onAuthFailureHandler: (@Sendable (SSHFailure) -> Void)?
 
     /// PTY session created after reconnect — SessionManager consumes this.
     public private(set) var pendingPTYSession: PTYSession?
@@ -121,7 +126,10 @@ public actor SSHNetworkService {
             authMethod: config.authMethod,
             jumpHost: config.jumpHost,
             maxReconnectAttempts: resolvedAttempts,
-            baseReconnectDelay: config.baseReconnectDelay
+            baseReconnectDelay: config.baseReconnectDelay,
+            algorithmRequirements: config.algorithmRequirements,
+            bypassControlMaster: config.bypassControlMaster,
+            generation: config.generation
         )
         self.config = config
     }
@@ -139,8 +147,12 @@ public actor SSHNetworkService {
         }
 
         self.config = config
-        currentAttemptID = UUID()
-        Log.ssh.info("[CONNECT] new attemptID=\(self.currentAttemptID.uuidString.prefix(8), privacy: .public) host=\(config.host, privacy: .public)")
+        pendingFailure = nil
+        // 全链路 generation 穿透：若 config 携带 generation 则复用，否则新生成（保证旧 Attempt 可被丢弃）
+        if let gen = config.generation { currentAttemptID = gen } else { currentAttemptID = UUID() }
+        // 新连接清门控 — 60s gate 仅对旧 authentication 失败生效，新配置/Ephemeral 需重置
+        await supervisor.reset()
+        Log.ssh.info("[CONNECT] new attemptID=\(self.currentAttemptID.uuidString.prefix(8), privacy: .public) host=\(config.host, privacy: .public) gen=\(config.generation?.uuidString.prefix(8) ?? "nil", privacy: .public)")
         usesOpenSSHTransport = false
         try? await sftpNativeClient?.close()
         sftpNativeClient = nil
@@ -158,9 +170,8 @@ public actor SSHNetworkService {
                     let backend = try OpenSSHBackend(config: config)
                     openSSHBackend = backend
                     usesOpenSSHTransport = true
-                    connectionState = .connected
-                    stateContinuation.yield(.connected)
-                    Log.ssh.info("[CONNECT] Using system OpenSSH transport")
+                    // 修复：移除乐观 .connected — 仅置 .connecting，真正 ready 由 finalizeConnection 的 PTY 门限后 setPhase(.ready) 决定
+                    Log.ssh.info("[CONNECT] Using system OpenSSH transport (pending PTY, not yet connected)")
                     configureSupervisorForCurrentConnection()
                     startWakeMonitoring()
                     startNetworkMonitor()
@@ -292,8 +303,12 @@ public actor SSHNetworkService {
     // MARK: - Exec
 
     /// Execute a command via a separate SSH exec channel (no PTY).
+    /// P0: 仅 ready 状态允许业务 command，避免 authenticating/openingPTY 阶段与主 PTY 抢 stdin 导致双 responder
     /// Returns clean stdout with no ANSI codes, no prompt, no echo.
     public func executeCommand(_ command: String) async throws -> String {
+        guard case .connected = connectionState else {
+            throw SSHServiceError.notConnected
+        }
         #if os(macOS)
             if usesOpenSSHTransport, let openSSHBackend {
                 // Commands normally finish in seconds; a half-open connection
@@ -361,7 +376,8 @@ public actor SSHNetworkService {
         cols: Int = 80,
         rows: Int = 24,
         termType: String = "xterm-256color",
-        onError: (@Sendable (String) -> Void)? = nil
+        onError: (@Sendable (String) -> Void)? = nil,
+        onFailure: (@Sendable (SSHFailure) -> Void)? = nil
     ) async throws -> PTYSession {
         let capturedAttemptID = currentAttemptID
         #if os(macOS)
@@ -381,9 +397,15 @@ public actor SSHNetworkService {
                     Task { @MainActor in
                         onError?(message)
                     }
+                } onFailure: { [weak self] failure in
+                    Task { await self?.handleTypedFailure(failure) }
+                    Task { @MainActor in onFailure?(failure) }
+                    // legacy bridge: also forward String for existing SessionManager handler
+                    Task { @MainActor in onError?(failure.message) }
                 }
                 lastPTYConfig = PTYConfig(cols: cols, rows: rows, termType: termType)
                 activePTYSession = session
+                lastSuccessfulConnectionAt = Date()
                 session.onWriteFailed = { [weak self] in
                     guard let self, self.attemptIDBox.withLockedValue { $0 } == capturedAttemptID else { return }
                     Task { await self.supervisor.requestRecovery(reason: .writeFailed) }
@@ -396,6 +418,7 @@ public actor SSHNetworkService {
 
         lastPTYConfig = PTYConfig(cols: cols, rows: rows, termType: termType)
         let session = PTYSession()
+        session.generation = capturedAttemptID
         session.onWriteFailed = { [weak self] in
             guard let self, self.attemptIDBox.withLockedValue { $0 } == capturedAttemptID else { return }
             Task { await self.supervisor.requestRecovery(reason: .writeFailed) }
@@ -416,6 +439,48 @@ public actor SSHNetworkService {
     /// Public recovery entry for SessionManager userRequested - per-session isolation, idempotent per P0.
     public func requestRecovery(reason: RecoveryReason) async {
         await supervisor.requestRecovery(reason: reason)
+    }
+
+    /// Set handler for typed auth failures — SessionManager presents AuthRetrySheet (also for reconnect PTYs)
+    public func setAuthFailureHandler(_ handler: (@Sendable (SSHFailure) -> Void)?) {
+        onAuthFailureHandler = handler
+    }
+
+    /// Auth failure gate — cancel any recovery and forbid supervisor auto-retry until next connect.
+    public func suppressRecoveryForAuth() async {
+        await supervisor.suppressRecoveryForAuth()
+    }
+
+    /// Typed failure handler — central Recovery gate logging
+    private func handleTypedFailure(_ failure: SSHFailure) async {
+        switch failure {
+        case .authentication(let af):
+            Log.ssh.info("[SSH_FAILURE] type=authentication backend=\(self.usesOpenSSHTransport ? "openssh" : "citadel", privacy: .public) detail=\(af.message.prefix(120), privacy: .public)")
+            Log.ssh.info("[RECOVERY_GATE] blocked=true reason=authenticationFailed")
+            await self.suppressRecoveryForAuth()
+            self.pendingFailure = failure
+            self.stopWakeMonitoring()
+            // 通知 SessionManager 弹 sheet（包含 reconnect PTY 的失败）
+            if let handler = self.onAuthFailureHandler { handler(failure) }
+        case .hostKey(let msg):
+            Log.ssh.info("[SSH_FAILURE] type=hostKey backend=\(self.usesOpenSSHTransport ? "openssh" : "citadel", privacy: .public) msg=\(msg.prefix(80), privacy: .public)")
+            Log.ssh.info("[RECOVERY_GATE] blocked=true reason=hostKey")
+            await self.suppressRecoveryForAuth()
+            self.pendingFailure = failure
+            self.stopWakeMonitoring()
+        case .cancelled:
+            Log.ssh.info("[SSH_FAILURE] type=cancelled backend=\(self.usesOpenSSHTransport ? "openssh" : "citadel", privacy: .public)")
+            Log.ssh.info("[RECOVERY_GATE] blocked=true reason=cancelled")
+            await self.supervisor.suppressRecoveryForAuth()
+            self.pendingFailure = failure
+        case .transport(let tf):
+            Log.ssh.info("[SSH_FAILURE] type=transport backend=\(self.usesOpenSSHTransport ? "openssh" : "citadel", privacy: .public) detail=\(tf.message.prefix(120), privacy: .public)")
+            Log.ssh.info("[RECOVERY_GATE] blocked=false reason=transportFailed")
+            self.pendingFailure = failure
+        case .unknown(let m):
+            Log.ssh.info("[SSH_FAILURE] type=unknown backend=\(self.usesOpenSSHTransport ? "openssh" : "citadel", privacy: .public) msg=\(m.prefix(80), privacy: .public)")
+            self.pendingFailure = failure
+        }
     }
 
     public func disconnect() async {
@@ -477,6 +542,19 @@ public actor SSHNetworkService {
     private func handleNetworkChange(_ path: NWPath) async {
         guard path.status == .satisfied else { return }
         guard config != nil else { return }
+        if case .connecting = connectionState {
+            Log.ssh.info("[NETWORK] ignore networkChanged during connecting")
+            return
+        }
+        // OpenSSH 已 connected 但 PTY 尚未创建（setupPTYSession 窗口）也不触发，避免撕掉刚创建的 backend
+        if usesOpenSSHTransport, activePTYSession == nil, lastPTYConfig == nil {
+            Log.ssh.info("[NETWORK] ignore networkChanged - PTY not yet created (connect window)")
+            return
+        }
+        if let f = pendingFailure, f.isAuthentication || f.typeString == "hostKey" || f.typeString == "cancelled" {
+            Log.ssh.info("[RECOVERY_GATE] blocked=true reason=\(f.typeString, privacy: .public) handleNetworkChange suppressed")
+            return
+        }
         Log.ssh.info("[NETWORK] Network restored, probing liveness...")
         await supervisor.requestRecovery(reason: .networkChanged)
     }
@@ -599,15 +677,25 @@ public actor SSHNetworkService {
     }
 
     private func handleDisconnect() async {
+        if let f = pendingFailure {
+            switch f {
+            case .authentication, .hostKey, .cancelled:
+                Log.ssh.info("[RECOVERY_GATE] blocked=true reason=\(f.typeString, privacy: .public) handleDisconnect suppressed backend=\(self.usesOpenSSHTransport ? "openssh" : "citadel", privacy: .public)")
+                return
+            case .transport, .unknown: break
+            }
+        }
         guard let config else { return }
         guard config.maxReconnectAttempts > 0 else {
             connectionState = .disconnected
             stateContinuation.yield(.disconnected)
             return
         }
-        // All disconnects funnel through per-session supervisor - idempotent, non-blocking per P0
         await supervisor.requestRecovery(reason: .channelClosed)
     }
+
+    public func lastTypedFailure() -> SSHFailure? { pendingFailure }
+    public func clearTypedFailure() { pendingFailure = nil; lastSuccessfulConnectionAt = nil }
 
     // MARK: - P0 Wake & Probe Integration
 
@@ -668,13 +756,35 @@ public actor SSHNetworkService {
     /// OpenSSH: check ControlMaster then validate PTY; Citadel: check isConnected then PTY.
     /// Never uses kill(pid,0) or exec true as health (spec).
     private func probeLiveness() async -> Bool {
+        // 连接中（authenticating/openingPTY/ready 但尚未 failed）不探活，避免首连 5s 内 ready→failed 窗口被 wake 误判为 dead 而重连（你看到的连两遍才弹）
+        if case .connecting = connectionState {
+            Log.ssh.info("[PROBE] skip - still connecting, treat as alive")
+            return true
+        }
+        // 已知认证失败时，探活视为存活，避免 wake/network 触发用旧密码的 1/7 重连而覆盖 Sheet
+        if let f = pendingFailure, f.isAuthentication {
+            Log.ssh.info("[PROBE] skip - pending auth failure, treat as alive to suppress recovery")
+            return true
+        }
+        // 刚完成连接/重连 10s 内，ControlMaster 异步建主或 PTY 5s 认证窗口，视为 alive 避免风暴（之前 3s 过短导致连两遍）
+        if let last = lastSuccessfulConnectionAt {
+            let elapsed = Date().timeIntervalSince(last)
+            if elapsed < 10 {
+                Log.ssh.info("[PROBE] skip - within 10s grace after PTY creation elapsed=\(elapsed, privacy: .public)s, treat as alive")
+                return true
+            } else {
+                Log.ssh.info("[PROBE] grace expired elapsed=\(elapsed, privacy: .public)s")
+            }
+        } else {
+            Log.ssh.info("[PROBE] no lastSuccessAt, proceed to check")
+        }
         if usesOpenSSHTransport {
             guard let backend = openSSHBackend else {
                 Log.ssh.warning("[PROBE] openssh no backend -> dead")
                 return false
             }
             let transportAlive = await backend.checkControlMasterLiveness()
-            Log.ssh.info("[PROBE] openssh transport host=\(backend.config.host, privacy: .public) alive=\(transportAlive, privacy: .public)")
+            Log.ssh.info("[PROBE] openssh transport host=\(backend.config.host, privacy: .public) alive=\(transportAlive, privacy: .public) controlPath=\(backend.controlPath, privacy: .public)")
             guard transportAlive else { return false }
             // Transport alive -> validate Session/PTY (hard constraint 1)
             if let pty = activePTYSession {
@@ -717,15 +827,43 @@ public actor SSHNetworkService {
             openSSHBackend = nil
         }
         // Single attempt (no loop) - supervisor will retry with backoff
+        // 4-stage success: process/TCP -> auth -> PTY -> session
         do {
             if usesOpenSSHTransport {
                 try? await Task.sleep(for: .milliseconds(200))
-                let backend = try OpenSSHBackend(config: config)
+                // 诊断：当前 config 的密码指纹（用于排查 len4 残留）
+                let cfgDesc: String
+                switch config.authMethod {
+                case .password(let p): cfgDesc = "password(len=\(p.count) fp=\(OpenSSHBackend.passwordFingerprint(p)))"
+                case .privateKey(let s): cfgDesc = "privateKey(len=\(s.count))"
+                case .certificate(let k, let c): cfgDesc = "cert(k=\(k.count) c=\(c.count))"
+                case .secureEnclaveKey(let t): cfgDesc = "sece(\(t))"
+                }
+                Log.ssh.info("[RECOVERY_STEP] transportConnected try backend=openssh cfg=\(cfgDesc, privacy: .public) host=\(config.host, privacy: .public)")
+                let backend: OpenSSHBackend
+                do {
+                    // 确保 backend generation 与 newAttemptID 一致，避免旧 PTY tail 误关联
+                    let genConfig = SSHConnectionConfig(
+                        host: config.host, port: config.port, username: config.username,
+                        authMethod: config.authMethod, jumpHost: config.jumpHost,
+                        maxReconnectAttempts: config.maxReconnectAttempts, baseReconnectDelay: config.baseReconnectDelay,
+                        algorithmRequirements: config.algorithmRequirements,
+                        bypassControlMaster: config.bypassControlMaster,
+                        generation: newAttemptID
+                    )
+                    backend = try OpenSSHBackend(config: genConfig)
+                } catch {
+                    Log.ssh.warning("[RECOVERY_STEP] transportConnected=false reason=\(error.localizedDescription, privacy: .public)")
+                    return false
+                }
+                Log.ssh.info("[RECOVERY_STEP] transportConnected=true backend=openssh")
                 openSSHBackend = backend
                 usesOpenSSHTransport = true
-                connectionState = .connected
-                stateContinuation.yield(.connected)
-                Log.ssh.info("[RECOVERY] OpenSSH reconnect success")
+                pendingFailure = nil
+                // authenticationSucceeded: 进程存活且无 typed auth 失败（300ms 内 PTY 未因 auth 退出）
+                // PTY 创建阶段会通过 onFailure 设置 pendingFailure
+                var authSucceeded = true
+                var ptySession: PTYSession?
                 if let ptyConfig = lastPTYConfig {
                     do {
                         let capturedID = newAttemptID
@@ -736,27 +874,66 @@ public actor SSHNetworkService {
                                 Log.ssh.info("[RECOVERY] discard stale HUP old=\(capturedID.uuidString.prefix(8), privacy: .public)")
                                 return
                             }
-                            Task { await self.supervisor.requestRecovery(reason: .channelClosed) }
-                        } onError: { _ in }
-                        session.onWriteFailed = { [weak self] in
-                            guard let self, self.attemptIDBox.withLockedValue { $0 } == capturedID else { return }
-                            Task { await self.supervisor.requestRecovery(reason: .writeFailed) }
+                            Task { await self.handleDisconnect() }
+                        } onError: { _ in } onFailure: { [weak self] failure in
+                            Task { await self?.handleTypedFailure(failure) }
                         }
-                        activePTYSession = session
-                        pendingPTYSession = session
-                        // PTY recreated - ready will be set by state observer
+                        // 给 PTY 更长窗口：NumberOfPasswordPrompts=2 时错密需 2 轮 askpass，Permission denied 可在 4-6s 后才到（WAKE 场景）
+                        for _ in 0..<70 {
+                            if let f = self.pendingFailure, f.isAuthentication { break }
+                            if session.isClosed { break }
+                            try? await Task.sleep(for: .milliseconds(100))
+                        }
+                        if let f = self.pendingFailure, f.isAuthentication {
+                            Log.ssh.warning("[RECOVERY_STEP] authenticationSucceeded=false reason=\(f.message.prefix(80), privacy: .public)")
+                            Log.ssh.info("[RECOVERY_GATE] blocked=true reason=authenticationFailed (reconnect)")
+                            await self.suppressRecoveryForAuth()
+                            session.close()
+                            authSucceeded = false
+                        } else if session.isClosed {
+                            Log.ssh.info("[RECOVERY_STEP] authenticationSucceeded=true")
+                            Log.ssh.warning("[RECOVERY_STEP] ptyReady=false")
+                            authSucceeded = false
+                        } else {
+                            Log.ssh.info("[RECOVERY_STEP] authenticationSucceeded=true")
+                            Log.ssh.info("[RECOVERY_STEP] ptyReady=true")
+                            session.onWriteFailed = { [weak self] in
+                                guard let self, self.attemptIDBox.withLockedValue({ $0 }) == capturedID else { return }
+                                Task { await self.supervisor.requestRecovery(reason: .writeFailed) }
+                            }
+                            ptySession = session
+                            activePTYSession = session
+                            pendingPTYSession = session
+                            Log.ssh.info("[RECOVERY_STEP] sessionReady=true")
+                        }
                     } catch {
                         Log.ssh.warning("[RECOVERY] OpenSSH PTY recreate failed: \(error.localizedDescription, privacy: .public)")
                         return false
                     }
+                    // lastPTYConfig 有值时必须 ptySession 成功；无值时（首连尚未 openPTY）仅校验 transport+auth
+                    if lastPTYConfig != nil {
+                        guard authSucceeded, ptySession != nil else { return false }
+                    } else {
+                        Log.ssh.info("[RECOVERY_STEP] ptyReady=skipped (no ptyConfig) -> transport/auth only")
+                        guard authSucceeded else { return false }
+                    }
+                } else {
+                    Log.ssh.info("[RECOVERY_STEP] ptyReady=skipped (no ptyConfig) -> transport/auth only, treat as success")
                 }
+                connectionState = .connected
+                stateContinuation.yield(.connected)
+                lastSuccessfulConnectionAt = Date()
+                Log.ssh.info("[RECOVERY] OpenSSH reconnect success (4 stages)")
                 await keepAlive.stop()
                 startNetworkMonitor()
                 return true
             } else {
+                // transportConnected + authenticationSucceeded via establishConnection
                 try await withThrowingTimeout(of: .seconds(Self.connectionTimeoutSeconds)) {
                     try await self.establishConnection(config: config)
                 }
+                Log.ssh.info("[RECOVERY_STEP] transportConnected=true backend=citadel")
+                Log.ssh.info("[RECOVERY_STEP] authenticationSucceeded=true")
                 if let client {
                     let capturedKeepAliveID = newAttemptID
                     await keepAlive.settimeoutHandler { [weak self] in
@@ -768,6 +945,7 @@ public actor SSHNetworkService {
                     }
                     await keepAlive.start(client: client)
                 }
+                // ptyReady + sessionReady
                 if let ptyConfig = lastPTYConfig, let client {
                     let capturedID = newAttemptID
                     let session = PTYSession()
@@ -776,8 +954,14 @@ public actor SSHNetworkService {
                         Task { await self.supervisor.requestRecovery(reason: .writeFailed) }
                     }
                     session.start(client: client, cols: ptyConfig.cols, rows: ptyConfig.rows, termType: ptyConfig.termType)
+                    let ptyReady = !session.isClosed
+                    Log.ssh.info("[RECOVERY_STEP] ptyReady=\(ptyReady, privacy: .public)")
+                    guard ptyReady else { return false }
                     activePTYSession = session
                     pendingPTYSession = session
+                    Log.ssh.info("[RECOVERY_STEP] sessionReady=true")
+                } else {
+                    Log.ssh.info("[RECOVERY_STEP] ptyReady=skipped (no ptyConfig)")
                 }
                 startNetworkMonitor()
                 return true

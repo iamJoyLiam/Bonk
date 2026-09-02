@@ -49,14 +49,15 @@ final class HostFormViewModel {
     let defaultPort: Int
     let initialHost: String?
 
-    init(existingHost: HostItem? = nil, defaultPort: Int = 22, initialHost: String? = nil) {
+    init(existingHost: HostItem? = nil, defaultPort: Int = 22, initialHost: String? = nil, overridePassword: String? = nil) {
         self.existingHost = existingHost
         self.defaultPort = defaultPort
         self.initialHost = initialHost
-        load()
+        load(overridePassword: overridePassword)
     }
 
-    private func load() {
+    private func load(overridePassword: String? = nil) {
+
         guard let existing = existingHost else {
             port = String(defaultPort)
             if let initialHost {
@@ -75,7 +76,8 @@ final class HostFormViewModel {
         username = existing.username
         authType = existing.authType
         lastCustomAuthType = existing.authType
-        password = existing.loadPassword() ?? ""
+        // 修复你说的“再次弹还不是第一次输入的密码”：若外层传入 overridePassword（如上次 retry 的 len 16），优先用它回显，而非 HostItem 旧 1234
+        password = overridePassword ?? (existing.loadPassword() ?? "")
         customPasswordBackup = password
         privateKeyPEM = existing.loadPrivateKey() ?? ""
         customPrivateKeyBackup = privateKeyPEM
@@ -132,10 +134,17 @@ final class HostFormViewModel {
             lastCustomAuthType = authType
             authType = cred.type == .privateKey ? .privateKey : .password
         } else {
-            // Switching back to custom: restore
-            password = customPasswordBackup
-            privateKeyPEM = customPrivateKeyBackup
-            certificatePEM = customCertificateBackup
+            // Switching back to custom: restore only if current field is empty or still equals backup
+            // Prevent overwriting user-edited Nextenso_33@2025 with stale 1234 when picker accidentally toggled
+            if password.isEmpty || password == customPasswordBackup || customPasswordBackup.isEmpty {
+                password = customPasswordBackup
+            } // else keep edited password (user typed new while vault was selected via other path)
+            if privateKeyPEM.isEmpty || privateKeyPEM == customPrivateKeyBackup {
+                privateKeyPEM = customPrivateKeyBackup
+            }
+            if certificatePEM.isEmpty || certificatePEM == customCertificateBackup {
+                certificatePEM = customCertificateBackup
+            }
             authType = lastCustomAuthType
             // If backup was empty but host had embedded, it will be restored from load (already in state)
         }
