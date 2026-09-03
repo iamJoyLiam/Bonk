@@ -340,87 +340,32 @@ import SwiftTerm
 
         private func scheduleCompletion() {
             // Pipeline owns debounce+generation; View just triggers.
-            if inlinePipeline != nil {
-                requestCompletion()
-                return
-            }
-            completionDebounceTask?.cancel()
-            let debounceMs = MainActor.assumeIsolated { completionService.debounceMilliseconds }
-            completionDebounceTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .milliseconds(Double(debounceMs)))
-                guard !Task.isCancelled else { return }
-                self?.requestCompletion()
-            }
+            requestCompletion()
         }
 
         @MainActor
         private func requestCompletion() {
-            // New pipeline path — Intelligence owns snapshot + pipeline
-            if let pipeline = inlinePipeline, let snapshotProvider = commandSnapshotProvider {
-                guard !terminal.isCurrentBufferAlternate else { return }
-                let (cursorX, cursorY) = terminal.getCursorLocation()
-                let yDisp = terminal.getTopVisibleRow()
-                guard cursorY >= 0, cursorY < terminal.rows,
-                      let line = terminal.getLine(row: cursorY) else { return }
-                let isPromptRow: Bool? = {
-                    if let kind = terminal.semanticRowKind(at: yDisp + cursorY) {
-                        return kind == .initial || kind == .continuation
-                    }
-                    return nil
-                }()
-                let lineLen = line.getTrimmedLength()
-                guard CommandEditor.isCompletable(cursorX: cursorX, cursorY: cursorY, rows: terminal.rows, yDisp: yDisp, scrollPosition: scrollPosition, isAlternate: terminal.isCurrentBufferAlternate, lineTrimmedLength: lineLen, isPromptRow: isPromptRow) else { return }
-                let base = snapshotProvider()
-                let raw = line.translateToString(trimRight: true)
-                guard let typedSnap = CommandEditor.typedSnapshot(base: base, rawLine: raw) else { return }
-                pipeline.request(snapshot: typedSnap)
-                return
-            }
-            guard completionService.isEnabled,
-                  !terminal.isCurrentBufferAlternate, // vim / less / man: no completion
-                  let contextProvider = completionContextProvider else { return }
-
+            // Single Intelligence entry: CommandContextSnapshot → InlinePipeline
+            guard let pipeline = inlinePipeline, let snapshotProvider = commandSnapshotProvider else { return }
+            // Keep isEnabled gate (legacy check via UserDefaults, now via pipeline's provider will also check, but keep early gate)
+            guard UserDefaults.standard.bool(forKey: "ai_enabled"), UserDefaults.standard.bool(forKey: "ai_inline_suggestions") else { return }
+            guard !terminal.isCurrentBufferAlternate else { return }
             let (cursorX, cursorY) = terminal.getCursorLocation()
             let yDisp = terminal.getTopVisibleRow()
-
-            // The cursor must be on the last screen row — i.e. typing at a prompt.
-            // At the bottom of the buffer (yDisp == yBase) the cursor row from
-            // getCursorLocation() equals the screen row. scrollPosition hits 1.0
-            // only when scrolled to the end; yDisp == 0 covers buffers smaller
-            // than the viewport.
-            let atBottom = scrollPosition >= 1.0 || yDisp == 0
-            // Prefer OSC 133 prompt marks when the shell emits them (semantic
-            // prompt integration); fall back to the bottom-of-buffer heuristic
-            // for shells without the integration.
-            let bufferRow = yDisp + cursorY
-            let onPromptRow: Bool
-            if let rowKind = terminal.semanticRowKind(at: bufferRow) {
-                onPromptRow = rowKind == .initial || rowKind == .continuation
-            } else {
-                onPromptRow = atBottom
-            }
-            guard onPromptRow, cursorY >= 0, cursorY < terminal.rows,
+            guard cursorY >= 0, cursorY < terminal.rows,
                   let line = terminal.getLine(row: cursorY) else { return }
-
-            let baseContext = contextProvider()
+            let isPromptRow: Bool? = {
+                if let kind = terminal.semanticRowKind(at: yDisp + cursorY) {
+                    return kind == .initial || kind == .continuation
+                }
+                return nil
+            }()
+            let lineLen = line.getTrimmedLength()
+            guard CommandEditor.isCompletable(cursorX: cursorX, cursorY: cursorY, rows: terminal.rows, yDisp: yDisp, scrollPosition: scrollPosition, isAlternate: terminal.isCurrentBufferAlternate, lineTrimmedLength: lineLen, isPromptRow: isPromptRow) else { return }
+            let base = snapshotProvider()
             let raw = line.translateToString(trimRight: true)
-            guard let typed = resolveTypedText(raw: raw, inputBuffer: baseContext.inputBuffer),
-                  typed.count >= 2 else { return }
-
-            // Only complete when the cursor sits at the end of the line.
-            guard cursorX >= line.getTrimmedLength() - 3 else { return }
-
-            var context = baseContext
-            context.inputBuffer = typed
-            completionService.request(context: context) { [weak self] text in
-                guard let self else { return }
-                self.showGhost(text: text)
-            }
-            // No instant history match — show a subtle pending indicator so a
-            // slow model doesn't look like it silently gave up.
-            if completionService.suggestion.isEmpty {
-                showWaiting()
-            }
+            guard let typedSnap = CommandEditor.typedSnapshot(base: base, rawLine: raw) else { return }
+            pipeline.request(snapshot: typedSnap)
         }
 
         /// Pick the command text to complete: prefer the pure typed buffer when it
