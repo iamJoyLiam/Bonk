@@ -216,9 +216,12 @@ final class SessionManager {
     // MARK: - Connection
 
     func connectTab(_ tab: TerminalTab) async {
-        // A fresh manual connect resets the auth-retry state machine (per-tab).
+        // A fresh manual connect resets the auth-retry state machine (per-tab) and clears any stale transient auth
+        // to ensure the next connect uses the saved credential (not a previous wrong password) and stays fast (~1s).
         setRetryState(.idle, for: tab.id)
         setShowingDialog(false, for: tab.id)
+        transientAuthResults.removeValue(forKey: tab.id)
+        lastRetryPassword.removeValue(forKey: tab.id)
         await connectTab(tab, passwordOverride: nil, resetAuthRetry: false)
     }
 
@@ -445,9 +448,10 @@ final class SessionManager {
     }
 
     func setPhase(_ session: TerminalSession, to newPhase: SSHConnectionPhase, host: String, engine: String, reason: String) {
-        // Avoid modifying @Observable during view update
         let old = String(describing: session.phase)
-        Task { @MainActor in
+        // Direct assignment for phase to avoid stale read in sendInput/finalize guards
+        // connectionState is also @Observable but can be updated synchronously on MainActor
+        if Thread.isMainThread {
             session.phase = newPhase
             switch newPhase {
             case .idle, .failed: session.connectionState = .disconnected
@@ -456,6 +460,17 @@ final class SessionManager {
             default: session.connectionState = .connecting
             }
             Log.session.info("[SSH_STATE] host:\(host) engine:\(engine) old:\(old) new:\(String(describing: newPhase)) reason:\(reason)")
+        } else {
+            Task { @MainActor in
+                session.phase = newPhase
+                switch newPhase {
+                case .idle, .failed: session.connectionState = .disconnected
+                case .ready: session.connectionState = .connected
+                case .reconnecting(let attempt, let maxAttempts): session.connectionState = .reconnecting(attempt: attempt, maxAttempts: maxAttempts)
+                default: session.connectionState = .connecting
+                }
+                Log.session.info("[SSH_STATE] host:\(host) engine:\(engine) old:\(old) new:\(String(describing: newPhase)) reason:\(reason)")
+            }
         }
     }
 
@@ -577,8 +592,9 @@ final class SessionManager {
     func sendInput(_ bytes: ArraySlice<UInt8>, to tabID: UUID, paneID: UUID? = nil) async throws {
         guard let tab = tabs.first(where: { $0.id == tabID }),
               let targetPaneID = paneID ?? tab.activePaneID else { return }
-        // Block input during auth gate to avoid command typed as password
-        if let sessionState = tab.session, sessionState.terminalState == .waitingPTY || sessionState.phase == .authenticating || sessionState.phase == .openingPTY || sessionState.phase == .openingChannel {
+        // Only block input during authenticating to avoid command typed as password
+        // waitingPTY/openingChannel/openingPTY should allow input (fixes terminal freeze after 2.7)
+        if let sessionState = tab.session, sessionState.phase == .authenticating {
             return
         }
 

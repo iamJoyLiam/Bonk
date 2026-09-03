@@ -587,7 +587,7 @@
 			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm.git";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 1.20.0;
+				minimumVersion = 1.19.0;
 			};
 		};
 		AE000005AAAA000000000005 /* XCRemoteSwiftPackageReference "Sparkle" */ = {

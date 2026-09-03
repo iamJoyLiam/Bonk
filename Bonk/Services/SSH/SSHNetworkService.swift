@@ -581,8 +581,8 @@ public actor SSHNetworkService {
             guard !Task.isCancelled else { break }
             do {
                 if usesOpenSSHTransport {
-                    // OpenSSH path: re-create ControlMaster socket
-                    try? await Task.sleep(for: .milliseconds(200))
+                    // Extreme: no sleep for ControlMaster re-create
+                    try? await Task.sleep(for: .milliseconds(1))
                     let backend = try OpenSSHBackend(config: config)
                     openSSHBackend = backend
                     usesOpenSSHTransport = true
@@ -821,7 +821,7 @@ public actor SSHNetworkService {
         // 4-stage success: process/TCP -> auth -> PTY -> session
         do {
             if usesOpenSSHTransport {
-                try? await Task.sleep(for: .milliseconds(200))
+                try? await Task.sleep(for: .milliseconds(1))
                 // Diag: password fingerprint
                 let cfgDesc: String
                 switch config.authMethod {
@@ -867,11 +867,11 @@ public actor SSHNetworkService {
                         } onError: { _ in } onFailure: { [weak self] failure in
                             Task { await self?.handleTypedFailure(failure) }
                         }
-                        // Longer window for delayed Permission denied
-                        for _ in 0..<70 {
+                        // Extreme: minimal window for delayed Permission denied (50ms total)
+                        for _ in 0..<5 {
                             if let typedFailure = self.pendingFailure, typedFailure.isAuthentication { break }
                             if session.isClosed { break }
-                            try? await Task.sleep(for: .milliseconds(100))
+                            try? await Task.sleep(for: .milliseconds(10))
                         }
                         if let typedFailure = self.pendingFailure, typedFailure.isAuthentication {
                             Log.ssh.warning("[RECOVERY_STEP] authenticationSucceeded=false reason=\(typedFailure.message.prefix(80), privacy: .public)")

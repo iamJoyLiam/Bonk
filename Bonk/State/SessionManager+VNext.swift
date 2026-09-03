@@ -225,8 +225,8 @@ extension SessionManager {
         guard tabs.contains(where: { $0.id == tab.id }) else { return }
         // State: authenticating -> openingChannel -> openingPTY -> ready
         setPhase(session, to: .authenticating, host: context.config.host, engine: "Session", reason: "auth")
-        // Deterministic gate: awaitAuthFailure instead of fixed sleep
-        let earlyAuthFailed = await session.awaitAuthFailure(timeout: .milliseconds(400))
+        // Extreme: event-driven, no fixed wait — only early exit if auth already failed
+        let earlyAuthFailed = await session.awaitAuthFailure(timeout: .milliseconds(1))
         if earlyAuthFailed || isPhaseFailed(session.phase) { Log.session.info("[FINALIZE] early auth failed before PTY"); return }
         if session.generation != capturedGen { Log.session.info("[FINALIZE] discard stale gen before PTY"); return }
         setPhase(session, to: .openingChannel, host: context.config.host, engine: "Session", reason: "channel")
@@ -235,8 +235,8 @@ extension SessionManager {
         if let firstPane = tab.layout.root.paneState {
             try await setupPTYSession(for: tab, pane: firstPane, session: session, service: service)
         }
-        // PTY auth may arrive 300-1200ms later; wait 1000ms and keep waitingPTY to block input
-        let ptyAuthFailed = await session.awaitAuthFailure(timeout: .milliseconds(1000))
+        // Extreme: no wait for PTY auth, rely on onFailure callback to handle late failures asynchronously
+        let ptyAuthFailed = await session.awaitAuthFailure(timeout: .milliseconds(1))
         if ptyAuthFailed || isPhaseFailed(session.phase) { Log.session.info("[FINALIZE] PTY auth failed, suppress ready"); return }
         if session.generation != capturedGen { Log.session.info("[FINALIZE] discard stale gen before ready"); return }
         session.terminalState = .ready
