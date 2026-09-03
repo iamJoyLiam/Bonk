@@ -107,61 +107,66 @@ import SwiftUI
         /// Retries until both the PTY session and the terminal view exist
         /// (increasing delay, ~30s window), then attaches the output stream.
         /// FIX: cancel previous retry task when a new connection starts (wrong→correct password)
+        /// FIX: defer @State mutation to next run loop to avoid "Modifying state during view update" (#112).
         private func connectOutputStreamWithRetry() {
-            retryTask?.cancel()
-            retryTask = Task { @MainActor in
-                let maxRetries = 10
-                var delay: UInt64 = 100
+            // Wrap in Task to ensure @State assignment happens outside SwiftUI's view update phase
+            // (called from updateNSView/onViewReady which runs during view update).
+            Task { @MainActor in
+                self.retryTask?.cancel()
+                self.retryTask = Task { @MainActor in
+                    let maxRetries = 10
+                    var delay: UInt64 = 100
 
-                for attempt in 0 ..< maxRetries {
-                    if Task.isCancelled { Log.session.info("[PTY-RETRY] cancelled at attempt \(attempt + 1)"); return }
-                    // If tab already failed/disconnected, no PTY will ever appear — stop retrying
-                    if let state = tab.session?.connectionState, case .disconnected = state {
-                        if let phase = tab.session?.phase, case .failed = phase { Log.session.info("[PTY-RETRY] tab failed, abort retry"); return }
-                    }
-                    try? await Task.sleep(for: .milliseconds(Double(delay)))
-                    if Task.isCancelled { return }
+                    for attempt in 0 ..< maxRetries {
+                        if Task.isCancelled { Log.session.info("[PTY-RETRY] cancelled at attempt \(attempt + 1)"); return }
+                        // If tab already failed/disconnected, no PTY will ever appear — stop retrying
+                        if let state = tab.session?.connectionState, case .disconnected = state {
+                            if let phase = tab.session?.phase, case .failed = phase { Log.session.info("[PTY-RETRY] tab failed, abort retry"); return }
+                        }
+                        try? await Task.sleep(for: .milliseconds(Double(delay)))
+                        if Task.isCancelled { return }
 
-                    guard let ptySession = paneState.ptySession else {
-                        Log.session.info("[PTY-RETRY] No PTY session yet, retry \(attempt + 1)/\(maxRetries)")
-                        delay = min(delay * 2, 1600)
-                        continue
-                    }
+                        guard let ptySession = paneState.ptySession else {
+                            Log.session.info("[PTY-RETRY] No PTY session yet, retry \(attempt + 1)/\(maxRetries)")
+                            delay = min(delay * 2, 1600)
+                            continue
+                        }
 
-                    let cached = TerminalViewCache.shared.retrieve(paneState.id)
-                    guard let cached else {
-                        // View created after this task started — wait for it.
-                        Log.session.info("[PTY-RETRY] Terminal view not cached yet, retry \(attempt + 1)/\(maxRetries)")
-                        delay = min(delay * 2, 1600)
-                        continue
-                    }
+                        let cached = TerminalViewCache.shared.retrieve(paneState.id)
+                        guard let cached else {
+                            // View created after this task started — wait for it.
+                            Log.session.info("[PTY-RETRY] Terminal view not cached yet, retry \(attempt + 1)/\(maxRetries)")
+                            delay = min(delay * 2, 1600)
+                            continue
+                        }
 
-                    if cached.outputStream == nil {
-                        let result = ptySession.makeOutputStream(host: tab.hostItem)
-                        TerminalViewCache.shared.connectOutputStream(
-                            result.stream,
-                            onBytesProcessed: result.onBytesProcessed,
-                            to: paneState.id
-                        )
-                        if let coord = cached.coordinator as? ContainerTerminalCoordinator { coord.hostItem = tab.hostItem }
-                        Log.session.info("[PTY-RETRY] Connected output stream on attempt \(attempt + 1)")
+                        if cached.outputStream == nil {
+                            let result = ptySession.makeOutputStream(host: tab.hostItem)
+                            TerminalViewCache.shared.connectOutputStream(
+                                result.stream,
+                                onBytesProcessed: result.onBytesProcessed,
+                                to: paneState.id
+                            )
+                            if let coord = cached.coordinator as? ContainerTerminalCoordinator { coord.hostItem = tab.hostItem }
+                            Log.session.info("[PTY-RETRY] Connected output stream on attempt \(attempt + 1)")
+                            return
+                        }
+                        // Already connected
+                        if let coordinator = cached.coordinator as? ContainerTerminalCoordinator,
+                           coordinator.feedTask == nil,
+                           let stream = cached.outputStream,
+                           let bytesProcessed = cached.onBytesProcessed
+                        {
+                            Log.session.info("[PTY-RETRY] Output stream exists but feed task nil, restarting for pane \(paneState.id.uuidString.prefix(8))")
+                            coordinator.hostItem = tab.hostItem
+                            coordinator.startFeeding(from: stream, onBytesProcessed: bytesProcessed)
+                        } else {
+                            Log.session.info("[PTY-RETRY] Already connected for pane \(paneState.id.uuidString.prefix(8))")
+                        }
                         return
                     }
-                    // Already connected
-                    if let coordinator = cached.coordinator as? ContainerTerminalCoordinator,
-                       coordinator.feedTask == nil,
-                       let stream = cached.outputStream,
-                       let bytesProcessed = cached.onBytesProcessed
-                    {
-                        Log.session.info("[PTY-RETRY] Output stream exists but feed task nil, restarting for pane \(paneState.id.uuidString.prefix(8))")
-                        coordinator.hostItem = tab.hostItem
-                        coordinator.startFeeding(from: stream, onBytesProcessed: bytesProcessed)
-                    } else {
-                        Log.session.info("[PTY-RETRY] Already connected for pane \(paneState.id.uuidString.prefix(8))")
-                    }
-                    return
+                    Log.session.warning("[PTY-RETRY] Failed to connect output stream after \(maxRetries) attempts")
                 }
-                Log.session.warning("[PTY-RETRY] Failed to connect output stream after \(maxRetries) attempts")
             }
         }
 

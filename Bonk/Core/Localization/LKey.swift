@@ -627,4 +627,12 @@ enum LKey: String, CaseIterable {
     case guestOperating = "guest_operating"
     case showDetails = "show_details"
     case hideDetails = "hide_details"
+
+    // Sidebar badges
+    case sidebar = "sidebar"
+    case showEngineBadge = "show_engine_badge"
+    case showCustomTag = "show_custom_tag"
+    case customTag = "custom_tag"
+    case customTagPlaceholder = "custom_tag_placeholder"
+    case customTagHint = "custom_tag_hint"
 }

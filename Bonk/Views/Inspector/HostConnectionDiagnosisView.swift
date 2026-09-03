@@ -41,10 +41,7 @@ struct HostConnectionDiagnosisView: View {
             Divider()
 
             if profiles.isEmpty {
-                Text(i18n.t(.sshNoProfile))
-                    .font(.system(size: AppStyle.fontSmall))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                EmptyView()
             } else {
                 let display = showAll ? profiles : Array(profiles.prefix(1))
                 ForEach(display, id: \.id) { profile in

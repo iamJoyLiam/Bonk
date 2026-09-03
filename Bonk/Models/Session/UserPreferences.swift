@@ -51,6 +51,10 @@ final class UserPreferences {
     var teamMaxGuests: Int?
     /// Zmodem file transfer via terminal (optional, default false)
     var isZmodemEnabled: Bool?
+    /// Sidebar: show engine badge (Native/OpenSSH) (optional, default true)
+    var showEngineBadge: Bool?
+    /// Sidebar: show custom tag badge (optional, default true)
+    var showCustomTag: Bool?
 
     init(
         fontSize: Double = 14,
@@ -77,7 +81,9 @@ final class UserPreferences {
         autoRecord: Bool? = nil,
         autoSyncSSHConfig: Bool? = nil,
         teamMaxGuests: Int? = nil,
-        isZmodemEnabled: Bool? = nil
+        isZmodemEnabled: Bool? = nil,
+        showEngineBadge: Bool? = nil,
+        showCustomTag: Bool? = nil
     ) {
         self.fontSize = fontSize
         self.fontFamily = fontFamily
@@ -104,5 +110,7 @@ final class UserPreferences {
         self.autoSyncSSHConfig = autoSyncSSHConfig
         self.teamMaxGuests = teamMaxGuests
         self.isZmodemEnabled = isZmodemEnabled
+        self.showEngineBadge = showEngineBadge
+        self.showCustomTag = showCustomTag
     }
 }

@@ -28,6 +28,8 @@ final class HostFormViewModel {
     var selectedJumpHost: JumpHost?
     var forceCompatibilityToggle = false
     var selectedLogProfile: LogProfile?
+    var customTag = ""
+    var customTagColorHex: String?
 
     // Secure Enclave
     var secureEnclaveKeyTag: String?
@@ -91,6 +93,8 @@ final class HostFormViewModel {
         showJumpHost = existing.jumpHostRef != nil
         forceCompatibilityToggle = existing.forceCompatibility == true
         selectedLogProfile = existing.logProfile
+        customTag = existing.customTag ?? ""
+        customTagColorHex = existing.customTagColorHex
 
         // If editing a vault-backed host, keep custom fields as backup (already loaded)
         // so toggling back to custom restores them.
@@ -192,6 +196,9 @@ final class HostFormViewModel {
             existing.jumpHostRef = showJumpHost ? selectedJumpHost : nil
             existing.groupRef = groupRef
             existing.logProfile = selectedLogProfile
+            let trimmedTag = customTag.trimmingCharacters(in: .whitespacesAndNewlines)
+            existing.customTag = trimmedTag.isEmpty ? nil : trimmedTag
+            existing.customTagColorHex = trimmedTag.isEmpty ? nil : customTagColorHex
 
             // Elegant: only overwrite the current authType's Keychain entry, never delete all.
             // Embedded credentials remain as backup when using vault.
@@ -227,6 +234,11 @@ final class HostFormViewModel {
             )
             if forceCompatibilityToggle { item.forceCompatibility = true }
             item.logProfile = selectedLogProfile
+            let trimmedTag = customTag.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedTag.isEmpty {
+                item.customTag = trimmedTag
+                item.customTagColorHex = customTagColorHex
+            }
             onSave(item)
         }
     }

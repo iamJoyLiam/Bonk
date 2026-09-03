@@ -1,6 +1,7 @@
 import Foundation
 import os.log
 import SwiftData
+import SwiftUI
 
 /// Authentication method for SSH connections.
 enum AuthType: String, Codable {
@@ -41,6 +42,10 @@ final class HostItem {
     /// Log coloring profile per-host (optional, additive, nil = use default)
     @Relationship(deleteRule: .nullify)
     var logProfile: LogProfile?
+    /// Custom tag shown in sidebar next to engine badge (optional)
+    var customTag: String?
+    /// Hex color for custom tag badge (optional, nil = default blue)
+    var customTagColorHex: String?
 
     var authType: AuthType {
         get { AuthType(rawValue: authTypeRaw) ?? .password }
@@ -202,5 +207,20 @@ final class HostItem {
             guard let keyTag = loadSecureEnclaveKeyTag(), !keyTag.isEmpty else { return nil }
             return .secureEnclaveKey(keyTag: keyTag)
         }
+    }
+}
+
+// MARK: - Tag Color Presets
+
+extension HostItem {
+    /// Preset colors for custom tag badge (hex strings).
+    static let tagPresetColors: [String] = [
+        "#007AFF", "#30D158", "#FF9F0A", "#FF3B30",
+        "#AF52DE", "#FF2D55", "#5AC8FA", "#8E8E93",
+    ]
+
+    var resolvedTagColor: Color {
+        if let hex = customTagColorHex { return Color(hex: hex) }
+        return .blue
     }
 }

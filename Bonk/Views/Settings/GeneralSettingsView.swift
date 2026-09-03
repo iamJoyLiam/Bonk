@@ -81,8 +81,17 @@ struct GeneralSettingsView: View {
                     get: { preferences.autoSyncSSHConfig ?? false },
                     set: { preferences.autoSyncSSHConfig = $0 }
                 ))
-                Text(i18n.t(.autoSyncSSHConfigDesc))
-                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Section(i18n.t(.sidebar)) {
+                Toggle(i18n.t(.showEngineBadge), isOn: Binding(
+                    get: { preferences.showEngineBadge ?? true },
+                    set: { preferences.showEngineBadge = $0 }
+                ))
+                Toggle(i18n.t(.showCustomTag), isOn: Binding(
+                    get: { preferences.showCustomTag ?? true },
+                    set: { preferences.showCustomTag = $0 }
+                ))
             }
         }
         .formStyle(.grouped)

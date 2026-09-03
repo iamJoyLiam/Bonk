@@ -41,10 +41,6 @@ struct KeyboardSettingsView: View {
                 }
             } header: {
                 Text(i18n.t(.input))
-            } footer: {
-                Text(i18n.t(.rightClickPasteDesc))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             Section {

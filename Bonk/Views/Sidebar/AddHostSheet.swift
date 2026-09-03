@@ -67,6 +67,28 @@ struct AddHostSheet: View {
                     TextField(i18n.t(.username), text: $vm.username)
                         .autocorrectionDisabled()
                     GroupComboBoxView(group: $vm.group)
+                    TextField(i18n.t(.customTag), text: $vm.customTag)
+                        .autocorrectionDisabled()
+                    if !vm.customTag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        HStack(spacing: AppStyle.spacingM) {
+                            ForEach(HostItem.tagPresetColors, id: \.self) { hex in
+                                Circle()
+                                    .fill(Color(hex: hex))
+                                    .frame(width: AppStyle.buttonMedium, height: AppStyle.buttonMedium)
+                                    .overlay(Circle().stroke(Color.primary.opacity(AppStyle.opacityStroke), lineWidth: 1))
+                                    .overlay(Circle().stroke(Color.accentColor, lineWidth: 2).opacity(isTagColorSelected(hex, selected: vm.customTagColorHex) ? 1 : 0))
+                                    .onTapGesture { vm.customTagColorHex = hex }
+                            }
+                            ColorPicker("", selection: Binding(
+                                get: { vm.customTagColorHex.map { Color(hex: $0) } ?? Color(hex: HostItem.tagPresetColors[0]) },
+                                set: { vm.customTagColorHex = $0.hexString }
+                            ), supportsOpacity: false)
+                                .labelsHidden()
+                                .frame(width: AppStyle.buttonMedium, height: AppStyle.buttonMedium)
+                                .padding(.leading, AppStyle.spacingS)
+                        }
+                        .padding(.vertical, AppStyle.spacingXS)
+                    }
                 }
 
                 Section(i18n.t(.authentication)) {
@@ -189,7 +211,6 @@ struct AddHostSheet: View {
                         Text("跟随默认").tag(LogProfile?.none)
                         ForEach(logProfiles, id: \.self) { p in Text(p.name).tag(LogProfile?.some(p)) }
                     }
-                    Text("为该主机单独指定着色规则，留空则使用全局默认").font(.caption).foregroundStyle(.secondary)
                 }
 
                 if let existing = existingHost {
@@ -228,5 +249,10 @@ struct AddHostSheet: View {
                     }
                 }
         }
+    }
+
+    private func isTagColorSelected(_ hex: String, selected: String?) -> Bool {
+        if let sel = selected { return sel.uppercased() == hex.uppercased() }
+        return hex.uppercased() == HostItem.tagPresetColors.first?.uppercased()
     }
 }

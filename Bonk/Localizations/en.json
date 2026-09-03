@@ -581,5 +581,11 @@
   "zmodem": "Zmodem (rz/sz) File Transfer",
   "zmodem_desc": "Only show when remote supports rz/sz, off by default to avoid confusion",
   "show_details": "Show Details",
-  "hide_details": "Hide Details"
+  "hide_details": "Hide Details",
+  "sidebar": "Sidebar",
+  "show_engine_badge": "Show engine badge (Native / OpenSSH)",
+  "show_custom_tag": "Show custom tag",
+  "custom_tag": "Custom Tag",
+  "custom_tag_placeholder": "e.g., Prod, Test",
+  "custom_tag_hint": "Badge shown next to host name in sidebar. Tag appears before engine badge when both are enabled."
 }

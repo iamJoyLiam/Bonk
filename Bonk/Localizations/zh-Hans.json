@@ -581,5 +581,11 @@
   "zmodem": "Zmodem (rz/sz) 文件传输",
   "zmodem_desc": "仅远端支持 rz/sz 时显示，默认关闭避免误触",
   "show_details": "查看详情",
-  "hide_details": "隐藏详情"
+  "hide_details": "隐藏详情",
+  "sidebar": "侧边栏",
+  "show_engine_badge": "显示引擎徽标 (Native / OpenSSH)",
+  "show_custom_tag": "显示自定义标签",
+  "custom_tag": "自定义标签",
+  "custom_tag_placeholder": "例如：生产、测试",
+  "custom_tag_hint": "显示在侧边栏主机名称旁的小标签。两者都开启时，标签在前、引擎在后。"
 }

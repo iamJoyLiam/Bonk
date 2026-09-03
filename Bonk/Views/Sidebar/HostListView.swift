@@ -15,6 +15,7 @@ struct HostListView: View {
     @Query(sort: \HostItem.createdAt) private var hosts: [HostItem]
     @Query(sort: \HostGroup.sortOrder) private var hostGroups: [HostGroup]
     @Query(sort: \SSHBackendProfile.detectedAt, order: .reverse) private var backendProfiles: [SSHBackendProfile]
+    @Query private var allPreferences: [UserPreferences]
 
     @Bindable var sessionManager: SessionManager
     let defaultPort: Int
@@ -244,7 +245,7 @@ struct HostListView: View {
                             .layoutPriority(1)
                         Spacer(minLength: 4)
                         if host.isSerial != true {
-                            inlineBackendBadge(for: host)
+                            sidebarBadges(for: host)
                         }
                     }
                     if host.isSerial == true {
@@ -351,6 +352,12 @@ struct HostListView: View {
         }
     }
 
+    // MARK: - Preferences
+
+    private var preferences: UserPreferences {
+        allPreferences.first ?? UserPreferences()
+    }
+
     // MARK: - Backend Badge (v3.2 routing visualization)
 
     private func latestProfile(for host: HostItem) -> SSHBackendProfile? {
@@ -363,23 +370,59 @@ struct HostListView: View {
     }
 
     @ViewBuilder
+    private func sidebarBadges(for host: HostItem) -> some View {
+        let showEngine = preferences.showEngineBadge ?? true
+        let showTag = preferences.showCustomTag ?? true
+        let trimmedTag = host.customTag?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasTag = showTag && trimmedTag != nil && !(trimmedTag!.isEmpty)
+        let profile: SSHBackendProfile? = showEngine ? latestProfile(for: host) : nil
+        if hasTag || profile != nil {
+            HStack(spacing: AppStyle.spacingXS) {
+                if hasTag {
+                    customTagBadge(for: host)
+                }
+                if let p = profile {
+                    engineBadge(for: p)
+                }
+            }
+        }
+    }
+
+    private func customTagBadge(for host: HostItem) -> some View {
+        let text = host.customTag?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let color = host.resolvedTagColor
+        return Text(text)
+            .font(.system(size: AppStyle.fontTiny, weight: .medium, design: .rounded))
+            .foregroundStyle(color)
+            .lineLimit(1)
+            .padding(.horizontal, AppStyle.spacingXS).padding(.vertical, AppStyle.spacingXXS)
+            .background(color.opacity(AppStyle.opacityOverlaySubtle))
+            .clipShape(Capsule())
+            .help(text)
+    }
+
+    private func engineBadge(for profile: SSHBackendProfile) -> some View {
+        let isNative = profile.backendRaw == SSHBackendType.native.rawValue
+        let isExpired = !profile.isValid
+        return HStack(spacing: AppStyle.spacingXS - 1) {
+            Circle()
+                .fill(isExpired ? Color.gray : (isNative ? Color.green : Color.orange))
+                .frame(width: AppStyle.statusDotTiny, height: AppStyle.statusDotTiny)
+            Text(badgeText(for: profile, isNative: isNative))
+                .font(.system(size: AppStyle.fontTiny, weight: .medium, design: .monospaced))
+                .foregroundStyle(isExpired ? .secondary : (isNative ? Color.green : Color.orange))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, AppStyle.spacingXS).padding(.vertical, AppStyle.spacingXXS)
+        .background((isNative ? Color.green : Color.orange).opacity(isExpired ? AppStyle.opacityOverlayFaint : AppStyle.opacityOverlaySubtle))
+        .clipShape(Capsule())
+        .help(badgeHelp(for: profile))
+    }
+
+    @ViewBuilder
     private func inlineBackendBadge(for host: HostItem) -> some View {
         if let profile = latestProfile(for: host) {
-            let isNative = profile.backendRaw == SSHBackendType.native.rawValue
-            let isExpired = !profile.isValid
-            HStack(spacing: 3) {
-                Circle()
-                    .fill(isExpired ? Color.gray : (isNative ? Color.green : Color.orange))
-                    .frame(width: AppStyle.statusDotTiny, height: AppStyle.statusDotTiny)
-                Text(badgeText(for: profile, isNative: isNative))
-                    .font(.system(size: AppStyle.fontTiny, weight: .medium, design: .monospaced))
-                    .foregroundStyle(isExpired ? .secondary : (isNative ? Color.green : Color.orange))
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, AppStyle.spacingXS).padding(.vertical, AppStyle.spacingXXS)
-            .background((isNative ? Color.green : Color.orange).opacity(isExpired ? 0.07 : 0.10))
-            .clipShape(Capsule())
-            .help(badgeHelp(for: profile))
+            engineBadge(for: profile)
         }
     }
 
