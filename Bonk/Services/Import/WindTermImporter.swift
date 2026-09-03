@@ -79,52 +79,52 @@ struct WindTermImporter: SessionImporter {
             if username == nil { username = session["userName"] as? String ?? session["username"] as? String }
             // WindTerm ssh auth may be under session.auth
             if let auth = session["auth"] as? [String: Any] ?? session["authentication"] as? [String: Any] {
-                let pwd = auth["password"] as? String
-                let pk = auth["privateKey"] as? String ?? auth["key"] as? String ?? auth["privateKeyPath"] as? String
-                if let h = host, !h.isEmpty {
-                    let p = port ?? SSHConstants.defaultPort
-                    let u = username ?? "root"
-                    if let pkVal = pk, !pkVal.isEmpty {
-                        let pem: String? = pkVal.hasPrefix("-----BEGIN") ? pkVal : (try? String(contentsOfFile: (pkVal as NSString).expandingTildeInPath, encoding: .utf8))
-                        return HostItem(name: name, host: h, port: p, username: u, authType: .privateKey, privateKeyPEM: pem ?? pkVal)
+                let passwordValue = auth["password"] as? String
+                let privateKeyValue = auth["privateKey"] as? String ?? auth["key"] as? String ?? auth["privateKeyPath"] as? String
+                if let hostString = host, !hostString.isEmpty {
+                    let portValue = port ?? SSHConstants.defaultPort
+                    let usernameValue = username ?? "root"
+                    if let privateKeyString = privateKeyValue, !privateKeyString.isEmpty {
+                        let pem: String? = privateKeyString.hasPrefix("-----BEGIN") ? privateKeyString : (try? String(contentsOfFile: (privateKeyString as NSString).expandingTildeInPath, encoding: .utf8))
+                        return HostItem(name: name, host: hostString, port: portValue, username: usernameValue, authType: .privateKey, privateKeyPEM: pem ?? privateKeyString)
                     }
-                    if let pwdVal = pwd, !pwdVal.isEmpty {
-                        return HostItem(name: name, host: h, port: p, username: u, authType: .password, password: pwdVal)
+                    if let passwordString = passwordValue, !passwordString.isEmpty {
+                        return HostItem(name: name, host: hostString, port: portValue, username: usernameValue, authType: .password, password: passwordString)
                     }
-                    return HostItem(name: name, host: h, port: p, username: u)
+                    return HostItem(name: name, host: hostString, port: portValue, username: usernameValue)
                 }
             }
         }
 
-        guard let h = host, !h.isEmpty else { return nil }
-        let p = port ?? SSHConstants.defaultPort
-        let u = username ?? "root"
+        guard let hostString = host, !hostString.isEmpty else { return nil }
+        let portValue = port ?? SSHConstants.defaultPort
+        let usernameValue = username ?? "root"
 
         // Password / key may be at top level
-        let pwd = (dict["password"] as? String)
-        let pk = (dict["privateKey"] as? String) ?? (dict["privateKeyPath"] as? String) ?? (dict["key"] as? String)
+        let passwordValue = (dict["password"] as? String)
+        let privateKeyValue = (dict["privateKey"] as? String) ?? (dict["privateKeyPath"] as? String) ?? (dict["key"] as? String)
 
-        if let pkVal = pk, !pkVal.isEmpty {
-            let pem: String? = pkVal.hasPrefix("-----BEGIN") ? pkVal : (try? String(contentsOfFile: (pkVal as NSString).expandingTildeInPath, encoding: .utf8))
-            return HostItem(name: name, host: h, port: p, username: u, authType: .privateKey, privateKeyPEM: pem ?? pkVal)
+        if let privateKeyString = privateKeyValue, !privateKeyString.isEmpty {
+            let pem: String? = privateKeyString.hasPrefix("-----BEGIN") ? privateKeyString : (try? String(contentsOfFile: (privateKeyString as NSString).expandingTildeInPath, encoding: .utf8))
+            return HostItem(name: name, host: hostString, port: portValue, username: usernameValue, authType: .privateKey, privateKeyPEM: pem ?? privateKeyString)
         }
-        if let pwdVal = pwd, !pwdVal.isEmpty {
-            return HostItem(name: name, host: h, port: p, username: u, authType: .password, password: pwdVal)
+        if let passwordString = passwordValue, !passwordString.isEmpty {
+            return HostItem(name: name, host: hostString, port: portValue, username: usernameValue, authType: .password, password: passwordString)
         }
-        return HostItem(name: name, host: h, port: p, username: u)
+        return HostItem(name: name, host: hostString, port: portValue, username: usernameValue)
     }
 
     private func parseWSessionText(_ text: String) -> [HostItem]? {
         // Very light parser for wsession INI-like lines: host = 1.2.3.4
         var dict: [String: String] = [:]
         for line in text.components(separatedBy: .newlines) {
-            let t = line.trimmingCharacters(in: .whitespaces)
-            if t.isEmpty || t.hasPrefix("#") || t.hasPrefix(";") { continue }
-            if t.contains("=") {
-                let parts = t.split(separator: "=", maxSplits: 1).map { String($0).trimmingCharacters(in: .whitespaces) }
+            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+            if trimmedLine.isEmpty || trimmedLine.hasPrefix("#") || trimmedLine.hasPrefix(";") { continue }
+            if trimmedLine.contains("=") {
+                let parts = trimmedLine.split(separator: "=", maxSplits: 1).map { String($0).trimmingCharacters(in: .whitespaces) }
                 if parts.count == 2 { dict[parts[0].lowercased()] = parts[1].trimmingCharacters(in: CharacterSet(charactersIn: "\"'")) }
-            } else if t.contains(":") {
-                let parts = t.split(separator: ":", maxSplits: 1).map { String($0).trimmingCharacters(in: .whitespaces) }
+            } else if trimmedLine.contains(":") {
+                let parts = trimmedLine.split(separator: ":", maxSplits: 1).map { String($0).trimmingCharacters(in: .whitespaces) }
                 if parts.count == 2 { dict[parts[0].lowercased()] = parts[1].trimmingCharacters(in: CharacterSet(charactersIn: "\"'")) }
             }
         }

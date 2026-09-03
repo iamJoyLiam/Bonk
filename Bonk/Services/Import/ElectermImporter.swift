@@ -66,19 +66,19 @@ struct ElectermImporter: SessionImporter {
         var pem: String?
         var pwd: String?
 
-        if let pk = privateKey, !pk.isEmpty {
-            if pk.hasPrefix("-----BEGIN") {
-                pem = pk; authType = .privateKey
+        if let privateKeyValue = privateKey, !privateKeyValue.isEmpty {
+            if privateKeyValue.hasPrefix("-----BEGIN") {
+                pem = privateKeyValue; authType = .privateKey
             } else {
-                let expanded = (pk as NSString).expandingTildeInPath
+                let expanded = (privateKeyValue as NSString).expandingTildeInPath
                 if let content = try? String(contentsOfFile: expanded, encoding: .utf8), content.contains("BEGIN") {
                     pem = content; authType = .privateKey
                 } else {
-                    pem = pk; authType = .privateKey
+                    pem = privateKeyValue; authType = .privateKey
                 }
             }
-        } else if let p = password, !p.isEmpty {
-            pwd = p; authType = .password
+        } else if let passwordValue = password, !passwordValue.isEmpty {
+            pwd = passwordValue; authType = .password
         }
 
         return HostItem(name: title, host: host, port: port, username: username, authType: authType, password: pwd, privateKeyPEM: pem)

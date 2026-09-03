@@ -82,17 +82,17 @@ struct ITerm2Importer: SessionImporter {
         // Extract port via regex
         var port: Int?
         if let regex = try? NSRegularExpression(pattern: "(?:\\s|^)-p\\s+(\\d+)", options: .caseInsensitive) {
-            let ns = trimmed as NSString
-            if let m = regex.firstMatch(in: trimmed, range: NSRange(location: 0, length: ns.length)), m.numberOfRanges > 1 {
-                let r = m.range(at: 1)
-                port = Int(ns.substring(with: r))
+            let nsString = trimmed as NSString
+            if let match = regex.firstMatch(in: trimmed, range: NSRange(location: 0, length: nsString.length)), match.numberOfRanges > 1 {
+                let range = match.range(at: 1)
+                port = Int(nsString.substring(with: range))
             }
         }
         if port == nil, let regex2 = try? NSRegularExpression(pattern: "(?:\\s|^)-P\\s+(\\d+)", options: .caseInsensitive) {
-            let ns = trimmed as NSString
-            if let m = regex2.firstMatch(in: trimmed, range: NSRange(location: 0, length: ns.length)), m.numberOfRanges > 1 {
-                let r = m.range(at: 1)
-                port = Int(ns.substring(with: r))
+            let nsString = trimmed as NSString
+            if let match = regex2.firstMatch(in: trimmed, range: NSRange(location: 0, length: nsString.length)), match.numberOfRanges > 1 {
+                let range = match.range(at: 1)
+                port = Int(nsString.substring(with: range))
             }
         }
         // Extract user@host - find last token containing @ or plain host
@@ -118,11 +118,11 @@ struct ITerm2Importer: SessionImporter {
             }
         }
         // Clean host from trailing ; or "
-        if let h = host {
-            host = h.trimmingCharacters(in: CharacterSet(charactersIn: "\"';"))
+        if let hostString = host {
+            host = hostString.trimmingCharacters(in: CharacterSet(charactersIn: "\"';"))
         }
-        if let u = user {
-            user = u.trimmingCharacters(in: CharacterSet(charactersIn: "\"';"))
+        if let userString = user {
+            user = userString.trimmingCharacters(in: CharacterSet(charactersIn: "\"';"))
         }
         return (host, user, port)
     }
