@@ -47,7 +47,15 @@ extension NativeTerminalView {
               !text.isEmpty
         else { return false }
         MainActor.assumeIsolated {
-            terminalDelegate?.send(source: self, data: ArraySlice(text.utf8))
+            // Respect bracketed paste mode: wrap with ESC[200~ / ESC[201~ when enabled
+            // to prevent the shell from misinterpreting pasted newlines and CSI sequences
+            // (which otherwise surface as stray "K" or duplicated prompt fragments).
+            if self.terminal.bracketedPasteMode {
+                let wrapped = "\u{1B}[200~" + text + "\u{1B}[201~"
+                self.terminalDelegate?.send(source: self, data: ArraySlice(wrapped.utf8))
+            } else {
+                self.terminalDelegate?.send(source: self, data: ArraySlice(text.utf8))
+            }
         }
         return true
     }

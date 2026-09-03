@@ -365,7 +365,14 @@ import SwiftTerm
                 let text = completionService.accept()
                 hideGhost(reason: "accept")
                 guard !text.isEmpty else { return }
-                let bytes = ArraySlice(text.utf8)
+                // Respect bracketed paste mode when inserting accepted ghost text
+                let payload: String
+                if self.terminal.bracketedPasteMode {
+                    payload = "\u{1B}[200~" + text + "\u{1B}[201~"
+                } else {
+                    payload = text
+                }
+                let bytes = ArraySlice(payload.utf8)
                 // Same forwarding as SwiftTerm's internal send — goes through
                 // onSend → SessionManager → InputHandler (history preserved).
                 terminalDelegate?.send(source: self, data: bytes)
