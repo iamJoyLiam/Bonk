@@ -13,10 +13,10 @@
             <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
 ## Changes
-- Fixed terminal freeze after Cmd+Tab by decoupling PTY processing from display ticks (dirty flag, immediate flush on active)
-- Fixed spurious network recovery that froze 50 by adding path transition and per-session probe gate
-- Fixed recovery make-before-break for PTY rebind and separated transport/pty/output success stages
-- Fixed reconnect button for 202 to do full reconnect when supervisor not configured
+- Fixed terminal freeze after app switching by decoupling PTY processing from display ticks
+- Fixed spurious network recovery that could freeze active sessions
+- Improved recovery to ensure output binding before closing old sessions with staged success checks
+- Fixed reconnect button to reliably re-establish connections
             ]]></description>
             <enclosure
                 url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.9/Bonk-2026.2.9-arm64.dmg"
