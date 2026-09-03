@@ -98,23 +98,21 @@ final class InlineSuggestionPipeline {
         currentKey = key
         currentEffectiveKey = effectiveKey
 
-        // 1. KnownWords instant
-        if let sug = await knownWordsSource.suggestion(for: snapshot, typed: typed),
-           !cache.isRejected(key: effectiveKey, suffix: sug.text) {
-            commit(sug, key: key, generation: generation, effectiveKey: effectiveKey)
+        // 1-3. Local candidates → Ranker (scored)
+        var candidates: [(String, Suggestion)] = []
+        if let sug = await knownWordsSource.suggestion(for: snapshot, typed: typed) {
+            candidates.append((knownWordsSource.name, sug))
         }
-
-        // 2. Cache hit (memory/persistent) — instant repeat (only when provider key exists)
-        if let k = key, let cached = cache.cachedSuffix(for: k), !cache.isRejected(key: k, suffix: cached) {
+        if let k = key, let cached = cache.cachedSuffix(for: k) {
             let display = SuggestionFormatter.displaySuffix(cached, typed: typed)
             let sug = Suggestion(text: cached, displayText: display)
-            commit(sug, key: k, generation: generation, effectiveKey: effectiveKey)
+            candidates.append(("cache", sug))
         }
-
-        // 3. History instant
-        if let sug = await historySource.suggestion(for: snapshot, typed: typed),
-           !cache.isRejected(key: effectiveKey, suffix: sug.text) {
-            commit(sug, key: key, generation: generation, effectiveKey: effectiveKey)
+        if let sug = await historySource.suggestion(for: snapshot, typed: typed) {
+            candidates.append((historySource.name, sug))
+        }
+        if let best = ranker.firstNonRejected(in: candidates, isRejected: { cache.isRejected(key: effectiveKey, suffix: $0) || (key != nil && cache.isRejected(key: key!, suffix: $0)) }) {
+            commit(best, key: key, generation: generation, effectiveKey: effectiveKey)
         }
 
         // 4. LLM (async streaming, may replace local with smarter)
