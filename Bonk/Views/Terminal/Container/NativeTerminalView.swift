@@ -24,6 +24,40 @@ import SwiftTerm
         /// Provides the terminal context (typed text, cwd, history, output) used
         /// to build inline completion requests. Set by the owning pane.
         var completionContextProvider: (@MainActor () -> InlineCompletionContext)?
+        /// New Intelligence-owned snapshot provider (CommandContextSnapshot). When set, pipeline path is preferred.
+        var commandSnapshotProvider: (@MainActor () -> CommandContextSnapshot)?
+        /// Single pipeline (replaces dual SuggestionEngine + InlineCompletionService). Set by container.
+        var inlinePipeline: InlineSuggestionPipeline? {
+            didSet { bindPipeline() }
+        }
+        private var pipelineCancellable: Any?
+
+        private func bindPipeline() {
+            guard let pipeline = inlinePipeline else { return }
+            pipeline.onSuggestionChanged = { [weak self] sug in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if let s = sug {
+                        self.showGhost(text: s.displayText)
+                    } else {
+                        self.hideGhost(reason: "pipeline-nil")
+                    }
+                }
+            }
+            pipeline.onRequestingChanged = { [weak self] isReq in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if isReq {
+                        // Only show waiting if no ghost already visible from local sources
+                        let hasPipelineGhost = !(self.inlinePipeline?.suggestion?.displayText.isEmpty ?? true)
+                        let hasLegacyGhost = !self.completionService.suggestion.isEmpty
+                        if !hasPipelineGhost && !hasLegacyGhost {
+                            self.showWaiting()
+                        }
+                    }
+                }
+            }
+        }
 
         private var lastSyncedCols = -1
         private var lastSyncedRows = -1
@@ -50,7 +84,7 @@ import SwiftTerm
             focusRingType = .none
         }
 
-        // MARK: - Inline Completion
+        // MARK: - Inline Completion (legacy + pipeline)
 
         let completionService = InlineCompletionService.shared
         private nonisolated(unsafe) var completionDebounceTask: Task<Void, Never>?
@@ -120,13 +154,14 @@ import SwiftTerm
                 queue: .main
             ) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    guard let self,
-                          self.completionService.isRequesting || !self.completionService.suggestion.isEmpty
-                    else { return }
+                    guard let self else { return }
+                    let hasLegacy = self.completionService.isRequesting || !self.completionService.suggestion.isEmpty
+                    let hasPipeline = (self.inlinePipeline?.isRequesting ?? false) || self.inlinePipeline?.suggestion != nil
+                    guard hasLegacy || hasPipeline else { return }
                     if self.window?.isKeyWindow == true, self.window?.firstResponder === self {
-                        // Focus is back — re-show a suggestion that was hidden
-                        // by a transient resign.
-                        if !self.completionService.suggestion.isEmpty {
+                        if let s = self.inlinePipeline?.suggestion {
+                            self.showGhost(text: s.displayText)
+                        } else if !self.completionService.suggestion.isEmpty {
                             self.showGhost(text: self.completionService.suggestion)
                         }
                     } else {
@@ -186,8 +221,9 @@ import SwiftTerm
             if keyCode == 36 || keyCode == 76 {
                 MainActor.assumeIsolated {
                     completionDebounceTask?.cancel()
-                    completionService.dismiss()
-                    hideGhost(reason: "enter")
+                    self.inlinePipeline?.cancel()
+                    self.completionService.dismiss()
+                    self.hideGhost(reason: "enter")
                 }
                 return event
             }
@@ -205,7 +241,10 @@ import SwiftTerm
             let isFocused = MainActor.assumeIsolated { window?.firstResponder === self }
             guard isFocused else { return event }
 
-            let hasSuggestion = MainActor.assumeIsolated { !completionService.suggestion.isEmpty }
+            let hasSuggestion = MainActor.assumeIsolated {
+                if let p = self.inlinePipeline, p.suggestion != nil { return true }
+                return !self.completionService.suggestion.isEmpty
+            }
 
             if hasSuggestion {
                 if keyCode == 48, modifiers.isEmpty {
@@ -217,15 +256,23 @@ import SwiftTerm
                     // Esc — dismiss only.
                     completionDebounceTask?.cancel()
                     MainActor.assumeIsolated {
-                        completionService.dismiss(rejected: true)
-                        hideGhost(reason: "esc")
+                        if let p = self.inlinePipeline, p.suggestion != nil {
+                            p.rejectCurrent()
+                        } else {
+                            self.completionService.dismiss(rejected: true)
+                        }
+                        self.hideGhost(reason: "esc")
                     }
                     return nil
                 }
                 // Any other key — dismiss and forward normally.
                 MainActor.assumeIsolated {
-                    completionService.dismiss(rejected: true)
-                    hideGhost(reason: "other-key")
+                    if let p = self.inlinePipeline, p.suggestion != nil {
+                        p.rejectCurrent()
+                    } else {
+                        self.completionService.dismiss(rejected: true)
+                    }
+                    self.hideGhost(reason: "other-key")
                 }
             }
 
@@ -292,6 +339,11 @@ import SwiftTerm
         // MARK: - Completion Flow
 
         private func scheduleCompletion() {
+            // Pipeline owns debounce+generation; View just triggers.
+            if inlinePipeline != nil {
+                requestCompletion()
+                return
+            }
             completionDebounceTask?.cancel()
             let debounceMs = MainActor.assumeIsolated { completionService.debounceMilliseconds }
             completionDebounceTask = Task { @MainActor [weak self] in
@@ -303,6 +355,27 @@ import SwiftTerm
 
         @MainActor
         private func requestCompletion() {
+            // New pipeline path — Intelligence owns snapshot + pipeline
+            if let pipeline = inlinePipeline, let snapshotProvider = commandSnapshotProvider {
+                guard !terminal.isCurrentBufferAlternate else { return }
+                let (cursorX, cursorY) = terminal.getCursorLocation()
+                let yDisp = terminal.getTopVisibleRow()
+                guard cursorY >= 0, cursorY < terminal.rows,
+                      let line = terminal.getLine(row: cursorY) else { return }
+                let isPromptRow: Bool? = {
+                    if let kind = terminal.semanticRowKind(at: yDisp + cursorY) {
+                        return kind == .initial || kind == .continuation
+                    }
+                    return nil
+                }()
+                let lineLen = line.getTrimmedLength()
+                guard CommandEditor.isCompletable(cursorX: cursorX, cursorY: cursorY, rows: terminal.rows, yDisp: yDisp, scrollPosition: scrollPosition, isAlternate: terminal.isCurrentBufferAlternate, lineTrimmedLength: lineLen, isPromptRow: isPromptRow) else { return }
+                let base = snapshotProvider()
+                let raw = line.translateToString(trimRight: true)
+                guard let typedSnap = CommandEditor.typedSnapshot(base: base, rawLine: raw) else { return }
+                pipeline.request(snapshot: typedSnap)
+                return
+            }
             guard completionService.isEnabled,
                   !terminal.isCurrentBufferAlternate, // vim / less / man: no completion
                   let contextProvider = completionContextProvider else { return }
@@ -362,8 +435,13 @@ import SwiftTerm
         /// path (history recording and broadcast included), then clear it.
         private nonisolated func acceptSuggestion() {
             MainActor.assumeIsolated {
-                let text = completionService.accept()
-                hideGhost(reason: "accept")
+                let text: String
+                if let p = self.inlinePipeline, p.suggestion != nil {
+                    text = p.accept()
+                } else {
+                    text = self.completionService.accept()
+                }
+                self.hideGhost(reason: "accept")
                 guard !text.isEmpty else { return }
                 // Respect bracketed paste mode when inserting accepted ghost text
                 let payload: String

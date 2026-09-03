@@ -16,6 +16,9 @@ import os
 final class InlineSuggestionPipeline {
     var suggestion: Suggestion?
     var isRequesting = false
+    /// View callback for ghost updates — pipeline remains UI-agnostic, View subscribes.
+    var onSuggestionChanged: ((Suggestion?) -> Void)?
+    var onRequestingChanged: ((Bool) -> Void)?
 
     private let logger = Logger(subsystem: "com.bonk", category: "InlinePipeline")
     private let generationController = GenerationController()
@@ -60,9 +63,11 @@ final class InlineSuggestionPipeline {
     func cancel() {
         generationController.cancelAll()
         suggestion = nil
+        onSuggestionChanged?(nil)
         currentKey = nil
         currentEffectiveKey = nil
         isRequesting = false
+        onRequestingChanged?(false)
     }
 
     func accept() -> String {
@@ -115,12 +120,19 @@ final class InlineSuggestionPipeline {
         // 4. LLM (async streaming, may replace local with smarter)
         guard let k = key else {
             isRequesting = false
+            onRequestingChanged?(false)
             return
         }
         isRequesting = true
+        onRequestingChanged?(true)
         generationController.runWork { [weak self] in
             guard let self else { return }
-            defer { if self.generationController.isCurrent(generation) { self.isRequesting = false } }
+            defer {
+                if self.generationController.isCurrent(generation) {
+                    self.isRequesting = false
+                    self.onRequestingChanged?(false)
+                }
+            }
             await self.llmSource.stream(for: snapshot, typed: typed, generation: generation, cacheKey: k) { text in
                 guard self.generationController.isCurrent(generation) else { return }
                 let sug = Suggestion(text: text, displayText: text)
@@ -137,5 +149,6 @@ final class InlineSuggestionPipeline {
         if let k = key, !sug.text.isEmpty { cache.store(suffix: sug.text, for: k) }
         // Also store under effectiveKey for local rejection tracking when no provider
         if let ek = effectiveKey, key == nil, !sug.text.isEmpty { cache.store(suffix: sug.text, for: ek) }
+        onSuggestionChanged?(sug)
     }
 }

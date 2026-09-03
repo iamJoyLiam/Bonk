@@ -6,6 +6,7 @@
 //
 
 import os.log
+import SwiftData
 import SwiftTerm
 import SwiftUI
 
@@ -52,6 +53,18 @@ import SwiftUI
             }
         }
 
+        /// New Intelligence-owned snapshot provider (single source of truth)
+        private var commandSnapshot: @MainActor () -> CommandContextSnapshot {
+            { [weak tab] in
+                guard let tab else { return CommandContextSnapshot(inputBuffer: "") }
+                let provider = WorkspaceContextProvider()
+                return provider.snapshot(for: tab)
+            }
+        }
+
+        @State private var inlinePipeline = InlineSuggestionPipeline()
+        @Environment(\.modelContext) private var modelContext
+
         var body: some View {
             ZStack {
                 if tab.session?.connectionState == .connected, paneState.ptySession == nil {
@@ -79,6 +92,8 @@ import SwiftUI
                             onResize: onResize,
                             onTitleChange: onTitleChange,
                             completionContext: completionContext,
+                            commandSnapshot: commandSnapshot,
+                            inlinePipeline: inlinePipeline,
                             onViewReady: connectOutputStreamWithRetry
                         )
                     case let .reconnecting(attempt, max):
@@ -95,6 +110,7 @@ import SwiftUI
             }
             .onAppear {
                 connectOutputStreamWithRetry()
+                inlinePipeline.attachModelContext(modelContext)
             }
             .onReceive(NotificationCenter.default.publisher(for: .terminalPTYSessionReady)) { note in
                 if let tid = note.userInfo?["tabID"] as? UUID, tid == tab.id {
@@ -214,6 +230,8 @@ import SwiftUI
         let onResize: (@Sendable (Int, Int) -> Void)?
         let onTitleChange: (@Sendable (String) -> Void)?
         let completionContext: (@MainActor () -> InlineCompletionContext)?
+        let commandSnapshot: (@MainActor () -> CommandContextSnapshot)?
+        let inlinePipeline: InlineSuggestionPipeline?
         /// Fired every time this bridge attaches a terminal view for a pane.
         /// SwiftUI reuses the surrounding container across tab switches, so
         /// onAppear is unreliable — updateNSView is the reliable hook.
@@ -251,6 +269,10 @@ import SwiftUI
             if let existing = TerminalViewCache.shared.retrieve(paneID) {
                 cached = existing
                 created = false
+                if let native = cached.view as? NativeTerminalView {
+                    native.commandSnapshotProvider = commandSnapshot
+                    native.inlinePipeline = inlinePipeline
+                }
             } else {
                 cached = createTerminalView(for: paneID, context: context)
                 created = true
@@ -289,6 +311,8 @@ import SwiftUI
             let terminal = NativeTerminalView(frame: .zero, font: font)
             terminal.configureNativeColors()
             terminal.completionContextProvider = completionContext
+            terminal.commandSnapshotProvider = commandSnapshot
+            terminal.inlinePipeline = inlinePipeline
 
             // Scrollbar: hidden initially, show on scroll, small
             for subview in terminal.subviews {
@@ -339,6 +363,10 @@ import SwiftUI
             if let existing = TerminalViewCache.shared.retrieve(paneID) {
                 cached = existing
                 created = false
+                if let native = cached.view as? NativeTerminalView {
+                    native.commandSnapshotProvider = commandSnapshot
+                    native.inlinePipeline = inlinePipeline
+                }
             } else {
                 cached = createTerminalView(for: paneID, context: context)
                 created = true
