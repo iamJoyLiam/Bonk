@@ -32,28 +32,7 @@ import SwiftUI
         let onTitleChange: (@Sendable (String) -> Void)?
         let onReconnect: (() -> Void)?
 
-        /// Lazily gathers terminal context for inline AI completion.
-        private var completionContext: @MainActor () -> InlineCompletionContext {
-            { [weak tab] in
-                let output = tab?.session?.ptySession?.recentOutput(maxLines: 40) ?? ""
-                let hostKey = tab?.hostItem.id.uuidString
-                let history = GlobalCommandHistory.shared.commands.filter {
-                    $0.hostKey == hostKey
-                }
-                return InlineCompletionContext(
-                    inputBuffer: tab?.session?.inputBuffer ?? "",
-                    hostKey: hostKey,
-                    currentDirectory: tab?.currentDirectory,
-                    shell: tab?.session?.serverInfo?.shell,
-                    recentCommands: history.suffix(50).map(\.command),
-                    recentOutput: output,
-                    lastExitCode: history.last?.exitCode,
-                    knownWords: InlineCompletionService.extractKnownWords(from: output)
-                )
-            }
-        }
-
-        /// New Intelligence-owned snapshot provider (single source of truth)
+        /// Intelligence-owned snapshot provider (single source of truth)
         private var commandSnapshot: @MainActor () -> CommandContextSnapshot {
             { [weak tab] in
                 guard let tab else { return CommandContextSnapshot(inputBuffer: "") }
@@ -91,7 +70,6 @@ import SwiftUI
                             onSend: onSend,
                             onResize: onResize,
                             onTitleChange: onTitleChange,
-                            completionContext: completionContext,
                             commandSnapshot: commandSnapshot,
                             inlinePipeline: inlinePipeline,
                             onViewReady: connectOutputStreamWithRetry
@@ -229,7 +207,6 @@ import SwiftUI
         let onSend: @Sendable (ArraySlice<UInt8>) -> Void
         let onResize: (@Sendable (Int, Int) -> Void)?
         let onTitleChange: (@Sendable (String) -> Void)?
-        let completionContext: (@MainActor () -> InlineCompletionContext)?
         let commandSnapshot: (@MainActor () -> CommandContextSnapshot)?
         let inlinePipeline: InlineSuggestionPipeline?
         /// Fired every time this bridge attaches a terminal view for a pane.
@@ -310,7 +287,6 @@ import SwiftUI
             let font = createSafeFont(family: fontFamily, size: CGFloat(fontSize))
             let terminal = NativeTerminalView(frame: .zero, font: font)
             terminal.configureNativeColors()
-            terminal.completionContextProvider = completionContext
             terminal.commandSnapshotProvider = commandSnapshot
             terminal.inlinePipeline = inlinePipeline
 
