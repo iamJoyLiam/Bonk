@@ -321,8 +321,19 @@ final class CitadelSFTPAdapter: SFTPChannel {
                 }
                 guard let (off, data) = try await group.next() else { break }
                 inFlight -= 1
-                if data.isEmpty || data.count < Int(chunkSize) { readDone = true }
-                if !data.isEmpty { pending[off] = data }
+                if data.isEmpty {
+                    if off + UInt64(data.count) >= total || off >= total - UInt64(chunkSize) { readDone = true }
+                    continue
+                }
+                if data.count < Int(chunkSize), off + UInt64(data.count) < total {
+                    let gapStart = off + UInt64(data.count)
+                    let gapLen = UInt32(min(UInt64(chunkSize) - UInt64(data.count), total - gapStart))
+                    let gapOff = gapStart
+                    inFlight += 1
+                    group.addTask { try await SFTPTransferEngine.readChunk(remoteFile, offset: gapOff, length: gapLen) }
+                }
+                pending[off] = data
+                if off + UInt64(data.count) >= total { readDone = true }
                 while let bytes = pending.removeValue(forKey: nextWrite) {
                     try handle.write(contentsOf: bytes)
                     nextWrite += UInt64(bytes.count)
@@ -401,8 +412,19 @@ final class CitadelSFTPAdapter: SFTPChannel {
                 }
                 guard let (off, data) = try await group.next() else { break }
                 inFlight -= 1
-                if data.isEmpty || data.count < Int(chunkSize) { readDone = true }
-                if !data.isEmpty { pending[off] = data }
+                if data.isEmpty {
+                    if off + UInt64(data.count) >= total { readDone = true }
+                    continue
+                }
+                if data.count < Int(chunkSize), off + UInt64(data.count) < total {
+                    let gapStart = off + UInt64(data.count)
+                    let gapLen = UInt32(min(UInt64(chunkSize) - UInt64(data.count), total - gapStart))
+                    let gapOff = gapStart
+                    inFlight += 1
+                    group.addTask { try await SFTPTransferEngine.readChunk(remoteFile, offset: gapOff, length: gapLen) }
+                }
+                pending[off] = data
+                if off + UInt64(data.count) >= total { readDone = true }
                 while let bytes = pending.removeValue(forKey: nextWrite) {
                     try handle.seek(toOffset: nextWrite)
                     try handle.write(contentsOf: bytes)
