@@ -12,9 +12,9 @@ public enum AuthenticationFailure: Sendable, Equatable, Hashable, CustomStringCo
 
     public var message: String {
         switch self {
-        case .permissionDenied(let m), .invalidCredentials(let m), .allOptionsFailed(let m),
-             .tooManyFailures(let m), .keyboardInteractiveRequired(let m), .unknown(let m):
-            return m
+        case .permissionDenied(let message), .invalidCredentials(let message), .allOptionsFailed(let message),
+             .tooManyFailures(let message), .keyboardInteractiveRequired(let message), .unknown(let message):
+            return message
         }
     }
     public var description: String { message }
@@ -32,9 +32,9 @@ public enum TransportFailure: Sendable, Equatable, Hashable, CustomStringConvert
 
     public var message: String {
         switch self {
-        case .connectionRefused(let m), .timedOut(let m), .unreachable(let m), .reset(let m),
-             .dnsFailed(let m), .exchangeFailed(let m), .closed(let m), .unknown(let m):
-            return m
+        case .connectionRefused(let message), .timedOut(let message), .unreachable(let message), .reset(let message),
+             .dnsFailed(let message), .exchangeFailed(let message), .closed(let message), .unknown(let message):
+            return message
         }
     }
     public var description: String { message }
@@ -58,11 +58,11 @@ public enum SSHFailure: Error, Sendable, Equatable, Hashable, CustomStringConver
     }
     public var message: String {
         switch self {
-        case .authentication(let a): return a.message
-        case .transport(let t): return t.message
-        case .hostKey(let m): return m
+        case .authentication(let authFailure): return authFailure.message
+        case .transport(let transportFailure): return transportFailure.message
+        case .hostKey(let message): return message
         case .cancelled: return "cancelled"
-        case .unknown(let m): return m
+        case .unknown(let message): return message
         }
     }
     public var typeString: String {
@@ -165,24 +165,24 @@ enum SSHFailureClassifier {
     // /  SSHProcessFailure  SSHFailure
     static func from(_ old: SSHProcessFailure) -> SSHFailure {
         switch old {
-        case .authentication(let m):
-            if m.lowercased().contains("allauthenticationoptionsfailed") || m.lowercased().contains("all authentication options failed") {
-                return .authentication(.allOptionsFailed(m))
+        case .authentication(let message):
+            if message.lowercased().contains("allauthenticationoptionsfailed") || message.lowercased().contains("all authentication options failed") {
+                return .authentication(.allOptionsFailed(message))
             }
-            return .authentication(.permissionDenied(m))
-        case .hostKey(let m): return .hostKey(m)
-        case .network(let m):
+            return .authentication(.permissionDenied(message))
+        case .hostKey(let message): return .hostKey(message)
+        case .network(let message):
             // transport
-            let lower = m.lowercased()
-            if lower.contains("refused") { return .transport(.connectionRefused(m)) }
-            if lower.contains("timed out") { return .transport(.timedOut(m)) }
-            if lower.contains("no route") || lower.contains("unreachable") { return .transport(.unreachable(m)) }
-            if lower.contains("could not resolve") { return .transport(.dnsFailed(m)) }
-            if lower.contains("reset") || lower.contains("closed by") { return .transport(.reset(m)) }
-            return .transport(.unknown(m))
-        case .forwarding(let m): return .transport(.closed(m))
+            let lower = message.lowercased()
+            if lower.contains("refused") { return .transport(.connectionRefused(message)) }
+            if lower.contains("timed out") { return .transport(.timedOut(message)) }
+            if lower.contains("no route") || lower.contains("unreachable") { return .transport(.unreachable(message)) }
+            if lower.contains("could not resolve") { return .transport(.dnsFailed(message)) }
+            if lower.contains("reset") || lower.contains("closed by") { return .transport(.reset(message)) }
+            return .transport(.unknown(message))
+        case .forwarding(let message): return .transport(.closed(message))
         case .cancelled: return .cancelled
-        case .unknown(let m): return .unknown(m)
+        case .unknown(let message): return .unknown(message)
         }
     }
 }

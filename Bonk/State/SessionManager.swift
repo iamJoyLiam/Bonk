@@ -262,7 +262,7 @@ final class SessionManager {
 
         // Merge transient retry result; keep for cleaning retry, clear on success (300ms)
         let effectiveEphemeral = ephemeralResult ?? transientAuthResults[tab.id]
-        if let er = effectiveEphemeral { transientAuthResults[tab.id] = er }
+        if let effectiveResult = effectiveEphemeral { transientAuthResults[tab.id] = effectiveResult }
         guard let config = preparedConfig(for: tab, session: session, passwordOverride: passwordOverride, ephemeralResult: effectiveEphemeral) else {
             setPhase(session, to: .failed("resolve config"), host: tab.hostItem.host, engine: "Resolver", reason: "config")
             return
@@ -309,11 +309,11 @@ final class SessionManager {
                 generation: generation
             )
         }
-        if let er = effectiveEphemeral {
+        if let effectiveResult = effectiveEphemeral {
             let src = ephemeralResult == nil ? "transient" : "ephemeral"
-            let pwLen = er.password.count
-            let fp = pwLen>0 ? OpenSSHBackend.passwordFingerprint(er.password) : "-"
-            Log.session.info("[AUTH_RETRY] source=\(src, privacy: .public) passwordLength=\(pwLen) passwordFingerprint=\(fp, privacy: .public) authType=\(er.authType.rawValue, privacy: .public) effectiveHost=\(effectiveConfig.host, privacy: .public)")
+            let passwordLength = effectiveResult.password.count
+            let fingerprint = passwordLength>0 ? OpenSSHBackend.passwordFingerprint(effectiveResult.password) : "-"
+            Log.session.info("[AUTH_RETRY] source=\(src, privacy: .public) passwordLength=\(passwordLength) passwordFingerprint=\(fingerprint, privacy: .public) authType=\(effectiveResult.authType.rawValue, privacy: .public) effectiveHost=\(effectiveConfig.host, privacy: .public)")
         }
         if case .compatibility = vnextDecision, let algos = vnextCached?.algorithms, !algos.isEmpty {
             Log.session.info("[VNext] Using cached compat algorithms: kex=\(algos.kex)")
@@ -400,8 +400,8 @@ final class SessionManager {
                     setRetryState(.cleanupDone, for: tab.id)
                     sessionStore.markConnected(tab.id)
                     let reuse = transientAuthResults[tab.id]
-                    if let r = reuse, r.authType == .password, !r.password.isEmpty {
-                        await connectTab(tab, passwordOverride: r.password, ephemeralResult: r, resetAuthRetry: false)
+                    if let reuseResult = reuse, reuseResult.authType == .password, !reuseResult.password.isEmpty {
+                        await connectTab(tab, passwordOverride: reuseResult.password, ephemeralResult: reuseResult, resetAuthRetry: false)
                     } else {
                         await connectTab(tab, ephemeralResult: reuse, resetAuthRetry: false)
                     }
@@ -578,7 +578,7 @@ final class SessionManager {
         guard let tab = tabs.first(where: { $0.id == tabID }),
               let targetPaneID = paneID ?? tab.activePaneID else { return }
         // Block input during auth gate to avoid command typed as password
-        if let s = tab.session, s.terminalState == .waitingPTY || s.phase == .authenticating || s.phase == .openingPTY || s.phase == .openingChannel {
+        if let sessionState = tab.session, sessionState.terminalState == .waitingPTY || sessionState.phase == .authenticating || sessionState.phase == .openingPTY || sessionState.phase == .openingChannel {
             return
         }
 
@@ -714,8 +714,8 @@ final class SessionManager {
     }
 
     func completeAuthRetry(with result: AuthRetryResult?) {
-        if let r = result, !r.password.isEmpty, let tabID = authRetryRequest?.tab.id {
-            lastRetryPassword[tabID] = r.password
+        if let authResult = result, !authResult.password.isEmpty, let tabID = authRetryRequest?.tab.id {
+            lastRetryPassword[tabID] = authResult.password
         } else if result == nil, let tabID = authRetryRequest?.tab.id {
             // Keep last input for next prefill
         }
@@ -739,8 +739,8 @@ final class SessionManager {
     /// Citadel throws sync, OpenSSH tails async; Prompts=1 fails fast to sheet
     private func handleServiceAuthFailure(_ failure: SSHFailure, for tab: TerminalTab) async {
         guard tabs.contains(where: { $0.id == tab.id }), let session = tab.session else { return }
-        guard case .authentication(let af) = failure else { return }
-        let display = SSHErrorMessageParser.explain(af.message, host: tab.hostItem.host, jumpHost: tab.hostItem.jumpHostRef?.host) ?? af.message
+        guard case .authentication(let authFailure) = failure else { return }
+        let display = SSHErrorMessageParser.explain(authFailure.message, host: tab.hostItem.host, jumpHost: tab.hostItem.jumpHostRef?.host) ?? authFailure.message
         // Single sheet path
         if case .authentication = session.failureReason, session.phase == .failed(display), isShowingDialog(for: tab.id) { return }
         session.failureReason = failure
@@ -759,8 +759,8 @@ final class SessionManager {
             guard tabs.contains(where: { $0.id == tab.id }) else { return }
             sessionStore.markConnected(tab.id)
             let reuse = transientAuthResults[tab.id]
-            if let r = reuse, r.authType == .password, !r.password.isEmpty {
-                await connectTab(tab, passwordOverride: r.password, ephemeralResult: r, resetAuthRetry: false)
+            if let reuseResult = reuse, reuseResult.authType == .password, !reuseResult.password.isEmpty {
+                await connectTab(tab, passwordOverride: reuseResult.password, ephemeralResult: reuseResult, resetAuthRetry: false)
             } else {
                 await connectTab(tab, ephemeralResult: reuse, resetAuthRetry: false)
             }
@@ -776,12 +776,12 @@ final class SessionManager {
             setRetryState(.idle, for: tab.id)
         }
         setRetryState(.dialogShown, for: tab.id)
-        guard let result = await requestAuthRetry(for: tab, rawError: af.message) else {
+        guard let result = await requestAuthRetry(for: tab, rawError: authFailure.message) else {
             setRetryState(.idle, for: tab.id); return
         }
-        let pwLen = result.password.count
-        let fp = pwLen>0 ? OpenSSHBackend.passwordFingerprint(result.password) : "-"
-        Log.session.info("[AUTH_RETRY] source=ephemeral (service) passwordLength=\(pwLen) passwordFingerprint=\(fp, privacy: .public) authType=\(result.authType.rawValue, privacy: .public)")
+        let passwordLength = result.password.count
+        let fingerprint = passwordLength>0 ? OpenSSHBackend.passwordFingerprint(result.password) : "-"
+        Log.session.info("[AUTH_RETRY] source=ephemeral (service) passwordLength=\(passwordLength) passwordFingerprint=\(fingerprint, privacy: .public) authType=\(result.authType.rawValue, privacy: .public)")
         transientAuthResults[tab.id] = result
         // Isolated retry via ControlMaster bypass
         if result.authType == .password, !result.password.isEmpty {
@@ -827,10 +827,10 @@ final class SessionManager {
                 Task { @MainActor in
                     guard let self, let tab else { return }
                     switch failure {
-                    case .authentication(let af):
+                    case .authentication(let authFailure):
                         await service.suppressRecoveryForAuth()
                         session.failureReason = failure
-                        let display = SSHErrorMessageParser.explain(af.message, host: tab.hostItem.host, jumpHost: tab.hostItem.jumpHostRef?.host) ?? af.message
+                        let display = SSHErrorMessageParser.explain(authFailure.message, host: tab.hostItem.host, jumpHost: tab.hostItem.jumpHostRef?.host) ?? authFailure.message
                         self.setPhase(session, to: .failed(display), host: tab.hostItem.host, engine: "OpenSSH", reason: "authFailed")
                         session.signalAuthFailure()
                         session.errorMessage = display
@@ -846,12 +846,12 @@ final class SessionManager {
                     case .cancelled:
                         session.failureReason = .cancelled
                         Log.session.info("[RECOVERY_GATE] blocked=true reason=cancelled")
-                    case .transport(let tf):
+                    case .transport(let transportFailure):
                         session.failureReason = failure
-                        Log.session.info("[RECOVERY_GATE] blocked=false reason=transportFailed detail=\(tf.message.prefix(80), privacy: .public)")
-                    case .unknown(let m):
+                        Log.session.info("[RECOVERY_GATE] blocked=false reason=transportFailed detail=\(transportFailure.message.prefix(80), privacy: .public)")
+                    case .unknown(let message):
                         session.failureReason = failure
-                        Log.session.warning("[SSH_FAILURE] type=unknown msg=\(m.prefix(80), privacy: .public)")
+                        Log.session.warning("[SSH_FAILURE] type=unknown msg=\(message.prefix(80), privacy: .public)")
                     }
                 }
             }

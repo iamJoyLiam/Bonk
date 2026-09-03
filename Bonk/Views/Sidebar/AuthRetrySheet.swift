@@ -103,7 +103,7 @@ struct AuthRetrySheet: View {
                         switch viewModel.authType {
                         case .password:
                             LabeledSecureField(title: i18n.t(.password), text: $viewModelBindable.password)
-                                .onChange(of: viewModel.password) { _, nv in Log.session.info("[AUTH_RETRY_SHEET] password changed len=\(nv.count) fp=\(nv.isEmpty ? "-" : OpenSSHBackend.passwordFingerprint(nv))") }
+                                .onChange(of: viewModel.password) { _, newValue in Log.session.info("[AUTH_RETRY_SHEET] password changed len=\(newValue.count) fp=\(newValue.isEmpty ? "-" : OpenSSHBackend.passwordFingerprint(newValue))") }
                         case .privateKey:
                             PEMEditorField(text: $viewModelBindable.privateKeyPEM, hint: i18n.t(.pastePemKey))
                         case .certificate:
@@ -120,7 +120,7 @@ struct AuthRetrySheet: View {
                         }
                         // Allow vault override (persist after 300ms)
                         LabeledSecureField(title: i18n.t(.password) + " (\(i18n.t(.retry)))", text: $viewModelBindable.password)
-                            .onChange(of: viewModel.password) { _, nv in Log.session.info("[AUTH_RETRY_SHEET] vault override password changed len=\(nv.count) fp=\(nv.isEmpty ? "-" : OpenSSHBackend.passwordFingerprint(nv))") }
+                            .onChange(of: viewModel.password) { _, newValue in Log.session.info("[AUTH_RETRY_SHEET] vault override password changed len=\(newValue.count) fp=\(newValue.isEmpty ? "-" : OpenSSHBackend.passwordFingerprint(newValue))") }
                     }
                 }
 
@@ -133,9 +133,9 @@ struct AuthRetrySheet: View {
                     .keyboardShortcut(.cancelAction)
                 Spacer()
                 Button(i18n.t(.retry)) {
-                    let r = buildRetryResult()
-                    Log.session.info("[AUTH_RETRY_SHEET] retry tapped pwLen=\(r.password.count) valid=\(viewModel.isValid)")
-                    onRetry(r)
+                    let retryResult = buildRetryResult()
+                    Log.session.info("[AUTH_RETRY_SHEET] retry tapped pwLen=\(retryResult.password.count) valid=\(viewModel.isValid)")
+                    onRetry(retryResult)
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -152,9 +152,9 @@ struct AuthRetrySheet: View {
     private func buildRetryResult() -> SessionManager.AuthRetryResult {
         let trimmedPassword = viewModel.password.trimmingCharacters(in: .whitespacesAndNewlines)
         // Log fingerprint for UI->retry trace without plaintext
-        let fp = trimmedPassword.isEmpty ? "-" : OpenSSHBackend.passwordFingerprint(trimmedPassword)
+        let fingerprint = trimmedPassword.isEmpty ? "-" : OpenSSHBackend.passwordFingerprint(trimmedPassword)
         let credDesc = viewModel.selectedCredential == nil ? "nil" : "\(viewModel.selectedCredential!.name)"
-        Log.session.info("[AUTH_RETRY_SHEET] buildRetryResult pwLen=\(trimmedPassword.count) fp=\(fp, privacy: .public) authType=\(viewModel.authType.rawValue, privacy: .public) cred=\(credDesc, privacy: .public) usingVault=\(viewModel.usingVault)")
+        Log.session.info("[AUTH_RETRY_SHEET] buildRetryResult pwLen=\(trimmedPassword.count) fingerprint=\(fingerprint, privacy: .public) authType=\(viewModel.authType.rawValue, privacy: .public) cred=\(credDesc, privacy: .public) usingVault=\(viewModel.usingVault)")
         return SessionManager.AuthRetryResult(
             password: trimmedPassword,
             privateKeyPEM: viewModel.privateKeyPEM,

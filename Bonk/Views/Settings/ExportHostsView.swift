@@ -8,6 +8,7 @@ struct ExportHostsView: View {
     @State private var includeSecrets = false
     @State private var showExporter = false
     @State private var exportData: Data?
+    @State private var showImport = false
 
     var body: some View {
         Form {
@@ -22,8 +23,8 @@ struct ExportHostsView: View {
                 .disabled(allHosts.isEmpty)
             }
             Section("导入") {
-                Text("他人分享的 JSON 文件可通过“文件 → 导入会话”统一导入，或由主持端在团队窗口直接分享。")
-                    .font(.caption).foregroundStyle(.secondary)
+                Button("一键导入…") { showImport = true }
+                    .buttonStyle(.borderedProminent)
             }
         }
         .formStyle(.grouped)
@@ -34,6 +35,9 @@ struct ExportHostsView: View {
             defaultFilename: "bonk-hosts-\(Date().formatted(.iso8601)).json"
         ) { _ in
             exportData = nil
+        }
+        .sheet(isPresented: $showImport) {
+            UnifiedImportView(modelContext: modelContext)
         }
         .onChange(of: includeSecrets) { _, _ in prepareExport() }
         .onAppear { prepareExport() }

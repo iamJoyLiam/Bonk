@@ -43,7 +43,7 @@ struct AddHostSheet: View {
     }
 
     var body: some View {
-        @Bindable var vm = viewModel
+        @Bindable var formViewModel = viewModel
         VStack(spacing: 0) {
             HStack(spacing: AppStyle.spacingM) {
                 Image(systemName: "desktopcomputer")
@@ -59,29 +59,29 @@ struct AddHostSheet: View {
             Divider()
             Form {
                 Section(i18n.t(.hostInformation)) {
-                    TextField(i18n.t(.displayName), text: $vm.name)
-                    TextField(i18n.t(.hostnameOrIp), text: $vm.host, prompt: Text(vm.name.isEmpty ? "" : vm.name))
+                    TextField(i18n.t(.displayName), text: $formViewModel.name)
+                    TextField(i18n.t(.hostnameOrIp), text: $formViewModel.host, prompt: Text(formViewModel.name.isEmpty ? "" : formViewModel.name))
                         .textContentType(.URL)
                         .autocorrectionDisabled()
-                    TextField(i18n.t(.port), text: $vm.port)
-                    TextField(i18n.t(.username), text: $vm.username)
+                    TextField(i18n.t(.port), text: $formViewModel.port)
+                    TextField(i18n.t(.username), text: $formViewModel.username)
                         .autocorrectionDisabled()
-                    GroupComboBoxView(group: $vm.group)
-                    TextField(i18n.t(.customTag), text: $vm.customTag)
+                    GroupComboBoxView(group: $formViewModel.group)
+                    TextField(i18n.t(.customTag), text: $formViewModel.customTag)
                         .autocorrectionDisabled()
-                    if !vm.customTag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if !formViewModel.customTag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         HStack(spacing: AppStyle.spacingM) {
                             ForEach(HostItem.tagPresetColors, id: \.self) { hex in
                                 Circle()
                                     .fill(Color(hex: hex))
                                     .frame(width: AppStyle.buttonMedium, height: AppStyle.buttonMedium)
                                     .overlay(Circle().stroke(Color.primary.opacity(AppStyle.opacityStroke), lineWidth: 1))
-                                    .overlay(Circle().stroke(Color.accentColor, lineWidth: 2).opacity(isTagColorSelected(hex, selected: vm.customTagColorHex) ? 1 : 0))
-                                    .onTapGesture { vm.customTagColorHex = hex }
+                                    .overlay(Circle().stroke(Color.accentColor, lineWidth: 2).opacity(isTagColorSelected(hex, selected: formViewModel.customTagColorHex) ? 1 : 0))
+                                    .onTapGesture { formViewModel.customTagColorHex = hex }
                             }
                             ColorPicker("", selection: Binding(
-                                get: { vm.customTagColorHex.map { Color(hex: $0) } ?? Color(hex: HostItem.tagPresetColors[0]) },
-                                set: { vm.customTagColorHex = $0.hexString }
+                                get: { formViewModel.customTagColorHex.map { Color(hex: $0) } ?? Color(hex: HostItem.tagPresetColors[0]) },
+                                set: { formViewModel.customTagColorHex = $0.hexString }
                             ), supportsOpacity: false)
                                 .labelsHidden()
                                 .frame(width: AppStyle.buttonMedium, height: AppStyle.buttonMedium)
@@ -92,19 +92,19 @@ struct AddHostSheet: View {
                 }
 
                 Section(i18n.t(.authentication)) {
-                    Picker(i18n.t(.credential), selection: $vm.selectedCredential) {
+                    Picker(i18n.t(.credential), selection: $formViewModel.selectedCredential) {
                         Text(i18n.t(.custom)).tag(Credential?.none)
                         ForEach(matchingCredentials, id: \.self) { cred in
                             Label(cred.name, systemImage: cred.type.symbolName)
                                 .tag(Credential?.some(cred))
                         }
                     }
-                    .onChange(of: vm.selectedCredential) { _, newCred in
-                        vm.onCredentialChanged(newCred)
+                    .onChange(of: formViewModel.selectedCredential) { _, newCred in
+                        formViewModel.onCredentialChanged(newCred)
                     }
 
-                    if !vm.usingVault {
-                        Picker(i18n.t(.method), selection: $vm.authType) {
+                    if !formViewModel.usingVault {
+                        Picker(i18n.t(.method), selection: $formViewModel.authType) {
                             Text(i18n.t(.password)).tag(AuthType.password)
                             Text(i18n.t(.privateKey)).tag(AuthType.privateKey)
                             Text(i18n.t(.certificate)).tag(AuthType.certificate)
@@ -112,50 +112,50 @@ struct AddHostSheet: View {
                         }
                         .pickerStyle(.segmented)
 
-                        switch vm.authType {
+                        switch formViewModel.authType {
                         case .password:
-                            LabeledSecureField(title: i18n.t(.password), text: $vm.password)
+                            LabeledSecureField(title: i18n.t(.password), text: $formViewModel.password)
                         case .privateKey:
-                            PEMEditorField(text: $vm.privateKeyPEM, detectedType: detectedPrivateKeyType.map { i18n.tr(.detectedKeyType, args: $0) }, hint: i18n.t(.pastePemKey))
-                            if let t = detectedPrivateKeyType, t.contains("sk-") {
+                            PEMEditorField(text: $formViewModel.privateKeyPEM, detectedType: detectedPrivateKeyType.map { i18n.tr(.detectedKeyType, args: $0) }, hint: i18n.t(.pastePemKey))
+                            if let detectedType = detectedPrivateKeyType, detectedType.contains("sk-") {
                                 Label("检测到 Security Key (sk-)，需触摸 YubiKey", systemImage: "key.viewfinder").font(.caption).foregroundStyle(.orange)
                             }
                             Toggle(isOn: Binding(
-                                get: { vm.selectedCredential?.isSecurityKey ?? false },
-                                set: { vm.selectedCredential?.isSecurityKey = $0 }
+                                get: { formViewModel.selectedCredential?.isSecurityKey ?? false },
+                                set: { formViewModel.selectedCredential?.isSecurityKey = $0 }
                             )) {
                                 Label("FIDO2 / YubiKey (sk-)", systemImage: "key.viewfinder")
                             }.help("Security Key 需触摸确认")
-                            if let cred = vm.selectedCredential, cred.isSecurityKey {
+                            if let cred = formViewModel.selectedCredential, cred.isSecurityKey {
                                 Text("将使用 SecurityKeyProvider，需按 YubiKey").font(.caption).foregroundStyle(.orange)
                             }
                         case .certificate:
                             HStack {
                                 Text(i18n.t(.privateKey)).font(.headline)
                                 Spacer()
-                                Button(vm.useFilePickerForKey ? i18n.t(.pasteManually) : i18n.t(.selectFile)) { vm.useFilePickerForKey.toggle() }
+                                Button(formViewModel.useFilePickerForKey ? i18n.t(.pasteManually) : i18n.t(.selectFile)) { formViewModel.useFilePickerForKey.toggle() }
                                     .font(.caption)
                             }
-                            if vm.useFilePickerForKey {
-                                FilePickerCard(url: $vm.privateKeyFileURL, content: $vm.privateKeyPEM, placeholder: i18n.t(.selectPrivateKeyFile))
+                            if formViewModel.useFilePickerForKey {
+                                FilePickerCard(url: $formViewModel.privateKeyFileURL, content: $formViewModel.privateKeyPEM, placeholder: i18n.t(.selectPrivateKeyFile))
                             } else {
-                                PEMEditorField(text: $vm.privateKeyPEM, minHeight: 100, detectedType: detectedPrivateKeyType.map { i18n.tr(.detectedKeyType, args: $0) }, hint: i18n.t(.pastePemKey))
+                                PEMEditorField(text: $formViewModel.privateKeyPEM, minHeight: 100, detectedType: detectedPrivateKeyType.map { i18n.tr(.detectedKeyType, args: $0) }, hint: i18n.t(.pastePemKey))
                             }
                             HStack {
                                 Text(i18n.t(.certificate)).font(.headline)
                                 Spacer()
-                                Button(vm.useFilePickerForCert ? i18n.t(.pasteManually) : i18n.t(.selectFile)) { vm.useFilePickerForCert.toggle() }
+                                Button(formViewModel.useFilePickerForCert ? i18n.t(.pasteManually) : i18n.t(.selectFile)) { formViewModel.useFilePickerForCert.toggle() }
                                     .font(.caption)
                             }
-                            if vm.useFilePickerForCert {
-                                FilePickerCard(url: $vm.certificateFileURL, content: $vm.certificatePEM, placeholder: i18n.t(.selectCertificateFile))
+                            if formViewModel.useFilePickerForCert {
+                                FilePickerCard(url: $formViewModel.certificateFileURL, content: $formViewModel.certificatePEM, placeholder: i18n.t(.selectCertificateFile))
                             } else {
-                                PEMEditorField(text: $vm.certificatePEM, minHeight: 100, hint: i18n.t(.pasteCertificate))
+                                PEMEditorField(text: $formViewModel.certificatePEM, minHeight: 100, hint: i18n.t(.pasteCertificate))
                             }
                         case .secureEnclave:
                             VStack(alignment: .leading, spacing: 12) {
                                 Text(i18n.t(.hardwareProtectionDesc)).font(.caption).foregroundStyle(.secondary)
-                                if let selectedTag = vm.secureEnclaveKeyTag, !selectedTag.isEmpty {
+                                if let selectedTag = formViewModel.secureEnclaveKeyTag, !selectedTag.isEmpty {
                                     GroupBox {
                                         HStack {
                                             Image(systemName: "lock.shield.fill").foregroundStyle(.green)
@@ -164,28 +164,28 @@ struct AddHostSheet: View {
                                                 Text(i18n.t(.secureEnclave)).font(.caption).foregroundStyle(.secondary)
                                             }
                                             Spacer()
-                                            Button(i18n.t(.change)) { vm.secureEnclaveKeyTag = nil; vm.secureEnclaveKeyTagInput = "" }
+                                            Button(i18n.t(.change)) { formViewModel.secureEnclaveKeyTag = nil; formViewModel.secureEnclaveKeyTagInput = "" }
                                                 .buttonStyle(.bordered).controlSize(.small)
                                         }.padding(AppStyle.spacingM)
                                     }
                                 } else {
                                     VStack(alignment: .leading, spacing: 8) {
                                         Text(i18n.t(.keyIdentifierHint)).font(.caption).foregroundStyle(.secondary)
-                                        TextField(i18n.t(.exampleKeyTag), text: $vm.secureEnclaveKeyTagInput).textFieldStyle(.roundedBorder)
+                                        TextField(i18n.t(.exampleKeyTag), text: $formViewModel.secureEnclaveKeyTagInput).textFieldStyle(.roundedBorder)
                                         HStack {
-                                            Button(i18n.t(.verifyKey)) { vm.verifySecureEnclaveKey(i18n: i18n) }
-                                                .disabled(vm.secureEnclaveKeyTagInput.isEmpty)
-                                            if let msg = vm.secureEnclaveVerificationMessage {
-                                                Text(msg).font(.caption).foregroundStyle((vm.secureEnclaveKeyExists ?? false) ? .green : .red)
+                                            Button(i18n.t(.verifyKey)) { formViewModel.verifySecureEnclaveKey(i18n: i18n) }
+                                                .disabled(formViewModel.secureEnclaveKeyTagInput.isEmpty)
+                                            if let msg = formViewModel.secureEnclaveVerificationMessage {
+                                                Text(msg).font(.caption).foregroundStyle((formViewModel.secureEnclaveKeyExists ?? false) ? .green : .red)
                                             }
                                         }
                                         Divider()
-                                        Button(i18n.t(.generateSecureEnclaveKey)) { vm.showSecureEnclaveGenerator = true }.buttonStyle(.bordered)
+                                        Button(i18n.t(.generateSecureEnclaveKey)) { formViewModel.showSecureEnclaveGenerator = true }.buttonStyle(.bordered)
                                     }
                                 }
                             }
                         }
-                    } else if let cred = vm.selectedCredential {
+                    } else if let cred = formViewModel.selectedCredential {
                         LabeledContent(i18n.t(.credential)) { Label(cred.name, systemImage: cred.type.symbolName) }
                         if let credUsername = cred.username, !credUsername.isEmpty {
                             LabeledContent(i18n.t(.username)) { Text(credUsername) }
@@ -194,9 +194,9 @@ struct AddHostSheet: View {
                 }
 
                 Section {
-                    Toggle(i18n.t(.jumpHostAdvanced), isOn: $vm.showJumpHost)
-                    if vm.showJumpHost {
-                        Picker(i18n.t(.jumpHosts), selection: $vm.selectedJumpHost) {
+                    Toggle(i18n.t(.jumpHostAdvanced), isOn: $formViewModel.showJumpHost)
+                    if formViewModel.showJumpHost {
+                        Picker(i18n.t(.jumpHosts), selection: $formViewModel.selectedJumpHost) {
                             Text(i18n.t(.none)).tag(JumpHost?.none)
                             ForEach(jumpHosts) { jumpHost in Text(jumpHost.displayString).tag(JumpHost?.some(jumpHost)) }
                         }.disabled(jumpHosts.isEmpty)
@@ -207,9 +207,9 @@ struct AddHostSheet: View {
                 }
 
                 Section("日志着色") {
-                    Picker("着色配置", selection: $vm.selectedLogProfile) {
+                    Picker("着色配置", selection: $formViewModel.selectedLogProfile) {
                         Text("跟随默认").tag(LogProfile?.none)
-                        ForEach(logProfiles, id: \.self) { p in Text(p.name).tag(LogProfile?.some(p)) }
+                        ForEach(logProfiles, id: \.self) { profile in Text(profile.name).tag(LogProfile?.some(profile)) }
                     }
                 }
 
@@ -217,7 +217,7 @@ struct AddHostSheet: View {
                     Section(i18n.t(.sshEngineDiagnosis)) { HostConnectionDiagnosisView(host: existing) }
                 } else {
                     Section(i18n.t(.sshEngineDiagnosis)) {
-                        Toggle(isOn: $vm.forceCompatibilityToggle) {
+                        Toggle(isOn: $formViewModel.forceCompatibilityToggle) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(i18n.t(.sshAlwaysCompatibility)).font(.system(size: AppStyle.fontBody, weight: .medium))
                                 Text(i18n.t(.sshAlwaysCompatibilityDesc)).font(.system(size: AppStyle.fontCaption)).foregroundStyle(.secondary)

@@ -41,8 +41,8 @@ final class LayoutStore: ObservableObject {
                 let state = PaneState()
                 idMap[id] = state.id
                 state.title = title
-                if let hid = hostID, let h = hostStore[hid] { state.hostItem = h }
-                else if let d = defaultHost { state.hostItem = d }
+                if let hid = hostID, let hostItem = hostStore[hid] { state.hostItem = hostItem }
+                else if let fallbackHost = defaultHost { state.hostItem = fallbackHost }
                 // id is remapped to new PaneState.id for stable UI; original id kept in idMap
                 return .pane(state)
             case let .horizontal(children, weights):
@@ -56,44 +56,45 @@ final class LayoutStore: ObservableObject {
 
         // Custom Codable to keep single enum with associated values plist-friendly
         private enum CodingKeys: String, CodingKey { case type, id, hostItemID, title, children, weights }
+        // swiftlint:disable:next identifier_name
         private enum NodeType: String, Codable { case pane, h, v }
 
         func encode(to encoder: Encoder) throws {
-            var c = encoder.container(keyedBy: CodingKeys.self)
+            var container = encoder.container(keyedBy: CodingKeys.self)
             switch self {
             case let .pane(id, hostID, title):
-                try c.encode(NodeType.pane, forKey: .type)
-                try c.encode(id, forKey: .id)
-                try c.encodeIfPresent(hostID, forKey: .hostItemID)
-                try c.encode(title, forKey: .title)
+                try container.encode(NodeType.pane, forKey: .type)
+                try container.encode(id, forKey: .id)
+                try container.encodeIfPresent(hostID, forKey: .hostItemID)
+                try container.encode(title, forKey: .title)
             case let .horizontal(children, weights):
-                try c.encode(NodeType.h, forKey: .type)
-                try c.encode(children, forKey: .children)
-                try c.encode(weights, forKey: .weights)
+                try container.encode(NodeType.h, forKey: .type)
+                try container.encode(children, forKey: .children)
+                try container.encode(weights, forKey: .weights)
             case let .vertical(children, weights):
-                try c.encode(NodeType.v, forKey: .type)
-                try c.encode(children, forKey: .children)
-                try c.encode(weights, forKey: .weights)
+                try container.encode(NodeType.v, forKey: .type)
+                try container.encode(children, forKey: .children)
+                try container.encode(weights, forKey: .weights)
             }
         }
 
         init(from decoder: Decoder) throws {
-            let c = try decoder.container(keyedBy: CodingKeys.self)
-            let t = try c.decode(NodeType.self, forKey: .type)
-            switch t {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            let nodeType = try container.decode(NodeType.self, forKey: .type)
+            switch nodeType {
             case .pane:
-                let id = try c.decode(UUID.self, forKey: .id)
-                let hid = try c.decodeIfPresent(UUID.self, forKey: .hostItemID)
-                let title = try c.decode(String.self, forKey: .title)
+                let id = try container.decode(UUID.self, forKey: .id)
+                let hid = try container.decodeIfPresent(UUID.self, forKey: .hostItemID)
+                let title = try container.decode(String.self, forKey: .title)
                 self = .pane(id: id, hostItemID: hid, title: title)
             case .h:
-                let ch = try c.decode([CodableNode].self, forKey: .children)
-                let w = try c.decode([Double].self, forKey: .weights)
-                self = .horizontal(children: ch, weights: w)
+                let children = try container.decode([CodableNode].self, forKey: .children)
+                let weights = try container.decode([Double].self, forKey: .weights)
+                self = .horizontal(children: children, weights: weights)
             case .v:
-                let ch = try c.decode([CodableNode].self, forKey: .children)
-                let w = try c.decode([Double].self, forKey: .weights)
-                self = .vertical(children: ch, weights: w)
+                let children = try container.decode([CodableNode].self, forKey: .children)
+                let weights = try container.decode([Double].self, forKey: .weights)
+                self = .vertical(children: children, weights: weights)
             }
         }
     }
@@ -124,12 +125,12 @@ final class LayoutStore: ObservableObject {
     func roundTripEqual(to node: LayoutNode) -> Bool {
         let data = try? JSONEncoder().encode(CodableNode(from: node))
         guard let data, let decoded = try? JSONDecoder().decode(CodableNode.self, from: data) else { return false }
-        let a = CodableNode(from: node)
-        let b = decoded
+        let originalNode = CodableNode(from: node)
+        let decodedNode = decoded
         // Compare via re-encoded data equality (deterministic)
-        let aData = try? JSONEncoder().encode(a)
-        let bData = try? JSONEncoder().encode(b)
-        return aData == bData
+        let originalData = try? JSONEncoder().encode(originalNode)
+        let decodedData = try? JSONEncoder().encode(decodedNode)
+        return originalData == decodedData
     }
 
     // MARK: - Concurrent restore (replaces sequential for tab { for pane { await connect } })
@@ -141,10 +142,10 @@ final class LayoutStore: ObservableObject {
         let remaining = panes.dropFirst()
         guard !remaining.isEmpty else { return }
         await withTaskGroup(of: Void.self) { group in
-            for pane in remaining {
+            for paneState in remaining {
                 group.addTask { [weak sessionManager, weak tab] in
                     guard let tab, let sessionManager else { return }
-                    await sessionManager.connectPane(tab: tab, pane: pane)
+                    await sessionManager.connectPane(tab: tab, pane: paneState)
                 }
             }
         }
@@ -152,7 +153,7 @@ final class LayoutStore: ObservableObject {
 
     private func collectPanes(from node: LayoutNode) -> [PaneState] {
         switch node {
-        case let .pane(s): [s]
+        case let .pane(paneState): [paneState]
         case let .horizontal(children, _), let .vertical(children, _):
             children.flatMap { collectPanes(from: $0) }
         }

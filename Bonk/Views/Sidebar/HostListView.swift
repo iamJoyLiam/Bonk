@@ -381,8 +381,8 @@ struct HostListView: View {
                 if hasTag {
                     customTagBadge(for: host)
                 }
-                if let p = profile {
-                    engineBadge(for: p)
+                if let backendProfile = profile {
+                    engineBadge(for: backendProfile)
                 }
             }
         }

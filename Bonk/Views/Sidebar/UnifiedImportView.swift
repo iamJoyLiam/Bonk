@@ -1,6 +1,6 @@
 //
 //  UnifiedImportView.swift
-//  Bonk – single “Import” that auto-detects SSH config + Tabby
+//  Bonk – single “Import” that auto-detects SSH config + Tabby / iTerm2 / Electerm / WindTerm / CSV
 //
 
 import SwiftData
@@ -13,19 +13,23 @@ struct UnifiedImportView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var sshEntries: [SSHConfigEntry] = []
-    @State private var tabbyHosts: [HostItem] = []
+    @State private var externalHosts: [(HostItem, String)] = [] // (host, sourceName)
     @State private var selectedSSH: Set<UUID> = []
-    @State private var selectedTabby: Set<UUID> = []
+    @State private var selectedExternal: Set<UUID> = []
     @State private var existingNames: Set<String> = []
-    @State private var tabbyError: String?
+    @State private var importError: String?
     @State private var isImporting = false
     @State private var showResult = false
     @State private var resultCreated = 0
     @State private var resultSkipped = 0
-    @State private var tabbySourceURL: URL?
 
-    var totalCount: Int { sshEntries.count + tabbyHosts.count }
-    var selectedCount: Int { selectedSSH.count + selectedTabby.count }
+    private var totalCount: Int { sshEntries.count + externalHosts.count }
+    private var selectedCount: Int { selectedSSH.count + selectedExternal.count }
+
+    // All importers for auto-detect (order: specific → generic)
+    private var importers: [any SessionImporter] {
+        [TabbyImporter(), ITerm2Importer(), ElectermImporter(), WindTermImporter(), GenericCSVImporter()]
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -56,10 +60,6 @@ struct UnifiedImportView: View {
                 Spacer()
                 Text("\(selectedCount)/\(totalCount)").font(.caption).foregroundStyle(.secondary)
             }
-            HStack(spacing: 4) {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.caption)
-                Text(i18n.t(.importTabbyPasswordWarning)).font(.caption).foregroundStyle(.orange)
-            }.frame(maxWidth: .infinity, alignment: .leading)
         }.padding()
     }
 
@@ -68,19 +68,25 @@ struct UnifiedImportView: View {
             Image(systemName: "tray").font(.system(size: 44)).foregroundStyle(.secondary)
             Text(i18n.t(.noSSHConfigEntries)).font(.headline)
             Text(i18n.t(.noSSHConfigEntriesDescription)).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            if let err = tabbyError {
+            if let err = importError {
                 Text(err).font(.caption2).foregroundStyle(.orange)
             }
+            Button(i18n.t(.chooseFile)) { promptForFile() }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            Text("自动识别 SSH Config / Tabby / iTerm2 / Electerm / WindTerm / CSV")
+                .font(.caption2).foregroundStyle(.tertiary)
         }.frame(maxWidth: .infinity, maxHeight: .infinity).padding()
     }
 
-    // Single merged list — auto-detected SSH config + Tabby (multi-path scan), no section split
+    // Single merged list — auto-detected SSH config + external importers, no section split
     private struct MergedEntry: Identifiable {
         let id: UUID
         let title: String
         let hostname: String
         let port: Int
         let username: String
+        let source: String
         let isSSH: Bool
         let isDuplicate: Bool
     }
@@ -94,17 +100,19 @@ struct UnifiedImportView: View {
                 hostname: entry.hostname ?? entry.alias,
                 port: entry.port.map { Int($0) } ?? SSHConstants.defaultPort,
                 username: entry.user ?? "",
+                source: "SSH",
                 isSSH: true,
                 isDuplicate: existingNames.contains(entry.alias)
             ))
         }
-        for hostItem in tabbyHosts {
+        for (hostItem, source) in externalHosts {
             list.append(MergedEntry(
                 id: hostItem.id,
                 title: hostItem.name,
                 hostname: hostItem.host,
                 port: hostItem.port,
                 username: hostItem.username,
+                source: source,
                 isSSH: false,
                 isDuplicate: existingNames.contains(hostItem.name)
             ))
@@ -121,12 +129,12 @@ struct UnifiedImportView: View {
                         hostname: entry.hostname,
                         port: entry.port,
                         username: entry.username,
-                        isSelected: entry.isSSH ? selectedSSH.contains(entry.id) : selectedTabby.contains(entry.id),
+                        isSelected: entry.isSSH ? selectedSSH.contains(entry.id) : selectedExternal.contains(entry.id),
                         isDuplicate: entry.isDuplicate,
-                        badgeTitle: entry.isSSH ? "SSH" : "Tabby",
-                        badgeColor: .secondary,
+                        badgeTitle: entry.source,
+                        badgeColor: badgeColor(for: entry.source),
                         onToggle: {
-                            if entry.isSSH { toggleSSH(entry.id) } else { toggleTabby(entry.id) }
+                            if entry.isSSH { toggleSSH(entry.id) } else { toggleExternal(entry.id) }
                         }
                     )
                     if entry.id != mergedEntries.last?.id { Divider().padding(.leading, 44) }
@@ -135,55 +143,32 @@ struct UnifiedImportView: View {
         }
     }
 
-    private func sectionHeader(title: String) -> some View {
-        Text(title)
-            .font(.caption.weight(.medium)).foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16).padding(.vertical, 8)
-            .background(Color(nsColor: .windowBackgroundColor))
+    private func badgeColor(for source: String) -> Color {
+        switch source {
+        case "SSH": return .secondary
+        case "Tabby": return .orange
+        case "iTerm2": return .purple
+        case "Electerm": return .blue
+        case "WindTerm": return .green
+        case "CSV": return .secondary
+        default: return .secondary
+        }
     }
 
-    // Cache non-duplicate IDs to avoid O(n*m) on every Select All tap
+    // Cache non-duplicate IDs
     private var nonDuplicateSSHIDs: Set<UUID> { Set(sshEntries.filter { !existingNames.contains($0.alias) }.map(\.id)) }
-    private var nonDuplicateTabbyIDs: Set<UUID> { Set(tabbyHosts.filter { !existingNames.contains($0.name) }.map(\.id)) }
-
-    private func sshRow(_ entry: SSHConfigEntry) -> some View {
-        ImportRowView(
-            title: entry.alias,
-            hostname: entry.hostname ?? entry.alias,
-            port: entry.port.map { Int($0) } ?? SSHConstants.defaultPort,
-            username: entry.user ?? "",
-            isSelected: selectedSSH.contains(entry.id),
-            isDuplicate: existingNames.contains(entry.alias),
-            badgeTitle: "SSH",
-            badgeColor: .secondary,
-            onToggle: { toggleSSH(entry.id) }
-        )
-    }
-
-    private func tabbyRow(_ hostItem: HostItem) -> some View {
-        ImportRowView(
-            title: hostItem.name,
-            hostname: hostItem.host,
-            port: hostItem.port,
-            username: hostItem.username,
-            isSelected: selectedTabby.contains(hostItem.id),
-            isDuplicate: existingNames.contains(hostItem.name),
-            badgeTitle: "Tabby",
-            badgeColor: .secondary,
-            onToggle: { toggleTabby(hostItem.id) }
-        )
-    }
+    private var nonDuplicateExternalIDs: Set<UUID> { Set(externalHosts.filter { !existingNames.contains($0.0.name) }.map(\.0.id)) }
 
     private var footer: some View {
-        HStack {
+        HStack(spacing: AppStyle.spacingM) {
             Button(selectedCount == totalCount ? i18n.t(.deselectAll) : i18n.t(.selectAll)) {
-                if selectedCount == totalCount { selectedSSH.removeAll(); selectedTabby.removeAll() }
+                if selectedCount == totalCount { selectedSSH.removeAll(); selectedExternal.removeAll() }
                 else {
                     selectedSSH = nonDuplicateSSHIDs
-                    selectedTabby = nonDuplicateTabbyIDs
+                    selectedExternal = nonDuplicateExternalIDs
                 }
             }.disabled(totalCount == 0)
+            Button(i18n.t(.chooseFile)) { promptForFile() }
             Spacer()
             Button(i18n.t(.cancel)) { dismiss() }.keyboardShortcut(.cancelAction)
             Button {
@@ -195,41 +180,89 @@ struct UnifiedImportView: View {
     }
 
     private func toggleSSH(_ id: UUID) { if selectedSSH.contains(id) { selectedSSH.remove(id) } else { selectedSSH.insert(id) } }
-    private func toggleTabby(_ id: UUID) { if selectedTabby.contains(id) { selectedTabby.remove(id) } else { selectedTabby.insert(id) } }
+    private func toggleExternal(_ id: UUID) { if selectedExternal.contains(id) { selectedExternal.remove(id) } else { selectedExternal.insert(id) } }
 
     private func load() {
         if let all = try? modelContext.fetch(FetchDescriptor<HostItem>()) { existingNames = Set(all.map(\.name)) }
         // SSH config
         do { sshEntries = try SSHConfigParser.parse() } catch { sshEntries = [] }
         selectedSSH = Set(sshEntries.filter { !existingNames.contains($0.alias) }.map(\.id))
-        // Tabby auto-detect
-        let importer = TabbyImporter()
-        for url in importer.discoverDefaultLocations() where FileManager.default.fileExists(atPath: url.path) {
-            do {
-                tabbyHosts = try importer.importSessions(from: url)
-                tabbySourceURL = url
-                selectedTabby = Set(tabbyHosts.filter { !existingNames.contains($0.name) }.map(\.id))
-                tabbyError = nil
-                return
-            } catch { tabbyError = error.localizedDescription }
+
+        // External auto-detect (all easy importers)
+        var discovered: [(HostItem, String)] = []
+        for importer in importers {
+            for url in importer.discoverDefaultLocations() {
+                let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+                let exists = FileManager.default.fileExists(atPath: url.path)
+                if !exists && !isDir { continue }
+                // For directories (WindTerm/iTerm dynamic), try import
+                do {
+                    let hosts = try importer.importSessions(from: url)
+                    let filtered = hosts.filter { !discovered.map(\.0.name).contains($0.name) }
+                    discovered.append(contentsOf: filtered.map { ($0, importer.name) })
+                } catch { continue }
+                // Only first successful file per importer to avoid duplicates
+                if discovered.contains(where: { $0.1 == importer.name }) { break }
+            }
         }
-        // No auto file — leave empty, user can pick via Choose File
+        externalHosts = discovered
+        selectedExternal = Set(externalHosts.filter { !existingNames.contains($0.0.name) }.map(\.0.id))
+        importError = nil
     }
 
-    private func promptForTabbyFile() {
+    private func promptForFile() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [UTType.json, UTType.yaml, UTType(filenameExtension: "yml") ?? .data]
+        var types: [UTType] = [.json, .commaSeparatedText, .plainText, .propertyList]
+        // Add yaml, plist, csv, wsession
+        if let yaml = UTType(filenameExtension: "yaml") { types.append(yaml) }
+        if let yml = UTType(filenameExtension: "yml") { types.append(yml) }
+        if let plist = UTType(filenameExtension: "plist") { types.append(plist) }
+        if let csv = UTType(filenameExtension: "csv") { types.append(csv) }
+        if let ws = UTType(filenameExtension: "wsession") { types.append(ws) }
+        panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
+        panel.canChooseFiles = true
         if panel.runModal() == .OK, let url = panel.url {
-            do {
-                let items = try TabbyImporter().importSessions(from: url)
-                tabbyHosts = items
-                selectedTabby = Set(items.filter { !existingNames.contains($0.name) }.map(\.id))
-                tabbySourceURL = url
-                tabbyError = nil
-            } catch { tabbyError = error.localizedDescription }
+            autoImport(from: url)
         }
+    }
+
+    private func autoImport(from url: URL) {
+        // Try each importer in order (specific → generic)
+        for importer in importers {
+            // Quick extension check, but also try generic even if extension mismatched
+            do {
+                let hosts = try importer.importSessions(from: url)
+                if !hosts.isEmpty {
+                    // Merge, avoid duplicates by name
+                    var added: [(HostItem, String)] = []
+                    for h in hosts where !externalHosts.map(\.0.name).contains(h.name) && !existingNames.contains(h.name) {
+                        added.append((h, importer.name))
+                    }
+                    // If all were duplicates but we still got hosts, show them (let UI show duplicate badge)
+                    if added.isEmpty, !hosts.isEmpty {
+                        added = hosts.map { ($0, importer.name) }
+                    }
+                    externalHosts.append(contentsOf: added)
+                    selectedExternal.formUnion(added.filter { !existingNames.contains($0.0.name) }.map(\.0.id))
+                    importError = nil
+                    return
+                }
+            } catch { continue }
+        }
+        // Fallback: try SSH config parser if file looks like ssh config
+        if let text = try? String(contentsOf: url, encoding: .utf8), text.contains("Host ") {
+            do {
+                let entries = try SSHConfigParser.parse(contentsOfFile: url.path)
+                let newEntries = entries.filter { !sshEntries.map(\.alias).contains($0.alias) }
+                sshEntries.append(contentsOf: newEntries)
+                selectedSSH.formUnion(newEntries.filter { !existingNames.contains($0.alias) }.map(\.id))
+                importError = nil
+                return
+            } catch {}
+        }
+        importError = "无法识别文件格式，请选择 SSH Config / Tabby / iTerm2 / Electerm / WindTerm / CSV"
     }
 
     private func performImport() {
@@ -245,8 +278,8 @@ struct UnifiedImportView: View {
             modelContext.insert(item)
             existingNames.insert(entry.alias); created += 1
         }
-        // Tabby
-        for hostItem in tabbyHosts where selectedTabby.contains(hostItem.id) {
+        // External
+        for (hostItem, _) in externalHosts where selectedExternal.contains(hostItem.id) {
             if existingNames.contains(hostItem.name) { skipped += 1; continue }
             modelContext.insert(hostItem)
             existingNames.insert(hostItem.name); created += 1
@@ -263,3 +296,5 @@ struct UnifiedImportView: View {
         return fileContent
     }
 }
+
+
