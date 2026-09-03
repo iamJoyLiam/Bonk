@@ -39,10 +39,10 @@ struct InlineRanker: Sendable {
         case "llm": base = 70
         default: base = 50
         }
-        // Length heuristic: shorter, more precise suffix scores higher for local; longer for LLM may be richer
         let lenPenalty = Double(suggestion.text.count) * 0.05
-        // Token boundary bonus: if display starts with space (new token), slightly higher
         let tokenBonus: Double = suggestion.displayText.hasPrefix(" ") ? 2 : 0
-        return base - lenPenalty + tokenBonus
+        let profileBoost = UserProfile.shared.boost(for: suggestion.text)
+        let rejectedPenalty: Double = UserProfile.shared.isRejected(suffix: suggestion.text) ? -100 : 0
+        return base - lenPenalty + tokenBonus + profileBoost + rejectedPenalty
     }
 }

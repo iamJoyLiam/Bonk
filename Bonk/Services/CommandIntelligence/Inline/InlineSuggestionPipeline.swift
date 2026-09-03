@@ -73,6 +73,7 @@ final class InlineSuggestionPipeline {
     func accept() -> String {
         guard let s = suggestion else { return "" }
         if let key = currentKey { cache.markAccepted(for: key) }
+        UserProfile.shared.recordAccept(suffix: s.text)
         let text = s.text
         cancel()
         return text
@@ -83,6 +84,7 @@ final class InlineSuggestionPipeline {
         let key = currentEffectiveKey ?? currentKey
         guard let k = key else { return }
         cache.markRejected(suffix: s.text, for: k)
+        UserProfile.shared.recordReject(suffix: s.text)
         cancel()
     }
 
