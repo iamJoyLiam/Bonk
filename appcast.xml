@@ -6,6 +6,36 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.2.9</title>
+            <pubDate>Wed, 03 Sep 2026 14:20:00 +0800</pubDate>
+            <sparkle:version>20262009</sparkle:version>
+            <sparkle:shortVersionString>2026.2.9</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Changes
+- Fixed terminal freeze after Cmd+Tab by decoupling PTY processing from display ticks (dirty flag, immediate flush on active)
+- Fixed spurious network recovery that froze 50 by adding path transition and per-session probe gate
+- Fixed recovery make-before-break for PTY rebind and separated transport/pty/output success stages
+- Fixed reconnect button for 202 to do full reconnect when supervisor not configured
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.9/Bonk-2026.2.9-arm64.dmg"
+                length="23784865"
+                type="application/octet-stream"
+                sparkle:edSignature="uTAlI5w3nKAsMxPkhaSMLh+dL4wFYQ4OJv7yRjj7ajLao+i53rSIjR4/oyukQl0exi6YGtuidR9nP+jbfN7cDQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.9/Bonk-2026.2.9-x86_64.dmg"
+                length="24849734"
+                type="application/octet-stream"
+                sparkle:edSignature="Cq8C2vaWIIBFg7upwqsV93FRvYRAM7M0VsCssSIwZk4eR6P6A7hsxG02psDGyeb05my74om0vcUvj45SVRzzAg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.2.8</title>
             <pubDate>Wed, 03 Sep 2026 12:15:00 +0800</pubDate>
             <sparkle:version>20262008</sparkle:version>
