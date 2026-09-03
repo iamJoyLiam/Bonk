@@ -58,15 +58,35 @@ final class AgentEngine {
         return (provider, key)
     }
 
-    // MARK: - Unified Entry Point
+    // MARK: - Unified Entry Point (snapshot-first)
 
-    /// Execute an AI request in the specified mode.
-    /// Returns the response text. For streaming modes, updates `streamingResponse` in real-time.
+    /// Execute with CommandContextSnapshot (Intelligence-owned, preferred).
+    func execute(
+        input: String,
+        mode: AIMode,
+        snapshot: CommandContextSnapshot,
+        systemPromptOverride: String? = nil
+    ) async -> String? {
+        await execute(input: input, mode: mode, context: snapshot.asLegacyTerminalContext, systemPromptOverride: systemPromptOverride, snapshotForLog: snapshot)
+    }
+
+    /// Legacy entry point (TerminalContext) — delegates to snapshot path for parity.
     func execute(
         input: String,
         mode: AIMode,
         context: TerminalContext = TerminalContext(),
         systemPromptOverride: String? = nil
+    ) async -> String? {
+        let snapshot = CommandContextSnapshot(legacy: context)
+        return await execute(input: input, mode: mode, context: context, systemPromptOverride: systemPromptOverride, snapshotForLog: snapshot)
+    }
+
+    private func execute(
+        input: String,
+        mode: AIMode,
+        context: TerminalContext,
+        systemPromptOverride: String?,
+        snapshotForLog: CommandContextSnapshot
     ) async -> String? {
         isProcessing = true
         streamingResponse = ""
@@ -79,7 +99,7 @@ final class AgentEngine {
         }
 
         var basePrompt = systemPromptOverride ?? mode.systemPrompt
-        if let ctx = buildContextString(context) {
+        if let ctx = buildContextString(snapshotForLog) ?? buildContextString(context) {
             basePrompt += "\n\n## Terminal Context\n\(ctx)"
         }
         let systemPrompt = CustomInstructions.buildSystemPrompt(base: basePrompt)
@@ -263,6 +283,20 @@ final class AgentEngine {
         if !context.recentCommands.isEmpty {
             let cmds = context.recentCommands.suffix(5).joined(separator: ", ")
             parts.append("Recent commands: \(cmds)")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n")
+    }
+
+    private func buildContextString(_ snapshot: CommandContextSnapshot) -> String? {
+        var parts: [String] = []
+        if let cwd = snapshot.currentDirectory { parts.append("Working directory: `\(cwd)`") }
+        if let shell = snapshot.shell { parts.append("Shell: \(shell)") }
+        if !snapshot.recentCommands.isEmpty {
+            let cmds = snapshot.recentCommands.suffix(5).joined(separator: ", ")
+            parts.append("Recent commands: \(cmds)")
+        }
+        if !snapshot.recentOutput.isEmpty {
+            parts.append("Recent output: \(snapshot.recentOutput.prefix(600))")
         }
         return parts.isEmpty ? nil : parts.joined(separator: "\n")
     }
