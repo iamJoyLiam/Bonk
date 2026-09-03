@@ -53,8 +53,7 @@ final class WorkspaceContextProvider: CommandContextProviding {
         let buffer = inputBuffer ?? tab.session?.inputBuffer ?? ""
 
         // KnownWords extraction is Intelligence-owned pure function, not View-owned.
-        // Reuse InlineCompletionService's proven extractor for parity (no behavior change in P0).
-        let knownWords = InlineCompletionService.extractKnownWords(from: output, limit: knownWordsLimit)
+        let knownWords = InlinePromptBuilder.extractKnownWords(from: output, limit: knownWordsLimit)
 
         return CommandContextSnapshot(
             inputBuffer: buffer,
@@ -70,11 +69,4 @@ final class WorkspaceContextProvider: CommandContextProviding {
     }
 }
 
-// MARK: - Convenience for Pane/Container callers (incremental migration)
 
-extension WorkspaceContextProvider {
-    /// Parity helper: build legacy context then convert — ensures 1:1 before switching callers.
-    func legacyContext(for tab: TerminalTab) -> InlineCompletionContext {
-        snapshot(for: tab).asLegacyInlineContext
-    }
-}

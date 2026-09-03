@@ -12,8 +12,8 @@ final class LLMCandidateSource: InlineCandidateSource, @unchecked Sendable {
     let name = "llm"
     private let providerStore: AIProviderStore
     private let cache: InlineSuggestionCache?
-    private let maxTokens = InlineCompletionService.maxSuggestionTokens
-    private let maxChars = InlineCompletionService.maxSuggestionChars
+    private let maxTokens = SuggestionFormatter.maxSuggestionTokens
+    private let maxChars = SuggestionFormatter.maxSuggestionChars
     private let requestTimeout: Duration = .seconds(3)
 
     @MainActor init(providerStore: AIProviderStore, cache: InlineSuggestionCache? = nil) {
@@ -50,8 +50,8 @@ final class LLMCandidateSource: InlineCandidateSource, @unchecked Sendable {
                 ) {
                     guard case let .textDelta(delta) = event else { continue }
                     result += delta
-                    let candidate = InlineCompletionService.displaySuffix(
-                        InlineCompletionService.suggestionSuffix(from: buffer.append(delta), typed: typed),
+                    let candidate = SuggestionFormatter.displaySuffix(
+                        SuggestionFormatter.suggestionSuffix(from: buffer.append(delta), typed: typed),
                         typed: typed
                     )
                     guard !candidate.isEmpty, candidate.count <= self.maxChars else { continue }
@@ -64,8 +64,8 @@ final class LLMCandidateSource: InlineCandidateSource, @unchecked Sendable {
                 return result
             }
             guard !Task.isCancelled else { return }
-            let suffix = InlineCompletionService.displaySuffix(
-                InlineCompletionService.suggestionSuffix(from: response, typed: typed),
+            let suffix = SuggestionFormatter.displaySuffix(
+                SuggestionFormatter.suggestionSuffix(from: response, typed: typed),
                 typed: typed
             )
             guard !suffix.isEmpty else { return }

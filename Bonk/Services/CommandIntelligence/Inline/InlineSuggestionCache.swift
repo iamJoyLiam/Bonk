@@ -89,7 +89,22 @@ final class InlineSuggestionCache {
     // MARK: - Key generation (12 segments, must stay identical to legacy)
 
     static func cacheKey(provider: AIProviderConfig, snapshot: CommandContextSnapshot, typed: String) -> String {
-        InlineCompletionService.cacheKey(provider: provider, context: snapshot.asLegacyInlineContext, typed: typed)
+        [
+            "v2",
+            provider.id.uuidString,
+            AIProviderNetworking.baseEndpoint(provider.endpoint),
+            provider.model,
+            provider.protocolType.rawValue,
+            snapshot.hostKey ?? "",
+            snapshot.currentDirectory ?? "",
+            snapshot.shell ?? "",
+            typed,
+            snapshot.lastExitCode.map(String.init) ?? "",
+            snapshot.recentCommands.suffix(5).joined(separator: "\u{1F}"),
+            String(snapshot.recentOutput.suffix(160)),
+        ]
+        .map { $0.replacingOccurrences(of: separator, with: " ") }
+        .joined(separator: separator)
     }
 
     func approvedExamples(for hostKey: String) -> [String] {

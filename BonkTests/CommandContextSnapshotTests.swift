@@ -9,8 +9,8 @@
 import XCTest
 
 final class CommandContextSnapshotTests: XCTestCase {
-    func testParityWithInlineCompletionContext() {
-        let legacy = InlineCompletionContext(
+    func testSnapshotFields() {
+        let snapshot = CommandContextSnapshot(
             inputBuffer: "docker ps",
             hostKey: "host-a",
             currentDirectory: "/var/www",
@@ -20,25 +20,14 @@ final class CommandContextSnapshotTests: XCTestCase {
             lastExitCode: 0,
             knownWords: ["nginx", "web"]
         )
-        let snapshot = CommandContextSnapshot(legacy: legacy)
-        XCTAssertEqual(snapshot.inputBuffer, legacy.inputBuffer)
-        XCTAssertEqual(snapshot.hostKey, legacy.hostKey)
-        XCTAssertEqual(snapshot.currentDirectory, legacy.currentDirectory)
-        XCTAssertEqual(snapshot.shell, legacy.shell)
-        XCTAssertEqual(snapshot.recentCommands, legacy.recentCommands)
-        XCTAssertEqual(snapshot.recentOutput, legacy.recentOutput)
-        XCTAssertEqual(snapshot.lastExitCode, legacy.lastExitCode)
-        XCTAssertEqual(snapshot.knownWords, legacy.knownWords)
-        // round-trip
-        let back = snapshot.asLegacyInlineContext
-        XCTAssertEqual(back.inputBuffer, legacy.inputBuffer)
-        XCTAssertEqual(back.hostKey, legacy.hostKey)
-        XCTAssertEqual(back.currentDirectory, legacy.currentDirectory)
-        XCTAssertEqual(back.shell, legacy.shell)
-        XCTAssertEqual(back.recentCommands, legacy.recentCommands)
-        XCTAssertEqual(back.recentOutput, legacy.recentOutput)
-        XCTAssertEqual(back.lastExitCode, legacy.lastExitCode)
-        XCTAssertEqual(back.knownWords, legacy.knownWords)
+        XCTAssertEqual(snapshot.inputBuffer, "docker ps")
+        XCTAssertEqual(snapshot.hostKey, "host-a")
+        XCTAssertEqual(snapshot.currentDirectory, "/var/www")
+        XCTAssertEqual(snapshot.shell, "/bin/zsh")
+        XCTAssertEqual(snapshot.recentCommands, ["cd /var/www", "ls"])
+        XCTAssertEqual(snapshot.recentOutput, "CONTAINER ID")
+        XCTAssertEqual(snapshot.lastExitCode, 0)
+        XCTAssertEqual(snapshot.knownWords, ["nginx", "web"])
     }
 
     func testParityWithTerminalContext() {

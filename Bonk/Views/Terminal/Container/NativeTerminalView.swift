@@ -21,16 +21,12 @@ import SwiftTerm
         /// Called when AppKit completes physical layout with accurate cols/rows.
         var onPhysicalLayout: ((Int, Int) -> Void)?
 
-        /// Provides the terminal context (typed text, cwd, history, output) used
-        /// to build inline completion requests. Set by the owning pane.
-        var completionContextProvider: (@MainActor () -> InlineCompletionContext)?
-        /// New Intelligence-owned snapshot provider (CommandContextSnapshot). When set, pipeline path is preferred.
+        /// Intelligence-owned snapshot provider (single source of truth)
         var commandSnapshotProvider: (@MainActor () -> CommandContextSnapshot)?
-        /// Single pipeline (replaces dual SuggestionEngine + InlineCompletionService). Set by container.
+        /// Single pipeline (Intelligence owns inline)
         var inlinePipeline: InlineSuggestionPipeline? {
             didSet { bindPipeline() }
         }
-        private var pipelineCancellable: Any?
 
         private func bindPipeline() {
             guard let pipeline = inlinePipeline else { return }
@@ -48,10 +44,8 @@ import SwiftTerm
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     if isReq {
-                        // Only show waiting if no ghost already visible from local sources
                         let hasPipelineGhost = !(self.inlinePipeline?.suggestion?.displayText.isEmpty ?? true)
-                        let hasLegacyGhost = !self.completionService.suggestion.isEmpty
-                        if !hasPipelineGhost && !hasLegacyGhost {
+                        if !hasPipelineGhost {
                             self.showWaiting()
                         }
                     }
@@ -84,10 +78,8 @@ import SwiftTerm
             focusRingType = .none
         }
 
-        // MARK: - Inline Completion (legacy + pipeline)
+        // MARK: - Inline Completion (pipeline only)
 
-        let completionService = InlineCompletionService.shared
-        private nonisolated(unsafe) var completionDebounceTask: Task<Void, Never>?
         var ghostOverlay: InlineGhostOverlay?
         // Ghost updates coalesced to display tick — LLM streams many deltas per frame.
         nonisolated(unsafe) var ghostCoalesceTask: Task<Void, Never>?
@@ -140,7 +132,6 @@ import SwiftTerm
             guard let window else {
                 MainActor.assumeIsolated {
                     self.inlinePipeline?.cancel()
-                    self.completionService.dismiss()
                     self.hideGhost(reason: "window-nil")
                 }
                 return
@@ -171,7 +162,6 @@ import SwiftTerm
         }
 
         deinit {
-            completionDebounceTask?.cancel()
             resizeDebounceTask?.cancel()
             ghostCoalesceTask?.cancel()
             if let observer = resignObserver {
@@ -218,9 +208,7 @@ import SwiftTerm
             // command's output.
             if keyCode == 36 || keyCode == 76 {
                 MainActor.assumeIsolated {
-                    completionDebounceTask?.cancel()
                     self.inlinePipeline?.cancel()
-                    self.completionService.dismiss()
                     self.hideGhost(reason: "enter")
                 }
                 return event
@@ -356,10 +344,11 @@ import SwiftTerm
 
         /// Pick the command text to complete: prefer the pure typed buffer when it
         /// is really the tail of the visible line, else fall back to prompt stripping.
+        @available(*, deprecated, message: "Use CommandEditor.resolveTypedText")
         private func resolveTypedText(raw: String, inputBuffer: String) -> String? {
             let typed = inputBuffer.trimmingCharacters(in: .whitespaces)
             if typed.count >= 2, raw.hasSuffix(typed) { return typed }
-            return InlineCompletionService.commandText(from: raw)
+            return SuggestionFormatter.commandText(from: raw)
         }
 
         /// Accept the current suggestion: send its text through the normal input

@@ -33,7 +33,7 @@ enum CommandEditor {
     @MainActor static func resolveTypedText(rawLine: String, inputBuffer: String) -> String? {
         let typed = inputBuffer.trimmingCharacters(in: .whitespaces)
         if typed.count >= 2, rawLine.hasSuffix(typed) { return typed }
-        return InlineCompletionService.commandText(from: rawLine)
+        return SuggestionFormatter.commandText(from: rawLine)
     }
 
     /// Whether the cursor is at a completable position (bottom + prompt row + EOL).

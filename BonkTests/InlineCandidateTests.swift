@@ -42,15 +42,14 @@ final class InlineCandidateTests: XCTestCase {
     func testHistoryParityWithLegacyLocalSuggestion() {
         let history = ["docker run -d --name web nginx", "ls -la"]
         let typed = "docker run"
-        let legacy = InlineCompletionService.localSuggestion(history: history, typed: typed)
         let snap = CommandContextSnapshot(inputBuffer: typed, recentCommands: history, recentOutput: "")
         let source = HistoryCandidateSource()
         let exp = expectation(description: "parity")
         Task {
             let sug = await source.suggestion(for: snap, typed: typed)
-            let legacyDisplay = InlineCompletionService.displaySuffix(legacy, typed: typed)
-            XCTAssertEqual(sug?.text, legacy)
-            if let s = sug { XCTAssertEqual(s.displayText, legacyDisplay) }
+            let expected = " -d --name web nginx"
+            XCTAssertEqual(sug?.text, expected)
+            XCTAssertEqual(sug?.displayText, SuggestionFormatter.displaySuffix(expected, typed: typed))
             exp.fulfill()
         }
         wait(for: [exp], timeout: 1)

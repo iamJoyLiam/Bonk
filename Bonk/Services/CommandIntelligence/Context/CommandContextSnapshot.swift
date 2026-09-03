@@ -67,23 +67,7 @@ struct CommandContextSnapshot: Sendable, Equatable {
             && lhs.selection == rhs.selection
     }
 
-    // MARK: - Legacy bridging (parity)
-
-    /// Initialize from legacy InlineCompletionContext — one-to-one field mapping.
-    init(legacy: InlineCompletionContext, selection: String? = nil, timestamp: Date = Date()) {
-        self.init(
-            inputBuffer: legacy.inputBuffer,
-            hostKey: legacy.hostKey,
-            currentDirectory: legacy.currentDirectory,
-            shell: legacy.shell,
-            recentCommands: legacy.recentCommands,
-            recentOutput: legacy.recentOutput,
-            lastExitCode: legacy.lastExitCode,
-            knownWords: legacy.knownWords,
-            selection: selection,
-            timestamp: timestamp
-        )
-    }
+    // MARK: - Legacy bridging (TerminalContext only, InlineCompletionContext removed)
 
     /// Initialize from legacy TerminalContext (Chat/Agent) — best-effort mapping.
     init(legacy: TerminalContext, inputBuffer: String = "", knownWords: [String] = [], timestamp: Date = Date()) {
@@ -98,20 +82,6 @@ struct CommandContextSnapshot: Sendable, Equatable {
             knownWords: knownWords,
             selection: legacy.selection,
             timestamp: timestamp
-        )
-    }
-
-    /// Convert back to legacy InlineCompletionContext for incremental migration.
-    var asLegacyInlineContext: InlineCompletionContext {
-        InlineCompletionContext(
-            inputBuffer: inputBuffer,
-            hostKey: hostKey,
-            currentDirectory: currentDirectory,
-            shell: shell,
-            recentCommands: recentCommands,
-            recentOutput: recentOutput,
-            lastExitCode: lastExitCode,
-            knownWords: knownWords
         )
     }
 

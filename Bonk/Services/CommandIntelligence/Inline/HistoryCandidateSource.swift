@@ -11,7 +11,7 @@ final class HistoryCandidateSource: SyncInlineCandidateSource, @unchecked Sendab
     let name = "history"
     private let maxSuggestionChars: Int
 
-    init(maxSuggestionChars: Int = InlineCompletionService.maxSuggestionChars) {
+    init(maxSuggestionChars: Int = SuggestionFormatter.maxSuggestionChars) {
         self.maxSuggestionChars = maxSuggestionChars
     }
 
@@ -20,7 +20,7 @@ final class HistoryCandidateSource: SyncInlineCandidateSource, @unchecked Sendab
         guard trimmed.count >= 2 else { return nil }
         let suffix = Self.localSuffix(history: snapshot.recentCommands, typed: trimmed, maxChars: maxSuggestionChars)
         guard !suffix.isEmpty else { return nil }
-        let display = InlineCompletionService.displaySuffix(suffix, typed: typed)
+        let display = SuggestionFormatter.displaySuffix(suffix, typed: typed)
         return Suggestion(text: suffix, displayText: display)
     }
 

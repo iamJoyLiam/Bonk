@@ -20,7 +20,7 @@ final class KnownWordsCandidateSource: SyncInlineCandidateSource, @unchecked Sen
         }) else { return nil }
         let suffix = String(match.dropFirst(token.count))
         guard !suffix.isEmpty else { return nil }
-        let display = InlineCompletionService.displaySuffix(suffix, typed: typed)
+        let display = SuggestionFormatter.displaySuffix(suffix, typed: typed)
         return Suggestion(text: suffix, displayText: display)
     }
 }
@@ -38,7 +38,7 @@ final class SortedKnownWordsCandidateSource: SyncInlineCandidateSource, @uncheck
             .sorted(by: { $0.count < $1.count })
             .first else { return nil }
         let suffix = String(match.dropFirst(token.count))
-        let display = InlineCompletionService.displaySuffix(suffix, typed: typed)
+        let display = SuggestionFormatter.displaySuffix(suffix, typed: typed)
         return Suggestion(text: suffix, displayText: display)
     }
 }
