@@ -109,8 +109,17 @@ actor SSHConnectionSupervisor {
     }
 
     /// Idempotent recovery entry - all triggers funnel here.
-    /// Concurrent calls while probing/reconnecting/backoff are ignored (1 pipeline).
+    /// Concurrent calls while probing/reconnecting/backoff are ignored (1 pipeline),
+    /// except userRequested which preempts for immediate retry.
     func requestRecovery(reason: RecoveryReason) {
+        // Manual reconnect should preempt any ongoing backoff/probing (fixes 202 requiring close tab)
+        if reason == .userRequested, state != .idle {
+            Log.ssh.info("[RECOVERY] preempt host=\(self.hostIdentifier, privacy: .public) reason=\(String(describing: reason), privacy: .public) state=\(String(describing: self.state), privacy: .public) engine=\(self.engineName, privacy: .public)")
+            state = .idle
+            currentTask?.cancel()
+            currentTask = nil
+            attemptCount = 0
+        }
         // AuthFailed/hostKey/cancelled gate — never recover automatically
         if let until = suppressRecoveryUntil, Date() < until {
             Log.ssh.info("[RECOVERY_GATE] blocked=true reason=authenticationFailed host=\(self.hostIdentifier, privacy: .public) reasonDetail=\(String(describing: reason), privacy: .public) state=\(String(describing: self.state), privacy: .public) engine=\(self.engineName, privacy: .public)")

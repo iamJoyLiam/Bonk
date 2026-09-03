@@ -559,8 +559,25 @@ final class SessionManager {
 
     func reconnectTab(_ id: UUID) async {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
-        // P0 per-session isolation: userRequested via supervisor, not global disconnect
         if let service = tab.session?.sshService {
+            // Fix for 202: if service never configured supervisor (host unknown) or is disconnected/failed,
+            // requestRecovery will loop with no probe. Do full reconnect instead.
+            let state = await service.connectionState
+            if case .disconnected = state {
+                await disconnectTab(id)
+                if tab.serialConfig != nil {
+                    await connectSerialTab(tab)
+                } else {
+                    await connectTab(tab)
+                }
+                return
+            }
+            // Check if supervisor has no probe (unknown host) by checking if last failure was transport and state is failed
+            if let session = tab.session, case .failed = session.phase {
+                await disconnectTab(id)
+                await connectTab(tab)
+                return
+            }
             await service.requestRecovery(reason: .userRequested)
             return
         }
@@ -995,14 +1012,19 @@ final class SessionManager {
                 case .connected:
                     if let newPTY = await service.consumePendingPTY() {
                         if let firstPane = tab.layout.root.paneState {
-                            firstPane.ptySession?.close()
-                            firstPane.ptySession = newPTY
-                            session.ptySession = newPTY
+                            let oldPTY = firstPane.ptySession
                             newPTY.teamSessionID = TeamSessionID(tabID: tab.id, paneID: firstPane.id)
                             newPTY.hostItem = tab.hostItem
+                            // Fix 2: ensure output binding before closing old (make-before-break)
+                            firstPane.ptySession = newPTY
+                            session.ptySession = newPTY
                             TerminalViewCache.shared.rebindOutputStream(for: tab.id, to: newPTY)
                             TerminalViewCache.shared.rebindOutputStream(for: firstPane.id, to: newPTY)
+                            // Fix 1: log stages
+                            Log.session.info("[RECOVERY_STEP] ptyReady=true outputBound=true pane=\(firstPane.id.uuidString.prefix(8), privacy: .public)")
                             syncPTYSize(for: firstPane.id, ptySession: newPTY)
+                            // Close old only after new is bound
+                            oldPTY?.close()
                         }
                         attachPTYSessionObservers(newPTY, to: tab)
                         session.connectedAt = Date()

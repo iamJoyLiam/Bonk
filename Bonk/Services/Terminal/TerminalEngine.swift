@@ -6,6 +6,7 @@
 //  Single watermark replaces 3 lossy stages (PTY pending 256K + AsyncStream 256 + batchBuffer 16K).
 //
 
+import AppKit
 import Foundation
 import os
 
@@ -23,6 +24,7 @@ final class TerminalEngine {
         var buffer: String = ""
         var pendingBytes: Int = 0
         var flushScheduled: Bool = false
+        var dirty: Bool = false
         var consumers: [UUID: WeakConsumer] = [:]
         var pendingResize: (Int, Int)?
         var lastResize: (Int, Int)?
@@ -48,6 +50,7 @@ final class TerminalEngine {
         self.displaySource = displaySource
         self.watermark = watermark
         startTickLoop()
+        observeAppActive()
     }
 
     deinit {
@@ -60,6 +63,8 @@ final class TerminalEngine {
     /// Push raw bytes from PTY. Decoded as UTF-8. Bare CR coalesced (don't split \r without \n).
     func push(_ bytes: Data) {
         guard !bytes.isEmpty else { return }
+        // PTY is source of truth — mark dirty first, display is only a render hint
+        state.dirty = true
         // Fast-path single watermark: drop newest when over high
         let incoming = String(data: bytes, encoding: .utf8) ?? String(bytes: bytes.map { $0 < 0x80 ? $0 : 0x3F }, encoding: .utf8) ?? ""
         guard !incoming.isEmpty else { return }
@@ -90,7 +95,7 @@ final class TerminalEngine {
         state.buffer += incoming
         state.pendingBytes += incomingBytes
 
-        // Immediate flush on large buffer (one frame worth) else schedule for next tick
+        // Immediate flush on large buffer (one frame worth) else schedule for next display opportunity
         if state.buffer.utf8.count >= 16384 && !endsWithBareCR {
             flush()
         } else if !endsWithBareCR {
@@ -140,16 +145,35 @@ final class TerminalEngine {
             guard let self else { return }
             for await _ in self.displaySource.ticks {
                 guard !Task.isCancelled else { break }
+                // Display tick is only a render hint, not permission to process PTY
                 self.flushIfNeeded()
             }
         }
     }
 
+    private func observeAppActive() {
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.didBecomeActive()
+            }
+        }
+    }
+
+    private func didBecomeActive() {
+        // App returned from Cmd+Tab — flush any dirty state immediately, don't wait for next display tick
+        guard state.dirty, !state.buffer.isEmpty else { return }
+        flush()
+    }
+
     private func scheduleFlush() {
         guard !state.flushScheduled else { return }
         state.flushScheduled = true
-        // Single display tick drives flush (CVDisplayLink @ 60/120Hz via DisplaySource).
-        // Fallback only if ticks stall (app background / link paused) — 32ms, not 16ms double-throttle.
+        // Safety net: ensure flush even if display ticks stall (e.g. app inactive)
+        // This is rendering fallback, not PTY processing gate
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(32))
             self?.flushIfNeeded()
@@ -157,15 +181,17 @@ final class TerminalEngine {
     }
 
     private func flushIfNeeded() {
-        guard state.flushScheduled, !state.buffer.isEmpty else {
+        guard state.dirty, !state.buffer.isEmpty else {
             state.flushScheduled = false
             return
         }
+        // Only flush when dirty — tick is hint, not gate
         flush()
     }
 
     private func flush() {
         state.flushScheduled = false
+        state.dirty = false
         guard !state.buffer.isEmpty else { return }
         let text = state.buffer
         let bytes = state.pendingBytes

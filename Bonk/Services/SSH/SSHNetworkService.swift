@@ -70,6 +70,7 @@ public actor SSHNetworkService {
     /// Network monitor for detecting connectivity changes.
     private var networkMonitor: NWPathMonitor?
     private var isMonitoringNetwork = false
+    private var lastNetworkPathWasSatisfied: Bool?
     /// Whether we're waiting for network to come back (for delayed reconnect).
     private var isWaitingForNetwork = false
 
@@ -539,14 +540,21 @@ public actor SSHNetworkService {
     }
 
     /// Handle network connectivity changes - funnel through supervisor per P0.
+    /// Fix 3: only on unsatisfied->satisfied transition + per-session health gate
     private func handleNetworkChange(_ path: NWPath) async {
-        guard path.status == .satisfied else { return }
+        let isSatisfied = path.status == .satisfied
+        defer { lastNetworkPathWasSatisfied = isSatisfied }
+        guard isSatisfied else { return }
+        // Only trigger on transition, not every satisfied event (NWPathMonitor is app-global)
+        if lastNetworkPathWasSatisfied == true {
+            Log.ssh.info("[NETWORK] ignore networkChanged - already satisfied (spurious)")
+            return
+        }
         guard config != nil else { return }
         if case .connecting = connectionState {
             Log.ssh.info("[NETWORK] ignore networkChanged during connecting")
             return
         }
-        // Skip if PTY not yet created to avoid tearing down new backend
         if usesOpenSSHTransport, activePTYSession == nil, lastPTYConfig == nil {
             Log.ssh.info("[NETWORK] ignore networkChanged - PTY not yet created (connect window)")
             return
@@ -555,7 +563,13 @@ public actor SSHNetworkService {
             Log.ssh.info("[RECOVERY_GATE] blocked=true reason=\(typedFailure.typeString, privacy: .public) handleNetworkChange suppressed")
             return
         }
-        Log.ssh.info("[NETWORK] Network restored, probing liveness...")
+        // Per-session health check: if transport/PTY still alive, ignore (Fix 3)
+        let alive = await probeLiveness()
+        if alive {
+            Log.ssh.info("[NETWORK] ignore networkChanged - probe alive, session healthy")
+            return
+        }
+        Log.ssh.info("[NETWORK] Network restored but probe failed, requesting recovery...")
         await supervisor.requestRecovery(reason: .networkChanged)
     }
 
@@ -808,15 +822,12 @@ public actor SSHNetworkService {
         let newAttemptID = UUID()
         currentAttemptID = newAttemptID
         Log.ssh.info("[RECOVERY] new attemptID=\(newAttemptID.uuidString.prefix(8), privacy: .public) host=\(config.host, privacy: .public)")
-        // Tear down stale resources before new attempt
+        // Fix 2: keep old PTY/client until new is confirmed (make-before-break)
+        let oldPTY = activePTYSession
+        let oldClient = client
+        let oldBackend = openSSHBackend
         await keepAlive.stop()
-        activePTYSession?.close()
-        activePTYSession = nil
-        client = nil
-        if usesOpenSSHTransport {
-            openSSHBackend?.close()
-            openSSHBackend = nil
-        }
+        // Do not clear activePTYSession yet — keep old usable until new is ready
         // Single attempt (no loop) - supervisor will retry with backoff
         // 4-stage success: process/TCP -> auth -> PTY -> session
         do {
@@ -890,23 +901,35 @@ public actor SSHNetworkService {
                             ptySession = session
                             activePTYSession = session
                             pendingPTYSession = session
+                            Log.ssh.info("[RECOVERY_STEP] ptyReady=true outputBound=true (pendingPTY set)")
+                            // Fix 2: close old only after new is confirmed (make-before-break)
+                            oldPTY?.close()
+                            // oldBackend kept as openSSHBackend now, oldClient not used for openssh
                         }
                     } catch {
                         Log.ssh.warning("[RECOVERY] OpenSSH PTY recreate failed: \(error.localizedDescription, privacy: .public)")
+                        Log.ssh.warning("[RECOVERY_STEP] ptyReady=false outputBound=false")
                         return false
                     }
-                    // lastPTYConfig  ptySession ； openPTY transport+auth
                     if lastPTYConfig != nil {
-                        guard authSucceeded, ptySession != nil else { return false }
+                        guard authSucceeded, ptySession != nil else {
+                            Log.ssh.warning("[RECOVERY_STEP] outputBound=false authSucceeded=\(authSucceeded, privacy: .public)")
+                            return false
+                        }
                     } else {
-                        guard authSucceeded else { return false }
+                        guard authSucceeded else {
+                            Log.ssh.warning("[RECOVERY_STEP] authenticationSucceeded=false")
+                            return false
+                        }
                     }
+                    Log.ssh.info("[RECOVERY_STEP] transportReady=true authenticationSucceeded=\(authSucceeded, privacy: .public)")
                 } else {
+                    Log.ssh.info("[RECOVERY_STEP] transportReady=true (no PTY)")
                 }
                 connectionState = .connected
                 stateContinuation.yield(.connected)
                 lastSuccessfulConnectionAt = Date()
-                Log.ssh.info("[RECOVERY] OpenSSH reconnect success (4 stages)")
+                Log.ssh.info("[RECOVERY] OpenSSH reconnect success (transport/pty/output all ready)")
                 await keepAlive.stop()
                 startNetworkMonitor()
                 return true
@@ -936,11 +959,20 @@ public actor SSHNetworkService {
                     }
                     session.start(client: client, cols: ptyConfig.cols, rows: ptyConfig.rows, termType: ptyConfig.termType)
                     let ptyReady = !session.isClosed
-                    guard ptyReady else { return false }
+                    guard ptyReady else {
+                        Log.ssh.warning("[RECOVERY_STEP] ptyReady=false")
+                        return false
+                    }
                     activePTYSession = session
                     pendingPTYSession = session
+                    Log.ssh.info("[RECOVERY_STEP] ptyReady=true outputBound=true (pendingPTY set)")
+                    // Fix 2: close old after new is ready
+                    oldPTY?.close()
+                    try? await oldClient?.close()
                 } else {
+                    Log.ssh.info("[RECOVERY_STEP] transportReady=true (no PTY)")
                 }
+                Log.ssh.info("[RECOVERY_STEP] transportReady=true ptyReady=\(self.lastPTYConfig != nil ? "true" : "no PTY", privacy: .public)")
                 startNetworkMonitor()
                 return true
             }
