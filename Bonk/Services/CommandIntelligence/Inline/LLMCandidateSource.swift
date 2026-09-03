@@ -35,7 +35,7 @@ final class LLMCandidateSource: InlineCandidateSource, @unchecked Sendable {
         cacheKey: String,
         onSuggestion: @escaping @MainActor @Sendable (String) -> Void
     ) async {
-        guard let (provider, apiKey) = await resolveProvider() else { return }
+        guard let (provider, apiKey) = await resolveProvider(snapshot: snapshot) else { return }
         let prompt = await MainActor.run { InlinePromptBuilder.buildPrompt(snapshot: snapshot) }
         let cache = self.cache
         let buffer = LLMRawBuffer()
@@ -80,14 +80,14 @@ final class LLMCandidateSource: InlineCandidateSource, @unchecked Sendable {
         }
     }
 
-    @MainActor private func resolveProvider() -> (AIProviderConfig, String)? {
+    @MainActor private func resolveProvider(snapshot: CommandContextSnapshot) -> (AIProviderConfig, String)? {
         let defaults = UserDefaults.standard
         let overrideID = defaults.string(forKey: "ai_inline_provider_id") ?? ""
         let provider: AIProviderConfig?
         if !overrideID.isEmpty {
             provider = providerStore.providers.first { $0.id.uuidString == overrideID }
         } else {
-            provider = providerStore.activeProvider
+            provider = ModelRouter.shared.provider(for: IntelligenceTask.inlineCompletion, snapshot: snapshot) ?? providerStore.activeProvider
         }
         guard var p = provider else { return nil }
         if let inlineModel = defaults.string(forKey: "ai_inline_model"),
