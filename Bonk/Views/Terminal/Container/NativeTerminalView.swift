@@ -139,8 +139,9 @@ import SwiftTerm
             }
             guard let window else {
                 MainActor.assumeIsolated {
-                    completionService.dismiss()
-                    hideGhost(reason: "window-nil")
+                    self.inlinePipeline?.cancel()
+                    self.completionService.dismiss()
+                    self.hideGhost(reason: "window-nil")
                 }
                 return
             }
@@ -155,14 +156,11 @@ import SwiftTerm
             ) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self else { return }
-                    let hasLegacy = self.completionService.isRequesting || !self.completionService.suggestion.isEmpty
                     let hasPipeline = (self.inlinePipeline?.isRequesting ?? false) || self.inlinePipeline?.suggestion != nil
-                    guard hasLegacy || hasPipeline else { return }
+                    guard hasPipeline else { return }
                     if self.window?.isKeyWindow == true, self.window?.firstResponder === self {
                         if let s = self.inlinePipeline?.suggestion {
                             self.showGhost(text: s.displayText)
-                        } else if !self.completionService.suggestion.isEmpty {
-                            self.showGhost(text: self.completionService.suggestion)
                         }
                     } else {
                         self.hideGhost(reason: "resign")
@@ -241,10 +239,7 @@ import SwiftTerm
             let isFocused = MainActor.assumeIsolated { window?.firstResponder === self }
             guard isFocused else { return event }
 
-            let hasSuggestion = MainActor.assumeIsolated {
-                if let p = self.inlinePipeline, p.suggestion != nil { return true }
-                return !self.completionService.suggestion.isEmpty
-            }
+            let hasSuggestion = MainActor.assumeIsolated { self.inlinePipeline?.suggestion != nil }
 
             if hasSuggestion {
                 if keyCode == 48, modifiers.isEmpty {
@@ -254,24 +249,15 @@ import SwiftTerm
                 }
                 if keyCode == 53 {
                     // Esc — dismiss only.
-                    completionDebounceTask?.cancel()
                     MainActor.assumeIsolated {
-                        if let p = self.inlinePipeline, p.suggestion != nil {
-                            p.rejectCurrent()
-                        } else {
-                            self.completionService.dismiss(rejected: true)
-                        }
+                        self.inlinePipeline?.rejectCurrent()
                         self.hideGhost(reason: "esc")
                     }
                     return nil
                 }
                 // Any other key — dismiss and forward normally.
                 MainActor.assumeIsolated {
-                    if let p = self.inlinePipeline, p.suggestion != nil {
-                        p.rejectCurrent()
-                    } else {
-                        self.completionService.dismiss(rejected: true)
-                    }
+                    self.inlinePipeline?.rejectCurrent()
                     self.hideGhost(reason: "other-key")
                 }
             }
@@ -380,12 +366,8 @@ import SwiftTerm
         /// path (history recording and broadcast included), then clear it.
         private nonisolated func acceptSuggestion() {
             MainActor.assumeIsolated {
-                let text: String
-                if let p = self.inlinePipeline, p.suggestion != nil {
-                    text = p.accept()
-                } else {
-                    text = self.completionService.accept()
-                }
+                guard let p = self.inlinePipeline, p.suggestion != nil else { return }
+                let text = p.accept()
                 self.hideGhost(reason: "accept")
                 guard !text.isEmpty else { return }
                 // Respect bracketed paste mode when inserting accepted ghost text
