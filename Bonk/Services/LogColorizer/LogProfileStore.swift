@@ -83,12 +83,12 @@ final class LogProfileStore {
 
     private func rebuildSnapshot() {
         var map: [UUID: [LogFieldPattern]] = [:]
-        for p in profiles {
-            let compiled = p.patterns.filter { $0.enabled }.compactMap { row -> LogFieldPattern? in
-                guard let re = try? NSRegularExpression(pattern: row.pattern, options: [.caseInsensitive]) else { return nil }
-                return LogFieldPattern(row.name, re, row.ansiCode, row.priority)
+        for profile in profiles {
+            let compiled = profile.patterns.filter { $0.enabled }.compactMap { row -> LogFieldPattern? in
+                guard let regex = try? NSRegularExpression(pattern: row.pattern, options: [.caseInsensitive]) else { return nil }
+                return LogFieldPattern(row.name, regex, row.ansiCode, row.priority)
             }
-            map[p.id] = compiled.isEmpty ? LogPatterns.allPatterns : compiled
+            map[profile.id] = compiled.isEmpty ? LogPatterns.allPatterns : compiled
         }
         let active = activeProfile
         let activePatterns = active.flatMap { map[$0.id] } ?? LogPatterns.allPatterns
@@ -97,8 +97,8 @@ final class LogProfileStore {
 
     private func migrateIfNeeded(profiles: [LogProfile], ctx: ModelContext) -> Bool {
         var changed = false
-        for p in profiles where p.isDefault {
-            for row in p.patterns {
+        for profile in profiles where profile.isDefault {
+            for row in profile.patterns {
                 if row.name == "ip", row.ansiCode == "1;34" {
                     row.ansiCode = "38;2;0;199;190"; changed = true
                 }
@@ -118,20 +118,20 @@ final class LogProfileStore {
 
     private func seedDefaults(ctx: ModelContext) async {
         let def = LogProfile(name: "Default", isDefault: true)
-        for (n, pat, ansi, pri) in LogPatterns.seedDefinitions {
-            let row = LogPatternRow(name: n, pattern: pat, ansiCode: ansi, priority: pri, profile: def)
+        for (notification, pat, ansi, pri) in LogPatterns.seedDefinitions {
+            let row = LogPatternRow(name: notification, pattern: pat, ansiCode: ansi, priority: pri, profile: def)
             def.patterns.append(row)
             ctx.insert(row)
         }
         ctx.insert(def)
 
         let nginx = LogProfile(name: "Nginx")
-        let np = LogPatternRow(name: "nginx", pattern: "\\d{4}/\\d{2}/\\d{2} \\d{2}:\\d{2}:\\d{2} \\[(?:emerg|alert|crit|error|warn|notice|info|debug)\\]", ansiCode: "1;31", priority: 15, profile: nginx)
-        nginx.patterns = [np]; ctx.insert(np); ctx.insert(nginx)
+        let npValue = LogPatternRow(name: "nginx", pattern: "\\d{4}/\\d{2}/\\d{2} \\d{2}:\\d{2}:\\d{2} \\[(?:emerg|alert|crit|error|warn|notice|info|debug)\\]", ansiCode: "1;31", priority: 15, profile: nginx)
+        nginx.patterns = [npValue]; ctx.insert(npValue); ctx.insert(nginx)
 
         let json = LogProfile(name: "JSON")
-        let jp = LogPatternRow(name: "jsonLevel", pattern: "\"(?:level|severity)\"\\s*:\\s*\"[^\"]+\"", ansiCode: "1;35", priority: 40, profile: json)
-        json.patterns = [jp]; ctx.insert(jp); ctx.insert(json)
+        let jpValue = LogPatternRow(name: "jsonLevel", pattern: "\"(?:level|severity)\"\\s*:\\s*\"[^\"]+\"", ansiCode: "1;35", priority: 40, profile: json)
+        json.patterns = [jpValue]; ctx.insert(jpValue); ctx.insert(json)
 
         try? ctx.save()
         logger.info("seeded 3 default log profiles")
@@ -140,11 +140,11 @@ final class LogProfileStore {
     func create(name: String) -> LogProfile? {
         guard let container else { return nil }
         let ctx = ModelContext(container)
-        let p = LogProfile(name: name)
-        ctx.insert(p)
+        let profile = LogProfile(name: name)
+        ctx.insert(profile)
         try? ctx.save()
         Task { await load() }
-        return p
+        return profile
     }
 
     func delete(_ profile: LogProfile) {
@@ -167,9 +167,9 @@ final class LogProfileStore {
         guard let container else { return false }
         let ctx = ModelContext(container)
         let pid = profile.id
-        guard let p = try? ctx.fetch(FetchDescriptor<LogProfile>(predicate: #Predicate { $0.id == pid })).first else { return false }
-        let row = LogPatternRow(name: name, pattern: pattern, ansiCode: ansiCode, priority: priority, profile: p)
-        p.patterns.append(row)
+        guard let profile = try? ctx.fetch(FetchDescriptor<LogProfile>(predicate: #Predicate { $0.id == pid })).first else { return false }
+        let row = LogPatternRow(name: name, pattern: pattern, ansiCode: ansiCode, priority: priority, profile: profile)
+        profile.patterns.append(row)
         ctx.insert(row)
         try? ctx.save()
         Task { await load() }

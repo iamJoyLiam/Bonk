@@ -43,13 +43,13 @@ final class LogClassifier: Sendable {
     // MARK: - Shell prompt
 
     private func isShellPrompt(_ line: String) -> Bool {
-        let t = line.trimmingCharacters(in: .whitespaces)
-        if t.hasPrefix("[") && t.contains("]#") { return true }
-        if t.contains("@") && (t.contains(":$") || t.contains("~$") || t.contains("]#") || t.contains("~#")) { return true }
-        if t == "$" || t == "%" || t == "❯" || t == "#" { return true }
-        if t.hasPrefix("$ ") || t.hasPrefix("% ") || t.hasPrefix("❯ ") { return true }
-        if let last = t.last, last == "$" || last == "#" || last == "%" || last == "❯" {
-            if t.contains("@") || t.contains("~") || t.hasPrefix("[") { return true }
+        let text = line.trimmingCharacters(in: .whitespaces)
+        if text.hasPrefix("[") && text.contains("]#") { return true }
+        if text.contains("@") && (text.contains(":$") || text.contains("~$") || text.contains("]#") || text.contains("~#")) { return true }
+        if text == "$" || text == "%" || text == "❯" || text == "#" { return true }
+        if text.hasPrefix("$ ") || text.hasPrefix("% ") || text.hasPrefix("❯ ") { return true }
+        if let last = text.last, last == "$" || last == "#" || last == "%" || last == "❯" {
+            if text.contains("@") || text.contains("~") || text.hasPrefix("[") { return true }
         }
         return false
     }
@@ -64,7 +64,7 @@ final class LogClassifier: Sendable {
 
     private func isContinuation(_ line: String) -> Bool {
         if line.hasPrefix("    at ") || line.hasPrefix("\tat ") || line.hasPrefix("at ") { return true }
-        if line.hasPrefix(" ") || line.hasPrefix("\t") {
+        if line.hasPrefix(" ") || line.hasPrefix("\text") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.hasPrefix("at ") || trimmed.hasPrefix("Caused by:") || trimmed.hasPrefix("...") { return true }
             if !hasStrongSignature(line) && line.first?.isWhitespace == true { return true }
@@ -96,14 +96,14 @@ final class LogClassifier: Sendable {
             if isYear, sIdx != scalars.endIndex, (scalars[sIdx] == "-" || scalars[sIdx] == "/") {
                 let levels = [" info ", " error ", " warn", " debug", " trace", " alert", " crit", " fatal", " notice", " emerg", "[error]", "[warn]", "[info]"]
                 for lvl in levels where line.range(of: lvl, options: .caseInsensitive) != nil { return true }
-                let r = NSRange(line.startIndex..., in: line)
-                if Self.ipRegex.firstMatch(in: line, range: r) != nil { return true }
+                let row = NSRange(line.startIndex..., in: line)
+                if Self.ipRegex.firstMatch(in: line, range: row) != nil { return true }
                 return false
             }
         }
         if line.count >= 3 {
-            let p3 = String(line.prefix(3))
-            if Self.bsdMonths.contains(p3) { return true }
+            let p3Value = String(line.prefix(3))
+            if Self.bsdMonths.contains(p3Value) { return true }
         }
         return nil
     }
@@ -115,8 +115,8 @@ final class LogClassifier: Sendable {
     private func hasTimestamp(_ line: String) -> Bool {
         if line.contains("2026-") || line.contains("2026/") { return true }
         if line.contains(":") {
-            let r = NSRange(line.startIndex..., in: line)
-            if Self.timeRegex.firstMatch(in: line, range: r) != nil { return true }
+            let row = NSRange(line.startIndex..., in: line)
+            if Self.timeRegex.firstMatch(in: line, range: row) != nil { return true }
         }
         return false
     }
@@ -124,19 +124,19 @@ final class LogClassifier: Sendable {
     // MARK: - Strong signature
 
     private func hasStrongSignature(_ line: String) -> Bool {
-        let r = NSRange(line.startIndex..., in: line)
-        if LogPatterns.timestampRegexStrong.firstMatch(in: line, range: r) != nil {
-            if LogPatterns.levelAtStartRegex.firstMatch(in: line, range: r) != nil { return true }
+        let row = NSRange(line.startIndex..., in: line)
+        if LogPatterns.timestampRegexStrong.firstMatch(in: line, range: row) != nil {
+            if LogPatterns.levelAtStartRegex.firstMatch(in: line, range: row) != nil { return true }
             let lower = line.lowercased()
             if lower.contains(" info ") || lower.contains(" error ") || lower.contains(" warn") || lower.contains(" debug") { return true }
             if lower.contains("[error]") || lower.contains("[warn]") { return true }
         }
-        if LogPatterns.iso8601Regex.firstMatch(in: line, range: r) != nil { return true }
+        if LogPatterns.iso8601Regex.firstMatch(in: line, range: row) != nil { return true }
         if line.hasPrefix("<"), let end = line.firstIndex(of: ">"), line.distance(from: line.startIndex, to: end) < 5 { return true }
-        if LogPatterns.nginxRegex.firstMatch(in: line, range: r) != nil { return true }
-        if LogPatterns.javaRegex.firstMatch(in: line, range: r) != nil { return true }
-        if LogPatterns.bracketedLevel.regex.firstMatch(in: line, range: r) != nil, hasTimestamp(line) { return true }
-        if LogPatterns.dockerKV.regex.firstMatch(in: line, range: r) != nil { return true }
+        if LogPatterns.nginxRegex.firstMatch(in: line, range: row) != nil { return true }
+        if LogPatterns.javaRegex.firstMatch(in: line, range: row) != nil { return true }
+        if LogPatterns.bracketedLevel.regex.firstMatch(in: line, range: row) != nil, hasTimestamp(line) { return true }
+        if LogPatterns.dockerKV.regex.firstMatch(in: line, range: row) != nil { return true }
         return false
     }
 }

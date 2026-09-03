@@ -29,8 +29,8 @@ final class TeamDiscoveryService: ObservableObject {
     private var hostedServiceName: String = TeamConstants.defaultHostName
 
     init() {
-        store.$isHosting.receive(on: DispatchQueue.main).sink { [weak self] v in
-            self?.isHosting = v
+        store.$isHosting.receive(on: DispatchQueue.main).sink { [weak self] value in
+            self?.isHosting = value
         }.store(in: &cancellables)
     }
 

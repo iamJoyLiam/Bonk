@@ -82,8 +82,8 @@ enum LogColorizer {
     static func colorizeLineStandalone(_ line: String, patterns: [LogFieldPattern]) -> String {
         if line.isEmpty || hasANSI(line) || line.trimmingCharacters(in: .whitespaces).isEmpty || isShellNoise(line) { return line }
         let classifier = LogClassifier()
-        let c = classifier.classify(line, previousWasLog: false)
-        guard c == .log || c == .continuation else { return line }
+        let color = classifier.classify(line, previousWasLog: false)
+        guard color == .log || color == .continuation else { return line }
         let spans = ZeroCopyScanner().scan(line: line, patterns: patterns)
         if spans.isEmpty { return line }
         return applyAnnotations(to: line, annotations: ZeroCopyScanner.Dedup.toANSIRanges(spans))
@@ -114,8 +114,8 @@ enum LogColorizer {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty { return true }
         let range = NSRange(trimmed.startIndex..., in: trimmed)
-        if let r1 = shellNoiseRegex1, r1.firstMatch(in: trimmed, range: range) != nil { return true }
-        if let r2 = shellNoiseRegex2, r2.firstMatch(in: trimmed, range: range) != nil { return true }
+        if let r1Value = shellNoiseRegex1, r1Value.firstMatch(in: trimmed, range: range) != nil { return true }
+        if let r2Value = shellNoiseRegex2, r2Value.firstMatch(in: trimmed, range: range) != nil { return true }
         return false
     }
 }

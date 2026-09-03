@@ -85,8 +85,8 @@ private final class ProgressMerger: @unchecked Sendable {
             return accumulated
         }
         let progress = total > 0 ? Double(completed) / Double(total) : 1.0
-        let p = min(progress, 1.0)
-        if p < 1.0 {
+        let profile = min(progress, 1.0)
+        if profile < 1.0 {
             let now = Date()
             let shouldEmit: Bool = lastEmit.withLockedValue { last in
                 let timeOk = now.timeIntervalSince(last) >= throttle
@@ -97,8 +97,8 @@ private final class ProgressMerger: @unchecked Sendable {
         } else {
             // completion always emit
         }
-        lastReported.withLockedValue { last in last = p }
-        onProgress(p)
+        lastReported.withLockedValue { last in last = profile }
+        onProgress(profile)
     }
 
     var completed: UInt64 { lock.withLockedValue { $0 } }

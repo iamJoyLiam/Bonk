@@ -39,9 +39,9 @@ struct PatternEditSheet: View {
                 Section("基础") {
                     TextField("名称", text: $name).font(.system(size: AppStyle.fontBody))
                     Picker("预设", selection: $preset) {
-                        ForEach(LogColor.presetRows, id: \.title) { p in Text(p.title).tag(p.title) }
-                    }.onChange(of: preset) { _, v in
-                        if let matchedPreset = LogColor.presetRows.first(where: { $0.title == v }) {
+                        ForEach(LogColor.presetRows, id: \.title) { profile in Text(profile.title).tag(profile.title) }
+                    }.onChange(of: preset) { _, value in
+                        if let matchedPreset = LogColor.presetRows.first(where: { $0.title == value }) {
                             if !matchedPreset.pattern.isEmpty { pattern = matchedPreset.pattern }
                             if !matchedPreset.testLine.isEmpty { testLine = matchedPreset.testLine }
                             if !isEdit, !matchedPreset.ansi.isEmpty { picked = LogColor.color(for: matchedPreset.ansi); hex = (picked.hexString ?? "#FF3B30").uppercased() }

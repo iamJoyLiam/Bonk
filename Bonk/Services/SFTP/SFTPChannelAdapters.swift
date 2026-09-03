@@ -83,7 +83,7 @@ final class CitadelSFTPAdapter: SFTPChannel {
                     Log.sftp.info("[POOL] try N×TCP upload total=\(total) shards=\(shards)")
                     do {
                         let pool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
-                        defer { let p = pool; Task { [p] in for handle in p { await handle.close() } } }
+                        defer { let profile = pool; Task { [profile] in for handle in profile { await handle.close() } } }
                         try await SFTPParallelTransferEngine.parallelUploadMultiTCP(
                             handles: pool, remotePath: tempRemotePath, localURL: localURL,
                             totalBytes: total, isCancelled: { false }, onProgress: onProgress
@@ -160,7 +160,7 @@ final class CitadelSFTPAdapter: SFTPChannel {
 
     private func singleStreamUpload(localURL: URL, total: UInt64, remoteFile: SendableSFTPFile, onProgress: @Sendable @escaping (Double) -> Void) async throws {
         let reader = try SFTPTransferActor(url: localURL)
-        defer { let r = reader; Task { [r] in await r.close() } }
+        defer { let row = reader; Task { [row] in await row.close() } }
         let chunkSize = SFTPParallelStrategy.chunkSize(for: total)
         let pipelineDepth = SFTPParallelStrategy.pipelinePerShard(shards: 1, totalBytes: total)
         var offset: UInt64 = 0
@@ -183,10 +183,10 @@ final class CitadelSFTPAdapter: SFTPChannel {
                 guard let written = try await group.next() else { break }
                 pending -= 1
                 completed += UInt64(written)
-                let p = total > 0 ? Double(completed) / Double(total) : 1.0
+                let profile = total > 0 ? Double(completed) / Double(total) : 1.0
                 let now = Date()
                 // OR: 1% visible OR 50ms time — never drop visible jumps
-                if p >= 1.0 || now.timeIntervalSince(lastEmit) >= throttle { last = p; lastEmit = now; onProgress(min(p, 1.0)) }
+                if profile >= 1.0 || now.timeIntervalSince(lastEmit) >= throttle { last = profile; lastEmit = now; onProgress(min(profile, 1.0)) }
             }
             try await group.waitForAll()
         }
@@ -206,7 +206,7 @@ final class CitadelSFTPAdapter: SFTPChannel {
                     Log.sftp.info("[POOL] try N×TCP download total=\(total) shards=\(shards)")
                     do {
                         let pool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
-                        defer { let p = pool; Task { [p] in for handle in p { await handle.close() } } }
+                        defer { let profile = pool; Task { [profile] in for handle in profile { await handle.close() } } }
                         try await SFTPParallelTransferEngine.parallelDownloadMultiTCP(
                             handles: pool, remotePath: remotePath, localURL: tempURL,
                             totalBytes: total, isCancelled: { false }, onProgress: onProgress
@@ -278,16 +278,16 @@ final class CitadelSFTPAdapter: SFTPChannel {
                 throw SFTPServiceError.operationFailed("Download incomplete: expected \(expectedBytes) got \(size)")
             }
             // fsync
-            if let fh = FileHandle(forReadingAtPath: tempURL.path) {
-                try? fh.synchronizeFile()
-                fh.closeFile()
+            if let fhValue = FileHandle(forReadingAtPath: tempURL.path) {
+                try? fhValue.synchronizeFile()
+                fhValue.closeFile()
             }
             // Darwin fsync
-            let fd = Darwin.open(tempURL.path, O_RDONLY)
-            if fd >= 0 { _ = Darwin.fsync(fd); Darwin.close(fd) }
+            let fdValue = Darwin.open(tempURL.path, O_RDONLY)
+            if fdValue >= 0 { _ = Darwin.fsync(fdValue); Darwin.close(fdValue) }
         } else {
             // Unknown size fsync
-            if let fh = FileHandle(forReadingAtPath: tempURL.path) { try? fh.synchronizeFile(); fh.closeFile() }
+            if let fhValue = FileHandle(forReadingAtPath: tempURL.path) { try? fhValue.synchronizeFile(); fhValue.closeFile() }
         }
         if FileManager.default.fileExists(atPath: finalURL.path) {
             try? FileManager.default.removeItem(at: finalURL)
@@ -327,11 +327,11 @@ final class CitadelSFTPAdapter: SFTPChannel {
                     try handle.write(contentsOf: bytes)
                     nextWrite += UInt64(bytes.count)
                     // Unknown size: don't synthesize "real" percentage — SFTPService/SFTPWindowView
-                    // now shows indeterminate ProgressView for total==0. Keep internal p monotonic for
+                    // now shows indeterminate ProgressView for total==0. Keep internal profile monotonic for
                     // completion detection but never display as %.
-                    let p: Double = total > 0 ? Double(nextWrite) / Double(total) : (readDone ? 1.0 : Double(nextWrite) / Double(nextWrite + UInt64(chunkSize)))
+                    let profile: Double = total > 0 ? Double(nextWrite) / Double(total) : (readDone ? 1.0 : Double(nextWrite) / Double(nextWrite + UInt64(chunkSize)))
                     let now2 = Date()
-                    if p >= 1.0 || now2.timeIntervalSince(lastEmit) >= throttle { last = p; lastEmit = now2; onProgress(min(p, 1.0)) }
+                    if profile >= 1.0 || now2.timeIntervalSince(lastEmit) >= throttle { last = profile; lastEmit = now2; onProgress(min(profile, 1.0)) }
                 }
             }
             try await group.waitForAll()
@@ -345,7 +345,7 @@ final class CitadelSFTPAdapter: SFTPChannel {
     // MARK: - Resume helpers (legacy)
     private func resumeSingleStreamUpload(localURL: URL, total: UInt64, resumeOffset: UInt64, remoteFile: SendableSFTPFile, onProgress: @Sendable @escaping (Double) -> Void) async throws {
         let reader = try SFTPTransferActor(url: localURL)
-        defer { let r = reader; Task { [r] in await r.close() } }
+        defer { let row = reader; Task { [row] in await row.close() } }
         let chunkSize = SFTPParallelStrategy.chunkSize(for: total - resumeOffset)
         let pipelineDepth = SFTPParallelStrategy.pipelinePerShard(shards: 1, totalBytes: total - resumeOffset)
         var offset = resumeOffset
@@ -369,8 +369,8 @@ final class CitadelSFTPAdapter: SFTPChannel {
                 guard let written = try await group.next() else { break }
                 pending -= 1
                 completed += UInt64(written)
-                let p = Double(completed) / Double(total)
-                onProgress(min(p, 1.0))
+                let profile = Double(completed) / Double(total)
+                onProgress(min(profile, 1.0))
             }
             try await group.waitForAll()
         }
@@ -407,8 +407,8 @@ final class CitadelSFTPAdapter: SFTPChannel {
                     try handle.seek(toOffset: nextWrite)
                     try handle.write(contentsOf: bytes)
                     nextWrite += UInt64(bytes.count)
-                    let p = Double(nextWrite) / Double(total)
-                    onProgress(min(p, 1.0))
+                    let profile = Double(nextWrite) / Double(total)
+                    onProgress(min(profile, 1.0))
                     if nextWrite >= total { readDone = true }
                 }
             }

@@ -82,7 +82,7 @@ final class LogHighlightWorker: @unchecked Sendable {
         lock.lock()
         if cache.count >= cacheLimit {
             let toRemove = cache.keys.prefix(cacheLimit / 5)
-            for k in toRemove { cache.removeValue(forKey: k) }
+            for key in toRemove { cache.removeValue(forKey: key) }
         }
         cache[cacheKey] = result
         lock.unlock()

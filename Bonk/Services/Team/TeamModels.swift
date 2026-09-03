@@ -283,8 +283,8 @@ enum TeamConstants {
     static let heartbeatIntervalSeconds: TimeInterval = 15
     static let connectionTimeoutSeconds: TimeInterval = 8
     static var maxGuestCount: Int {
-        let v = UserDefaults.standard.integer(forKey: "team_max_guests")
-        if v >= 1 && v <= 8 { return v }
+        let value = UserDefaults.standard.integer(forKey: "team_max_guests")
+        if value >= 1 && value <= 8 { return value }
         return 3 // default 1 host + 3 guests
     }
     static let maxFrameBytes = 256 * 1024

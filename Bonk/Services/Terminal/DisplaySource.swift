@@ -30,7 +30,7 @@ final class AppKitDisplaySource: DisplaySource, @unchecked Sendable {
 
     init(preferDisplayLink: Bool = true) {
         var cont: AsyncStream<Void>.Continuation!
-        self.ticks = AsyncStream<Void>(bufferingPolicy: .bufferingNewest(1)) { c in cont = c }
+        self.ticks = AsyncStream<Void>(bufferingPolicy: .bufferingNewest(1)) { color in cont = color }
         self.continuation = cont
         if preferDisplayLink, !setupCVDisplayLink() {
             startFallback()
@@ -45,17 +45,17 @@ final class AppKitDisplaySource: DisplaySource, @unchecked Sendable {
 
     private func setupCVDisplayLink() -> Bool {
         var link: CVDisplayLink?
-        guard CVDisplayLinkCreateWithActiveCGDisplays(&link) == kCVReturnSuccess, let l = link else { return false }
-        self.displayLink = l
+        guard CVDisplayLinkCreateWithActiveCGDisplays(&link) == kCVReturnSuccess, let line = link else { return false }
+        self.displayLink = line
         // Bridge self weakly via callback context
         let ctx = Unmanaged.passUnretained(self).toOpaque()
-        CVDisplayLinkSetOutputCallback(l, { _, _, _, _, _, ctx in
+        CVDisplayLinkSetOutputCallback(line, { _, _, _, _, _, ctx in
             guard let ctx else { return kCVReturnSuccess }
             let source = Unmanaged<AppKitDisplaySource>.fromOpaque(ctx).takeUnretainedValue()
             source.continuation.yield(())
             return kCVReturnSuccess
         }, ctx)
-        CVDisplayLinkStart(l)
+        CVDisplayLinkStart(line)
         return true
     }
 
@@ -79,7 +79,7 @@ final class TestDisplaySource: DisplaySource, @unchecked Sendable {
 
     init() {
         var cont: AsyncStream<Void>.Continuation!
-        self.ticks = AsyncStream<Void>(bufferingPolicy: .bufferingNewest(1)) { c in cont = c }
+        self.ticks = AsyncStream<Void>(bufferingPolicy: .bufferingNewest(1)) { color in cont = color }
         self.continuation = cont
     }
 

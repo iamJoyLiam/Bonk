@@ -28,8 +28,8 @@ enum SocketNaming {
     static func legacyPath(host: String, port: UInt16, username: String) -> String {
         var hash: UInt64 = 14695981039346656037
         let raw = "\(host):\(port):\(username)"
-        for b in raw.utf8 {
-            hash ^= UInt64(b)
+        for bookmark in raw.utf8 {
+            hash ^= UInt64(bookmark)
             hash &*= 1099511628211
         }
         let dir = FileManager.default.temporaryDirectory.path

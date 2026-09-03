@@ -81,7 +81,7 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
         // Atomic: put to .bonk.part, verify, then rename
         let tempRemotePath = remotePath + ".bonk.part"
         try? await remove(at: tempRemotePath, isDirectory: false)
-        let command = "put -p \(quote(localURL.path)) \(quote(tempRemotePath))"
+        let command = "put -profile \(quote(localURL.path)) \(quote(tempRemotePath))"
         do {
             _ = try await run(
                 [command],
@@ -127,7 +127,7 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
            let entry = entries.first(where: { $0.name == name }) {
             expectedBytes = entry.size
         }
-        let command = "get -p \(quote(remotePath)) \(quote(tempURL.path))"
+        let command = "get -profile \(quote(remotePath)) \(quote(tempURL.path))"
         do {
             _ = try await run(
                 [command],
@@ -149,9 +149,9 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
                     throw SFTPServiceError.operationFailed("Download incomplete: expected \(expectedBytes) got \(size)")
                 }
             }
-            if let fh = FileHandle(forReadingAtPath: tempURL.path) { try? fh.synchronizeFile(); fh.closeFile() }
-            let fd = Darwin.open(tempURL.path, O_RDONLY)
-            if fd >= 0 { _ = Darwin.fsync(fd); Darwin.close(fd) }
+            if let fhValue = FileHandle(forReadingAtPath: tempURL.path) { try? fhValue.synchronizeFile(); fhValue.closeFile() }
+            let fdValue = Darwin.open(tempURL.path, O_RDONLY)
+            if fdValue >= 0 { _ = Darwin.fsync(fdValue); Darwin.close(fdValue) }
             if FileManager.default.fileExists(atPath: localURL.path) {
                 try? FileManager.default.removeItem(at: localURL)
             }
@@ -390,8 +390,8 @@ private final class ProgressParser: @unchecked Sendable {
               let percentRange = Range(match.range(at: 1), in: value),
               let percent = Double(value[percentRange])
         else { return nil }
-        let p = min(max(percent / 100.0, 0), 1)
-        return p
+        let profile = min(max(percent / 100.0, 0), 1)
+        return profile
     }
 }
 

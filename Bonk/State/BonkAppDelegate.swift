@@ -127,23 +127,23 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let ctx = ModelContext(container)
         // Cleanup old test hosts
         if let existing = try? ctx.fetch(FetchDescriptor<HostItem>()) {
-            for h in existing where h.host == "192.168.100.50" && h.username == "root" {
-                ctx.delete(h)
+            for host in existing where host.host == "192.168.100.50" && host.username == "root" {
+                ctx.delete(host)
             }
             try? ctx.save()
         }
         // Create host via HostFormViewModel path (hand UI simulation)
-        let vm = HostFormViewModel(existingHost: nil)
-        vm.name = "192.168.100.50"
-        vm.host = "192.168.100.50"
-        vm.port = "22"
-        vm.username = "root"
-        vm.authType = .password
-        vm.password = "1234"
-        vm.forceCompatibilityToggle = true
+        let viewModel = HostFormViewModel(existingHost: nil)
+        viewModel.name = "192.168.100.50"
+        viewModel.host = "192.168.100.50"
+        viewModel.port = "22"
+        viewModel.username = "root"
+        viewModel.authType = .password
+        viewModel.password = "1234"
+        viewModel.forceCompatibilityToggle = true
         let hostGroups: [HostGroup] = (try? ctx.fetch(FetchDescriptor<HostGroup>())) ?? []
         var createdHost: HostItem?
-        vm.save(hostGroups: hostGroups, modelContext: ctx, onSave: { item in
+        viewModel.save(hostGroups: hostGroups, modelContext: ctx, onSave: { item in
             ctx.insert(item)
             createdHost = item
         }, i18n: I18n.shared)
@@ -154,7 +154,7 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         // Ensure SessionManager has modelContext (normally set via View)
         sessionManager.setModelContext(ctx)
-        Log.session.info("[TEST_TRIGGER] created host \(host.name) pwLen=\(vm.password.count) forceCompat=\(host.forceCompatibility == true)")
+        Log.session.info("[TEST_TRIGGER] created host \(host.name) pwLen=\(viewModel.password.count) forceCompat=\(host.forceCompatibility == true)")
         sessionManager.openTab(for: host)
         // Monitor phases and auto-retry when auth fails (file trigger auto path)
         var didRetry = false
@@ -175,12 +175,12 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 // No auto complete
                 didRetry = true
             }
-            if let p = phase, case .ready = p {
+            if let profile = phase, case .ready = profile {
                 Log.session.info("[TEST_TRIGGER] SUCCESS ready after hand UI 5-step!")
                 try? "SUCCESS".write(toFile: "/tmp/bonk_test_result", atomically: true, encoding: .utf8)
                 return
             }
-            if let p = phase, case .failed(let msg) = p, didRetry {
+            if let profile = phase, case .failed(let msg) = profile, didRetry {
                 // After retry still failed -> capture
                 Log.session.error("[TEST_TRIGGER] FAILED after retry msg=\(msg.prefix(120))")
                 try? "FAILED:\(msg)".write(toFile: "/tmp/bonk_test_result", atomically: true, encoding: .utf8)

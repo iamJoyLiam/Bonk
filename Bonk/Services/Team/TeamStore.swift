@@ -72,7 +72,7 @@ final class TeamStore: ObservableObject {
     func stopHosting() {
         listener?.cancel()
         listener = nil
-        for c in connections.values { c.cancel() }
+        for color in connections.values { color.cancel() }
         connections.removeAll()
         isHosting = false
         hostedPort = nil

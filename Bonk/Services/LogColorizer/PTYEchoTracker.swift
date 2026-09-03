@@ -18,9 +18,9 @@ final class PTYEchoTracker: @unchecked Sendable {
 
     /// Record user input (from PTYSession.sendInput / ShellIntegration OSC133 C)
     func record(_ text: String) {
-        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty, t.count <= maxLen, t.count >= 2 else { return }
-        let lower = t.lowercased()
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text.count <= maxLen, text.count >= 2 else { return }
+        let lower = text.lowercased()
         // Filter control noise
         if lower == "\r" || lower == "\n" { return }
         lock.lock()

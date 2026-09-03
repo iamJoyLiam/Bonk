@@ -31,8 +31,8 @@ final class ZeroCopyScanner: @unchecked Sendable {
         let fullRange = NSRange(line.startIndex..., in: line)
         for pattern in patterns {
             let matches = pattern.regex.matches(in: line, options: [], range: fullRange)
-            for m in matches {
-                spans.append(HighlightSpan(offset: m.range.location, length: m.range.length, ansiCode: pattern.ansiCode, priority: pattern.priority))
+            for message in matches {
+                spans.append(HighlightSpan(offset: message.range.location, length: message.range.length, ansiCode: pattern.ansiCode, priority: pattern.priority))
             }
         }
         if let (sev, endIdx) = SyslogPRI.extract(from: line) {

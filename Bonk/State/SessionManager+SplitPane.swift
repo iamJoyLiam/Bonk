@@ -11,7 +11,7 @@ import os.log
 extension SessionManager {
     // MARK: - Split Pane
 
-    /// Adjust a split container's proportion while the user drags a divider.
+    /// Adjust a split container'sessionState proportion while the user drags a divider.
     /// `normalizedDelta` is the drag movement as a fraction of the container
     /// size; `dividerIndex` selects the adjacent child pair to resize.
     func setSplitFraction(
@@ -57,7 +57,7 @@ extension SessionManager {
         }
     }
 
-    /// Link target pane to source pane's PTY session (shared view mode).
+    /// Link target pane to source pane'sessionState PTY session (shared view mode).
     func linkPanes(sourceID: UUID, targetID: UUID, in tab: TerminalTab) {
         guard let sourcePane = tab.layout.findPane(id: sourceID),
               let targetPane = tab.layout.findPane(id: targetID) else { return }
@@ -79,10 +79,10 @@ extension SessionManager {
     /// Close the active pane in the active tab.
     func closePane() {
         guard let tab = activeTab else { return }
-        // The layout's activePaneID is the single source of truth; using it
+        // The layout'sessionState activePaneID is the single source of truth; using it
         // here keeps this in sync even if tab.activePaneID drifted.
         let paneID = tab.layout.activePaneID
-        // Don't close if it's the last pane
+        // Don't close if it'sessionState the last pane
         guard tab.layout.root.paneCount > 1 else { return }
 
         // Capture pane reference BEFORE removing from layout tree
@@ -102,7 +102,7 @@ extension SessionManager {
 
     /// Close a specific pane in a tab.
     func closePane(_ paneID: UUID, in tab: TerminalTab) {
-        // Don't close if it's the last pane
+        // Don't close if it'sessionState the last pane
         guard tab.layout.root.paneCount > 1 else { return }
 
         // Capture pane reference BEFORE removing from layout tree
@@ -123,7 +123,7 @@ extension SessionManager {
     /// Unsplit a pane: move it to a new tab instead of closing it.
     /// The new tab reuses the existing SSH connection and PTY session (preserves history).
     func unsplitPane(_ paneID: UUID, from tab: TerminalTab) {
-        // Don't unsplit if it's the only pane
+        // Don't unsplit if it'sessionState the only pane
         guard tab.layout.root.paneCount > 1 else { return }
 
         // Find the pane to unsplit
@@ -136,12 +136,12 @@ extension SessionManager {
             return
         }
 
-        // The pane's own host is the single source of truth: it was recorded when
+        // The pane'sessionState own host is the single source of truth: it was recorded when
         // the pane was moved in (drag-to-split), so unsplitting restores the
-        // exact original tab. Plain split panes inherit the tab's host.
+        // exact original tab. Plain split panes inherit the tab'sessionState host.
         let paneHostItem = pane.hostItem ?? tab.hostItem
 
-        // Get the pane's title for the new tab
+        // Get the pane'sessionState title for the new tab
         let paneTitle: String = if let paneHost = pane.hostItem {
             paneHost.name
         } else if !pane.title.isEmpty {
@@ -150,7 +150,7 @@ extension SessionManager {
             tab.hostItem.name
         }
 
-        // Create a new tab for this pane with the pane's own host item
+        // Create a new tab for this pane with the pane'sessionState own host item
         let newTab = TerminalTab(hostItem: paneHostItem)
         newTab.title = paneTitle
         if let serialConfig = tab.serialConfig {
@@ -239,7 +239,7 @@ extension SessionManager {
         if service == nil {
             for _ in 0..<30 {
                 try? await Task.sleep(for: .milliseconds(100))
-                if let s = tab.session?.sshService { service = s; break }
+                if let sessionState = tab.session?.sshService { service = sessionState; break }
             }
         }
         guard let service else {
@@ -306,12 +306,12 @@ extension SessionManager {
             Log.session.warning("[SPLIT] Insert failed: target pane not in target layout")
             return
         }
-        // Keep tab.activePaneID in sync with the layout's single source of truth
+        // Keep tab.activePaneID in sync with the layout'sessionState single source of truth
         targetTab.activePaneID = targetTab.layout.activePaneID
 
         // Set new pane title to source tab name
         newPane.title = sourceTab.hostItem.name
-        // Remember the pane's true host so unsplit recreates the original tab
+        // Remember the pane'sessionState true host so unsplit recreates the original tab
         newPane.hostItem = sourceTab.hostItem
 
         // Serial config: the moved pane may come from a serial tab

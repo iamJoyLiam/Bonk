@@ -12,36 +12,36 @@ enum LogColor {
 
     /// "#RRGGBB" → "38;2;R;G;B"
     static func ansi(for hex: String) -> String {
-        let c = Color(hex: hex)
-        let ns = NSColor(c).usingColorSpace(.sRGB) ?? NSColor(c)
-        return "38;2;\(Int(ns.redComponent * 255));\(Int(ns.greenComponent * 255));\(Int(ns.blueComponent * 255))"
+        let color = Color(hex: hex)
+        let nsString = NSColor(color).usingColorSpace(.sRGB) ?? NSColor(color)
+        return "38;2;\(Int(nsString.redComponent * 255));\(Int(nsString.greenComponent * 255));\(Int(nsString.blueComponent * 255))"
     }
 
     // / "38;2;R;G;B"  "#RRGGBB" → "#RRGGBB"
     static func hex(for ansiCode: String) -> String {
-        let t = ansiCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.hasPrefix("#"), t.count == 7 { return t.uppercased() }
-        if t.hasPrefix("38;2;") {
-            let p = t.split(separator: ";").compactMap { Int($0) }
-            if p.count >= 5 {
-                return String(format: "#%02X%02X%02X", p[2], p[3], p[4])
+        let text = ansiCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.hasPrefix("#"), text.count == 7 { return text.uppercased() }
+        if text.hasPrefix("38;2;") {
+            let profile = text.split(separator: ";").compactMap { Int($0) }
+            if profile.count >= 5 {
+                return String(format: "#%02X%02X%02X", profile[2], profile[3], profile[4])
             }
         }
         // 256/ → ，
-        return color(for: t).hexString?.uppercased() ?? "#FF3B30"
+        return color(for: text).hexString?.uppercased() ?? "#FF3B30"
     }
 
     // / ansiCode → SwiftUI Color 38;2 / #hex /
     static func color(for ansiCode: String) -> Color {
-        let t = ansiCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.hasPrefix("38;2;") {
-            let p = t.split(separator: ";").compactMap { Int($0) }
-            if p.count >= 5 {
-                return Color(red: Double(p[2]) / 255, green: Double(p[3]) / 255, blue: Double(p[4]) / 255)
+        let text = ansiCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.hasPrefix("38;2;") {
+            let profile = text.split(separator: ";").compactMap { Int($0) }
+            if profile.count >= 5 {
+                return Color(red: Double(profile[2]) / 255, green: Double(profile[3]) / 255, blue: Double(profile[4]) / 255)
             }
         }
-        if t.hasPrefix("#") { return Color(hex: t) }
-        switch t {
+        if text.hasPrefix("#") { return Color(hex: text) }
+        switch text {
         case "1;41;97": return Color.red // emerg/alert  →
         case "1;91":    return Color.red.opacity(0.95)
         case "1;31":    return .red

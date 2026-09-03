@@ -13,10 +13,10 @@ import os.log
 
 /// Unified wake/sleep/app events for SSH recovery.
 enum SystemWakeEvent: Sendable, Equatable {
-    case systemSleep(at: Date)
-    case systemWake(at: Date, sleepDuration: TimeInterval?)
-    case appDidBecomeActive(at: Date)
-    case appWillResignActive(at: Date)
+    case systemSleep(atValue: Date)
+    case systemWake(atValue: Date, sleepDuration: TimeInterval?)
+    case appDidBecomeActive(atValue: Date)
+    case appWillResignActive(atValue: Date)
 }
 
 /// Independent monitor that publishes SystemWakeEvent.
@@ -94,8 +94,8 @@ final class SystemWakeMonitor: NSObject, @unchecked Sendable {
     private func handleSystemWillSleep(_ notification: Notification) {
         let now = Date()
         stateBox.withLock { $0.sleepAt = now }
-        continuation.yield(.systemSleep(at: now))
-        Log.ssh.info("[WAKE] systemSleep at \(now, privacy: .public)")
+        continuation.yield(.systemSleep(atValue: now))
+        Log.ssh.info("[WAKE] systemSleep atValue \(now, privacy: .public)")
     }
 
     @objc
@@ -106,26 +106,26 @@ final class SystemWakeMonitor: NSObject, @unchecked Sendable {
             state.sleepAt = nil
             return now.timeIntervalSince(sleepAt)
         }
-        continuation.yield(.systemWake(at: now, sleepDuration: duration))
+        continuation.yield(.systemWake(atValue: now, sleepDuration: duration))
         if let duration {
-            Log.ssh.info("[WAKE] systemWake at \(now, privacy: .public) sleepDuration=\(duration, privacy: .public)s")
+            Log.ssh.info("[WAKE] systemWake atValue \(now, privacy: .public) sleepDuration=\(duration, privacy: .public)s")
         } else {
-            Log.ssh.info("[WAKE] systemWake at \(now, privacy: .public) sleepDuration=unknown")
+            Log.ssh.info("[WAKE] systemWake atValue \(now, privacy: .public) sleepDuration=unknown")
         }
     }
 
     @objc
     private func handleAppDidBecomeActive(_ notification: Notification) {
         let now = Date()
-        continuation.yield(.appDidBecomeActive(at: now))
-        Log.ssh.debug("[WAKE] appDidBecomeActive at \(now, privacy: .public)")
+        continuation.yield(.appDidBecomeActive(atValue: now))
+        Log.ssh.debug("[WAKE] appDidBecomeActive atValue \(now, privacy: .public)")
     }
 
     @objc
     private func handleAppWillResignActive(_ notification: Notification) {
         let now = Date()
-        continuation.yield(.appWillResignActive(at: now))
-        Log.ssh.debug("[WAKE] appWillResignActive at \(now, privacy: .public)")
+        continuation.yield(.appWillResignActive(atValue: now))
+        Log.ssh.debug("[WAKE] appWillResignActive atValue \(now, privacy: .public)")
     }
 }
 

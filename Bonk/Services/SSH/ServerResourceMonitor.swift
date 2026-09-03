@@ -31,8 +31,8 @@ final class ServerResourceMonitor {
     private weak var sessionManager: SessionManager?
     private var lastPollKey: (UUID?, Bool)?
     private var lastFetchDate = Date.distantPast
-    private var lastNetworkSamples: [UUID: (receivedBytes: UInt64, transmittedBytes: UInt64, at: Date)] = [:]
-    private var lastDiskSamples: [UUID: (read: UInt64, write: UInt64, at: Date)] = [:]
+    private var lastNetworkSamples: [UUID: (receivedBytes: UInt64, transmittedBytes: UInt64, atValue: Date)] = [:]
+    private var lastDiskSamples: [UUID: (read: UInt64, write: UInt64, atValue: Date)] = [:]
 
     private init() {}
 
@@ -89,7 +89,7 @@ final class ServerResourceMonitor {
         let candidates: [(tab: TerminalTab, service: SSHNetworkService)] = tabs.compactMap { tab in
             guard let session = tab.session, session.isReady, let svc = session.sshService else { return nil }
             // ready  3s ， PTY
-            if let at = session.connectedAt, Date().timeIntervalSince(at) < 3 { return nil }
+            if let atValue = session.connectedAt, Date().timeIntervalSince(atValue) < 3 { return nil }
             return (tab, svc)
         }
         if candidates.isEmpty {
@@ -150,7 +150,7 @@ final class ServerResourceMonitor {
         let now = Date()
         if let receivedBytes = info.networkRXBytes, let transmittedBytes = info.networkTXBytes {
             if let last = lastNetworkSamples[tabID] {
-                let elapsed = now.timeIntervalSince(last.at)
+                let elapsed = now.timeIntervalSince(last.atValue)
                 if elapsed >= 1, receivedBytes >= last.receivedBytes, transmittedBytes >= last.transmittedBytes {
                     result.networkRXRateBps = Double(receivedBytes - last.receivedBytes) / elapsed
                     result.networkTXRateBps = Double(transmittedBytes - last.transmittedBytes) / elapsed
@@ -162,7 +162,7 @@ final class ServerResourceMonitor {
         }
         if let read = info.diskReadBytes, let write = info.diskWriteBytes {
             if let last = lastDiskSamples[tabID] {
-                let elapsed = now.timeIntervalSince(last.at)
+                let elapsed = now.timeIntervalSince(last.atValue)
                 if elapsed >= 1, read >= last.read, write >= last.write {
                     result.diskReadRateBps = Double(read - last.read) / elapsed
                     result.diskWriteRateBps = Double(write - last.write) / elapsed
@@ -184,7 +184,7 @@ final class ServerResourceMonitor {
         // Use first sample if any
         if let receivedBytes = info.networkRXBytes, let transmittedBytes = info.networkTXBytes {
             if let last = lastNetworkSamples.values.first {
-                let elapsed = now.timeIntervalSince(last.at)
+                let elapsed = now.timeIntervalSince(last.atValue)
                 if elapsed >= 1, receivedBytes >= last.receivedBytes, transmittedBytes >= last.transmittedBytes {
                     result.networkRXRateBps = Double(receivedBytes - last.receivedBytes) / elapsed
                     result.networkTXRateBps = Double(transmittedBytes - last.transmittedBytes) / elapsed
@@ -193,7 +193,7 @@ final class ServerResourceMonitor {
         }
         if let read = info.diskReadBytes, let write = info.diskWriteBytes {
             if let last = lastDiskSamples.values.first {
-                let elapsed = now.timeIntervalSince(last.at)
+                let elapsed = now.timeIntervalSince(last.atValue)
                 if elapsed >= 1, read >= last.read, write >= last.write {
                     result.diskReadRateBps = Double(read - last.read) / elapsed
                     result.diskWriteRateBps = Double(write - last.write) / elapsed

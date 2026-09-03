@@ -27,7 +27,7 @@ final class SSHConfigWatcher: @unchecked Sendable {
         isRunning = false
         for src in sources { src.cancel() }
         sources.removeAll()
-        for fd in fds { close(fd) }
+        for fdValue in fds { close(fdValue) }
         fds.removeAll()
         debounceWork?.cancel()
         logger.info("SSHConfigWatcher stopped")
@@ -72,13 +72,13 @@ final class SSHConfigWatcher: @unchecked Sendable {
         else if pat.hasPrefix("~") { pat = (NSHomeDirectory() as NSString).appendingPathComponent(String(pat.dropFirst(1))) }
         else if !pat.hasPrefix("/") { pat = (base as NSString).appendingPathComponent(pat) }
         // Use glob
-        var gt = glob_t()
-        let ret = glob(pat, GLOB_TILDE | GLOB_BRACE | GLOB_MARK, nil, &gt)
-        defer { globfree(&gt) }
+        var gtValue = glob_t()
+        let ret = glob(pat, GLOB_TILDE | GLOB_BRACE | GLOB_MARK, nil, &gtValue)
+        defer { globfree(&gtValue) }
         guard ret == 0 else { return [] }
         var out: [String] = []
-        for i in 0..<Int(gt.gl_pathc) {
-            if let cstr = gt.gl_pathv[i], let str = String(validatingUTF8: cstr) {
+        for index in 0..<Int(gtValue.gl_pathc) {
+            if let cstr = gtValue.gl_pathv[index], let str = String(validatingUTF8: cstr) {
                 // glob with GLOB_MARK appends / for dirs — skip dirs
                 if str.hasSuffix("/") { continue }
                 out.append(str)
@@ -89,12 +89,12 @@ final class SSHConfigWatcher: @unchecked Sendable {
 
     private func watch(paths: [String]) {
         for path in paths {
-            let fd = open(path, O_EVTONLY)
-            if fd < 0 { continue }
-            fds.append(fd)
-            let src = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .rename, .delete, .extend], queue: .global(qos: .utility))
+            let fdValue = open(path, O_EVTONLY)
+            if fdValue < 0 { continue }
+            fds.append(fdValue)
+            let src = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fdValue, eventMask: [.write, .rename, .delete, .extend], queue: .global(qos: .utility))
             src.setEventHandler { [weak self] in self?.onEvent() }
-            src.setCancelHandler { close(fd) }
+            src.setCancelHandler { close(fdValue) }
             src.resume()
             sources.append(src)
         }
@@ -102,12 +102,12 @@ final class SSHConfigWatcher: @unchecked Sendable {
         let main = (NSHomeDirectory() as NSString).appendingPathComponent(".ssh/config")
         if !FileManager.default.fileExists(atPath: main) {
             let dir = (main as NSString).deletingLastPathComponent
-            let fd = open(dir, O_EVTONLY)
-            if fd >= 0 {
-                fds.append(fd)
-                let src = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .extend], queue: .global(qos: .utility))
+            let fdValue = open(dir, O_EVTONLY)
+            if fdValue >= 0 {
+                fds.append(fdValue)
+                let src = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fdValue, eventMask: [.write, .extend], queue: .global(qos: .utility))
                 src.setEventHandler { [weak self] in self?.onEvent() }
-                src.setCancelHandler { close(fd) }
+                src.setCancelHandler { close(fdValue) }
                 src.resume()
                 sources.append(src)
             }

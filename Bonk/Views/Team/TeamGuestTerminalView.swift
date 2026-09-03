@@ -28,8 +28,8 @@ struct TeamGuestTerminalView: View {
                 Button(i18n.t(.requestControl)) {
                     let saved = UserDefaults.standard.string(forKey: "team_display_name")
                     let effective: String
-                    if let s = saved, !s.trimmingCharacters(in: .whitespaces).isEmpty {
-                        effective = s
+                    if let sessionState = saved, !sessionState.trimmingCharacters(in: .whitespaces).isEmpty {
+                        effective = sessionState
                     } else {
                         let full = NSFullUserName()
                         effective = full.isEmpty ? (Host.current().localizedName ?? "Guest") : full
@@ -240,9 +240,9 @@ private struct TeamGuestFullTerminalBridge: NSViewRepresentable {
         }
         func hostCurrentDirectoryUpdate(source: SwiftTerm.TerminalView, directory: String?) {}
         func clipboardCopy(source: SwiftTerm.TerminalView, content: Data) {
-            let pb = NSPasteboard.general
-            pb.clearContents()
-            pb.setString(String(decoding: content, as: UTF8.self), forType: .string)
+            let pbValue = NSPasteboard.general
+            pbValue.clearContents()
+            pbValue.setString(String(decoding: content, as: UTF8.self), forType: .string)
         }
         func clipboardRead(source: SwiftTerm.TerminalView) -> Data? { nil }
         func requestOpenLink(source: SwiftTerm.TerminalView, link: String, params: [String : String]) {

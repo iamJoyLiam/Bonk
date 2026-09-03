@@ -202,7 +202,7 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
         } ?? (self.allowUnscopedPassword && self.credentials.count >= 1 ? 0 : nil)
 
         guard let credentialIndex else {
-            let av = self.autoAnsweredCount
+            let avValue = self.autoAnsweredCount
             let cnt = self.credentials.count
             lock.unlock()
             return false
@@ -212,7 +212,7 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
             return false
         }
         let credential = self.credentials[credentialIndex]
-        let fp = OpenSSHBackend.passwordFingerprint(credential.password)
+        let fingerprint = OpenSSHBackend.passwordFingerprint(credential.password)
         self.promptBuffer = ""
         self.autoAnsweredCount += 1
         self.lastSentAt = Date()

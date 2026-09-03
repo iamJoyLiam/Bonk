@@ -12,8 +12,8 @@ private func hostLocalIPAddress() -> String {
             if name == "en0" || name == "en1" || name.hasPrefix("en") {
                 var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
                 getnameinfo(interface.ifa_addr, socklen_t(interface.ifa_addr.pointee.sa_len), &hostname, socklen_t(hostname.count), nil, 0, NI_NUMERICHOST)
-                let ip = String(decoding: hostname.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
-                if !ip.hasPrefix("127.") { address = ip; break }
+                let ipValue = String(decoding: hostname.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+                if !ipValue.hasPrefix("127.") { address = ipValue; break }
             }
         }
     }

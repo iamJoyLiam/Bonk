@@ -44,27 +44,27 @@ struct ExportHostsView: View {
     }
 
     private func prepareExport() {
-        let exports: [HostItemExport] = allHosts.compactMap { h in
+        let exports: [HostItemExport] = allHosts.compactMap { host in
             var credExport: CredentialExport?
-            if let cred = h.credentialRef {
+            if let cred = host.credentialRef {
                 if cred.type == .apiKey { return nil }
                 var secret: String? = nil
                 if includeSecrets {
-                    if let s = cred.loadSecret(), !s.isEmpty { secret = s }
-                    else if h.authType == .password, let s = h.loadPassword() { secret = s }
-                    else if h.authType == .privateKey, let s = h.loadPrivateKey() { secret = s }
-                    if h.authType == .secureEnclave { secret = nil }
+                    if let sessionState = cred.loadSecret(), !sessionState.isEmpty { secret = sessionState }
+                    else if host.authType == .password, let sessionState = host.loadPassword() { secret = sessionState }
+                    else if host.authType == .privateKey, let sessionState = host.loadPrivateKey() { secret = sessionState }
+                    if host.authType == .secureEnclave { secret = nil }
                 }
                 credExport = CredentialExport(name: cred.name, type: cred.type.rawValue, username: cred.username, secret: secret)
             } else if includeSecrets {
                 var secret: String? = nil
-                if h.authType == .password { secret = h.loadPassword() }
-                else if h.authType == .privateKey { secret = h.loadPrivateKey() }
-                if let s = secret, !s.isEmpty {
-                    credExport = CredentialExport(name: h.name, type: h.authType.rawValue, username: h.username, secret: s)
+                if host.authType == .password { secret = host.loadPassword() }
+                else if host.authType == .privateKey { secret = host.loadPrivateKey() }
+                if let sessionState = secret, !sessionState.isEmpty {
+                    credExport = CredentialExport(name: host.name, type: host.authType.rawValue, username: host.username, secret: sessionState)
                 }
             }
-            return HostItemExport(name: h.name, host: h.host, port: h.port, username: h.username, authType: h.authType.rawValue, credential: credExport)
+            return HostItemExport(name: host.name, host: host.host, port: host.port, username: host.username, authType: host.authType.rawValue, credential: credExport)
         }
         exportData = try? JSONEncoder().encode(exports)
     }

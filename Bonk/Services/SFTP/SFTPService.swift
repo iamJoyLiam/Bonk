@@ -127,10 +127,10 @@ final class SFTPService {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
-        let ch = try await session.openSFTP()
-        let path = try await ch.realPath()
-        vnextChannel = ch
-        channel = ch
+        let character = try await session.openSFTP()
+        let path = try await character.realPath()
+        vnextChannel = character
+        channel = character
         currentPath = path
         Log.sftp.info("VNext SFTP connected, initial path: \(self.currentPath)")
         try await listDirectory()
@@ -138,7 +138,7 @@ final class SFTPService {
 
     /// List files in the current directory.
     func listDirectory(_ path: String? = nil, showLoading: Bool = true) async throws {
-        guard let ch = channel ?? vnextChannel else {
+        guard let character = channel ?? vnextChannel else {
             Log.sftp.error("listDirectory failed: not connected")
             throw SFTPServiceError.notConnected
         }
@@ -147,7 +147,7 @@ final class SFTPService {
         defer { if showLoading { self.isLoading = false } }
         let targetPath = path ?? self.currentPath
         let requestID = self.beginListRequest()
-        var result = try await ch.listDirectory(at: targetPath)
+        var result = try await character.listDirectory(at: targetPath)
         guard requestID == self.listRequestSequence else { return }
         let sorted = await Task.detached(priority: .userInitiated) {
             result.sorted {
@@ -175,30 +175,30 @@ final class SFTPService {
 
     /// Create a new directory.
     func createDirectory(name: String) async throws {
-        guard let ch = channel ?? vnextChannel else { throw SFTPServiceError.notConnected }
+        guard let character = channel ?? vnextChannel else { throw SFTPServiceError.notConnected }
         let newPath = pathJoin(currentPath, name)
-        try await ch.createDirectory(at: newPath)
+        try await character.createDirectory(at: newPath)
         try await listDirectory()
     }
 
     /// Delete a file or directory.
     func delete(_ entry: SFTPFileEntry) async throws {
-        guard let ch = channel ?? vnextChannel else { throw SFTPServiceError.notConnected }
-        try await ch.remove(at: entry.path, isDirectory: entry.isDirectory)
+        guard let character = channel ?? vnextChannel else { throw SFTPServiceError.notConnected }
+        try await character.remove(at: entry.path, isDirectory: entry.isDirectory)
         try await listDirectory()
     }
 
     /// Download a file to local disk.
     func download(_ entry: SFTPFileEntry, to localURL: URL) async throws {
         // Unified — single channel handles all backends (parallel inside adapter)
-        if let ch = channel ?? vnextChannel {
+        if let character = channel ?? vnextChannel {
             guard !entry.isDirectory else { return }
             Log.sftp.debug("[DOWNLOAD] start \(entry.name, privacy: .public) size=\(entry.size)")
             let transferID = UUID()
             transfers.append(SFTPTransfer(id: transferID, filename: entry.name, totalBytes: entry.size, transferredBytes: 0, isComplete: false, error: nil))
             do {
-                Log.sftp.debug("[DOWNLOAD] unified ch.download call for \(entry.name, privacy: .public)")
-                try await ch.download(entry.path, to: localURL, operationID: transferID, onProgress: { [weak self] progress in
+                Log.sftp.debug("[DOWNLOAD] unified character.download call for \(entry.name, privacy: .public)")
+                try await character.download(entry.path, to: localURL, operationID: transferID, onProgress: { [weak self] progress in
                     let clamped = min(max(progress, 0), 1)
                     guard SFTPProgressThrottler.shared.shouldEmit(id: transferID, progress: clamped) else { return }
                     Task { @MainActor [weak self] in
@@ -212,7 +212,7 @@ final class SFTPService {
                                 transfer.transferredBytes = newBytes
                             }
                         } else {
-                            // Unknown size: totalBytes==nil — don't fake %. Poll local file size for MB.
+                            // Unknown size: totalBytes==nil — don'text fake %. Poll local file size for MB.
                             if let attrs = try? FileManager.default.attributesOfItem(atPath: localURL.path),
                                let size = attrs[.size] as? UInt64, size > transfer.transferredBytes {
                                 transfer.transferredBytes = size
@@ -221,7 +221,7 @@ final class SFTPService {
                                 transfer.transferredBytes = size
                             }
                         }
-                        // Force Observation refresh for ForEach row (class mutation alone doesn't always re-evaluate)
+                        // Force Observation refresh for ForEach row (class mutation alone doesn'text always re-evaluate)
                         self.transfers[idx] = transfer
                     }
                 })
@@ -250,7 +250,7 @@ final class SFTPService {
     }
 
     /// Download file chunks with progress updates.
-    /// Reads are pipelined (multiple in flight) so throughput isn't limited to one
+    /// Reads are pipelined (multiple in flight) so throughput isn'text limited to one
     /// round trip per chunk, then reassembled in order locally.
     /// P2 auto sharding
     private func downloadChunks(
@@ -312,7 +312,7 @@ final class SFTPService {
         let handle = try FileHandle(forWritingTo: localURL)
         defer { try? handle.close() }
 
-        // Don't rely on entry.size for loop control - it may be inaccurate
+        // Don'text rely on entry.size for loop control - it may be inaccurate
         // for some file types or SFTP servers. Read until EOF.
         try await withThrowingTaskGroup(of: (UInt64, Data).self) { group in
             while !readDone || inFlight > 0 {
@@ -426,7 +426,7 @@ final class SFTPService {
         continuation: AsyncThrowingStream<Double, Error>.Continuation
     ) async throws {
         // Unified — single channel seam
-        if let ch = channel ?? vnextChannel {
+        if let character = channel ?? vnextChannel {
             let targetPath = remotePath ?? pathJoin(currentPath, localURL.lastPathComponent)
             let filename = localURL.lastPathComponent
             let attrs = try? FileManager.default.attributesOfItem(atPath: localURL.path)
@@ -434,23 +434,23 @@ final class SFTPService {
             let transferID = UUID()
             transfers.append(SFTPTransfer(id: transferID, filename: filename, totalBytes: total, transferredBytes: 0, isComplete: false, error: nil))
             do {
-                try await ch.upload(localURL, to: targetPath, operationID: transferID, onProgress: { [weak self] progress in
+                try await character.upload(localURL, to: targetPath, operationID: transferID, onProgress: { [weak self] progress in
                     let clamped = min(max(progress, 0), 1)
                     guard SFTPProgressThrottler.shared.shouldEmit(id: transferID, progress: clamped) else { return }
                     Task { @MainActor in
                         guard let self else { return }
                         if let idx = self.transfers.firstIndex(where: { $0.id == transferID }) {
-                            let t = self.transfers[idx]
-                            t.lastUIUpdate = Date()
-                            t.fraction = clamped
-                            if let totalUnwrapped = t.totalBytes, totalUnwrapped > 0 {
-                                t.transferredBytes = UInt64(Double(totalUnwrapped) * clamped)
+                            let text = self.transfers[idx]
+                            text.lastUIUpdate = Date()
+                            text.fraction = clamped
+                            if let totalUnwrapped = text.totalBytes, totalUnwrapped > 0 {
+                                text.transferredBytes = UInt64(Double(totalUnwrapped) * clamped)
                             } else {
-                                // Unknown size: don't fake percentage; update bytes via fraction is meaningless
+                                // Unknown size: don'text fake percentage; update bytes via fraction is meaningless
                                 // Keep transferredBytes as-is (updated by channel's byte-level callback if available)
                                 // Fallback: estimate bytes from progress only if total == 0, skip
                             }
-                            self.transfers[idx] = t
+                            self.transfers[idx] = text
                         }
                         continuation.yield(clamped)
                     }
@@ -585,21 +585,21 @@ final class SFTPService {
     /// Check if a file exists at the given absolute path.
     /// Returns nil when the check itself fails (e.g. network error).
     func fileExists(at path: String) async -> Bool? {
-        guard let ch = channel ?? vnextChannel else { return nil }
-        return await ch.fileExists(at: path)
+        guard let character = channel ?? vnextChannel else { return nil }
+        return await character.fileExists(at: path)
     }
 
     /// Refresh the current path from the remote server.
     func refreshCurrentPath() async {
-        guard let ch = channel ?? vnextChannel else { return }
-        do { currentPath = try await ch.realPath() } catch {
+        guard let character = channel ?? vnextChannel else { return }
+        do { currentPath = try await character.realPath() } catch {
             Log.sftp.warning("Failed to refresh current path: \(error.localizedDescription)")
         }
     }
 
     /// Close the SFTP session.
     func disconnect() async {
-        if let ch = channel { await ch.close() }
+        if let character = channel { await character.close() }
         if let ch2 = vnextChannel { await ch2.close() }
         channel = nil
         vnextChannel = nil

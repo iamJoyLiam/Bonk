@@ -42,32 +42,32 @@ final class TriggerEngine: @unchecked Sendable {
         let key = paneID ?? Self.globalPaneID
         let shouldFlushImmediately: Bool
         let generation: UInt64?
-        (shouldFlushImmediately, generation) = state.withLock { s in
-            s.buffers[key, default: ""].append(text)
-            s.bufferBytes[key, default: 0] += text.utf8.count
+        (shouldFlushImmediately, generation) = state.withLock { sessionState in
+            sessionState.buffers[key, default: ""].append(text)
+            sessionState.bufferBytes[key, default: 0] += text.utf8.count
             // Keep most recent session for sendText actions
-            s.sessions[key] = ptySession
+            sessionState.sessions[key] = ptySession
             // Bound buffer to prevent unbounded growth under `yes | head`
-            if s.bufferBytes[key, default: 0] > Self.maxBufferBytes {
+            if sessionState.bufferBytes[key, default: 0] > Self.maxBufferBytes {
                 // Drop oldest half — triggers are line oriented, losing early bytes is acceptable
-                let buf = s.buffers[key] ?? ""
+                let buf = sessionState.buffers[key] ?? ""
                 let dropCount = buf.count / 2
                 if dropCount > 0 {
                     let idx = buf.index(buf.startIndex, offsetBy: dropCount)
-                    s.buffers[key] = String(buf[idx...])
-                    s.bufferBytes[key] = s.buffers[key]?.utf8.count ?? 0
+                    sessionState.buffers[key] = String(buf[idx...])
+                    sessionState.bufferBytes[key] = sessionState.buffers[key]?.utf8.count ?? 0
                 }
             }
-            if s.bufferBytes[key, default: 0] >= Self.maxBatchBytes {
-                s.scheduled[key] = nil
+            if sessionState.bufferBytes[key, default: 0] >= Self.maxBatchBytes {
+                sessionState.scheduled[key] = nil
                 return (true, nil)
             }
-            if s.scheduled[key] != nil {
+            if sessionState.scheduled[key] != nil {
                 return (false, nil)
             }
-            s.nextGen &+= 1
-            let gen = s.nextGen
-            s.scheduled[key] = gen
+            sessionState.nextGen &+= 1
+            let gen = sessionState.nextGen
+            sessionState.scheduled[key] = gen
             return (false, gen)
         }
 
@@ -80,20 +80,20 @@ final class TriggerEngine: @unchecked Sendable {
 
     /// Explicit subscription — pre-creates buffer to avoid first-chunk allocation.
     func subscribe(paneID: UUID) {
-        state.withLock { s in
-            if s.buffers[paneID] == nil {
-                s.buffers[paneID] = ""
-                s.bufferBytes[paneID] = 0
+        state.withLock { sessionState in
+            if sessionState.buffers[paneID] == nil {
+                sessionState.buffers[paneID] = ""
+                sessionState.bufferBytes[paneID] = 0
             }
         }
     }
 
     func unsubscribe(paneID: UUID) {
-        state.withLock { s in
-            s.buffers.removeValue(forKey: paneID)
-            s.sessions.removeValue(forKey: paneID)
-            s.scheduled.removeValue(forKey: paneID)
-            s.bufferBytes.removeValue(forKey: paneID)
+        state.withLock { sessionState in
+            sessionState.buffers.removeValue(forKey: paneID)
+            sessionState.sessions.removeValue(forKey: paneID)
+            sessionState.scheduled.removeValue(forKey: paneID)
+            sessionState.bufferBytes.removeValue(forKey: paneID)
         }
     }
 
@@ -112,15 +112,15 @@ final class TriggerEngine: @unchecked Sendable {
 
     private func flush(key: UUID, generation: UInt64?, paneID: UUID?) {
         let payload: (text: String, session: PTYSession?)?
-        payload = state.withLock { s in
-            if let gen = generation, s.scheduled[key] != gen {
+        payload = state.withLock { sessionState in
+            if let gen = generation, sessionState.scheduled[key] != gen {
                 return nil
             }
-            s.scheduled[key] = nil
-            guard let buf = s.buffers[key], !buf.isEmpty else { return nil }
-            let session = s.sessions[key] ?? nil
-            s.buffers[key] = ""
-            s.bufferBytes[key] = 0
+            sessionState.scheduled[key] = nil
+            guard let buf = sessionState.buffers[key], !buf.isEmpty else { return nil }
+            let session = sessionState.sessions[key] ?? nil
+            sessionState.buffers[key] = ""
+            sessionState.bufferBytes[key] = 0
             return (buf, session)
         }
         guard let payload, !payload.text.isEmpty else { return }

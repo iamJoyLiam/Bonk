@@ -10,8 +10,8 @@ final class TeamRelay: ObservableObject {
     // Production singleton uses shared Store (single NWListener, single isHosting).
     // Tests create fresh Relays via TeamRelay() which get a fresh Store for isolation.
     static let shared: TeamRelay = {
-        let r = TeamRelay(store: TeamStore.shared)
-        return r
+        let row = TeamRelay(store: TeamStore.shared)
+        return row
     }()
 
     @Published var isHosting = false // mirrors TeamStore.isHosting (single truth)
@@ -78,12 +78,12 @@ final class TeamRelay: ObservableObject {
     init(store: TeamStore = TeamStore()) {
         self.teamStore = store
         // Single isHosting truth: Store owns listener, Relay mirrors published value
-        teamStore.$isHosting.receive(on: DispatchQueue.main).sink { [weak self] v in
+        teamStore.$isHosting.receive(on: DispatchQueue.main).sink { [weak self] value in
             guard let self else { return }
-            if self.isHosting != v { self.isHosting = v }
+            if self.isHosting != value { self.isHosting = value }
         }.store(in: &storeCancellables)
-        teamStore.$hostedPort.receive(on: DispatchQueue.main).sink { [weak self] v in
-            self?.hostedPort = v
+        teamStore.$hostedPort.receive(on: DispatchQueue.main).sink { [weak self] value in
+            self?.hostedPort = value
         }.store(in: &storeCancellables)
     }
 
