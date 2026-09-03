@@ -6,6 +6,35 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.2.8</title>
+            <pubDate>Wed, 03 Sep 2026 12:15:00 +0800</pubDate>
+            <sparkle:version>20262008</sparkle:version>
+            <sparkle:shortVersionString>2026.2.8</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Changes
+- Improved SSH connection speed to ~1.1s by making auth probes event-driven and reducing ControlMaster waits (was 5-10s)
+- Fixed terminal input freeze and hang after OpenSSH password retry by correctly closing and rebinding the PTY session
+- Kept SwiftTerm at 1.19.0 for stability while evaluating 1.20 Metal recovery
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.8/Bonk-2026.2.8-arm64.dmg"
+                length="23762997"
+                type="application/octet-stream"
+                sparkle:edSignature="YJbC93je4hOtvhr8RF/383nYRJGoWMoJ2iFHPIShp78APuYJST/FA9QwIPDK35/RRtqQvo02HgEl9PTmG7XiDQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.8/Bonk-2026.2.8-x86_64.dmg"
+                length="24726086"
+                type="application/octet-stream"
+                sparkle:edSignature="KHbLcnwTQk786tG+JQ70Es9GsY4iAQHcG9k3q4Nzvd6ktelVIWcBg6TwonUgSjtpKrbnM7cSqOdDYzLs1QCkDA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.2.7</title>
             <pubDate>Thu, 03 Sep 2026 10:30:00 +0800</pubDate>
             <sparkle:version>20262007</sparkle:version>

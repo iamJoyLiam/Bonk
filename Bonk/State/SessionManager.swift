@@ -879,12 +879,18 @@ final class SessionManager {
             throw SSHServiceError.connectionFailed("Tab was closed during PTY setup")
         }
 
+        // Close old PTy if retry (fixes hang at banner after password retry)
+        pane.ptySession?.close()
+        session.ptySession?.close()
         pane.ptySession = ptySession
         session.ptySession = ptySession // Keep for backward compatibility
         ptySession.teamSessionID = TeamSessionID(tabID: tab.id, paneID: pane.id)
         ptySession.hostItem = tab.hostItem
         Log.session.info("[PTY] PTY session assigned to pane")
 
+        // Direct rebind for immediate refresh (fixes retry hang where Notification is coalesced)
+        TerminalViewCache.shared.rebindOutputStream(for: pane.id, to: ptySession)
+        TerminalViewCache.shared.rebindOutputStream(for: tab.id, to: ptySession)
         // Notify terminal views to connect output stream
         NotificationCenter.default.post(name: .terminalPTYSessionReady, object: nil, userInfo: ["tabID": tab.id])
 

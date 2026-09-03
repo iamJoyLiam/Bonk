@@ -225,9 +225,8 @@ extension SessionManager {
         guard tabs.contains(where: { $0.id == tab.id }) else { return }
         // State: authenticating -> openingChannel -> openingPTY -> ready
         setPhase(session, to: .authenticating, host: context.config.host, engine: "Session", reason: "auth")
-        // Extreme: event-driven, no fixed wait — only early exit if auth already failed
-        let earlyAuthFailed = await session.awaitAuthFailure(timeout: .milliseconds(1))
-        if earlyAuthFailed || isPhaseFailed(session.phase) { Log.session.info("[FINALIZE] early auth failed before PTY"); return }
+        // Extreme: no wait — check if already failed, otherwise proceed immediately to openingChannel
+        if isPhaseFailed(session.phase) { Log.session.info("[FINALIZE] early auth failed before PTY"); return }
         if session.generation != capturedGen { Log.session.info("[FINALIZE] discard stale gen before PTY"); return }
         setPhase(session, to: .openingChannel, host: context.config.host, engine: "Session", reason: "channel")
         setPhase(session, to: .openingPTY, host: context.config.host, engine: "Session", reason: "PTY")
@@ -235,9 +234,9 @@ extension SessionManager {
         if let firstPane = tab.layout.root.paneState {
             try await setupPTYSession(for: tab, pane: firstPane, session: session, service: service)
         }
-        // Extreme: no wait for PTY auth, rely on onFailure callback to handle late failures asynchronously
-        let ptyAuthFailed = await session.awaitAuthFailure(timeout: .milliseconds(1))
-        if ptyAuthFailed || isPhaseFailed(session.phase) { Log.session.info("[FINALIZE] PTY auth failed, suppress ready"); return }
+        // Extreme: don't wait for PTY auth — onFailure will handle late failures and set phase to failed if needed
+        // Immediately mark ready to allow input (fixes hang at "Authorized users only..." after retry)
+        if isPhaseFailed(session.phase) { Log.session.info("[FINALIZE] PTY auth failed, suppress ready"); return }
         if session.generation != capturedGen { Log.session.info("[FINALIZE] discard stale gen before ready"); return }
         session.terminalState = .ready
         setPhase(session, to: .ready, host: context.config.host, engine: "Session", reason: "PTY ready")
