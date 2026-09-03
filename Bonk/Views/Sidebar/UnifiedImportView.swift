@@ -218,7 +218,7 @@ struct UnifiedImportView: View {
         if let yml = UTType(filenameExtension: "yml") { types.append(yml) }
         if let plist = UTType(filenameExtension: "plist") { types.append(plist) }
         if let csv = UTType(filenameExtension: "csv") { types.append(csv) }
-        if let ws = UTType(filenameExtension: "wsession") { types.append(ws) }
+        if let wsessionType = UTType(filenameExtension: "wsession") { types.append(wsessionType) }
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
@@ -237,8 +237,8 @@ struct UnifiedImportView: View {
                 if !hosts.isEmpty {
                     // Merge, avoid duplicates by name
                     var added: [(HostItem, String)] = []
-                    for h in hosts where !externalHosts.map(\.0.name).contains(h.name) && !existingNames.contains(h.name) {
-                        added.append((h, importer.name))
+                    for hostItem in hosts where !externalHosts.map(\.0.name).contains(hostItem.name) && !existingNames.contains(hostItem.name) {
+                        added.append((hostItem, importer.name))
                     }
                     // If all were duplicates but we still got hosts, show them (let UI show duplicate badge)
                     if added.isEmpty, !hosts.isEmpty {

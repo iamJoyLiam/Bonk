@@ -22,17 +22,17 @@ struct LogPatternSettingsView: View {
 
     var body: some View {
         HSplitView {
-            List(profiles, id: \.id, selection: $selectedID) { p in
+            List(profiles, id: \.id, selection: $selectedID) { profile in
                 HStack(spacing: AppStyle.spacingS) {
-                    Circle().fill(p.isDefault ? Color.green : Color.blue).frame(width: 8, height: 8)
-                    Text(p.name).font(.system(size: AppStyle.fontBody)).lineLimit(1)
+                    Circle().fill(profile.isDefault ? Color.green : Color.blue).frame(width: 8, height: 8)
+                    Text(profile.name).font(.system(size: AppStyle.fontBody)).lineLimit(1)
                     Spacer()
-                    if p.isDefault {
+                    if profile.isDefault {
                         Text("默认").font(.system(size: AppStyle.fontCaption)).foregroundStyle(.secondary)
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(Color.secondary.opacity(0.12)).cornerRadius(4)
                     }
-                }.tag(p.id).padding(.vertical, 2)
+                }.tag(profile.id).padding(.vertical, 2)
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
@@ -82,7 +82,7 @@ struct LogPatternSettingsView: View {
             }
             Spacer()
             Button("新建配置") {
-                if let p = LogProfileStore.shared.create(name: "配置 \(profiles.count + 1)") { selectedID = p.id }
+                if let newProfile = LogProfileStore.shared.create(name: "配置 \(profiles.count + 1)") { selectedID = newProfile.id }
             }.controlSize(.small)
             if !profile.isDefault {
                 Button("删除", role: .destructive) { showDeleteProfile = true }.controlSize(.small).buttonStyle(.bordered)
@@ -125,9 +125,9 @@ struct LogPatternSettingsView: View {
             }
         }.listStyle(.plain)
         .confirmationDialog("删除正则", isPresented: $showDeleteRow, titleVisibility: .visible) {
-            if let r = rowToDelete {
-                Button("删除 \(r.name)", role: .destructive) {
-                    modelContext.delete(r); try? modelContext.save()
+            if let row = rowToDelete {
+                Button("删除 \(row.name)", role: .destructive) {
+                    modelContext.delete(row); try? modelContext.save()
                     Task { @MainActor in LogProfileStore.shared.refreshSnapshot() }
                 }
                 Button("取消", role: .cancel) {}

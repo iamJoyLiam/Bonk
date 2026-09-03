@@ -23,24 +23,24 @@ struct SingleLineHighlightField: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let tv = HighlightTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 22))
-        tv.isEditable = true; tv.isSelectable = true; tv.drawsBackground = false
-        tv.backgroundColor = .clear; tv.focusRingType = .none
-        tv.isRichText = true; tv.allowsUndo = true; tv.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-        tv.textContainer?.lineFragmentPadding = 2; tv.textContainerInset = NSSize(width: 0, height: 4)
-        tv.isHorizontallyResizable = false; tv.isVerticallyResizable = false
-        tv.textContainer?.widthTracksTextView = true; tv.textContainer?.lineBreakMode = .byTruncatingTail
-        tv.delegate = context.coordinator; tv.onChange = { text = $0 }
-        let sv = NSScrollView(frame: NSRect(x: 0, y: 0, width: 500, height: 22))
-        sv.hasVerticalScroller = false; sv.hasHorizontalScroller = false; sv.drawsBackground = false
-        sv.backgroundColor = .clear; sv.borderType = .noBorder; sv.documentView = tv
-        return sv
+        let textView = HighlightTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 22))
+        textView.isEditable = true; textView.isSelectable = true; textView.drawsBackground = false
+        textView.backgroundColor = .clear; textView.focusRingType = .none
+        textView.isRichText = true; textView.allowsUndo = true; textView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        textView.textContainer?.lineFragmentPadding = 2; textView.textContainerInset = NSSize(width: 0, height: 4)
+        textView.isHorizontallyResizable = false; textView.isVerticallyResizable = false
+        textView.textContainer?.widthTracksTextView = true; textView.textContainer?.lineBreakMode = .byTruncatingTail
+        textView.delegate = context.coordinator; textView.onChange = { text = $0 }
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 500, height: 22))
+        scrollView.hasVerticalScroller = false; scrollView.hasHorizontalScroller = false; scrollView.drawsBackground = false
+        scrollView.backgroundColor = .clear; scrollView.borderType = .noBorder; scrollView.documentView = textView
+        return scrollView
     }
 
-    func updateNSView(_ sv: NSScrollView, context: Context) {
-        guard let tv = sv.documentView as? HighlightTextView else { return }
-        let sel = tv.selectedRange()
-        let isFirst = tv.window?.firstResponder == tv
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? HighlightTextView else { return }
+        let sel = textView.selectedRange()
+        let isFirst = textView.window?.firstResponder == textView
         let attr = NSMutableAttributedString(string: text)
         attr.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular), range: NSRange(location: 0, length: attr.length))
         attr.addAttribute(.foregroundColor, value: NSColor.labelColor, range: NSRange(location: 0, length: attr.length))
@@ -50,12 +50,12 @@ struct SingleLineHighlightField: NSViewRepresentable {
                 attr.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 11, weight: .bold), range: match.range)
             }
         }
-        if tv.string != text || !(tv.textStorage?.isEqual(to: attr) ?? false) {
-            tv.textStorage?.setAttributedString(attr)
-            if sel.location != NSNotFound && sel.location <= attr.length { tv.setSelectedRange(sel) }
-            if isFirst { tv.setSelectedRange(sel) }
+        if textView.string != text || !(textView.textStorage?.isEqual(to: attr) ?? false) {
+            textView.textStorage?.setAttributedString(attr)
+            if sel.location != NSNotFound && sel.location <= attr.length { textView.setSelectedRange(sel) }
+            if isFirst { textView.setSelectedRange(sel) }
         }
-        tv.onChange = { text = $0 }
+        textView.onChange = { text = $0 }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -73,25 +73,25 @@ struct ProfileHighlightField: NSViewRepresentable {
     var profile: LogProfile
 
     func makeNSView(context: Context) -> NSScrollView {
-        let tv = HighlightTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 84))
-        tv.isEditable = true; tv.isSelectable = true; tv.drawsBackground = false
-        tv.backgroundColor = .clear; tv.isRichText = true
-        tv.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-        tv.textContainer?.lineFragmentPadding = 2; tv.textContainerInset = NSSize(width: 0, height: 4)
-        tv.isHorizontallyResizable = false; tv.isVerticallyResizable = true
-        tv.textContainer?.widthTracksTextView = true; tv.textContainer?.containerSize = NSSize(width: 500, height: CGFloat.greatestFiniteMagnitude)
-        tv.textContainer?.lineBreakMode = .byWordWrapping; tv.isAutomaticQuoteSubstitutionEnabled = false
-        tv.delegate = context.coordinator; tv.onChange = { text = $0 }
-        let sv = NSScrollView(frame: NSRect(x: 0, y: 0, width: 500, height: 84))
-        sv.hasVerticalScroller = false; sv.hasHorizontalScroller = false; sv.drawsBackground = false
-        sv.backgroundColor = .clear; sv.borderType = .noBorder; sv.documentView = tv
-        return sv
+        let textView = HighlightTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 84))
+        textView.isEditable = true; textView.isSelectable = true; textView.drawsBackground = false
+        textView.backgroundColor = .clear; textView.isRichText = true
+        textView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        textView.textContainer?.lineFragmentPadding = 2; textView.textContainerInset = NSSize(width: 0, height: 4)
+        textView.isHorizontallyResizable = false; textView.isVerticallyResizable = true
+        textView.textContainer?.widthTracksTextView = true; textView.textContainer?.containerSize = NSSize(width: 500, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.lineBreakMode = .byWordWrapping; textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.delegate = context.coordinator; textView.onChange = { text = $0 }
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 500, height: 84))
+        scrollView.hasVerticalScroller = false; scrollView.hasHorizontalScroller = false; scrollView.drawsBackground = false
+        scrollView.backgroundColor = .clear; scrollView.borderType = .noBorder; scrollView.documentView = textView
+        return scrollView
     }
 
-    func updateNSView(_ sv: NSScrollView, context: Context) {
-        guard let tv = sv.documentView as? HighlightTextView else { return }
-        let sel = tv.selectedRange()
-        let isFirst = tv.window?.firstResponder == tv
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? HighlightTextView else { return }
+        let sel = textView.selectedRange()
+        let isFirst = textView.window?.firstResponder == textView
 
         // Compile once per update
         struct Compiled { let regex: NSRegularExpression; let color: NSColor }
@@ -112,12 +112,12 @@ struct ProfileHighlightField: NSViewRepresentable {
             }
         }
 
-        if tv.string != text || !(tv.textStorage?.isEqual(to: attr) ?? false) {
-            tv.textStorage?.setAttributedString(attr)
-            if sel.location != NSNotFound && sel.location <= attr.length { tv.setSelectedRange(sel) }
-            if isFirst { tv.setSelectedRange(sel) }
+        if textView.string != text || !(textView.textStorage?.isEqual(to: attr) ?? false) {
+            textView.textStorage?.setAttributedString(attr)
+            if sel.location != NSNotFound && sel.location <= attr.length { textView.setSelectedRange(sel) }
+            if isFirst { textView.setSelectedRange(sel) }
         }
-        tv.onChange = { text = $0 }
+        textView.onChange = { text = $0 }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }

@@ -244,7 +244,7 @@ struct SFTPWindowView: View {
                                 .progressViewStyle(.linear)
                                 // Elegant: 1:1 model + 60 FPS display + 0.5s interpolation for 10Gbps bursts
                                 .animation(.easeOut(duration: 0.5), value: progress)
-                                .transaction { t in t.animation = .easeOut(duration: 0.5) }
+                                .transaction { transaction in transaction.animation = .easeOut(duration: 0.5) }
                         } else {
                             // Unknown size: indeterminate + bytes (never fake %)
                             ProgressView()
@@ -255,14 +255,14 @@ struct SFTPWindowView: View {
                     // Bytes label — for known shows "500 MB / 600 MB" style via progress, for unknown just MB
                     if transfer.isActive || transfer.isComplete {
                         let bytesText: String = {
-                            let mb = Double(transfer.transferredBytes) / (1024*1024)
+                            let megabytes = Double(transfer.transferredBytes) / (1024*1024)
                             if let total = transfer.totalBytes, total > 0 {
                                 let totalMB = Double(total) / (1024*1024)
-                                if totalMB >= 1024 { return String(format: "%.1f/%.1f GB", mb/1024, totalMB/1024) }
-                                return String(format: "%.1f/%.1f MB", mb, totalMB)
+                                if totalMB >= 1024 { return String(format: "%.1f/%.1f GB", megabytes/1024, totalMB/1024) }
+                                return String(format: "%.1f/%.1f MB", megabytes, totalMB)
                             } else {
-                                if mb >= 1024 { return String(format: "%.1f GB", mb/1024) }
-                                return String(format: "%.1f MB", mb)
+                                if megabytes >= 1024 { return String(format: "%.1f GB", megabytes/1024) }
+                                return String(format: "%.1f MB", megabytes)
                             }
                         }()
                         Text(bytesText)
