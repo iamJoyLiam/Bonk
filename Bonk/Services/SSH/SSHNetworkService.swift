@@ -454,16 +454,16 @@ public actor SSHNetworkService {
     /// Typed failure handler — central Recovery gate logging
     private func handleTypedFailure(_ failure: SSHFailure) async {
         switch failure {
-        case .authentication(let af):
-            Log.ssh.info("[SSH_FAILURE] type=authentication backend=\(self.usesOpenSSHTransport ? "openssh" : "citadel", privacy: .public) detail=\(af.message.prefix(120), privacy: .public)")
+        case .authentication(let authFailure):
+            Log.ssh.info("[SSH_FAILURE] type=authentication backend=\(self.usesOpenSSHTransport ? "openssh" : "citadel", privacy: .public) detail=\(authFailure.message.prefix(120), privacy: .public)")
             Log.ssh.info("[RECOVERY_GATE] blocked=true reason=authenticationFailed")
             await self.suppressRecoveryForAuth()
             self.pendingFailure = failure
             self.stopWakeMonitoring()
             // SessionManager  sheet reconnect PTY
             if let handler = self.onAuthFailureHandler { handler(failure) }
-        case .hostKey(let msg):
-            Log.ssh.info("[SSH_FAILURE] type=hostKey backend=\(self.usesOpenSSHTransport ? "openssh" : "citadel", privacy: .public) msg=\(msg.prefix(80), privacy: .public)")
+        case .hostKey(let hostKeyMessage):
+            Log.ssh.info("[SSH_FAILURE] type=hostKey backend=\(self.usesOpenSSHTransport ? "openssh" : "citadel", privacy: .public) msg=\(hostKeyMessage.prefix(80), privacy: .public)")
             Log.ssh.info("[RECOVERY_GATE] blocked=true reason=hostKey")
             await self.suppressRecoveryForAuth()
             self.pendingFailure = failure
@@ -473,12 +473,12 @@ public actor SSHNetworkService {
             Log.ssh.info("[RECOVERY_GATE] blocked=true reason=cancelled")
             await self.supervisor.suppressRecoveryForAuth()
             self.pendingFailure = failure
-        case .transport(let tf):
-            Log.ssh.info("[SSH_FAILURE] type=transport backend=\(self.usesOpenSSHTransport ? "openssh" : "citadel", privacy: .public) detail=\(tf.message.prefix(120), privacy: .public)")
+        case .transport(let transportFailure):
+            Log.ssh.info("[SSH_FAILURE] type=transport backend=\(self.usesOpenSSHTransport ? "openssh" : "citadel", privacy: .public) detail=\(transportFailure.message.prefix(120), privacy: .public)")
             Log.ssh.info("[RECOVERY_GATE] blocked=false reason=transportFailed")
             self.pendingFailure = failure
-        case .unknown(let m):
-            Log.ssh.info("[SSH_FAILURE] type=unknown backend=\(self.usesOpenSSHTransport ? "openssh" : "citadel", privacy: .public) msg=\(m.prefix(80), privacy: .public)")
+        case .unknown(let unknownMessage):
+            Log.ssh.info("[SSH_FAILURE] type=unknown backend=\(self.usesOpenSSHTransport ? "openssh" : "citadel", privacy: .public) msg=\(unknownMessage.prefix(80), privacy: .public)")
             self.pendingFailure = failure
         }
     }
@@ -551,8 +551,8 @@ public actor SSHNetworkService {
             Log.ssh.info("[NETWORK] ignore networkChanged - PTY not yet created (connect window)")
             return
         }
-        if let f = pendingFailure, f.isAuthentication || f.typeString == "hostKey" || f.typeString == "cancelled" {
-            Log.ssh.info("[RECOVERY_GATE] blocked=true reason=\(f.typeString, privacy: .public) handleNetworkChange suppressed")
+        if let typedFailure = pendingFailure, typedFailure.isAuthentication || typedFailure.typeString == "hostKey" || typedFailure.typeString == "cancelled" {
+            Log.ssh.info("[RECOVERY_GATE] blocked=true reason=\(typedFailure.typeString, privacy: .public) handleNetworkChange suppressed")
             return
         }
         Log.ssh.info("[NETWORK] Network restored, probing liveness...")
@@ -677,10 +677,10 @@ public actor SSHNetworkService {
     }
 
     private func handleDisconnect() async {
-        if let f = pendingFailure {
-            switch f {
+        if let typedFailure = pendingFailure {
+            switch typedFailure {
             case .authentication, .hostKey, .cancelled:
-                Log.ssh.info("[RECOVERY_GATE] blocked=true reason=\(f.typeString, privacy: .public) handleDisconnect suppressed backend=\(self.usesOpenSSHTransport ? "openssh" : "citadel", privacy: .public)")
+                Log.ssh.info("[RECOVERY_GATE] blocked=true reason=\(typedFailure.typeString, privacy: .public) handleDisconnect suppressed backend=\(self.usesOpenSSHTransport ? "openssh" : "citadel", privacy: .public)")
                 return
             case .transport, .unknown: break
             }
@@ -761,7 +761,7 @@ public actor SSHNetworkService {
             return true
         }
         // Skip probe on pending auth failure to avoid stale retry
-        if let f = pendingFailure, f.isAuthentication {
+        if let typedFailure = pendingFailure, typedFailure.isAuthentication {
             return true
         }
         // Grace 10s after connect to avoid probe storm
@@ -825,10 +825,10 @@ public actor SSHNetworkService {
                 // Diag: password fingerprint
                 let cfgDesc: String
                 switch config.authMethod {
-                case .password(let p): cfgDesc = "password(len=\(p.count) fp=\(OpenSSHBackend.passwordFingerprint(p)))"
-                case .privateKey(let s): cfgDesc = "privateKey(len=\(s.count))"
-                case .certificate(let k, let c): cfgDesc = "cert(k=\(k.count) c=\(c.count))"
-                case .secureEnclaveKey(let t): cfgDesc = "sece(\(t))"
+                case .password(let password): cfgDesc = "password(len=\(password.count) fp=\(OpenSSHBackend.passwordFingerprint(password)))"
+                case .privateKey(let privateKeyString): cfgDesc = "privateKey(len=\(privateKeyString.count))"
+                case .certificate(let keyData, let certificateData): cfgDesc = "cert(k=\(keyData.count) c=\(certificateData.count))"
+                case .secureEnclaveKey(let tag): cfgDesc = "sece(\(tag))"
                 }
                 let backend: OpenSSHBackend
                 do {
@@ -869,12 +869,12 @@ public actor SSHNetworkService {
                         }
                         // Longer window for delayed Permission denied
                         for _ in 0..<70 {
-                            if let f = self.pendingFailure, f.isAuthentication { break }
+                            if let typedFailure = self.pendingFailure, typedFailure.isAuthentication { break }
                             if session.isClosed { break }
                             try? await Task.sleep(for: .milliseconds(100))
                         }
-                        if let f = self.pendingFailure, f.isAuthentication {
-                            Log.ssh.warning("[RECOVERY_STEP] authenticationSucceeded=false reason=\(f.message.prefix(80), privacy: .public)")
+                        if let typedFailure = self.pendingFailure, typedFailure.isAuthentication {
+                            Log.ssh.warning("[RECOVERY_STEP] authenticationSucceeded=false reason=\(typedFailure.message.prefix(80), privacy: .public)")
                             Log.ssh.info("[RECOVERY_GATE] blocked=true reason=authenticationFailed (reconnect)")
                             await self.suppressRecoveryForAuth()
                             session.close()

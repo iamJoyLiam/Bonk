@@ -128,10 +128,10 @@ final class OpenSSHBackend: @unchecked Sendable {
         // Secure log: authType / credential source / pw len+fp (no plaintext)
         let authDesc: String
         switch config.authMethod {
-        case .password(let p): authDesc = "password(len=\(p.count) fp=\(Self.passwordFingerprint(p)))"
+        case .password(let password): authDesc = "password(len=\(password.count) fp=\(Self.passwordFingerprint(password)))"
         case .privateKey(let pem): authDesc = "privateKey(pemLen=\(pem.count))"
-        case .certificate(let k, let c): authDesc = "certificate(kLen=\(k.count) cLen=\(c.count))"
-        case .secureEnclaveKey(let t): authDesc = "secureEnclave(\(t))"
+        case .certificate(let keyData, let certificateData): authDesc = "certificate(kLen=\(keyData.count) cLen=\(certificateData.count))"
+        case .secureEnclaveKey(let tag): authDesc = "secureEnclave(\(tag))"
         }
         Log.ssh.info("[OPENSSH-CONFIG] host=\(self.config.host):\(self.config.port) user=\(self.config.username) authType=\(authDesc, privacy: .public) jump=\(self.config.jumpHost?.host ?? "nil", privacy: .public) attempt=\(attemptID, privacy: .public)")
         let ptyTail = OSAllocatedUnfairLock<String>(initialState: "")
@@ -155,11 +155,11 @@ final class OpenSSHBackend: @unchecked Sendable {
                 if let typed {
                     Log.ssh.info("[SSH_FAILURE] type=\(typed.typeString, privacy: .public) backend=openssh host=\(self.config.host, privacy: .public)")
                     switch typed {
-                    case .authentication(let af):
-                        let display = SSHErrorMessageParser.explain(tail + "\n" + errTail, host: self.config.host, jumpHost: self.config.jumpHost?.host) ?? af.message
+                    case .authentication(let authFailure):
+                        let display = SSHErrorMessageParser.explain(tail + "\n" + errTail, host: self.config.host, jumpHost: self.config.jumpHost?.host) ?? authFailure.message
                         Log.ssh.error("[PTY] authFailed: \(display, privacy: .public) rawTail=\(tail.prefix(200), privacy: .public)")
                         if onFailure != nil {
-                            onFailure?(.authentication(af))
+                            onFailure?(.authentication(authFailure))
                         } else {
                             onError?(display)
                         }
@@ -169,20 +169,20 @@ final class OpenSSHBackend: @unchecked Sendable {
                         onFailure?(.cancelled)
                         onExit()
                         return
-                    case .hostKey(let m):
-                        Log.ssh.error("[SSH_FAILURE] type=hostKey backend=openssh msg=\(m, privacy: .public)")
-                        onFailure?(.hostKey(m))
-                        onError?(m)
+                    case .hostKey(let hostKeyMessage):
+                        Log.ssh.error("[SSH_FAILURE] type=hostKey backend=openssh msg=\(hostKeyMessage, privacy: .public)")
+                        onFailure?(.hostKey(hostKeyMessage))
+                        onError?(hostKeyMessage)
                         // hostKey ，，RECOVERY_GATE  block
                         onExit()
                         return
-                    case .transport(let tf):
-                        Log.ssh.error("[SSH_FAILURE] type=transport backend=openssh msg=\(tf.message, privacy: .public)")
+                    case .transport(let transportFailure):
+                        Log.ssh.error("[SSH_FAILURE] type=transport backend=openssh msg=\(transportFailure.message, privacy: .public)")
                         onFailure?(typed)
                         // transport  recovery， onExit
                         break
-                    case .unknown(let m):
-                        Log.ssh.error("[SSH_FAILURE] type=unknown backend=openssh msg=\(m, privacy: .public)")
+                    case .unknown(let unknownMessage):
+                        Log.ssh.error("[SSH_FAILURE] type=unknown backend=openssh msg=\(unknownMessage, privacy: .public)")
                         onFailure?(typed)
                         break
                     }

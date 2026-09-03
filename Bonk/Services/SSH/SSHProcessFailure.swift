@@ -16,7 +16,7 @@ enum SSHProcessFailure: Equatable {
     }
     var message: String {
         switch self {
-        case .authentication(let m), .hostKey(let m), .network(let m), .forwarding(let m), .unknown(let m): return m
+        case .authentication(let message), .hostKey(let message), .network(let message), .forwarding(let message), .unknown(let message): return message
         case .cancelled: return "cancelled"
         }
     }
