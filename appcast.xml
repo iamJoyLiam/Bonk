@@ -6,6 +6,36 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.2.7</title>
+            <pubDate>Thu, 03 Sep 2026 10:30:00 +0800</pubDate>
+            <sparkle:version>20262007</sparkle:version>
+            <sparkle:shortVersionString>2026.2.7</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Changes
+- Added per-host custom tags with color presets and independent visibility controls for engine badges and tags (tag displayed before engine)
+- Added unified one-click import that auto-detects iTerm2, Electerm, WindTerm, and generic CSV/JSON sources alongside SSH config and Tabby
+- Improved import UI with consistent primary button styling and simplified file-picker flow
+- Fixed terminal split-pane state-update warning and removed redundant hint texts across settings
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.7/Bonk-2026.2.7-arm64.dmg"
+                length="24683835"
+                type="application/octet-stream"
+                sparkle:edSignature="dEmWmj0b/k98F27Wr7C/jhIAwxfI+O4fFHmw7oEu44KbbZa37gpke3HrV720pYavabYl7NxXCLjoPLWF9r5rBg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.2.7/Bonk-2026.2.7-x86_64.dmg"
+                length="24942344"
+                type="application/octet-stream"
+                sparkle:edSignature="WM2i2MVBy83QAsBOIq56jwG22IO4rLvkP9BG6setqZtzXFNEef7zQ1alAvwPAF3g+s1ZR6/iNjtheJQMjoDjBQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.2.6</title>
             <pubDate>Mon, 31 Aug 2026 20:00:00 +0800</pubDate>
             <sparkle:version>20262006</sparkle:version>
