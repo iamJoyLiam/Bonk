@@ -335,25 +335,13 @@ final class SFTPService {
 
                 guard let (readOffset, data) = try await group.next() else { break }
                 inFlight -= 1
-                if data.isEmpty {
-                    // Only empty at genuine EOF; for known size, check offset
-                    if entry.size == 0 || readOffset >= entry.size - UInt64(chunkSize) { readDone = true }
-                    continue
+                if data.isEmpty || data.count < chunkSize {
+                    // SFTP servers return a short or empty read only at EOF.
+                    readDone = true
                 }
-                if data.count < Int(chunkSize), entry.size > 0, readOffset + UInt64(data.count) < entry.size {
-                    let gapStart = readOffset + UInt64(data.count)
-                    let gapLen = UInt32(min(UInt64(chunkSize) - UInt64(data.count), entry.size - gapStart))
-                    let gapOff = gapStart
-                    inFlight += 1
-                    group.addTask {
-                        try await SFTPTransferEngine.readChunk(remoteFile, offset: gapOff, length: gapLen)
-                    }
-                } else if data.isEmpty || data.count < Int(chunkSize) {
-                    // Unknown size: short means EOF
-                    if entry.size == 0 { readDone = true }
+                if !data.isEmpty {
+                    pending[readOffset] = data
                 }
-                pending[readOffset] = data
-                if entry.size > 0, readOffset + UInt64(data.count) >= entry.size { readDone = true }
 
                 // Write completed chunks back in order — off MainActor via detached
                 while let bytes = pending.removeValue(forKey: nextWriteOffset) {

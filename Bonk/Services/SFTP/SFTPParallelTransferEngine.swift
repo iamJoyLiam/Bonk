@@ -24,14 +24,14 @@ import Citadel
 enum SFTPParallelStrategy {
     /// Single threshold
     static let parallelThreshold: UInt64 = 50 * 1024 * 1024
-    /// Tune 64K-256K SFTP safe (OpenSSH max 256K), pipeline controls throughput
-    static let chunkSize: Int = 256 * 1024
-    /// Adaptive chunk: SFTP safe — max 256K to avoid server short-read misinterpreted as EOF
+    /// Tune 1M + pipeline 128
+    static let chunkSize: Int = 1024 * 1024
+    /// Adaptive chunk: small files use small chunks for lower TTFB/memory, large files use large chunks for throughput
     static func chunkSize(for totalBytes: UInt64) -> Int {
-        if totalBytes == 0 { return 32 * 1024 } // Unknown size, conservative
-        if totalBytes < 5 * 1024 * 1024 { return 64 * 1024 }
-        if totalBytes < 50 * 1024 * 1024 { return 128 * 1024 }
-        return 256 * 1024
+        if totalBytes == 0 { return 256 * 1024 } // Unknown size, conservative
+        if totalBytes < 5 * 1024 * 1024 { return 256 * 1024 }
+        if totalBytes < 50 * 1024 * 1024 { return 512 * 1024 }
+        return 1024 * 1024
     }
 
     /// Shard count by size
@@ -52,12 +52,12 @@ enum SFTPParallelStrategy {
     static func pipelinePerShard(shards: Int, totalBytes: UInt64) -> Int {
         switch shards {
         case 1:
-            if totalBytes > 100 * 1024 * 1024 { return 64 } // 64*256K=16MB
-            if totalBytes > 10 * 1024 * 1024 { return 32 }  // 32*128K=4MB
-            return 16 // 16*64K=1MB
-        case 4: return 32  // 4×32×128K≈16MB
-        case 8: return 32  // 8×32×64K≈16MB
-        default: return 32
+            if totalBytes > 100 * 1024 * 1024 { return 128 } // 128MB
+            if totalBytes > 10 * 1024 * 1024 { return 64 }  // 64MB
+            return 32 // 32MB
+        case 4: return 128  // 4×128×64KB≈32MB ， 32MB
+        case 8: return 64  // 8×64×64KB≈32MB
+        default: return 64
         }
     }
 }
@@ -303,30 +303,18 @@ enum SFTPParallelTransferEngine {
 
                 guard let (readOffset, data) = try await group.next() else { break }
                 inFlight -= 1
-                // SFTP short read handling: only empty means EOF; short < chunkSize at non-EOF is server limit, not EOF
-                // Continue until we have read up to range.upperBound
-                if data.isEmpty {
-                    if readOffset >= range.upperBound - UInt64(chunkSize) || readOffset + UInt64(data.count) >= range.upperBound {
-                        readDone = true
+                if data.isEmpty || UInt64(data.count) < UInt64(chunkSize) {
+                    // shard  EOF shard
+                    // Still need data
+                    if data.isEmpty {
+                        if readOffset >= range.upperBound - UInt64(chunkSize) {
+                            readDone = true
+                        }
+                        continue
                     }
-                    continue
                 }
-                // Handle partial chunk (server returned less than requested but not EOF): re-queue gap
-                if UInt64(data.count) < UInt64(chunkSize), readOffset + UInt64(data.count) < range.upperBound {
-                    // Gap from readOffset+data.count to readOffset+chunkSize was skipped (pipelined). Re-queue it.
-                    let gapStart = readOffset + UInt64(data.count)
-                    let gapLength = UInt32(min(UInt64(chunkSize) - UInt64(data.count), range.upperBound - gapStart))
-                    let gapOffset = gapStart
-                    inFlight += 1
-                    group.addTask {
-                        try await SFTPTransferEngine.readChunk(remoteFile, offset: gapOffset, length: gapLength)
-                    }
-                    // Also adjust nextRead if we had skipped ahead (no-op if already)
-                }
-                pending[readOffset] = data
-                // Check if this chunk completed the shard
-                if readOffset + UInt64(data.count) >= range.upperBound || nextWriteOffset >= range.upperBound {
-                    readDone = true
+                if !data.isEmpty {
+                    pending[readOffset] = data
                 }
 
                 // Batch pwrite per 1M
