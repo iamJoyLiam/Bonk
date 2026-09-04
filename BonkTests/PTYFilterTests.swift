@@ -64,4 +64,39 @@ final class PTYFilterTests: XCTestCase {
         let result = Filter.filterOSCSequences(input)
         XCTAssertEqual(result, "")
     }
+
+    // MARK: - Shell integration OSC 133;9 buffer report parsing
+
+    private func collectReports(_ text: String) -> [String] {
+        let integration = ShellIntegration()
+        var reports: [String] = []
+        integration.onEvent = { event in
+            if case .bufferReport(let buffer) = event { reports.append(buffer) }
+        }
+        _ = integration.process(text: text, lineCount: 1)
+        return reports
+    }
+
+    func testBufferReportBELTerminator() {
+        XCTAssertEqual(collectReports("\u{1B}]133;9;docker ps\u{07}"), ["docker ps"])
+    }
+
+    func testBufferReportSTTerminator() {
+        // ST terminator (ESC \) — what the zsh snippet emits via printf
+        XCTAssertEqual(collectReports("\u{1B}]133;9;echo a;b\u{1B}\\"), ["echo a;b"])
+    }
+
+    func testBufferReportEmptyBuffer() {
+        XCTAssertEqual(collectReports("\u{1B}]133;9;\u{07}"), [""])
+    }
+
+    func testBufferReportDoesNotEmitOther133Events() {
+        // A bare 9-report must not be mistaken for A/B/C/D prompt events
+        let integration = ShellIntegration()
+        let events = integration.process(text: "\u{1B}]133;9;ls\u{07}", lineCount: 1)
+        XCTAssertEqual(events.count, 1)
+        if case .bufferReport = events[0] {} else {
+            XCTFail("expected bufferReport, got \(events[0])")
+        }
+    }
 }

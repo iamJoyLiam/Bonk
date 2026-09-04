@@ -40,6 +40,20 @@ import SwiftTerm
                     }
                 }
             }
+            pipeline.onCandidatesChanged = { [weak self] count, selected in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    // Opt-in popup (default off) — gate both display and ↑/↓ interception.
+                    guard UserDefaults.standard.bool(forKey: "ai_inline_candidate_popup"), count > 1 else {
+                        self.hideCandidateList()
+                        return
+                    }
+                    // Popup rows show the FULL command; ghost keeps showing the
+                    // selected candidate's continuation suffix.
+                    let items = self.inlinePipeline?.ranked.map { $0.1.fullText ?? $0.1.displayText } ?? []
+                    self.showCandidateList(items: items, selectedIndex: selected)
+                }
+            }
             pipeline.onRequestingChanged = { [weak self] isReq in
                 MainActor.assumeIsolated {
                     guard let self else { return }
@@ -81,6 +95,8 @@ import SwiftTerm
         // MARK: - Inline Completion (pipeline only)
 
         var ghostOverlay: InlineGhostOverlay?
+        /// Warp-style candidate popup above the cursor (↑/↓ navigation).
+        var candidateListOverlay: InlineCandidateListOverlay?
         // Ghost updates coalesced to display tick — LLM streams many deltas per frame.
         nonisolated(unsafe) var ghostCoalesceTask: Task<Void, Never>?
         private nonisolated(unsafe) var resignObserver: NSObjectProtocol?
@@ -230,6 +246,22 @@ import SwiftTerm
             let hasSuggestion = MainActor.assumeIsolated { self.inlinePipeline?.suggestion != nil }
 
             if hasSuggestion {
+                let (candidateCount, popupEnabled) = MainActor.assumeIsolated {
+                    (self.inlinePipeline?.ranked.count ?? 0,
+                     UserDefaults.standard.bool(forKey: "ai_inline_candidate_popup"))
+                }
+                if popupEnabled, candidateCount > 1, modifiers.isEmpty {
+                    if keyCode == 125 {
+                        // ↓ — next candidate (Warp-style popup navigation).
+                        MainActor.assumeIsolated { self.inlinePipeline?.moveSelection(1) }
+                        return nil
+                    }
+                    if keyCode == 126 {
+                        // ↑ — previous candidate.
+                        MainActor.assumeIsolated { self.inlinePipeline?.moveSelection(-1) }
+                        return nil
+                    }
+                }
                 if keyCode == 48, modifiers.isEmpty {
                     // Tab — accept the suggestion, do not forward a real tab.
                     acceptSuggestion()
@@ -243,9 +275,12 @@ import SwiftTerm
                     }
                     return nil
                 }
-                // Any other key — dismiss and forward normally.
+                // Any other key — dismiss WITHOUT recording a rejection and
+                // forward normally. Normal typing/navigation is not negative
+                // feedback; only Esc (below) marks the suggestion rejected,
+                // otherwise the rejection cache poisons future suggestions.
                 MainActor.assumeIsolated {
-                    self.inlinePipeline?.rejectCurrent()
+                    self.inlinePipeline?.cancel()
                     self.hideGhost(reason: "other-key")
                 }
             }
@@ -358,13 +393,25 @@ import SwiftTerm
                 guard let p = self.inlinePipeline, p.suggestion != nil else { return }
                 let text = p.accept()
                 self.hideGhost(reason: "accept")
-                guard !text.isEmpty else { return }
+                // Re-align against the current line before inserting: the
+                // suggestion may be stale (generated for an earlier typed
+                // prefix mid-LLM-stream). Never duplicate what the user typed.
+                let payloadText: String
+                let (cursorX, cursorY) = self.terminal.getCursorLocation()
+                if cursorY >= 0, cursorY < self.terminal.rows,
+                   let line = self.terminal.getLine(row: cursorY) {
+                    let raw = line.translateToString(trimRight: true)
+                    payloadText = CommandEditor.alignedAcceptSuffix(suggestion: text, rawLine: raw) ?? ""
+                } else {
+                    payloadText = text
+                }
+                guard !payloadText.isEmpty else { return }
                 // Respect bracketed paste mode when inserting accepted ghost text
                 let payload: String
                 if self.terminal.bracketedPasteMode {
-                    payload = "\u{1B}[200~" + text + "\u{1B}[201~"
+                    payload = "\u{1B}[200~" + payloadText + "\u{1B}[201~"
                 } else {
-                    payload = text
+                    payload = payloadText
                 }
                 let bytes = ArraySlice(payload.utf8)
                 // Same forwarding as SwiftTerm's internal send — goes through

@@ -57,6 +57,26 @@ enum CommandEditor {
         return cursorX >= lineTrimmedLength - 3
     }
 
+    /// Re-align a suggestion suffix against the *current* line at accept time.
+    /// The suggestion may be stale — generated for an earlier typed prefix while
+    /// an LLM stream was still committing. Strips any overlap between the
+    /// suggestion and the current line tail (longest line-suffix that prefixes
+    /// the suggestion); returns nil when nothing would remain to insert.
+    static func alignedAcceptSuffix(suggestion: String, rawLine: String) -> String? {
+        guard !suggestion.isEmpty else { return nil }
+        var overlap = 0
+        let maxOverlap = min(rawLine.count, suggestion.count)
+        if maxOverlap > 0 {
+            for length in stride(from: maxOverlap, through: 1, by: -1)
+            where rawLine.hasSuffix(String(suggestion.prefix(length))) {
+                overlap = length
+                break
+            }
+        }
+        let suffix = String(suggestion.dropFirst(overlap))
+        return suffix.isEmpty ? nil : suffix
+    }
+
     /// Build snapshot for pipeline — delegates to WorkspaceContextProvider in real flow.
     /// Kept here for single place that owns typed resolution.
     @MainActor

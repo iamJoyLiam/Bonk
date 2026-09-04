@@ -22,6 +22,9 @@ enum ShellEvent: Sendable {
     case promptStart
     case commandStart(ShellCommandRange)
     case commandEnd(ShellCommandRange, exitCode: Int?)
+    /// OSC 133;9;<buffer> — shell integration reports the live line-editor
+    /// buffer. Ground truth for the Editor (replaces echo-based heuristics).
+    case bufferReport(String)
 }
 
 final class ShellIntegration {
@@ -52,7 +55,12 @@ final class ShellIntegration {
             let payload = String(after[..<terminatorIndex])
             let code = payload.first.map(String.init) ?? ""
             let extra = String(payload.dropFirst())
-            if let event = handleOSC133(code: code, payload: extra) {
+            // OSC 133;9 — payload after the code IS the buffer (may contain ';')
+            if code == "9" {
+                let event = ShellEvent.bufferReport(extra)
+                events.append(event)
+                onEvent?(event)
+            } else if let event = handleOSC133(code: code, payload: extra) {
                 events.append(event)
                 onEvent?(event)
             }
@@ -123,4 +131,7 @@ extension Notification.Name {
     static let shellJumpToCommand = Notification.Name("ShellJumpToCommand")
     static let commandBlockDidAdd = Notification.Name("CommandBlockDidAdd")
     static let commandBlocksDidClear = Notification.Name("CommandBlocksDidClear")
+    /// OSC 133;9 — shell reported the live line-editor buffer.
+    /// object = PTYSession, userInfo["buffer"] = String ("" right after Enter).
+    static let shellBufferDidReport = Notification.Name("ShellBufferDidReport")
 }

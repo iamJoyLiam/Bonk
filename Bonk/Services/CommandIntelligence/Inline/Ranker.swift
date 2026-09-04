@@ -29,6 +29,18 @@ struct InlineRanker: Sendable {
         return best?.0
     }
 
+    /// Full ranked list, best first — feeds the Warp-style candidate popup.
+    func sortedCandidates(
+        in candidates: [(String, Suggestion)],
+        isRejected: (String) -> Bool
+    ) -> [(String, Suggestion)] {
+        candidates
+            .filter { !isRejected($0.1.text) }
+            .map { entry -> ((String, Suggestion), Double) in (entry, score(suggestion: entry.1, source: entry.0)) }
+            .sorted { $0.1 > $1.1 }
+            .map { $0.0 }
+    }
+
     private func score(suggestion: Suggestion, source: String) -> Double {
         // Base priority by source
         let base: Double
@@ -36,6 +48,7 @@ struct InlineRanker: Sendable {
         case "knownWords", "knownWordsSorted": base = 100
         case "cache": base = 90
         case "history": base = 80
+        case "vocabulary": base = 75
         case "llm": base = 70
         default: base = 50
         }

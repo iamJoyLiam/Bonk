@@ -121,8 +121,9 @@ struct CommandBlocksPanel: View {
     }
 
     private var sampleInstallCommand: String? {
-        // Minimal zsh snippet
-        "precmd(){ print -Pn \"\\e]133;A\\e\\\\\" }\npreexec(){ print -Pn \"\\e]133;C\\e\\\\\" }\nprecmd(){ local s=$?; print -Pn \"\\e]133;D;$s\\e\\\\\"; print -Pn \"\\e]133;A\\e\\\\\" }"
+        // Minimal zsh snippet: semantic prompts (OSC 133 A/C/D) + live buffer
+        // report (OSC 133;9 via zle line-pre-redraw hook, zsh 5.4+)
+        "precmd(){ print -Pn \"\\e]133;A\\e\\\\\" }\npreexec(){ print -Pn \"\\e]133;C\\e\\\\\" }\nprecmd(){ local s=$?; print -Pn \"\\e]133;D;$s\\e\\\\\"; print -Pn \"\\e]133;A\\e\\\\\" }\n__bonk_buffer(){ printf '\\e]133;9;%s\\e\\\\' \"$BUFFER\" }\nautoload -Uz add-zle-hook-widget\nadd-zle-hook-widget line-pre-redraw __bonk_buffer"
     }
 
     private var list: some View {

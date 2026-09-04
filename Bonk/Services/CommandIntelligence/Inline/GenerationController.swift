@@ -13,7 +13,10 @@ final class GenerationController {
     private var debounceTask: Task<Void, Never>?
     private var workTask: Task<Void, Never>?
 
-    var debounceMilliseconds: Int = 500
+    /// Debounce applies to the LLM tier only — local candidates commit instantly.
+    /// Internal engineering knob, deliberately not user-facing: the right value
+    /// depends on the active model's latency, which the user already picks via Provider.
+    var debounceMilliseconds: Int = 200
 
     func bumpGeneration() -> UInt64 {
         generation &+= 1

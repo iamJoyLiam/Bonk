@@ -85,8 +85,8 @@ enum InlinePromptBuilder {
 
     private static let noiseWords: Set<String> = [
         "usage", "command", "name", "names", "total", "type", "mode", "size",
-        "flags", "true", "false", "root", "docker", "ps", "logs", "run", "exec",
-        "error", "info", "help", "status", "up", "down", "created", "ports",
+        "flags", "true", "false", "root", "created", "ports",
+        "error", "info", "help",
     ]
 
     static func stripANSI(_ text: String) -> String {

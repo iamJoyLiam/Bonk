@@ -50,9 +50,9 @@ enum LKey: String, CaseIterable {
     case inlineSuggestions = "inline_suggestions"
     case enableInlineSuggestions = "enable_inline_suggestions"
     case configureProviderHint = "configure_provider_hint"
-    case debounce
+    case aiCandidatePopup = "ai_candidate_popup"
+    case aiCandidatePopupDesc = "ai_candidate_popup_desc"
     case inlineSuggestionsFooter = "inline_suggestions_footer"
-
     // AI — Context
     case context
     case includeTerminalOutput = "include_terminal_output"

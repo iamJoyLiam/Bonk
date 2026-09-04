@@ -19,12 +19,24 @@ final class InlinePipelineTests: XCTestCase {
             recentOutput: ""
         )
         pipeline.request(snapshot: snapshot)
-        // Wait for debounce (500ms) + pipeline perform
-        try? await Task.sleep(for: .milliseconds(700))
+        // Tier 1 (local/history/knownWords) commits synchronously — no debounce wait.
         XCTAssertNotNil(pipeline.suggestion)
         // Most recent is "docker run -d nginx" => suffix " run -d nginx" or display " run -d nginx" / "run -d nginx"
         // History source returns suffix with leading space handling via displaySuffix
         XCTAssertTrue(pipeline.suggestion?.text.contains("run") == true)
+    }
+
+    func testAlignedAcceptSuffix() {
+        // Stale suggestion: generated for typed "do" ("cker ps"), line now ends "doc"
+        XCTAssertEqual(CommandEditor.alignedAcceptSuffix(suggestion: "cker ps", rawLine: "user@host ~ % doc"), "ker ps")
+        XCTAssertEqual(CommandEditor.alignedAcceptSuffix(suggestion: "cker", rawLine: "% doc"), "ker")
+        // Aligned suggestion: no overlap with line tail — unchanged
+        XCTAssertEqual(CommandEditor.alignedAcceptSuffix(suggestion: "ker ps", rawLine: "% doc"), "ker ps")
+        // Leading-space suffix preserved when no overlap
+        XCTAssertEqual(CommandEditor.alignedAcceptSuffix(suggestion: " ps", rawLine: "% docker"), " ps")
+        // Nothing left after stripping overlap → nil
+        XCTAssertNil(CommandEditor.alignedAcceptSuffix(suggestion: "c", rawLine: "% doc"))
+        XCTAssertNil(CommandEditor.alignedAcceptSuffix(suggestion: "", rawLine: "% doc"))
     }
 
     func testPipelineGenerationGuard() async {
@@ -47,6 +59,45 @@ final class InlinePipelineTests: XCTestCase {
         pipeline.cancel()
         XCTAssertNil(pipeline.suggestion)
         XCTAssertFalse(pipeline.isRequesting)
+    }
+
+    func testVocabularyCompletesCommandToken() {
+        let source = CommandVocabularySource()
+        let snap = CommandContextSnapshot(inputBuffer: "dock", recentCommands: [], recentOutput: "")
+        let sug = source.syncSuggestion(for: snap, typed: "dock")
+        XCTAssertEqual(sug?.text, "er")
+        XCTAssertEqual(sug?.displayText, "er")
+        // No continuation when the token is already a full command
+        let full = CommandContextSnapshot(inputBuffer: "docker", recentCommands: [], recentOutput: "")
+        XCTAssertNil(source.syncSuggestion(for: full, typed: "docker"))
+    }
+
+    func testRankedCandidatesAndSelection() {
+        let cache = InlineSuggestionCache()
+        let pipeline = InlineSuggestionPipeline(providerStore: .shared, cache: cache)
+        let snap = CommandContextSnapshot(
+            inputBuffer: "dock",
+            recentCommands: ["docker ps"],
+            recentOutput: "docker-desktop is running",
+            knownWords: ["docker-desktop", "running"]
+        )
+        pipeline.request(snapshot: snap)
+        // knownWords ("docker-desktop" → "er-desktop"), history ("er ps"), vocabulary ("er")
+        XCTAssertGreaterThanOrEqual(pipeline.ranked.count, 3)
+        // Default selection = top ranked (knownWords); popup rows carry the FULL command
+        XCTAssertEqual(pipeline.suggestion?.text, "er-desktop")
+        XCTAssertEqual(pipeline.suggestion?.fullText, "docker-desktop")
+        // ↓ moves to the next candidate (history) — full command, ghost swaps to its continuation
+        pipeline.moveSelection(1)
+        XCTAssertTrue(pipeline.suggestion?.text.contains("ps") == true)
+        XCTAssertEqual(pipeline.suggestion?.fullText, "docker ps")
+        // ↓↓ clamps at the end instead of crashing
+        pipeline.moveSelection(5)
+        XCTAssertEqual(pipeline.suggestion?.text, "er")
+        XCTAssertEqual(pipeline.suggestion?.fullText, "docker")
+        // ↑↑↑ clamps back at the top
+        pipeline.moveSelection(-5)
+        XCTAssertEqual(pipeline.suggestion?.text, "er-desktop")
     }
 
     func testPipelineRejectFilters() async {

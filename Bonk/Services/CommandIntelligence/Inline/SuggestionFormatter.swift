@@ -58,6 +58,15 @@ enum SuggestionFormatter {
         return text
     }
 
+    /// Full command for popup display: typed prefix + insertion suffix.
+    /// Collapses the double space when typed already ends with whitespace.
+    static func fullCommand(typed: String, suffix: String) -> String {
+        if let last = typed.last, last.isWhitespace {
+            return typed + suffix.drop(while: { $0.isWhitespace })
+        }
+        return typed + suffix
+    }
+
     static func preserveLeadingSeparator(_ raw: String) -> String {
         var text = raw.trimmingCharacters(in: .newlines)
         while text.last?.isWhitespace == true { text.removeLast() }

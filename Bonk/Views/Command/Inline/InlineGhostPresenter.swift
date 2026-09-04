@@ -16,6 +16,55 @@ extension NativeTerminalView {
         return overlay
     }
 
+    // MARK: - Candidate List Overlay (Warp-style ↑/↓ popup)
+
+    func ensureCandidateList() -> InlineCandidateListOverlay {
+        if let candidateListOverlay { return candidateListOverlay }
+        let list = InlineCandidateListOverlay()
+        addSubview(list, positioned: .above, relativeTo: ghostOverlay)
+        candidateListOverlay = list
+        return list
+    }
+
+    /// Row height derived from font metrics, 2pt vertical padding per side.
+    static func candidateRowHeight(for font: NSFont) -> CGFloat {
+        ceil(font.ascender - font.descender + font.leading) + 4
+    }
+
+    @MainActor
+    func showCandidateList(items: [String], selectedIndex: Int) {
+        // Popup is opt-in (default off) — gate here so nothing is built when disabled.
+        guard UserDefaults.standard.bool(forKey: "ai_inline_candidate_popup") else {
+            hideCandidateList()
+            return
+        }
+        guard window?.firstResponder === self else { return }
+        guard items.count > 1 else {
+            hideCandidateList()
+            return
+        }
+        let list = ensureCandidateList()
+        list.font = font
+        list.rowHeight = Self.candidateRowHeight(for: font)
+        let wasHidden = list.isHidden
+        let previousRowCount = list.visibleRowCount
+        list.items = items
+        list.selectedIndex = selectedIndex
+        // Reposition only when hidden or the row count changed the panel height;
+        // a pure selection change just marks rows for redraw.
+        if wasHidden || previousRowCount != list.visibleRowCount {
+            list.isHidden = false
+            scheduleGhostPositionCoalesced()
+        }
+    }
+
+    @MainActor
+    func hideCandidateList() {
+        guard let list = candidateListOverlay else { return }
+        list.isHidden = true
+        list.items = []
+    }
+
     // Ghost updates coalesced to display tick — LLM streams many deltas per frame, but overlay
     // should only commit once per frame (shared single presentation clock).
     private static let ghostCoalesceInterval: Duration = .milliseconds(16)
@@ -44,6 +93,7 @@ extension NativeTerminalView {
         ghostOverlay?.isHidden = true
         ghostOverlay?.text = ""
         ghostOverlay?.waiting = false
+        hideCandidateList()
     }
 
     /// Show the "thinking" dots while the model request is in flight.
@@ -93,6 +143,7 @@ extension NativeTerminalView {
             let posLog = "hideGhost reason=offscreen pos=\(position) yDisp=\(yDisp)"
             Self.inlineLogger.debug("\(posLog, privacy: .public)")
             overlay.isHidden = true
+            hideCandidateList()
             return
         }
         overlay.isHidden = false
@@ -109,5 +160,19 @@ extension NativeTerminalView {
             width: width,
             height: cell.height
         )
+
+        // Anchor the candidate popup so its bottom edge sits on the cursor row's top,
+        // clamped inside the view; below the cursor row when there is no room above.
+        if let list = candidateListOverlay, !list.isHidden, list.visibleRowCount > 0, list.rowHeight > 0 {
+            let listHeight = CGFloat(list.visibleRowCount) * list.rowHeight
+            let listWidth = min(list.measuredWidth() + 16, bounds.width)
+            let x = min(originX, max(0, bounds.width - listWidth))
+            let topOfCursorRow = bounds.height - CGFloat(cursorY) * cell.height
+            var y = topOfCursorRow - listHeight
+            if y < 0 {
+                y = min(bounds.height - CGFloat(cursorY + 1) * cell.height, bounds.height - listHeight)
+            }
+            list.frame = NSRect(x: x, y: max(0, y), width: listWidth, height: listHeight)
+        }
     }
 }
