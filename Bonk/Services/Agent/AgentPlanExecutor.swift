@@ -192,8 +192,10 @@ extension AgentEngine {
         conversation: AIConversationRecord?,
         context: ModelContext?
     ) async -> ExecutionReport {
-        let hybridExec: (@Sendable (String) async throws -> String)? = if let session = hybridSession {
-            { @Sendable command async throws -> String in try await session.executeHybrid(command) }
+        let hybridExec: (@Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> String)? = if let session = hybridSession {
+            { @Sendable command, registerHandle async throws -> String in
+                try await session.executeHybrid(command, registerHandle: registerHandle)
+            }
         } else { nil }
         var results: [StepResult] = []
         let startTime = Date()
@@ -237,10 +239,15 @@ extension AgentEngine {
             do {
                 let output = try await withTimeout(seconds: 30) {
                     if let exec = hybridExec {
-                        return try await exec(command)
+                        return try await exec(command) { handle in
+                            Task { await AgentExecutionManager.shared.registerActive(handle) }
+                        }
                     }
-                    return try await sshService.executeCommand(command)
+                    return try await sshService.executeCommand(command) { handle in
+                        Task { await AgentExecutionManager.shared.registerActive(handle) }
+                    }
                 }
+                await AgentExecutionManager.shared.clearActive()
                 let truncated = String(output.prefix(4000))
                 let duration = Date().timeIntervalSince(stepStart)
                 appendAgentMessage(.commandOutput, content: truncated,
@@ -248,7 +255,8 @@ extension AgentEngine {
                 OperationLog.shared.record(command: step.command, output: truncated, success: true)
                 results.append(StepResult(step: step, output: truncated, success: true, duration: duration))
             } catch {
-                let errorMsg = "Failed: \(error.localizedDescription)"
+                await AgentExecutionManager.shared.clearActive()
+                let errorMsg = Task.isCancelled ? "Command was cancelled by user." : "Failed: \(error.localizedDescription)"
                 let duration = Date().timeIntervalSince(stepStart)
                 appendAgentMessage(.system, content: errorMsg,
                                    conversation: conversation, context: context)

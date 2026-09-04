@@ -84,19 +84,29 @@ final class InlinePipelineTests: XCTestCase {
         pipeline.request(snapshot: snap)
         // knownWords ("docker-desktop" → "er-desktop"), history ("er ps"), vocabulary ("er")
         XCTAssertGreaterThanOrEqual(pipeline.ranked.count, 3)
-        // Default selection = top ranked (knownWords); popup rows carry the FULL command
+        // Default state is passive (no selection, but top recommended suggestion is visible)
+        XCTAssertEqual(pipeline.engagement, .passive)
+        XCTAssertNil(pipeline.selectedIndex)
         XCTAssertEqual(pipeline.suggestion?.text, "er-desktop")
         XCTAssertEqual(pipeline.suggestion?.fullText, "docker-desktop")
-        // ↓ moves to the next candidate (history) — full command, ghost swaps to its continuation
+        // ↓ in passive state engages at index 0
         pipeline.moveSelection(1)
+        XCTAssertEqual(pipeline.engagement, .engaged(index: 0))
+        XCTAssertEqual(pipeline.selectedIndex, 0)
+        XCTAssertEqual(pipeline.suggestion?.fullText, "docker-desktop")
+        // Subsequent ↓ moves to candidate 1 (history)
+        pipeline.moveSelection(1)
+        XCTAssertEqual(pipeline.engagement, .engaged(index: 1))
+        XCTAssertEqual(pipeline.selectedIndex, 1)
         XCTAssertTrue(pipeline.suggestion?.text.contains("ps") == true)
         XCTAssertEqual(pipeline.suggestion?.fullText, "docker ps")
         // ↓↓ clamps at the end instead of crashing
         pipeline.moveSelection(5)
         XCTAssertEqual(pipeline.suggestion?.text, "er")
         XCTAssertEqual(pipeline.suggestion?.fullText, "docker")
-        // ↑↑↑ clamps back at the top
+        // ↑↑↑ clamps back at the top (index 0)
         pipeline.moveSelection(-5)
+        XCTAssertEqual(pipeline.selectedIndex, 0)
         XCTAssertEqual(pipeline.suggestion?.text, "er-desktop")
     }
 

@@ -80,7 +80,7 @@ final class InlineCandidateListOverlay: NSView {
     private var itemsCache: [String] = []
     private var cachedWidth: CGFloat = 0
 
-    var selectedIndex = 0 {
+    var selectedIndex: Int? = nil {
         didSet {
             guard selectedIndex != oldValue else { return }
             contentView.needsDisplay = true
@@ -201,7 +201,8 @@ final class InlineCandidateListOverlay: NSView {
                     height: owner.rowHeight
                 )
 
-                if index == owner.selectedIndex {
+                let isSelected = owner.selectedIndex != nil && index == owner.selectedIndex
+                if isSelected {
                     let path = NSBezierPath(roundedRect: rowRect, xRadius: 5, yRadius: 5)
                     NSColor.controlAccentColor.withAlphaComponent(0.24).setFill()
                     path.fill()
@@ -213,11 +214,11 @@ final class InlineCandidateListOverlay: NSView {
                     in: iconRect,
                     withAttributes: [
                         .font: iconFont,
-                        .foregroundColor: index == owner.selectedIndex ? iconColor : NSColor.tertiaryLabelColor
+                        .foregroundColor: isSelected ? iconColor : NSColor.tertiaryLabelColor
                     ]
                 )
 
-                let textColor: NSColor = index == owner.selectedIndex ? .labelColor : .secondaryLabelColor
+                let textColor: NSColor = isSelected ? .labelColor : .secondaryLabelColor
                 let textRect = NSRect(
                     x: rowRect.minX + 22,
                     y: rowRect.origin.y + (owner.rowHeight - (owner.font.pointSize + 4)) / 2,
@@ -243,7 +244,7 @@ final class InlineCandidateListOverlay: NSView {
             line.stroke()
 
             let footerFont = NSFont.systemFont(ofSize: 9.5, weight: .regular)
-            let footerText = "⇥ 补全   ↑↓ 选择   Esc 关闭" as NSString
+            let footerText = (owner.selectedIndex != nil ? "↵ / ⇥ 补全   ↑↓ 选择   Esc 取消" : "⇥ 补全   ↑↓ 选择   ↵ 执行") as NSString
             let footerRect = NSRect(
                 x: paddingX + 4,
                 y: footerY + 3,

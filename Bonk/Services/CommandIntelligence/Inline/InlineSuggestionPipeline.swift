@@ -19,18 +19,31 @@ final class InlineSuggestionPipeline {
     /// count > 1 renders the Warp-style ↑/↓ popup above the cursor.
     private(set) var ranked: [(String, Suggestion)] = []
     private var currentCandidates: [CommandCandidate] = []
-    private var selectedIndex = 0
-    /// Selected suggestion (ghost text) — computed from ranked + selectedIndex.
+    private(set) var engagement: SuggestionEngagement = .passive
+
+    /// Current selected index if engaged, or nil if passive.
+    var selectedIndex: Int? {
+        engagement.selectedIndex
+    }
+
+    /// Selected suggestion (ghost text) — computed from ranked + engagement.
+    /// In passive mode, defaults to the top recommended candidate (ranked.first).
+    /// In engaged mode, corresponds to the explicitly selected candidate.
     var suggestion: Suggestion? {
         guard !ranked.isEmpty else { return nil }
-        let index = max(0, min(selectedIndex, ranked.count - 1))
-        return ranked[index].1
+        switch engagement {
+        case .passive:
+            return ranked.first?.1
+        case .engaged(let index):
+            let safeIndex = max(0, min(index, ranked.count - 1))
+            return ranked[safeIndex].1
+        }
     }
     /// View callback for ghost updates — pipeline remains UI-agnostic, View subscribes.
     var onSuggestionChanged: ((Suggestion?) -> Void)?
     var onRequestingChanged: ((Bool) -> Void)?
-    /// Candidate list changed: (count, selectedIndex). Count <= 1 hides the popup.
-    var onCandidatesChanged: ((Int, Int) -> Void)?
+    /// Candidate list changed: (count, engagement). Count <= 1 hides the popup.
+    var onCandidatesChanged: ((Int, SuggestionEngagement) -> Void)?
 
     private let logger = Logger(subsystem: "com.bonk", category: "InlinePipeline")
     private let generationController = GenerationController()
@@ -115,23 +128,39 @@ final class InlineSuggestionPipeline {
         presentationTask = nil
         currentCandidates = []
         ranked = []
-        selectedIndex = 0
+        engagement = .passive
         onSuggestionChanged?(nil)
-        onCandidatesChanged?(0, 0)
+        onCandidatesChanged?(0, .passive)
         currentKey = nil
         currentEffectiveKey = nil
         isRequesting = false
         onRequestingChanged?(false)
     }
 
-    /// Move the candidate selection (↑/↓ in the popup). Clamps at the ends.
+    /// Move the candidate selection (↑/↓ in the popup).
+    /// Passive + ↓ engages at 0; Passive + ↑ engages at last candidate.
+    /// Engaged + ↑/↓ changes index with boundary clamping.
     func moveSelection(_ delta: Int) {
-        guard ranked.count > 1 else { return }
-        let newIndex = max(0, min(ranked.count - 1, selectedIndex + delta))
-        guard newIndex != selectedIndex else { return }
-        selectedIndex = newIndex
+        guard !ranked.isEmpty else { return }
+        switch engagement {
+        case .passive:
+            let target = delta > 0 ? 0 : max(0, ranked.count - 1)
+            engagement = .engaged(index: target)
+        case .engaged(let current):
+            let target = max(0, min(ranked.count - 1, current + delta))
+            engagement = .engaged(index: target)
+        }
         onSuggestionChanged?(suggestion)
-        onCandidatesChanged?(ranked.count, selectedIndex)
+        onCandidatesChanged?(ranked.count, engagement)
+    }
+
+    /// Reset engagement back to passive (called on typing or backspace).
+    func resetEngagement() {
+        if engagement != .passive {
+            engagement = .passive
+            onSuggestionChanged?(suggestion)
+            onCandidatesChanged?(ranked.count, .passive)
+        }
     }
 
     func accept() -> String {
@@ -264,14 +293,14 @@ final class InlineSuggestionPipeline {
         switch action {
         case .show(let sug, let showPopup):
             ranked = Array(list.map { ($0.source, $0.suggestion) }.prefix(Self.maxCandidates))
-            selectedIndex = 0
+            engagement = .passive
             onSuggestionChanged?(sug)
-            onCandidatesChanged?(showPopup ? ranked.count : 0, selectedIndex)
+            onCandidatesChanged?(showPopup ? ranked.count : 0, .passive)
         case .hide:
             ranked = []
-            selectedIndex = 0
+            engagement = .passive
             onSuggestionChanged?(nil)
-            onCandidatesChanged?(0, 0)
+            onCandidatesChanged?(0, .passive)
         case .delay(let ms):
             presentationTask?.cancel()
             presentationTask = Task { @MainActor [weak self] in

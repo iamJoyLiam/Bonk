@@ -32,7 +32,7 @@ extension NativeTerminalView {
     }
 
     @MainActor
-    func showCandidateList(items: [String], selectedIndex: Int) {
+    func showCandidateList(items: [String], selectedIndex: Int?) {
         // Popup is opt-in (default off) — gate here so nothing is built when disabled.
         guard UserDefaults.standard.bool(forKey: "ai_inline_candidate_popup") else {
             hideCandidateList()

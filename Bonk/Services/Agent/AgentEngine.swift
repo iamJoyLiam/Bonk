@@ -39,6 +39,7 @@ final class AgentEngine {
     private let providerStore: AIProviderStore
     private let conversationStore: AIConversationStore
     let sanitizer = AIOutputSanitizer.self
+    let executionManager = AgentExecutionManager.shared
 
     // Plan approval state
     var currentPlan: AgentPlan?
@@ -366,6 +367,16 @@ final class AgentEngine {
         currentPlan = nil
         streamingResponse = ""
         currentExplanation = nil
+
+        Task {
+            await executionManager.cancelActive()
+        }
+    }
+
+    /// Asynchronous cancellation with guaranteed completion of the escalation cycle.
+    func cancelAsync() async {
+        cancel()
+        await executionManager.cancelActive()
     }
 
     // MARK: - Timeout Helper

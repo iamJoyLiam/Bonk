@@ -55,7 +55,7 @@ import SwiftTerm
                     }
                 }
             }
-            pipeline.onCandidatesChanged = { [weak self] count, selected in
+            pipeline.onCandidatesChanged = { [weak self] count, engagement in
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     // Opt-in popup (default off) — gate both display and ↑/↓ interception.
@@ -66,7 +66,7 @@ import SwiftTerm
                     // Popup rows show the FULL command; ghost keeps showing the
                     // selected candidate's continuation suffix.
                     let items = self.inlinePipeline?.ranked.map { $0.1.fullText ?? $0.1.displayText } ?? []
-                    self.showCandidateList(items: items, selectedIndex: selected)
+                    self.showCandidateList(items: items, selectedIndex: engagement.selectedIndex)
                 }
             }
             pipeline.onRequestingChanged = { [weak self] isReq in
@@ -234,10 +234,29 @@ import SwiftTerm
                 NotificationCenter.default.post(name: .toggleTerminalSearch, object: nil)
                 return nil
             }
-            // Enter — the command is running. Drop any pending suggestion and
-            // never arm a new request, or the ghost would render over the
-            // command's output.
+
+            let isFocused = MainActor.assumeIsolated { window?.firstResponder === self }
+            guard isFocused else { return event }
+
+            let (hasSuggestion, isPopupVisible, candidateCount, popupEnabled, engagement) = MainActor.assumeIsolated {
+                let sug = self.inlinePipeline?.suggestion != nil
+                let listVisible = self.candidateListOverlay != nil &&
+                    !(self.candidateListOverlay?.isHidden ?? true) &&
+                    (self.candidateListOverlay?.visibleRowCount ?? 0) > 0
+                let count = self.inlinePipeline?.ranked.count ?? 0
+                let enabled = UserDefaults.standard.bool(forKey: "ai_inline_candidate_popup")
+                let eng = self.inlinePipeline?.engagement ?? .passive
+                return (sug, listVisible, count, enabled, eng)
+            }
+
+            // Enter behavior contract:
+            // - Engaged + Enter: User explicitly navigated via ↑/↓ -> Accept selected candidate
+            // - Normal / Passive + Enter: User did NOT navigate -> 100% forward to Shell (NEVER hijack!)
             if keyCode == 36 || keyCode == 76 {
+                if hasSuggestion, engagement.isEngaged, modifiers.isEmpty {
+                    acceptSuggestion()
+                    return nil
+                }
                 MainActor.assumeIsolated {
                     self.pendingCompletionTask?.cancel()
                     self.pendingCompletionTask = nil
@@ -257,16 +276,7 @@ import SwiftTerm
                 )
             }
 
-            let isFocused = MainActor.assumeIsolated { window?.firstResponder === self }
-            guard isFocused else { return event }
-
-            let hasSuggestion = MainActor.assumeIsolated { self.inlinePipeline?.suggestion != nil }
-
             if hasSuggestion {
-                let (candidateCount, popupEnabled) = MainActor.assumeIsolated {
-                    (self.inlinePipeline?.ranked.count ?? 0,
-                     UserDefaults.standard.bool(forKey: "ai_inline_candidate_popup"))
-                }
                 if popupEnabled, candidateCount > 1, modifiers.isEmpty {
                     if keyCode == 125 {
                         // ↓ — next candidate (Warp-style popup navigation).
@@ -423,7 +433,7 @@ import SwiftTerm
                 // suggestion may be stale (generated for an earlier typed
                 // prefix mid-LLM-stream). Never duplicate what the user typed.
                 let payloadText: String
-                let (cursorX, cursorY) = self.terminal.getCursorLocation()
+                let (_, cursorY) = self.terminal.getCursorLocation()
                 if cursorY >= 0, cursorY < self.terminal.rows,
                    let line = self.terminal.getLine(row: cursorY) {
                     let raw = line.translateToString(trimRight: true)

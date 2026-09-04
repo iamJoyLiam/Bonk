@@ -6,7 +6,7 @@ import SwiftData
 private struct AgentToolContext {
     let llmProvider: any LLMProvider
     let sshService: SSHNetworkService
-    let hybridExec: (@Sendable (String) async throws -> String)? // v3.3 — multiplexed channel when available
+    let hybridExec: (@Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> String)? // v3.3 — multiplexed channel when available
     let hostName: String?
     let conversation: AIConversationRecord?
     let context: ModelContext?
@@ -42,8 +42,10 @@ extension AgentEngine {
         let llmProvider = LLMProviderFactory.provider(
             for: provider, apiKey: apiKey, workload: .agentToolLoop
         )
-        let hybridExec: (@Sendable (String) async throws -> String)? = if let session = hybridSession {
-            { @Sendable command async throws -> String in try await session.executeHybrid(command) }
+        let hybridExec: (@Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> String)? = if let session = hybridSession {
+            { @Sendable command, registerHandle async throws -> String in
+                try await session.executeHybrid(command, registerHandle: registerHandle)
+            }
         } else { nil }
         let toolContext = AgentToolContext(
             llmProvider: llmProvider,
@@ -87,6 +89,15 @@ extension AgentEngine {
                 }
                 return
             }
+        }
+
+        if Task.isCancelled {
+            appendAgentMessage(
+                .system,
+                content: "用户已取消 Agent 任务。",
+                conversation: toolContext.conversation, context: toolContext.context
+            )
+            return
         }
 
         // Loop reached iteration limit without natural termination:
@@ -240,6 +251,16 @@ extension AgentEngine {
         _ command: String,
         toolContext: AgentToolContext
     ) async -> String {
+        guard !Task.isCancelled else {
+            let message = "Command cancelled by user."
+            appendAgentMessage(
+                .commandOutput, content: message, command: command,
+                status: .failed,
+                conversation: toolContext.conversation, context: toolContext.context
+            )
+            return message
+        }
+
         appendAgentMessage(
             .commandOutput, content: "", command: command,
             status: .running,
@@ -322,10 +343,15 @@ extension AgentEngine {
             let sshService = toolContext.sshService
             let output = try await withTimeout(seconds: 30) {
                 if let exec = hybridExec {
-                    return try await exec(command)
+                    return try await exec(command) { handle in
+                        Task { await AgentExecutionManager.shared.registerActive(handle) }
+                    }
                 }
-                return try await sshService.executeCommand(command)
+                return try await sshService.executeCommand(command) { handle in
+                    Task { await AgentExecutionManager.shared.registerActive(handle) }
+                }
             }
+            await AgentExecutionManager.shared.clearActive()
             let duration = Date().timeIntervalSince(start)
             let guarded = OutputGuard.guardOutput(output)
             let message = guarded.content.isEmpty ? "(no output)" : guarded.content
@@ -344,7 +370,8 @@ extension AgentEngine {
             OperationLog.shared.record(command: command, output: message, success: true)
             return message
         } catch {
-            let message = "Error: \(error.localizedDescription)"
+            await AgentExecutionManager.shared.clearActive()
+            let message = Task.isCancelled ? "Command was cancelled by user." : "Error: \(error.localizedDescription)"
             if let last = agentMessages.last, last.role == .commandOutput, last.command == command, last.status == .running {
                 agentMessages.removeLast()
             }
