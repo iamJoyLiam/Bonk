@@ -48,6 +48,8 @@ final class InlineSuggestionPipeline {
 
     private var currentKey: String?
     private var currentEffectiveKey: String?
+    private var lastKeystrokeTime: Date?
+    private var presentationTask: Task<Void, Never>?
 
     init(
         providerStore: AIProviderStore = .shared,
@@ -65,6 +67,7 @@ final class InlineSuggestionPipeline {
     // MARK: - Public
 
     func request(snapshot: CommandContextSnapshot) {
+        lastKeystrokeTime = Date()
         let typed = snapshot.inputBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
         guard typed.count >= 2 else {
             cancel()
@@ -108,6 +111,8 @@ final class InlineSuggestionPipeline {
 
     func cancel() {
         generationController.cancelAll()
+        presentationTask?.cancel()
+        presentationTask = nil
         currentCandidates = []
         ranked = []
         selectedIndex = 0
@@ -192,7 +197,7 @@ final class InlineSuggestionPipeline {
         }
 
         let rankedList = CandidateRanker.rank(candidates: localCandidates, isRejected: isRejected)
-        setRankedCandidates(rankedList, generation: generation)
+        setRankedCandidates(rankedList, typed: typed, generation: generation)
 
         // Cache the top local candidate for parity with previous commit behavior.
         if let k = key, let first = ranked.first, !first.1.text.isEmpty {
@@ -230,23 +235,55 @@ final class InlineSuggestionPipeline {
             await self.llmSource.stream(for: snapshot, typed: typed, generation: generation, cacheKey: k) { text in
                 guard self.generationController.isCurrent(generation) else { return }
                 let sug = Suggestion(text: text, displayText: text).withFullCommand(typed: typed)
-                self.commitLLM(sug, key: k, generation: generation, effectiveKey: effectiveKey)
+                self.commitLLM(sug, typed: typed, key: k, generation: generation, effectiveKey: effectiveKey)
             }
         }
     }
 
-    /// Replace the pipeline candidate list using ranked CommandCandidates.
-    private func setRankedCandidates(_ list: [CommandCandidate], generation: UInt64) {
+    /// Replace the pipeline candidate list using ranked CommandCandidates and presentation policy.
+    private func setRankedCandidates(_ list: [CommandCandidate], typed: String, generation: UInt64) {
+        guard generationController.isCurrent(generation) else { return }
+        let now = Date()
+        let isTypingFast = lastKeystrokeTime.map { now.timeIntervalSince($0) < 0.15 } ?? false
+        applyPresentation(list: list, typed: typed, isTypingFast: isTypingFast, generation: generation)
+    }
+
+    private func applyPresentation(
+        list: [CommandCandidate],
+        typed: String,
+        isTypingFast: Bool,
+        generation: UInt64
+    ) {
         guard generationController.isCurrent(generation) else { return }
         currentCandidates = list
-        ranked = Array(list.map { ($0.source, $0.suggestion) }.prefix(Self.maxCandidates))
-        selectedIndex = 0
-        onSuggestionChanged?(suggestion)
-        onCandidatesChanged?(ranked.count, selectedIndex)
+        let action = InlinePresentationPolicy.evaluate(
+            ranked: list,
+            inputBuffer: typed,
+            isTypingFast: isTypingFast
+        )
+        switch action {
+        case .show(let sug, let showPopup):
+            ranked = Array(list.map { ($0.source, $0.suggestion) }.prefix(Self.maxCandidates))
+            selectedIndex = 0
+            onSuggestionChanged?(sug)
+            onCandidatesChanged?(showPopup ? ranked.count : 0, selectedIndex)
+        case .hide:
+            ranked = []
+            selectedIndex = 0
+            onSuggestionChanged?(nil)
+            onCandidatesChanged?(0, 0)
+        case .delay(let ms):
+            presentationTask?.cancel()
+            presentationTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(ms) * 1_000_000)
+                guard let self, self.generationController.isCurrent(generation), !Task.isCancelled else { return }
+                self.applyPresentation(list: list, typed: typed, isTypingFast: false, generation: generation)
+            }
+        }
     }
 
     /// LLM stream commit — routes through CandidateRanker without force-promoting above deterministic candidates.
-    private func commitLLM(_ sug: Suggestion, key: String?, generation: UInt64, effectiveKey: String) {
+    private func commitLLM(_ sug: Suggestion, typed: String, key: String?, generation: UInt64, effectiveKey: String) {
         guard generationController.isCurrent(generation) else { return }
         let isRejected: (String) -> Bool = { [self] suffix in
             cache.isRejected(key: effectiveKey, suffix: suffix)
@@ -262,7 +299,7 @@ final class InlineSuggestionPipeline {
         let existingNonLLM = currentCandidates.filter { $0.source != llmSource.name }
         let allCandidates = existingNonLLM + [llmCandidate]
         let rankedList = CandidateRanker.rank(candidates: allCandidates, isRejected: isRejected)
-        setRankedCandidates(rankedList, generation: generation)
+        setRankedCandidates(rankedList, typed: typed, generation: generation)
 
         if let k = key, !sug.text.isEmpty { cache.store(suffix: sug.text, for: k) }
         if key == nil, !sug.text.isEmpty { cache.store(suffix: sug.text, for: effectiveKey) }
