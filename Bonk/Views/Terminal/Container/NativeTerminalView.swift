@@ -28,13 +28,28 @@ import SwiftTerm
             didSet { bindPipeline() }
         }
 
+        private nonisolated(unsafe) var pendingCompletionTask: Task<Void, Never>?
+
         private func bindPipeline() {
             guard let pipeline = inlinePipeline else { return }
             pipeline.onSuggestionChanged = { [weak self] sug in
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     if let s = sug {
-                        self.showGhost(text: s.displayText)
+                        let textToDisplay: String
+                        let (_, cursorY) = self.terminal.getCursorLocation()
+                        if cursorY >= 0, cursorY < self.terminal.rows,
+                           let line = self.terminal.getLine(row: cursorY) {
+                            let raw = line.translateToString(trimRight: true)
+                            textToDisplay = CommandEditor.alignedAcceptSuffix(suggestion: s.displayText, rawLine: raw) ?? s.displayText
+                        } else {
+                            textToDisplay = s.displayText
+                        }
+                        if !textToDisplay.isEmpty {
+                            self.showGhost(text: textToDisplay)
+                        } else {
+                            self.hideGhost(reason: "aligned-empty")
+                        }
                     } else {
                         self.hideGhost(reason: "pipeline-nil")
                     }
@@ -224,6 +239,8 @@ import SwiftTerm
             // command's output.
             if keyCode == 36 || keyCode == 76 {
                 MainActor.assumeIsolated {
+                    self.pendingCompletionTask?.cancel()
+                    self.pendingCompletionTask = nil
                     self.inlinePipeline?.cancel()
                     self.hideGhost(reason: "enter")
                 }
@@ -270,6 +287,8 @@ import SwiftTerm
                 if keyCode == 53 {
                     // Esc — dismiss only.
                     MainActor.assumeIsolated {
+                        self.pendingCompletionTask?.cancel()
+                        self.pendingCompletionTask = nil
                         self.inlinePipeline?.rejectCurrent()
                         self.hideGhost(reason: "esc")
                     }
@@ -280,6 +299,7 @@ import SwiftTerm
                 // feedback; only Esc (below) marks the suggestion rejected,
                 // otherwise the rejection cache poisons future suggestions.
                 MainActor.assumeIsolated {
+                    self.pendingCompletionTask?.cancel()
                     self.inlinePipeline?.cancel()
                     self.hideGhost(reason: "other-key")
                 }
@@ -287,10 +307,11 @@ import SwiftTerm
 
             if shouldSchedule {
                 // A new request is starting — drop any stale ghost text so the
-                // old suggestion doesn't linger while the model thinks.
+                // old suggestion doesn't linger while typing continues.
                 MainActor.assumeIsolated {
-                    hideGhost(reason: "new-typing")
-                    scheduleCompletion()
+                    self.inlinePipeline?.cancel()
+                    self.hideGhost(reason: "new-typing")
+                    self.scheduleCompletion()
                 }
             }
             return event
@@ -348,8 +369,13 @@ import SwiftTerm
         // MARK: - Completion Flow
 
         private func scheduleCompletion() {
-            // Pipeline owns debounce+generation; View just triggers.
-            requestCompletion()
+            pendingCompletionTask?.cancel()
+            pendingCompletionTask = Task { @MainActor [weak self] in
+                // Allow SwiftTerm keyDown to finish and update inputBuffer / line state
+                try? await Task.sleep(for: .milliseconds(35))
+                guard !Task.isCancelled, let self else { return }
+                self.requestCompletion()
+            }
         }
 
         @MainActor

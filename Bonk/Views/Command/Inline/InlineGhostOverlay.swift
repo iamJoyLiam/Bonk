@@ -20,7 +20,7 @@ final class InlineGhostOverlay: NSView {
         didSet { needsDisplay = true }
     }
 
-    var textColor: NSColor = .tertiaryLabelColor {
+    var textColor: NSColor = NSColor.textColor.withAlphaComponent(0.48) {
         didSet { needsDisplay = true }
     }
 
@@ -58,12 +58,13 @@ final class InlineGhostOverlay: NSView {
     }
 }
 
-/// Warp-style candidate list drawn above the cursor: ↑/↓ moves the selection,
-/// Tab accepts the selected row. Native vibrancy panel (NSVisualEffectView),
-/// layer-backed, capped rows, width measured only when content changes.
+/// Warp-style candidate list drawn near the cursor: ↑/↓ moves the selection,
+/// Tab accepts the selected row. Frosted translucent panel, layer-backed,
+/// clear text, selection highlight and keyboard hint footer.
 final class InlineCandidateListOverlay: NSView {
     /// Hard cap of visible rows — keeps the panel compact and redraws cheap.
     static let maxVisibleRows = 5
+    static let footerHeight: CGFloat = 20
 
     var items: [String] = [] {
         didSet {
@@ -73,7 +74,7 @@ final class InlineCandidateListOverlay: NSView {
             cachedWidth = capped
                 .map { ($0 as NSString).size(withAttributes: [.font: font]).width }
                 .max() ?? 0
-            needsDisplay = true
+            contentView.needsDisplay = true
         }
     }
     private var itemsCache: [String] = []
@@ -82,29 +83,29 @@ final class InlineCandidateListOverlay: NSView {
     var selectedIndex = 0 {
         didSet {
             guard selectedIndex != oldValue else { return }
-            needsDisplay = true
+            contentView.needsDisplay = true
         }
     }
 
-    var font: NSFont = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular) {
+    var font: NSFont = .monospacedSystemFont(ofSize: 12, weight: .regular) {
         didSet {
             guard font != oldValue else { return }
             cachedWidth = itemsCache
                 .map { ($0 as NSString).size(withAttributes: [.font: font]).width }
                 .max() ?? 0
-            needsDisplay = true
+            contentView.needsDisplay = true
         }
     }
 
-    /// Row height derived from font metrics — set by the presenter.
-    var rowHeight: CGFloat = 0 {
+    var rowHeight: CGFloat = 22 {
         didSet {
             guard rowHeight != oldValue else { return }
-            needsDisplay = true
+            contentView.needsDisplay = true
         }
     }
 
     private let effectView = NSVisualEffectView()
+    private lazy var contentView = CandidateContentView(owner: self)
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -118,12 +119,25 @@ final class InlineCandidateListOverlay: NSView {
 
     private func setup() {
         wantsLayer = true
-        layer?.cornerRadius = 6
-        layer?.masksToBounds = true
+        layer?.cornerRadius = 8
+        layer?.masksToBounds = false
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = 0.28
+        layer?.shadowRadius = 8
+        layer?.shadowOffset = CGSize(width: 0, height: -2)
+        layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.3).cgColor
+        layer?.borderWidth = 1
+
+        effectView.wantsLayer = true
+        effectView.layer?.cornerRadius = 8
+        effectView.layer?.masksToBounds = true
         effectView.material = .popover
-        effectView.blendingMode = .behindWindow
+        effectView.blendingMode = .withinWindow
         effectView.state = .active
         addSubview(effectView)
+
+        contentView.wantsLayer = true
+        addSubview(contentView)
     }
 
     override var isFlipped: Bool {
@@ -133,33 +147,22 @@ final class InlineCandidateListOverlay: NSView {
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         effectView.frame = bounds
+        contentView.frame = bounds
     }
 
     override func setFrameOrigin(_ newOrigin: NSPoint) {
         super.setFrameOrigin(newOrigin)
         effectView.frame = bounds
+        contentView.frame = bounds
     }
 
-    override func draw(_: NSRect) {
-        guard !itemsCache.isEmpty, rowHeight > 0 else { return }
-        for (index, item) in itemsCache.enumerated() {
-            let row = NSRect(x: 0, y: CGFloat(index) * rowHeight, width: bounds.width, height: rowHeight)
-            if index == selectedIndex {
-                NSColor.controlAccentColor.withAlphaComponent(0.22).setFill()
-                NSBezierPath(rect: row).fill()
-            }
-            let color: NSColor = index == selectedIndex ? .labelColor : .secondaryLabelColor
-            // 8pt horizontal inset keeps text off the panel edge.
-            (item as NSString).draw(
-                in: row.insetBy(dx: 8, dy: 0),
-                withAttributes: [.font: font, .foregroundColor: color]
-            )
-        }
-    }
-
-    /// Widest row width in points (cached — measured only when items/font change).
     func measuredWidth() -> CGFloat {
-        cachedWidth
+        max(180, cachedWidth + 36)
+    }
+
+    func totalHeight() -> CGFloat {
+        guard !itemsCache.isEmpty, rowHeight > 0 else { return 0 }
+        return CGFloat(itemsCache.count) * rowHeight + Self.footerHeight + 8
     }
 
     var visibleRowCount: Int {
@@ -168,5 +171,96 @@ final class InlineCandidateListOverlay: NSView {
 
     override func hitTest(_: NSPoint) -> NSView? {
         nil
+    }
+
+    fileprivate final class CandidateContentView: NSView {
+        weak var owner: InlineCandidateListOverlay?
+
+        init(owner: InlineCandidateListOverlay) {
+            self.owner = owner
+            super.init(frame: .zero)
+        }
+
+        required init?(coder: NSCoder) { fatalError() }
+
+        override var isFlipped: Bool { true }
+
+        override func draw(_: NSRect) {
+            guard let owner, !owner.itemsCache.isEmpty, owner.rowHeight > 0 else { return }
+
+            let iconFont = NSFont.systemFont(ofSize: 10, weight: .semibold)
+            let iconColor = NSColor.controlAccentColor
+            let paddingY: CGFloat = 4
+            let paddingX: CGFloat = 6
+
+            for (index, item) in owner.itemsCache.enumerated() {
+                let rowRect = NSRect(
+                    x: paddingX,
+                    y: paddingY + CGFloat(index) * owner.rowHeight,
+                    width: bounds.width - paddingX * 2,
+                    height: owner.rowHeight
+                )
+
+                if index == owner.selectedIndex {
+                    let path = NSBezierPath(roundedRect: rowRect, xRadius: 5, yRadius: 5)
+                    NSColor.controlAccentColor.withAlphaComponent(0.24).setFill()
+                    path.fill()
+                }
+
+                // AI Sparkle indicator
+                let iconRect = NSRect(x: rowRect.minX + 6, y: rowRect.midY - 6, width: 12, height: 12)
+                ("✦" as NSString).draw(
+                    in: iconRect,
+                    withAttributes: [
+                        .font: iconFont,
+                        .foregroundColor: index == owner.selectedIndex ? iconColor : NSColor.tertiaryLabelColor
+                    ]
+                )
+
+                let textColor: NSColor = index == owner.selectedIndex ? .labelColor : .secondaryLabelColor
+                let textRect = NSRect(
+                    x: rowRect.minX + 22,
+                    y: rowRect.origin.y + (owner.rowHeight - (owner.font.pointSize + 4)) / 2,
+                    width: rowRect.width - 26,
+                    height: owner.rowHeight
+                )
+                (item as NSString).draw(
+                    in: textRect,
+                    withAttributes: [
+                        .font: owner.font,
+                        .foregroundColor: textColor,
+                    ]
+                )
+            }
+
+            // Footer separator & hint
+            let footerY = bounds.height - InlineCandidateListOverlay.footerHeight
+            NSColor.separatorColor.withAlphaComponent(0.2).setStroke()
+            let line = NSBezierPath()
+            line.move(to: NSPoint(x: paddingX, y: footerY))
+            line.line(to: NSPoint(x: bounds.width - paddingX, y: footerY))
+            line.lineWidth = 0.5
+            line.stroke()
+
+            let footerFont = NSFont.systemFont(ofSize: 9.5, weight: .regular)
+            let footerText = "⇥ 补全   ↑↓ 选择   Esc 关闭" as NSString
+            let footerRect = NSRect(
+                x: paddingX + 4,
+                y: footerY + 3,
+                width: bounds.width - paddingX * 2,
+                height: 14
+            )
+            footerText.draw(
+                in: footerRect,
+                withAttributes: [
+                    .font: footerFont,
+                    .foregroundColor: NSColor.tertiaryLabelColor,
+                ]
+            )
+        }
+
+        override func hitTest(_: NSPoint) -> NSView? {
+            nil
+        }
     }
 }

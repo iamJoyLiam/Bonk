@@ -161,18 +161,26 @@ extension NativeTerminalView {
             height: cell.height
         )
 
-        // Anchor the candidate popup so its bottom edge sits on the cursor row's top,
-        // clamped inside the view; below the cursor row when there is no room above.
+        // Anchor the candidate popup with a 4pt gap: below the cursor row by default,
+        // or above the cursor row if there is not enough room below.
         if let list = candidateListOverlay, !list.isHidden, list.visibleRowCount > 0, list.rowHeight > 0 {
-            let listHeight = CGFloat(list.visibleRowCount) * list.rowHeight
-            let listWidth = min(list.measuredWidth() + 16, bounds.width)
-            let x = min(originX, max(0, bounds.width - listWidth))
-            let topOfCursorRow = bounds.height - CGFloat(cursorY) * cell.height
-            var y = topOfCursorRow - listHeight
-            if y < 0 {
-                y = min(bounds.height - CGFloat(cursorY + 1) * cell.height, bounds.height - listHeight)
+            let listHeight = list.totalHeight()
+            let listWidth = min(list.measuredWidth(), bounds.width - 16)
+            let x = min(originX, max(8, bounds.width - listWidth - 8))
+            let cursorRowBottom = bounds.height - CGFloat(cursorY + 1) * cell.height
+            let cursorRowTop = bounds.height - CGFloat(cursorY) * cell.height
+
+            // In non-flipped coordinate space (0 at bottom, bounds.height at top):
+            // Try placing below the cursor row:
+            var y = cursorRowBottom - listHeight - 4
+            if y < 4 {
+                // Not enough room below, place above cursor row:
+                y = cursorRowTop + 4
+                if y + listHeight > bounds.height - 4 {
+                    y = max(4, bounds.height - listHeight - 4)
+                }
             }
-            list.frame = NSRect(x: x, y: max(0, y), width: listWidth, height: listHeight)
+            list.frame = NSRect(x: x, y: y, width: listWidth, height: listHeight)
         }
     }
 }
