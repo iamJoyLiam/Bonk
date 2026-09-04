@@ -245,7 +245,7 @@ struct AIChatSidebarView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .top, spacing: 6) {
                     Image(systemName: "sparkles")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(isInputFocused ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.secondary))
                         .padding(.top, 4)
 
@@ -291,9 +291,9 @@ struct AIChatSidebarView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.top, 8)
-                .padding(.bottom, 2)
+                .padding(.horizontal, 9)
+                .padding(.top, 7)
+                .padding(.bottom, 3)
 
                 HStack(spacing: 6) {
                     modeMenu
@@ -305,49 +305,40 @@ struct AIChatSidebarView: View {
 
                     if engine.isProcessing {
                         Button { cancelCurrentTask() } label: {
-                            HStack(spacing: 4) {
+                            HStack(spacing: 3) {
                                 Image(systemName: "stop.fill")
-                                    .font(.system(size: 9, weight: .bold))
+                                    .font(.system(size: 8, weight: .bold))
                                 Text(i18n.t(.cancel))
-                                    .font(.system(size: 11, weight: .medium))
+                                    .font(.system(size: 10, weight: .medium))
                             }
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Color.red)
-                            .clipShape(Capsule())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                         .transition(.opacity)
                     } else {
                         Button { submit() } label: {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .font(.system(size: 20))
-                                .foregroundStyle(
-                                    !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                        ? Color.accentColor
-                                        : Color.secondary.opacity(0.3)
-                                )
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 11, weight: .bold))
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
                         .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 7)
                 .padding(.bottom, 6)
             }
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
                     .fill(Color(nsColor: .controlBackgroundColor))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
                     .stroke(
-                        isInputFocused ? Color(nsColor: .controlAccentColor).opacity(0.75) : Color(nsColor: .separatorColor).opacity(0.55),
-                        lineWidth: isInputFocused ? 1.5 : 1
+                        isInputFocused ? Color.accentColor.opacity(0.8) : Color(nsColor: .separatorColor).opacity(0.4),
+                        lineWidth: 1
                     )
             )
-            .shadow(color: Color.black.opacity(isInputFocused ? 0.08 : 0.02), radius: 4, y: 1)
         }
         .padding(.horizontal, AppStyle.spacingML)
         .padding(.vertical, AppStyle.spacingS)

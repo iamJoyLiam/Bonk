@@ -31,6 +31,7 @@ final class AgentEngine {
     // Agent-specific state
     var agentMessages: [AgentMessage] = []
     var pendingConfirmation: PendingCommand?
+    var activeRuntime: AgentRuntime?
 
     private var currentTask: Task<Void, Never>?
 
@@ -358,6 +359,8 @@ final class AgentEngine {
         currentTask?.cancel()
         currentTask = nil
         isProcessing = false
+        activeRuntime?.cancel()
+        activeRuntime = nil
         if let pending = pendingConfirmation {
             pending.continuation(false)
             pendingConfirmation = nil

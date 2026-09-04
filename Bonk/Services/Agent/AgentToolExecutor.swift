@@ -42,93 +42,96 @@ extension AgentEngine {
         let llmProvider = LLMProviderFactory.provider(
             for: provider, apiKey: apiKey, workload: .agentToolLoop
         )
-        let hybridExec: (@Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> String)? = if let session = hybridSession {
-            { @Sendable command, registerHandle async throws -> String in
-                try await session.executeHybrid(command, registerHandle: registerHandle)
-            }
-        } else { nil }
-        let toolContext = AgentToolContext(
-            llmProvider: llmProvider,
-            sshService: sshService, hybridExec: hybridExec, hostName: hostName,
-            conversation: conversation, context: context
+
+        let modelGateway = LLMProviderModelGateway(provider: llmProvider)
+        let contextProvider = DefaultAgentContextProvider(
+            hostInfo: hostName
+        )
+        let permissionPolicy = DefaultAgentPermissionPolicy(accessMode: AgentEngine.accessMode)
+        let runtime = AgentRuntime(
+            contextProvider: contextProvider,
+            modelGateway: modelGateway,
+            permissionPolicy: permissionPolicy,
+            executionManager: executionManager,
+            maxIterations: AgentEngine.maxAgentIterations
         )
 
-        let systemPrompt = CustomInstructions.buildSystemPrompt(base: AgentPrompts.toolSystemPrompt)
-        var messages: [LLMMessage] = [
-            .system(systemPrompt),
-            .user(input),
-        ]
+        self.activeRuntime = runtime
+        defer {
+            if self.activeRuntime === runtime {
+                self.activeRuntime = nil
+            }
+        }
 
-        let maxIterations = AgentEngine.maxAgentIterations
-        let terminationGuard = TerminationGuard()
-        for iteration in 0 ..< maxIterations {
-            guard !Task.isCancelled else { break }
-            let result = await runToolIteration(
-                iteration: iteration, input: input,
-                toolContext: toolContext, messages: messages,
-                terminationGuard: terminationGuard
-            )
-            messages = result.messages
-            if result.finished {
-                // If loop finished and last message wasn't an assistant answer, request final synthesis
-                let lastMessageIsAssistant = messages.last?.role == .assistant && !(messages.last?.content.isEmpty ?? true)
-                if !lastMessageIsAssistant {
-                    let finalPrompt = "Based on all command outputs above, please provide your final conclusion and answer the user's original request: '\(input)'. Do not call any tools."
-                    messages.append(.user(finalPrompt))
-                    if let finalTurn = try? await toolContext.llmProvider.chat(
-                        messages: messages, maxTokens: 2048, disableReasoning: false
-                    ) {
-                        let answer = finalTurn.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !answer.isEmpty {
-                            appendAgentMessage(
-                                .assistant, content: answer,
-                                conversation: toolContext.conversation, context: toolContext.context
-                            )
-                        }
-                    }
+        let executor: @Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> (output: String, exitCode: Int32) = { command, registerHandle in
+            if let session = hybridSession {
+                let out = try await session.executeHybrid(command, registerHandle: registerHandle)
+                return (out, 0)
+            } else {
+                let out = try await sshService.executeCommand(command, registerHandle: registerHandle)
+                return (out, 0)
+            }
+        }
+
+        let eventStream = runtime.run(input: input, executor: executor)
+
+        for await event in eventStream {
+            switch event {
+            case .userMessage:
+                break
+
+            case let .assistantText(text):
+                if let lastIndex = agentMessages.indices.last, agentMessages[lastIndex].role == .assistant {
+                    agentMessages[lastIndex].content = text
+                } else {
+                    appendAgentMessage(.assistant, content: text, conversation: conversation, context: context)
                 }
-                return
-            }
-        }
 
-        if Task.isCancelled {
-            appendAgentMessage(
-                .system,
-                content: "用户已取消 Agent 任务。",
-                conversation: toolContext.conversation, context: toolContext.context
-            )
-            return
-        }
+            case let .thinking(thought):
+                if let lastIndex = agentMessages.indices.last, agentMessages[lastIndex].role == .assistant {
+                    agentMessages[lastIndex].thinking = thought
+                }
 
-        // Loop reached iteration limit without natural termination:
-        // Ask the model for a final synthesis rather than leaving the user with an error.
-        let finalPrompt = "All terminal inspection commands have been completed. Based on all command outputs above, please provide your final conclusion and answer the user's original request: '\(input)'. Do not call any tools."
-        messages.append(.user(finalPrompt))
-        do {
-            let finalTurn = try await toolContext.llmProvider.chat(
-                messages: messages,
-                maxTokens: 2048,
-                disableReasoning: false
-            )
-            let answer = finalTurn.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !answer.isEmpty {
-                appendAgentMessage(
-                    .assistant,
-                    content: answer,
-                    conversation: toolContext.conversation,
-                    context: toolContext.context
+            case let .toolCallStarted(_, _, inputArgs):
+                let argsDict = (try? JSONSerialization.jsonObject(with: Data(inputArgs.utf8)) as? [String: Any]) ?? [:]
+                let cmd = (argsDict["command"] as? String) ?? inputArgs
+                let msg = AgentMessage(
+                    role: .commandOutput,
+                    content: "",
+                    command: cmd,
+                    status: .running
                 )
-                return
-            }
-        } catch {
-            // Fall back to polite summary notice
-        }
+                agentMessages.append(msg)
 
-        appendAgentMessage(
-            .system,
-            content: String(format: "已执行完成 %d 轮终端命令，请参考上方执行结果。", maxIterations),
-            conversation: toolContext.conversation, context: toolContext.context
-        )
+            case let .permissionRequested(id, description, level):
+                let riskLevel: PendingCommand.RiskLevel = (level == .confirmRequired ? .moderate : .dangerous)
+                let confirmed = await requestConfirmation(command: description, riskLevel: riskLevel)
+                runtime.resolvePermission(id: id, approved: confirmed)
+
+            case .permissionResolved:
+                pendingConfirmation = nil
+
+            case let .toolOutput(_, output):
+                if let lastIndex = agentMessages.indices.last, agentMessages[lastIndex].role == .commandOutput {
+                    agentMessages[lastIndex].content = output
+                }
+
+            case let .toolCompleted(_, exitCode, duration):
+                if let lastIndex = agentMessages.indices.last, agentMessages[lastIndex].role == .commandOutput {
+                    agentMessages[lastIndex].status = (exitCode == 0 ? .success : .failed)
+                    agentMessages[lastIndex].duration = duration
+                }
+
+            case let .executionInterrupted(reason):
+                appendAgentMessage(.system, content: reason, conversation: conversation, context: context)
+
+            case let .error(err):
+                appendAgentMessage(.system, content: err, conversation: conversation, context: context)
+
+            case .completed:
+                break
+            }
+        }
     }
 
     /// One model round-trip: call the API, surface the model's text, execute

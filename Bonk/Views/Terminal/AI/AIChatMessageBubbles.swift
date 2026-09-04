@@ -60,38 +60,67 @@ extension AIChatSidebarView {
     // MARK: - Regular Bubbles
 
     func bubble(_ msg: AIMessageRecord) -> some View {
-        Group {
+        VStack(alignment: .leading, spacing: 6) {
             if msg.role == .assistant {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.accentColor)
+                    Text("Bonk AI")
+                        .font(.system(size: AppStyle.fontSmall, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Spacer()
+                }
                 MarkdownTextView(
                     content: msg.content,
                     onRun: { code in sessionManager.sendTextToActiveTab(code) }
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                HStack {
-                    Spacer(minLength: AppStyle.spacingXXL)
-                    Text(msg.content)
-                        .font(.system(size: AppStyle.fontRegular))
-                        .textSelection(.enabled)
-                        .padding(.horizontal, AppStyle.spacingML)
-                        .padding(.vertical, AppStyle.spacingM)
-                        .background(Color.accentColor.opacity(AppStyle.opacityBackgroundStrong))
-                        .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
-                                .stroke(Color.accentColor.opacity(0.24), lineWidth: 1)
-                        )
+                HStack(spacing: 6) {
+                    Image(systemName: "person.crop.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text(i18n.lang.hasPrefix("zh") ? "你" : "You")
+                        .font(.system(size: AppStyle.fontSmall, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
                 }
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                Text(msg.content)
+                    .font(.system(size: AppStyle.fontRegular))
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, AppStyle.spacingML)
+                    .padding(.vertical, AppStyle.spacingM)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
+                            .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
+                    )
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     func streamingBubble(_ text: String) -> some View {
-        MarkdownTextView(
-            content: text,
-            onRun: { code in sessionManager.sendTextToActiveTab(code) }
-        )
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+                Text("Bonk AI")
+                    .font(.system(size: AppStyle.fontSmall, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Spacer()
+            }
+            MarkdownTextView(
+                content: text,
+                onRun: { code in sessionManager.sendTextToActiveTab(code) }
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -135,25 +164,44 @@ extension AIChatSidebarView {
     }
 
     private func agentUserContent(_ msg: AgentMessage) -> some View {
-        HStack {
-            Spacer(minLength: AppStyle.spacingXXL)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                Text(i18n.lang.hasPrefix("zh") ? "你" : "You")
+                    .font(.system(size: AppStyle.fontSmall, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
             Text(msg.content)
                 .font(.system(size: AppStyle.fontRegular))
+                .foregroundStyle(.primary)
                 .textSelection(.enabled)
                 .padding(.horizontal, AppStyle.spacingML)
                 .padding(.vertical, AppStyle.spacingM)
-                .background(Color.accentColor.opacity(AppStyle.opacityBackgroundStrong))
-                .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
-                        .stroke(Color.accentColor.opacity(0.24), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
+                        .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
                 )
         }
-        .frame(maxWidth: .infinity, alignment: .trailing)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func agentAssistantContent(_ msg: AgentMessage) -> some View {
         VStack(alignment: .leading, spacing: AppStyle.spacingS) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+                Text("Bonk AI")
+                    .font(.system(size: AppStyle.fontSmall, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Spacer()
+            }
             if let thinking = msg.thinking, !thinking.isEmpty {
                 DisclosureGroup {
                     Text(thinking)
@@ -227,13 +275,21 @@ extension AIChatSidebarView {
             planActionButtons
         }
         .padding(AppStyle.spacingML)
-        .background(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium).fill(Color.blue.opacity(AppStyle.opacityBackgroundSubtle)))
-        .padding(.horizontal, AppStyle.spacingL).padding(.vertical, AppStyle.spacingXS)
+        .background(
+            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
+                .stroke(Color.accentColor.opacity(0.3), lineWidth: 1)
+        )
+        .padding(.horizontal, AppStyle.spacingL)
+        .padding(.vertical, AppStyle.spacingXS)
     }
 
     private func planHeaderView(_ plan: AgentPlan) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: "list.bullet.clipboard").foregroundStyle(.blue)
+            Image(systemName: "list.bullet.clipboard").foregroundStyle(Color.accentColor)
             Text(i18n.t(.executionPlan)).font(.system(size: AppStyle.fontBody, weight: .semibold))
             Spacer()
             let stepsCount = String(format: i18n.t(.stepsCount), plan.steps.count)
@@ -264,25 +320,22 @@ extension AIChatSidebarView {
         HStack(spacing: 8) {
             Button { engine.approvePlan() } label: {
                 Label(i18n.t(.executePlan), systemImage: "play.fill")
-                    .font(.system(size: AppStyle.fontSmall))
-                    .padding(.horizontal, AppStyle.spacingML).padding(.vertical, AppStyle.spacingXS)
-                    .background(Color.accentColor.opacity(AppStyle.opacityBackgroundLight)).clipShape(Capsule())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+
             Button { engine.rejectPlan() } label: {
                 Label(i18n.t(.cancel), systemImage: "xmark")
-                    .font(.system(size: AppStyle.fontSmall))
-                    .padding(.horizontal, AppStyle.spacingML).padding(.vertical, AppStyle.spacingXS)
-                    .background(Color(nsColor: .controlColor)).clipShape(Capsule())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
         }
     }
 
     // MARK: - Confirmation Banner
 
     func agentConfirmationBanner(_ pending: PendingCommand) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 let icon = pending.riskLevel == .dangerous ? "exclamationmark.octagon" : "exclamationmark.triangle"
                 Image(systemName: icon)
@@ -295,8 +348,12 @@ extension AIChatSidebarView {
                 .textSelection(.enabled)
                 .padding(AppStyle.spacingS)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(nsColor: .controlColor).opacity(AppStyle.opacityDisabled))
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .background(Color(nsColor: .textBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
+                        .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
+                )
 
             HStack(spacing: 8) {
                 Button {
@@ -304,37 +361,35 @@ extension AIChatSidebarView {
                     engine.pendingConfirmation = nil
                 } label: {
                     Label(i18n.t(.execute), systemImage: "play.fill")
-                        .font(.system(size: AppStyle.fontSmall))
-                        .padding(.horizontal, AppStyle.spacingML).padding(.vertical, AppStyle.spacingXS)
-                        .background(Color.accentColor.opacity(AppStyle.opacityBackgroundLight))
-                        .clipShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
 
                 Button {
                     pending.continuation(false)
                     engine.pendingConfirmation = nil
                 } label: {
                     Label(i18n.t(.cancel), systemImage: "xmark")
-                        .font(.system(size: AppStyle.fontSmall))
-                        .padding(.horizontal, AppStyle.spacingML).padding(.vertical, AppStyle.spacingXS)
-                        .background(Color(nsColor: .controlColor))
-                        .clipShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
         }
         .padding(AppStyle.spacingML)
         .background(
-            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium)
-                .fill(pending.riskLevel == .dangerous ? Color.red.opacity(AppStyle.opacityStroke) : Color.orange.opacity(AppStyle.opacityStroke))
+            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
+                .stroke(pending.riskLevel == .dangerous ? Color.red.opacity(0.4) : Color.orange.opacity(0.4), lineWidth: 1)
         )
         .padding(.horizontal, AppStyle.spacingL)
         .padding(.vertical, AppStyle.spacingXS)
     }
 }
 
-// MARK: - Agent Tool Execution Card (Auto-collapsible Codex/Cursor style)
+// MARK: - Agent Tool Execution Card (Native macOS Inspector style)
 
 struct AgentToolExecutionCard: View {
     let msg: AgentMessage
@@ -343,7 +398,6 @@ struct AgentToolExecutionCard: View {
 
     init(msg: AgentMessage) {
         self.msg = msg
-        // Auto-expand failed, blocked or running commands; auto-collapse successful ones
         _isExpanded = State(initialValue: msg.status == .failed || msg.status == .blocked)
     }
 
@@ -357,7 +411,7 @@ struct AgentToolExecutionCard: View {
                     }
                 }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: 7) {
                     if msg.status == .running {
                         ProgressView()
                             .controlSize(.small)
@@ -368,14 +422,18 @@ struct AgentToolExecutionCard: View {
                             .foregroundStyle(status.color)
                     }
 
+                    Text("$")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+
                     if let command = msg.command, !command.isEmpty {
                         Text(command)
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
                             .lineLimit(1)
                             .truncationMode(.middle)
                     } else {
                         Text("Terminal Command")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 11, weight: .medium))
                     }
 
                     Spacer()
@@ -387,30 +445,31 @@ struct AgentToolExecutionCard: View {
                     }
 
                     if msg.status != .running && !msg.content.isEmpty {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        Image(systemName: "chevron.right")
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(.tertiary)
+                            .rotationEffect(isExpanded ? .degrees(90) : .zero)
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
             // Collapsible stdout block
             if isExpanded && !msg.content.isEmpty {
-                Divider().opacity(0.3)
+                Divider().opacity(0.35)
                 ZStack(alignment: .topTrailing) {
                     ScrollView(.horizontal, showsIndicators: false) {
                         Text(msg.content)
                             .font(.system(size: 11, design: .monospaced))
                             .textSelection(.enabled)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 7)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .background(Color(nsColor: .textBackgroundColor).opacity(0.7))
+                    .background(Color(nsColor: .textBackgroundColor))
 
                     Button {
                         NSPasteboard.general.clearContents()
@@ -430,21 +489,26 @@ struct AgentToolExecutionCard: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 3)
-                        .background(Color(nsColor: .controlBackgroundColor).opacity(0.85))
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .background(Color(nsColor: .controlBackgroundColor))
+                        .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
+                                .stroke(Color(nsColor: .separatorColor).opacity(0.3), lineWidth: 1)
+                        )
                     }
-                    .buttonStyle(.plain)
-                    .padding(6)
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .padding(5)
                 }
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
                 .fill(Color(nsColor: .controlBackgroundColor))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.4), lineWidth: 1)
+            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
         )
     }
 }

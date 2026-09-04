@@ -3,14 +3,34 @@ import SwiftUI
 
 /// A message in an Agent conversation.
 struct AgentMessage: Identifiable {
-    let id = UUID()
+    let id: UUID
     let role: Role
-    let content: String
+    var content: String
     let command: String?
-    let thinking: String?
-    let status: CommandStatus?
-    let duration: TimeInterval?
-    let timestamp = Date()
+    var thinking: String?
+    var status: CommandStatus?
+    var duration: TimeInterval?
+    let timestamp: Date
+
+    init(
+        id: UUID = UUID(),
+        role: Role,
+        content: String,
+        command: String? = nil,
+        thinking: String? = nil,
+        status: CommandStatus? = nil,
+        duration: TimeInterval? = nil,
+        timestamp: Date = Date()
+    ) {
+        self.id = id
+        self.role = role
+        self.content = content
+        self.command = command
+        self.thinking = thinking
+        self.status = status
+        self.duration = duration
+        self.timestamp = timestamp
+    }
 
     enum Role {
         case user
@@ -85,22 +105,6 @@ struct AgentMessage: Identifiable {
             case .readOnly: .blue
             }
         }
-    }
-
-    init(
-        role: Role,
-        content: String,
-        command: String? = nil,
-        thinking: String? = nil,
-        status: CommandStatus? = nil,
-        duration: TimeInterval? = nil
-    ) {
-        self.role = role
-        self.content = content
-        self.command = command
-        self.thinking = thinking
-        self.status = status
-        self.duration = duration
     }
 
     /// Convert to AI API message format.
