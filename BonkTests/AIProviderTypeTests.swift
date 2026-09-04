@@ -36,6 +36,10 @@ final class AIProviderTypeTests: XCTestCase {
         XCTAssertFalse(AIProviderType.ollama.needsAPIKey)
     }
 
+    func testCustomDoesNotNeedAPIKey() {
+        XCTAssertFalse(AIProviderType.custom.needsAPIKey)
+    }
+
     func testCopilotDoesNotNeedAPIKey() {
         XCTAssertFalse(AIProviderType.copilot.needsAPIKey)
     }

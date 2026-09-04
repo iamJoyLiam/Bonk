@@ -27,10 +27,7 @@ extension AIProviderDetailSheet {
 
     func fetchModels() {
         syncHeadersToDraft()
-        guard draft.type.needsAPIKey || draft.type == .ollama || draft.type == .custom else {
-            return
-        }
-        if draft.type.needsAPIKey, draft.type != .custom,
+        if draft.type.needsAPIKey,
            draft.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         {
             fetchedModels = []; modelFetchError = nil; return

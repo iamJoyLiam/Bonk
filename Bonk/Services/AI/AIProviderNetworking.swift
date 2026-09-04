@@ -20,7 +20,7 @@ enum AIProviderNetworking {
             request.setValue(anthropicVersion, forHTTPHeaderField: "anthropic-version")
         } else if type == .gemini {
             request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
-        } else if type.needsAPIKey, !apiKey.isEmpty {
+        } else if !apiKey.isEmpty {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
         for (key, value) in extraHeaders where !value.isEmpty {
