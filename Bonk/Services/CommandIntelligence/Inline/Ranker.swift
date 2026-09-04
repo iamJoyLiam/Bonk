@@ -41,7 +41,7 @@ struct InlineRanker: Sendable {
             .map { $0.0 }
     }
 
-    private func score(suggestion: Suggestion, source: String) -> Double {
+    func score(suggestion: Suggestion, source: String) -> Double {
         // Base priority by source
         let base: Double
         switch source {
@@ -59,3 +59,43 @@ struct InlineRanker: Sendable {
         return base - lenPenalty + tokenBonus + profileBoost + rejectedPenalty
     }
 }
+
+// MARK: - CandidateRanker (Authority-Enforced Ranking)
+
+/// Ranks CommandCandidates by Authority Tier first, then by rawScore within the same tier.
+struct CandidateRanker: Sendable {
+    /// Authority priority: deterministic > contextual > generative.
+    /// Encapsulated internally so outside code cannot treat authority as a raw numeric sort key.
+    private static func tierPriority(_ authority: CandidateAuthority) -> Int {
+        switch authority {
+        case .deterministic: return 3
+        case .contextual: return 2
+        case .generative: return 1
+        }
+    }
+
+    /// Ranks candidates: Authority tier determines boundary first; same tier sorts by rawScore.
+    /// Excludes rejected suggestions, and deduplicates by suggestion text (keeping the higher-ranked entry).
+    static func rank(
+        candidates: [CommandCandidate],
+        isRejected: (String) -> Bool = { _ in false }
+    ) -> [CommandCandidate] {
+        var seenTexts = Set<String>()
+        return candidates
+            .filter { candidate in
+                !isRejected(candidate.suggestion.text)
+            }
+            .sorted { lhs, rhs in
+                let lhsTier = tierPriority(lhs.authority)
+                let rhsTier = tierPriority(rhs.authority)
+                if lhsTier != rhsTier {
+                    return lhsTier > rhsTier
+                }
+                return lhs.rawScore > rhs.rawScore
+            }
+            .filter { candidate in
+                seenTexts.insert(candidate.suggestion.text).inserted
+            }
+    }
+}
+

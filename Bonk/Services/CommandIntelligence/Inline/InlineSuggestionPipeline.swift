@@ -18,6 +18,7 @@ final class InlineSuggestionPipeline {
     /// Ranked candidate list, best first. The ghost shows the selected entry;
     /// count > 1 renders the Warp-style ↑/↓ popup above the cursor.
     private(set) var ranked: [(String, Suggestion)] = []
+    private var currentCandidates: [CommandCandidate] = []
     private var selectedIndex = 0
     /// Selected suggestion (ghost text) — computed from ranked + selectedIndex.
     var suggestion: Suggestion? {
@@ -81,6 +82,7 @@ final class InlineSuggestionPipeline {
 
     func cancel() {
         generationController.cancelAll()
+        currentCandidates = []
         ranked = []
         selectedIndex = 0
         onSuggestionChanged?(nil)
@@ -131,28 +133,40 @@ final class InlineSuggestionPipeline {
         currentKey = key
         currentEffectiveKey = effectiveKey
 
-        var candidates: [(String, Suggestion)] = []
-        if let sug = knownWordsSource.syncSuggestion(for: snapshot, typed: typed) {
-            candidates.append((knownWordsSource.name, sug))
-        }
-        if let k = key, let cached = cache.cachedSuffix(for: k) {
-            let display = SuggestionFormatter.displaySuffix(cached, typed: typed)
-            let sug = Suggestion(text: cached, displayText: display)
-            candidates.append(("cache", sug))
-        }
-        if let sug = historySource.syncSuggestion(for: snapshot, typed: typed) {
-            candidates.append((historySource.name, sug))
-        }
-        if let sug = vocabularySource.syncSuggestion(for: snapshot, typed: typed) {
-            candidates.append((vocabularySource.name, sug))
-        }
-
         let isRejected: (String) -> Bool = { [self] suffix in
             cache.isRejected(key: effectiveKey, suffix: suffix)
                 || (key != nil && cache.isRejected(key: key!, suffix: suffix))
         }
-        let withFullCommand = candidates.map { ($0.0, $0.1.withFullCommand(typed: typed)) }
-        setRanked(ranker.sortedCandidates(in: withFullCommand, isRejected: isRejected), generation: generation)
+
+        var localCandidates: [CommandCandidate] = []
+        func appendLocal(source: String, sug: Suggestion) {
+            let full = sug.withFullCommand(typed: typed)
+            let sc = ranker.score(suggestion: full, source: source)
+            localCandidates.append(CommandCandidate(
+                source: source,
+                authority: .deterministic,
+                suggestion: full,
+                rawScore: sc
+            ))
+        }
+
+        if let sug = knownWordsSource.syncSuggestion(for: snapshot, typed: typed) {
+            appendLocal(source: knownWordsSource.name, sug: sug)
+        }
+        if let k = key, let cached = cache.cachedSuffix(for: k) {
+            let display = SuggestionFormatter.displaySuffix(cached, typed: typed)
+            let sug = Suggestion(text: cached, displayText: display)
+            appendLocal(source: "cache", sug: sug)
+        }
+        if let sug = historySource.syncSuggestion(for: snapshot, typed: typed) {
+            appendLocal(source: historySource.name, sug: sug)
+        }
+        if let sug = vocabularySource.syncSuggestion(for: snapshot, typed: typed) {
+            appendLocal(source: vocabularySource.name, sug: sug)
+        }
+
+        let rankedList = CandidateRanker.rank(candidates: localCandidates, isRejected: isRejected)
+        setRankedCandidates(rankedList, generation: generation)
 
         // Cache the top local candidate for parity with previous commit behavior.
         if let k = key, let first = ranked.first, !first.1.text.isEmpty {
@@ -171,7 +185,7 @@ final class InlineSuggestionPipeline {
         }
         let effectiveKey = currentEffectiveKey ?? (key ?? "local|\(snapshot.hostKey ?? "")|\(typed)")
 
-        // LLM (async streaming, may replace local with smarter)
+        // LLM (async streaming, evaluated via CandidateRanker alongside local candidates)
         guard let k = key else {
             isRequesting = false
             onRequestingChanged?(false)
@@ -195,26 +209,36 @@ final class InlineSuggestionPipeline {
         }
     }
 
-    /// Replace the pipeline candidate list (local tier).
-    private func setRanked(_ list: [(String, Suggestion)], generation: UInt64) {
+    /// Replace the pipeline candidate list using ranked CommandCandidates.
+    private func setRankedCandidates(_ list: [CommandCandidate], generation: UInt64) {
         guard generationController.isCurrent(generation) else { return }
-        var seen = Set<String>()
-        ranked = Array(list.filter { seen.insert($0.1.text).inserted }.prefix(Self.maxCandidates))
+        currentCandidates = list
+        ranked = Array(list.map { ($0.source, $0.suggestion) }.prefix(Self.maxCandidates))
         selectedIndex = 0
         onSuggestionChanged?(suggestion)
         onCandidatesChanged?(ranked.count, selectedIndex)
     }
 
-    /// LLM stream commit — inserts at the top (replacing any previous LLM entry),
-    /// local candidates stay accessible via ↓, matching previous override semantics.
+    /// LLM stream commit — routes through CandidateRanker without force-promoting above deterministic candidates.
     private func commitLLM(_ sug: Suggestion, key: String?, generation: UInt64, effectiveKey: String) {
         guard generationController.isCurrent(generation) else { return }
-        let remaining = ranked.filter { $0.0 != llmSource.name && $0.1.text != sug.text }
-        ranked = Array(([(llmSource.name, sug)] + remaining).prefix(Self.maxCandidates))
-        selectedIndex = 0
+        let isRejected: (String) -> Bool = { [self] suffix in
+            cache.isRejected(key: effectiveKey, suffix: suffix)
+                || (key != nil && cache.isRejected(key: key!, suffix: suffix))
+        }
+        let llmCandidate = CommandCandidate(
+            source: llmSource.name,
+            authority: .generative,
+            suggestion: sug,
+            rawScore: ranker.score(suggestion: sug, source: llmSource.name)
+        )
+        // Keep non-LLM candidates, append incoming LLM candidate, and re-rank via CandidateRanker
+        let existingNonLLM = currentCandidates.filter { $0.source != llmSource.name }
+        let allCandidates = existingNonLLM + [llmCandidate]
+        let rankedList = CandidateRanker.rank(candidates: allCandidates, isRejected: isRejected)
+        setRankedCandidates(rankedList, generation: generation)
+
         if let k = key, !sug.text.isEmpty { cache.store(suffix: sug.text, for: k) }
         if key == nil, !sug.text.isEmpty { cache.store(suffix: sug.text, for: effectiveKey) }
-        onSuggestionChanged?(suggestion)
-        onCandidatesChanged?(ranked.count, selectedIndex)
     }
 }
