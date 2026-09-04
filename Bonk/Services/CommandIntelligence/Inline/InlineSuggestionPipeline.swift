@@ -50,6 +50,8 @@ final class InlineSuggestionPipeline {
     private let cache: InlineSuggestionCache
     private let ranker = InlineRanker()
     private let providerStore: AIProviderStore
+    private let candidatePool: CandidatePool
+    private let reranker: AIReranker
 
     private let knownWordsSource = KnownWordsCandidateSource()
     private let historySource = HistoryCandidateSource()
@@ -66,10 +68,14 @@ final class InlineSuggestionPipeline {
 
     init(
         providerStore: AIProviderStore = .shared,
-        cache: InlineSuggestionCache = InlineSuggestionCache()
+        cache: InlineSuggestionCache = InlineSuggestionCache(),
+        candidatePool: CandidatePool = CandidatePool(),
+        reranker: AIReranker = .shared
     ) {
         self.providerStore = providerStore
         self.cache = cache
+        self.candidatePool = candidatePool
+        self.reranker = reranker
         self.llmSource = LLMCandidateSource(providerStore: providerStore, cache: cache)
     }
 
@@ -81,8 +87,9 @@ final class InlineSuggestionPipeline {
 
     func request(snapshot: CommandContextSnapshot) {
         lastKeystrokeTime = Date()
-        let typed = snapshot.inputBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard typed.count >= 2 else {
+        let trimmedLeading = String(snapshot.inputBuffer.drop(while: { $0.isWhitespace || $0.isNewline }))
+        let typed = trimmedLeading.trimmingCharacters(in: .newlines)
+        guard typed.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else {
             cancel()
             return
         }
@@ -198,35 +205,16 @@ final class InlineSuggestionPipeline {
                 || (key != nil && cache.isRejected(key: key!, suffix: suffix))
         }
 
-        var localCandidates: [CommandCandidate] = []
-        func appendLocal(source: String, sug: Suggestion) {
-            let full = sug.withFullCommand(typed: typed)
-            let sc = ranker.score(suggestion: full, source: source)
-            localCandidates.append(CommandCandidate(
-                source: source,
-                authority: .deterministic,
-                suggestion: full,
-                rawScore: sc
-            ))
-        }
+        // P1 Candidate Pool: CLI Spec + History + Vocabulary + KnownWords + Cache, hard-filtered & local-ranked
+        let candidates = candidatePool.buildCandidates(
+            typed: typed,
+            snapshot: snapshot,
+            cache: cache,
+            cacheKey: key,
+            isRejected: isRejected
+        )
 
-        if let sug = knownWordsSource.syncSuggestion(for: snapshot, typed: typed) {
-            appendLocal(source: knownWordsSource.name, sug: sug)
-        }
-        if let k = key, let cached = cache.cachedSuffix(for: k) {
-            let display = SuggestionFormatter.displaySuffix(cached, typed: typed)
-            let sug = Suggestion(text: cached, displayText: display)
-            appendLocal(source: "cache", sug: sug)
-        }
-        if let sug = historySource.syncSuggestion(for: snapshot, typed: typed) {
-            appendLocal(source: historySource.name, sug: sug)
-        }
-        if let sug = vocabularySource.syncSuggestion(for: snapshot, typed: typed) {
-            appendLocal(source: vocabularySource.name, sug: sug)
-        }
-
-        let rankedList = CandidateRanker.rank(candidates: localCandidates, isRejected: isRejected)
-        setRankedCandidates(rankedList, typed: typed, generation: generation)
+        setRankedCandidates(candidates, typed: typed, generation: generation)
 
         // Cache the top local candidate for parity with previous commit behavior.
         if let k = key, let first = ranked.first, !first.1.text.isEmpty {
@@ -239,34 +227,31 @@ final class InlineSuggestionPipeline {
 
     private func performLLM(snapshot: CommandContextSnapshot, typed: String, generation: UInt64) async {
         guard generationController.isCurrent(generation) else { return }
+        guard !currentCandidates.isEmpty else { return }
 
-        let key: String? = currentKey ?? providerStore.activeProvider.map {
-            InlineSuggestionCache.cacheKey(provider: $0, snapshot: snapshot, typed: typed)
-        }
-        let effectiveKey = currentEffectiveKey ?? (key ?? "local|\(snapshot.hostKey ?? "")|\(typed)")
+        let provider = providerStore.activeProvider
+        guard let p = provider, (!p.type.needsAPIKey || !p.apiKey.isEmpty) else { return }
 
-        // LLM (async streaming, evaluated via CandidateRanker alongside local candidates)
-        guard let k = key else {
-            isRequesting = false
-            onRequestingChanged?(false)
-            return
-        }
+        // P1 Optional AI Reranking: LLM ONLY reranks candidates in Candidate Pool; never invents commands.
         isRequesting = true
         onRequestingChanged?(true)
-        generationController.runWork { [weak self] in
-            guard let self else { return }
-            defer {
-                if self.generationController.isCurrent(generation) {
-                    self.isRequesting = false
-                    self.onRequestingChanged?(false)
-                }
-            }
-            await self.llmSource.stream(for: snapshot, typed: typed, generation: generation, cacheKey: k) { text in
-                guard self.generationController.isCurrent(generation) else { return }
-                let sug = Suggestion(text: text, displayText: text).withFullCommand(typed: typed)
-                self.commitLLM(sug, typed: typed, key: k, generation: generation, effectiveKey: effectiveKey)
+        defer {
+            if generationController.isCurrent(generation) {
+                isRequesting = false
+                onRequestingChanged?(false)
             }
         }
+
+        let reranked = await reranker.rerank(
+            candidates: currentCandidates,
+            typed: typed,
+            snapshot: snapshot,
+            provider: p,
+            apiKey: p.apiKey
+        )
+
+        guard generationController.isCurrent(generation) else { return }
+        setRankedCandidates(reranked, typed: typed, generation: generation)
     }
 
     /// Replace the pipeline candidate list using ranked CommandCandidates and presentation policy.
