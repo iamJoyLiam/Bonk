@@ -26,6 +26,8 @@ struct CommandContextSnapshot: Sendable, Equatable {
     var knownWords: [String]
     /// Optional user selection for Chat/Agent context (nil for Inline).
     var selection: String?
+    /// Optional cursor offset inside inputBuffer.
+    var cursorOffset: Int?
     /// Snapshot creation time — for TTL/debugging, not for equality.
     var timestamp: Date
 
@@ -39,6 +41,7 @@ struct CommandContextSnapshot: Sendable, Equatable {
         lastExitCode: Int? = nil,
         knownWords: [String] = [],
         selection: String? = nil,
+        cursorOffset: Int? = nil,
         timestamp: Date = Date()
     ) {
         self.inputBuffer = inputBuffer
@@ -50,6 +53,7 @@ struct CommandContextSnapshot: Sendable, Equatable {
         self.lastExitCode = lastExitCode
         self.knownWords = knownWords
         self.selection = selection
+        self.cursorOffset = cursorOffset
         self.timestamp = timestamp
     }
 

@@ -31,11 +31,12 @@ final class GenerationController {
         workTask = nil
     }
 
-    func scheduleDebounced(_ work: @escaping @MainActor () async -> Void) {
+    func scheduleDebounced(delayMs: Int? = nil, _ work: @escaping @MainActor () async -> Void) {
         debounceTask?.cancel()
+        let delay = delayMs ?? debounceMilliseconds
         let gen = generation
         debounceTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(Double(debounceMilliseconds)))
+            try? await Task.sleep(for: .milliseconds(Double(delay)))
             guard !Task.isCancelled else { return }
             // Generation check: if cancelled, gen != current
             await work()

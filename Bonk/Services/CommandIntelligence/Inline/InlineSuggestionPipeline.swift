@@ -74,10 +74,36 @@ final class InlineSuggestionPipeline {
         // Tier 1: deterministic local candidates (knownWords/cache/history) —
         // instant, no debounce. Warp-style: local ghost appears immediately.
         performLocal(snapshot: snapshot, typed: typed, generation: gen)
-        // Tier 2: LLM — debounced so streaming never fights typing/Tab.
-        generationController.scheduleDebounced { [weak self] in
+
+        // Tier 2: Evaluate TriggerPolicy before scheduling LLM
+        let confidence = evaluateConfidence(for: currentCandidates, typed: typed)
+        let decision = InlineTriggerPolicy.evaluate(
+            typed: typed,
+            snapshot: snapshot,
+            confidence: confidence
+        )
+        guard decision.shouldRequestLLM else {
+            logger.debug("Inline LLM skipped by policy: \(decision.reason.rawValue)")
+            return
+        }
+
+        // Tier 2: LLM — debounced by policy delay so streaming never fights typing/Tab.
+        generationController.scheduleDebounced(delayMs: decision.debounceMs) { [weak self] in
             await self?.performLLM(snapshot: snapshot, typed: typed, generation: gen)
         }
+    }
+
+    private func evaluateConfidence(for candidates: [CommandCandidate], typed: String) -> DeterministicConfidence {
+        guard let top = candidates.first else {
+            return .low
+        }
+        if top.authority == .deterministic {
+            if top.rawScore >= 75.0 || top.isExactPrefixMatch {
+                return .high(candidate: top.suggestion)
+            }
+            return .medium(candidates: candidates.map(\.suggestion))
+        }
+        return .low
     }
 
     func cancel() {
