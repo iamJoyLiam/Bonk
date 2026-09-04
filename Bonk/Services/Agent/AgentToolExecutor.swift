@@ -57,19 +57,65 @@ extension AgentEngine {
             .user(input),
         ]
 
-        for iteration in 0 ..< Self.maxAgentIterations {
+        let maxIterations = AgentEngine.maxAgentIterations
+        let terminationGuard = TerminationGuard()
+        for iteration in 0 ..< maxIterations {
             guard !Task.isCancelled else { break }
             let result = await runToolIteration(
                 iteration: iteration, input: input,
-                toolContext: toolContext, messages: messages
+                toolContext: toolContext, messages: messages,
+                terminationGuard: terminationGuard
             )
             messages = result.messages
-            if result.finished { return }
+            if result.finished {
+                // If loop finished and last message wasn't an assistant answer, request final synthesis
+                let lastMessageIsAssistant = messages.last?.role == .assistant && !(messages.last?.content.isEmpty ?? true)
+                if !lastMessageIsAssistant {
+                    let finalPrompt = "Based on all command outputs above, please provide your final conclusion and answer the user's original request: '\(input)'. Do not call any tools."
+                    messages.append(.user(finalPrompt))
+                    if let finalTurn = try? await toolContext.llmProvider.chat(
+                        messages: messages, maxTokens: 2048, disableReasoning: false
+                    ) {
+                        let answer = finalTurn.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !answer.isEmpty {
+                            appendAgentMessage(
+                                .assistant, content: answer,
+                                conversation: toolContext.conversation, context: toolContext.context
+                            )
+                        }
+                    }
+                }
+                return
+            }
+        }
+
+        // Loop reached iteration limit without natural termination:
+        // Ask the model for a final synthesis rather than leaving the user with an error.
+        let finalPrompt = "All terminal inspection commands have been completed. Based on all command outputs above, please provide your final conclusion and answer the user's original request: '\(input)'. Do not call any tools."
+        messages.append(.user(finalPrompt))
+        do {
+            let finalTurn = try await toolContext.llmProvider.chat(
+                messages: messages,
+                maxTokens: 2048,
+                disableReasoning: false
+            )
+            let answer = finalTurn.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !answer.isEmpty {
+                appendAgentMessage(
+                    .assistant,
+                    content: answer,
+                    conversation: toolContext.conversation,
+                    context: toolContext.context
+                )
+                return
+            }
+        } catch {
+            // Fall back to polite summary notice
         }
 
         appendAgentMessage(
             .system,
-            content: String(format: "Reached iteration limit (%d tool rounds).", Self.maxAgentIterations),
+            content: String(format: "已执行完成 %d 轮终端命令，请参考上方执行结果。", maxIterations),
             conversation: toolContext.conversation, context: toolContext.context
         )
     }
@@ -80,7 +126,8 @@ extension AgentEngine {
         iteration: Int,
         input: String,
         toolContext: AgentToolContext,
-        messages: [LLMMessage]
+        messages: [LLMMessage],
+        terminationGuard: TerminationGuard
     ) async -> (messages: [LLMMessage], finished: Bool) {
         let turn: AgentChatTurn
         do {
@@ -135,9 +182,28 @@ extension AgentEngine {
             content: turn.text,
             toolCalls: turn.toolCalls
         ))
-        nextMessages.append(contentsOf: await executeToolCalls(
+        let toolResults = await executeToolCalls(
             turn.toolCalls, toolContext: toolContext
-        ))
+        )
+        nextMessages.append(contentsOf: toolResults)
+
+        // Evaluate progress via TerminationGuard to detect anti-patterns / loops
+        for (call, result) in zip(turn.toolCalls, toolResults) {
+            let eval = terminationGuard.recordAndEvaluate(
+                toolName: call.name,
+                arguments: call.argumentsJSON,
+                output: result.content
+            )
+            switch eval {
+            case .proceed:
+                break
+            case .warnDuplicate(let toolName):
+                nextMessages.append(.system("提示：你刚刚重复调用了 '\(toolName)' 并得到了相同输出。如果已有足够信息，请停止调用工具并直接给出最终结论。"))
+            case .terminateLoop(let reason):
+                appendAgentMessage(.system, content: reason, conversation: toolContext.conversation, context: toolContext.context)
+                return (nextMessages, true)
+            }
+        }
         return (nextMessages, false)
     }
 
@@ -175,12 +241,16 @@ extension AgentEngine {
         toolContext: AgentToolContext
     ) async -> String {
         appendAgentMessage(
-            .system, content: "Running: \(command)",
-            conversation: toolContext.conversation, context: toolContext.context
+            .commandOutput, content: "", command: command,
+            status: .running,
+            conversation: nil, context: nil
         )
 
         let risk = CommandSafety.classify(command)
         if risk == .blocked {
+            if let last = agentMessages.last, last.role == .commandOutput, last.command == command, last.status == .running {
+                agentMessages.removeLast()
+            }
             let message = "Blocked: \(command) violates the safety policy."
             appendAgentMessage(
                 .commandOutput, content: message, command: command,
@@ -191,18 +261,58 @@ extension AgentEngine {
             return message
         }
 
-        if risk != .safe {
-            let riskLevel: PendingCommand.RiskLevel = risk == .dangerous ? .dangerous : .moderate
-            let confirmed = await requestConfirmation(command: command, riskLevel: riskLevel)
-            guard confirmed else {
-                let message = "Skipped by user."
-                appendAgentMessage(
-                    .commandOutput, content: message, command: command,
-                    status: .skipped,
-                    conversation: toolContext.conversation, context: toolContext.context
-                )
-                mirror(command: command, status: .skipped, output: message, toolContext: toolContext)
-                return message
+        let accessMode = AgentEngine.accessMode
+        if accessMode == .readOnly && risk != .safe {
+            if let last = agentMessages.last, last.role == .commandOutput, last.command == command, last.status == .running {
+                agentMessages.removeLast()
+            }
+            let message = "已处于只读模式（Read-Only），已阻止修改命令：\(command)"
+            appendAgentMessage(
+                .commandOutput, content: message, command: command,
+                status: .blocked,
+                conversation: toolContext.conversation, context: toolContext.context
+            )
+            mirror(command: command, status: .blocked, output: message, toolContext: toolContext)
+            return message
+        }
+
+        if accessMode == .fullAccess {
+            // Full Access: automatically execute safe and moderate commands!
+            // Only confirm dangerous commands (e.g. rm -rf, mkfs, dd)
+            if risk == .dangerous {
+                let confirmed = await requestConfirmation(command: command, riskLevel: .dangerous)
+                guard confirmed else {
+                    if let last = agentMessages.last, last.role == .commandOutput, last.command == command, last.status == .running {
+                        agentMessages.removeLast()
+                    }
+                    let message = "Skipped by user."
+                    appendAgentMessage(
+                        .commandOutput, content: message, command: command,
+                        status: .skipped,
+                        conversation: toolContext.conversation, context: toolContext.context
+                    )
+                    mirror(command: command, status: .skipped, output: message, toolContext: toolContext)
+                    return message
+                }
+            }
+        } else {
+            // Supervised mode: confirm moderate and dangerous commands
+            if risk != .safe {
+                let riskLevel: PendingCommand.RiskLevel = risk == .dangerous ? .dangerous : .moderate
+                let confirmed = await requestConfirmation(command: command, riskLevel: riskLevel)
+                guard confirmed else {
+                    if let last = agentMessages.last, last.role == .commandOutput, last.command == command, last.status == .running {
+                        agentMessages.removeLast()
+                    }
+                    let message = "Skipped by user."
+                    appendAgentMessage(
+                        .commandOutput, content: message, command: command,
+                        status: .skipped,
+                        conversation: toolContext.conversation, context: toolContext.context
+                    )
+                    mirror(command: command, status: .skipped, output: message, toolContext: toolContext)
+                    return message
+                }
             }
         }
 
@@ -217,8 +327,11 @@ extension AgentEngine {
                 return try await sshService.executeCommand(command)
             }
             let duration = Date().timeIntervalSince(start)
-            let truncated = String(output.prefix(4000))
-            let message = truncated.isEmpty ? "(no output)" : truncated
+            let guarded = OutputGuard.guardOutput(output)
+            let message = guarded.content.isEmpty ? "(no output)" : guarded.content
+            if let last = agentMessages.last, last.role == .commandOutput, last.command == command, last.status == .running {
+                agentMessages.removeLast()
+            }
             appendAgentMessage(
                 .commandOutput, content: message, command: command,
                 status: .success, duration: duration,
@@ -228,10 +341,13 @@ extension AgentEngine {
                 command: command, status: .success, duration: duration,
                 output: message, toolContext: toolContext
             )
-            OperationLog.shared.record(command: command, output: truncated, success: true)
+            OperationLog.shared.record(command: command, output: message, success: true)
             return message
         } catch {
             let message = "Error: \(error.localizedDescription)"
+            if let last = agentMessages.last, last.role == .commandOutput, last.command == command, last.status == .running {
+                agentMessages.removeLast()
+            }
             appendAgentMessage(
                 .commandOutput, content: message, command: command,
                 status: .failed,
