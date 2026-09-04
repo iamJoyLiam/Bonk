@@ -7,7 +7,9 @@ import os.log
 /// Fallback: fast-path check `channel.isActive`, then use `true` (no output) + 5s timeout to avoid `echo` PTY echo and output copy
 actor SSHKeepAlive {
     private var keepaliveTask: Task<Void, Never>?
-    private let interval: Duration = .seconds(30)
+    /// 15s × 3 misses ≈ 45-60s to detect an idle drop — must beat typical
+    /// sshd ClientAliveInterval so recovery starts before the user types.
+    private let interval: Duration = .seconds(15)
     private let maxMissed: Int = 3
     private var missedResponses: Int = 0
 

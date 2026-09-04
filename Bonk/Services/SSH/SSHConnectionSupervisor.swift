@@ -66,22 +66,31 @@ actor SSHConnectionSupervisor {
     private var probe: (@Sendable () async -> Bool)?
     private var reconnect: (@Sendable () async -> Bool)?
     private var onProbedAlive: (@Sendable () -> Void)?
+    private var onReconnecting: (@Sendable (_ attempt: Int, _ maxAttempts: Int) -> Void)?
+    private var onExhausted: (@Sendable () -> Void)?
     private var hostIdentifier: String = "unknown"
     private var engineName: String = "unknown"
+    private var maxAttempts: Int = 7
 
-    /// Configure supervisor with probe/reconnect closures. Called once per connection.
+    /// Configure supervisor with probe/reconnect closures and lifecycle callbacks. Called once per connection.
     func configure(
         host: String,
         engine: String,
+        maxAttempts: Int = 7,
         probe: @escaping @Sendable () async -> Bool,
         reconnect: @escaping @Sendable () async -> Bool,
-        onProbedAlive: @escaping @Sendable () -> Void
+        onProbedAlive: @escaping @Sendable () -> Void,
+        onReconnecting: (@Sendable (_ attempt: Int, _ maxAttempts: Int) -> Void)? = nil,
+        onExhausted: (@Sendable () -> Void)? = nil
     ) {
         self.hostIdentifier = host
         self.engineName = engine
+        self.maxAttempts = max(1, maxAttempts)
         self.probe = probe
         self.reconnect = reconnect
         self.onProbedAlive = onProbedAlive
+        self.onReconnecting = onReconnecting
+        self.onExhausted = onExhausted
         // Reset state on new connection
         state = .idle
         attemptCount = 0
@@ -187,18 +196,19 @@ actor SSHConnectionSupervisor {
     private func runReconnectPipeline(initialReason: RecoveryReason) async {
         state = .reconnecting(attempt: 1)
         attemptCount = 0
-        let maxAttempts = 7
+        let limit = maxAttempts
         // Exponential backoff: 1s,2s,4s,8s,16s,30s,60s max per spec
         let backoffSequence: [Duration] = [
             .seconds(1), .seconds(2), .seconds(4), .seconds(8),
             .seconds(16), .seconds(30), .seconds(60)
         ]
 
-        while attemptCount < maxAttempts, !Task.isCancelled {
+        while attemptCount < limit, !Task.isCancelled {
             attemptCount += 1
             let attempt = attemptCount
             state = .reconnecting(attempt: attempt)
-            Log.ssh.info("[RECOVERY] reconnect attempt \(attempt)/\(maxAttempts) host=\(self.hostIdentifier, privacy: .public) reason=\(String(describing: initialReason), privacy: .public)")
+            onReconnecting?(attempt, limit)
+            Log.ssh.info("[RECOVERY] reconnect attempt \(attempt)/\(limit) host=\(self.hostIdentifier, privacy: .public) reason=\(String(describing: initialReason), privacy: .public)")
 
             let success = await performReconnect()
 
@@ -213,7 +223,7 @@ actor SSHConnectionSupervisor {
 
             Log.ssh.warning("[RECOVERY] reconnect failed host=\(self.hostIdentifier, privacy: .public) attempt=\(attempt, privacy: .public)")
 
-            if attempt < maxAttempts {
+            if attempt < limit {
                 let delay = backoffSequence[min(attempt - 1, backoffSequence.count - 1)]
                 state = .backoff(delay: delay)
                 Log.ssh.info("[RECOVERY] backoff host=\(self.hostIdentifier, privacy: .public) delay=\(delay, privacy: .public)")
@@ -223,9 +233,10 @@ actor SSHConnectionSupervisor {
         }
 
         // Exhausted
-        Log.ssh.error("[RECOVERY] exhausted host=\(self.hostIdentifier, privacy: .public) attempts=\(maxAttempts, privacy: .public)")
+        Log.ssh.error("[RECOVERY] exhausted host=\(self.hostIdentifier, privacy: .public) attempts=\(limit, privacy: .public)")
         state = .idle
         attemptCount = 0
+        onExhausted?()
     }
 
     private func performReconnect() async -> Bool {

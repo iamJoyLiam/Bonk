@@ -42,8 +42,9 @@ extension OpenSSHBackend {
             "-o", "GlobalKnownHostsFile=/dev/null",
             "-o", "NumberOfPasswordPrompts=1",
             "-o", "ConnectTimeout=10",
-            // Keepalive 30s，3 reconnect
-            "-o", "ServerAliveInterval=30",
+            // Keepalive 15s × 3 misses — beat server-side idle drop so the
+            // reconnect spinner appears before the user's next keystroke
+            "-o", "ServerAliveInterval=15",
             "-o", "ServerAliveCountMax=3",
             "-o", "TCPKeepAlive=yes",
             // P2  QoS ：GCM ， QoS

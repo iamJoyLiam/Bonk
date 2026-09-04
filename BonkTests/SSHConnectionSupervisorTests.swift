@@ -1,8 +1,31 @@
 import XCTest
 @testable import Bonk
 import os
+import NIOCore
 
 final class SSHConnectionSupervisorTests: XCTestCase {
+    // MARK: - Channel-lost error classification
+
+    func testChannelLostClassification() {
+        // SwiftNIO typed errors
+        XCTAssertTrue(SSHChannelLostError.isChannelLost(ChannelError.outputClosed))
+        XCTAssertTrue(SSHChannelLostError.isChannelLost(ChannelError.ioOnClosedChannel))
+        XCTAssertTrue(SSHChannelLostError.isChannelLost(ChannelError.alreadyClosed))
+        XCTAssertTrue(SSHChannelLostError.isChannelLost(ChannelError.eof))
+
+        // POSIX socket death errors
+        XCTAssertTrue(SSHChannelLostError.isChannelLost(POSIXError(.EPIPE)))
+        XCTAssertTrue(SSHChannelLostError.isChannelLost(POSIXError(.ECONNRESET)))
+
+        // SSH service errors
+        XCTAssertTrue(SSHChannelLostError.isChannelLost(SSHServiceError.notConnected))
+
+        // Bridged NSError path (localized description: "未能完成操作。（NIOCore.ChannelError 错误 5。）")
+        let bridged = NSError(domain: "NIOCore.ChannelError", code: 5)
+        XCTAssertTrue(SSHChannelLostError.isChannelLost(bridged))
+        XCTAssertFalse(SSHChannelLostError.isChannelLost(NSError(domain: "Other.Domain", code: 5)))
+    }
+
     func testIdempotentRecovery() async {
         let supervisor = SSHConnectionSupervisor()
         let probeCounter = Counter()
@@ -76,6 +99,34 @@ final class SSHConnectionSupervisorTests: XCTestCase {
         let attempts = await attemptCounter.value()
         XCTAssertGreaterThanOrEqual(attempts, 2)
         await supervisor.reset()
+    }
+
+    func testReconnectingAndExhaustedCallbacks() async {
+        let supervisor = SSHConnectionSupervisor()
+        let reconnectingCounter = Counter()
+        let exhaustedCounter = Counter()
+
+        await supervisor.configure(
+            host: "test", engine: "test",
+            maxAttempts: 2,
+            probe: { false },
+            reconnect: { false },
+            onProbedAlive: {},
+            onReconnecting: { _, _ in Task { await reconnectingCounter.increment() } },
+            onExhausted: { Task { await exhaustedCounter.increment() } }
+        )
+
+        await supervisor.requestRecovery(reason: .writeFailed)
+        // Wait for probe (<10ms) + attempt 1 (<10ms) + backoff (1s) + attempt 2 (<10ms)
+        try? await Task.sleep(for: .milliseconds(1300))
+
+        let reconnectingCalls = await reconnectingCounter.value()
+        let exhaustedCalls = await exhaustedCounter.value()
+
+        XCTAssertEqual(reconnectingCalls, 2, "must notify onReconnecting for each attempt")
+        XCTAssertEqual(exhaustedCalls, 1, "must notify onExhausted after all attempts fail")
+        let state = await supervisor.currentState()
+        XCTAssertEqual(state, .idle)
     }
 }
 

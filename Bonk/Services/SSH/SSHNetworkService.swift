@@ -409,7 +409,7 @@ public actor SSHNetworkService {
                 lastSuccessfulConnectionAt = Date()
                 session.onWriteFailed = { [weak self] in
                     guard let self, self.attemptIDBox.withLockedValue { $0 } == capturedAttemptID else { return }
-                    Task { await self.supervisor.requestRecovery(reason: .writeFailed) }
+                    Task { await self.handlePTYWriteFailed() }
                 }
                 return session
             }
@@ -422,7 +422,7 @@ public actor SSHNetworkService {
         session.generation = capturedAttemptID
         session.onWriteFailed = { [weak self] in
             guard let self, self.attemptIDBox.withLockedValue { $0 } == capturedAttemptID else { return }
-            Task { await self.supervisor.requestRecovery(reason: .writeFailed) }
+            Task { await self.handlePTYWriteFailed() }
         }
         session.start(client: client, cols: cols, rows: rows, termType: termType)
         activePTYSession = session
@@ -440,6 +440,48 @@ public actor SSHNetworkService {
     /// Public recovery entry for SessionManager userRequested - per-session isolation, idempotent per P0.
     public func requestRecovery(reason: RecoveryReason) async {
         await supervisor.requestRecovery(reason: reason)
+    }
+
+    /// Input write hit a dead channel — surface the reconnecting spinner via
+    /// the state stream immediately. Without this the supervisor's probe phase
+    /// (≤5s) leaves the UI on "connected" while keystrokes fail. If the probe
+    /// finds the connection alive, onProbedAlive restores .connected.
+    private func presentReconnectingForChannelLost() {
+        let maxAttempts = max(config?.maxReconnectAttempts ?? 0, ReconnectPolicy.default.maxAttempts)
+        connectionState = .reconnecting(attempt: 1, maxAttempts: maxAttempts)
+        stateContinuation.yield(.reconnecting(attempt: 1, maxAttempts: maxAttempts))
+        Log.ssh.warning("[RECOVERY_UI] input channel lost -> reconnecting spinner")
+    }
+
+    /// Funnel for PTY write failures: flip the state stream to the reconnecting
+    /// spinner first, then run supervisor recovery (probe → reconnect).
+    private func handlePTYWriteFailed() {
+        presentReconnectingForChannelLost()
+        Task { await supervisor.requestRecovery(reason: .writeFailed) }
+    }
+
+    /// Probe found the transport alive — undo the optimistic reconnecting
+    /// spinner presented by handlePTYWriteFailed (transient write failure).
+    private func restoreConnectedAfterProbeAlive() {
+        if case .reconnecting = connectionState {
+            connectionState = .connected
+            stateContinuation.yield(.connected)
+            Log.ssh.info("[RECOVERY_UI] probe alive -> restore connected")
+        }
+    }
+
+    /// Supervisor notified of a new reconnect attempt — update connection state and UI stream.
+    private func updateReconnectingState(attempt: Int, maxAttempts: Int) {
+        connectionState = .reconnecting(attempt: attempt, maxAttempts: maxAttempts)
+        stateContinuation.yield(.reconnecting(attempt: attempt, maxAttempts: maxAttempts))
+        Log.ssh.info("[RECOVERY_UI] reconnecting attempt=\(attempt)/\(maxAttempts)")
+    }
+
+    /// All reconnect attempts exhausted — transition connection state to disconnected.
+    private func handleRecoveryExhausted() {
+        connectionState = .disconnected
+        stateContinuation.yield(.disconnected)
+        Log.ssh.warning("[RECOVERY_UI] recovery exhausted -> disconnected")
     }
 
     /// Set handler for typed auth failures — SessionManager presents AuthRetrySheet (also for reconnect PTYs)
@@ -717,10 +759,12 @@ public actor SSHNetworkService {
         guard let config else { return }
         let hostLabel = "\(config.username)@\(config.host):\(config.port)"
         let engineLabel = usesOpenSSHTransport ? "openssh" : "citadel"
+        let maxAttempts = max(config.maxReconnectAttempts, ReconnectPolicy.default.maxAttempts)
         Task {
             await supervisor.configure(
                 host: hostLabel,
                 engine: engineLabel,
+                maxAttempts: maxAttempts,
                 probe: { [weak self] in
                     guard let self else { return false }
                     return await self.probeLiveness()
@@ -731,9 +775,19 @@ public actor SSHNetworkService {
                 },
                 onProbedAlive: { [weak self] in
                     guard let self else { return }
-                    // Probe alive -> no state change, remain ready; log for diagnostics
+                    // Probe alive -> transport is healthy. Restore the UI if a
+                    // channel-lost write flipped it to the reconnecting spinner.
                     Log.ssh.info("[RECOVERY] probe alive keep ready host=\(hostLabel, privacy: .public)")
+                    Task { await self.restoreConnectedAfterProbeAlive() }
                     Task { await self.supervisor.reset() }
+                },
+                onReconnecting: { [weak self] attempt, limit in
+                    guard let self else { return }
+                    Task { await self.updateReconnectingState(attempt: attempt, maxAttempts: limit) }
+                },
+                onExhausted: { [weak self] in
+                    guard let self else { return }
+                    Task { await self.handleRecoveryExhausted() }
                 }
             )
         }
@@ -896,7 +950,7 @@ public actor SSHNetworkService {
                         } else {
                             session.onWriteFailed = { [weak self] in
                                 guard let self, self.attemptIDBox.withLockedValue({ $0 }) == capturedID else { return }
-                                Task { await self.supervisor.requestRecovery(reason: .writeFailed) }
+                                Task { await self.handlePTYWriteFailed() }
                             }
                             ptySession = session
                             activePTYSession = session
@@ -955,7 +1009,7 @@ public actor SSHNetworkService {
                     let session = PTYSession()
                     session.onWriteFailed = { [weak self] in
                         guard let self, self.attemptIDBox.withLockedValue { $0 } == capturedID else { return }
-                        Task { await self.supervisor.requestRecovery(reason: .writeFailed) }
+                        Task { await self.handlePTYWriteFailed() }
                     }
                     session.start(client: client, cols: ptyConfig.cols, rows: ptyConfig.rows, termType: ptyConfig.termType)
                     let ptyReady = !session.isClosed

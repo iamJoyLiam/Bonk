@@ -7,6 +7,7 @@
 
 import SwiftTerm
 import SwiftUI
+import os.log
 
 extension PaneTerminalView {
     // MARK: - Context Menu
@@ -209,9 +210,12 @@ extension PaneTerminalView {
         Task {
             do {
                 try await sessionManager.sendInput(data, to: tab.id, paneID: paneState.id)
+            } catch let error where SSHChannelLostError.isChannelLost(error) {
+                // Dead channel (idle drop / network change) — recovery is initiated by
+                // the service; suppress raw transport errors to avoid blocking popups.
+                return
             } catch {
-                sessionManager.lastError = error.localizedDescription
-                sessionManager.showError = true
+                Log.session.warning("[INPUT] sendInput failed: \(error.localizedDescription, privacy: .public)")
             }
         }
     }

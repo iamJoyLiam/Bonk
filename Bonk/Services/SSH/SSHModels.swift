@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import NIOCore
 
 // MARK: - Connection Configuration
 
@@ -225,3 +226,43 @@ public enum SSHServiceError: Error, Sendable, LocalizedError {
         }
     }
 }
+
+// MARK: - Connection-death error classification
+
+/// Classifies errors indicating that the underlying SSH transport or channel is dead
+/// (e.g. idle timeout, NAT expiration, network change, sleep/wake).
+/// These should trigger recovery rather than displaying raw modal errors.
+public enum SSHChannelLostError {
+    /// Identifies whether the error represents a lost SSH connection or dead channel.
+    /// Note: "NIOCore.ChannelError error 5" corresponds to `.outputClosed`.
+    public static func isChannelLost(_ error: Error) -> Bool {
+        if let channelError = error as? ChannelError {
+            switch channelError {
+            case .ioOnClosedChannel, .alreadyClosed, .outputClosed, .inputClosed, .eof:
+                return true
+            default:
+                return false
+            }
+        }
+        if let posixError = error as? POSIXError {
+            switch posixError.code {
+            case .EPIPE, .ECONNRESET, .ENOTCONN, .ETIMEDOUT, .EBADF:
+                return true
+            default:
+                break
+            }
+        }
+        if case .notConnected = error as? SSHServiceError {
+            return true
+        }
+        let nsError = error as NSError
+        if nsError.domain == "NIOCore.ChannelError" {
+            return true
+        }
+        if nsError.domain == NSPOSIXErrorDomain && (nsError.code == Int(EPIPE) || nsError.code == Int(ECONNRESET)) {
+            return true
+        }
+        return false
+    }
+}
+
