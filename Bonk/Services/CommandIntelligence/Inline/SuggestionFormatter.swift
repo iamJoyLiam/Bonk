@@ -48,14 +48,52 @@ enum SuggestionFormatter {
     static func normalize(_ raw: String) -> String {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return "" }
+
+        // Strip fenced code blocks if model wrapped the suggestion
+        if text.contains("```") {
+            let parts = text.components(separatedBy: "```")
+            if parts.count >= 2 {
+                let inside = parts[1].components(separatedBy: "\n").dropFirst().joined(separator: "\n")
+                let candidate = inside.isEmpty ? parts[1] : inside
+                text = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                text = text.replacingOccurrences(of: "```", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        // Strip inline backticks `command`
+        if text.hasPrefix("`") && text.hasSuffix("`") && text.count >= 2 {
+            text = String(text.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
         if let newline = text.firstIndex(of: "\n") {
             text = String(text[..<newline]).trimmingCharacters(in: .whitespaces)
         }
-        guard !text.isEmpty else { return "" }
-        if text.contains("```") { return "" }
-        guard text.count <= maxSuggestionChars else { return "" }
+        guard !text.isEmpty, text.count <= maxSuggestionChars else { return "" }
+        if isConversationalOrExplanatory(text) { return "" }
         if let regex = promptLeftoverRegex, regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil { return "" }
         return text
+    }
+
+    /// Detect natural language commentary, explanations, or thinking leaked by models.
+    static func isConversationalOrExplanatory(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        let explanatoryKeywords = [
+            "the user", "user is", "typing", "likely", "looking at", "i can see",
+            "i can", "we can", "based on", "in this context", "partial command",
+            "shell identifier", "here is", "this command", "you can", "you should",
+            "note that", "in order to", "which is", "they're", "they are", "environment based",
+            "explanation:", "suggest:", "suggestion:", "output:", "command:", "assistant:"
+        ]
+        for keyword in explanatoryKeywords {
+            if lower.contains(keyword) {
+                return true
+            }
+        }
+        if text.contains(". ") || text.contains("? ") || text.contains("! ") {
+            return true
+        }
+        return false
     }
 
     /// Full command for popup display: typed prefix + insertion suffix.

@@ -50,29 +50,25 @@ final class LLMCandidateSource: InlineCandidateSource, @unchecked Sendable {
                 ) {
                     guard case let .textDelta(delta) = event else { continue }
                     result += delta
-                    let candidate = SuggestionFormatter.displaySuffix(
-                        SuggestionFormatter.suggestionSuffix(from: buffer.append(delta), typed: typed),
-                        typed: typed
-                    )
-                    guard !candidate.isEmpty, candidate.count <= self.maxChars else { continue }
-                    let displayCandidate = candidate
+                    let rawAccumulated = buffer.append(delta)
+                    guard let adapted = LLMCompletionAdapter.adapt(rawOutput: rawAccumulated, typed: typed) else { continue }
+                    let displayCandidate = adapted.displayText
+                    guard !displayCandidate.isEmpty, displayCandidate.count <= self.maxChars else { continue }
                     // Rejection check on main actor
-                    let rejected = await MainActor.run { cache?.isRejected(key: cacheKey, suffix: displayCandidate) ?? false }
+                    let rejected = await MainActor.run { cache?.isRejected(key: cacheKey, suffix: adapted.text) ?? false }
                     guard !rejected else { continue }
                     await onSuggestion(displayCandidate)
                 }
                 return result
             }
             guard !Task.isCancelled else { return }
-            let suffix = SuggestionFormatter.displaySuffix(
-                SuggestionFormatter.suggestionSuffix(from: response, typed: typed),
-                typed: typed
-            )
+            guard let adapted = LLMCompletionAdapter.adapt(rawOutput: response, typed: typed) else { return }
+            let suffix = adapted.displayText
             guard !suffix.isEmpty else { return }
-            let rejected = await MainActor.run { cache?.isRejected(key: cacheKey, suffix: suffix) ?? false }
+            let rejected = await MainActor.run { cache?.isRejected(key: cacheKey, suffix: adapted.text) ?? false }
             guard !rejected else { return }
             await onSuggestion(suffix)
-            await MainActor.run { cache?.store(suffix: suffix, for: cacheKey) }
+            await MainActor.run { cache?.store(suffix: adapted.text, for: cacheKey) }
         } catch is CancellationError {
             return
         } catch {

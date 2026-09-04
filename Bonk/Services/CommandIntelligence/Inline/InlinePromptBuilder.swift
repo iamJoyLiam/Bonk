@@ -22,8 +22,9 @@ enum InlinePromptBuilder {
             Complete the command they are typing.
 
             Rules:
-            - Output ONLY the text that should be appended after the cursor.
-            - No explanation, no markdown, no code fences, no quotes, no bullet points.
+            - Output ONLY the exact characters to append after the cursor.
+            - STRICTLY FORBIDDEN: Any natural language, conversational sentences, explanations, thoughts or commentary (e.g. "The user is typing...", "Looking at the context..."). Outputting any natural language makes your answer completely invalid.
+            - No markdown, no code fences, no quotes, no bullet points, no reasoning text.
             - Output a single line, no trailing newline, no trailing space.
             - Include one leading ASCII space when starting a new shell token.
             - Include no leading space when finishing the current token.
@@ -32,6 +33,14 @@ enum InlinePromptBuilder {
             - Suggest real flags, file names, and arguments for the user's shell.
             - When the user is typing an identifier or name, prefer values from
               "Likely identifiers/names from recent output" when present.
+
+            Few-shot examples:
+            User typed: "git st" -> completion: "atus"
+            User typed: "git checkout " -> completion: "-b feature/"
+            User typed: "docker rm" -> completion: " -f $(docker ps -aq)"
+            User typed: "docker rmi " -> completion: "$(docker images -q)"
+            User typed: "systemctl rest" -> completion: "art nginx"
+            User typed: "kubectl get " -> completion: "pods -A"
             """,
         ]
         var contextLines: [String] = []
