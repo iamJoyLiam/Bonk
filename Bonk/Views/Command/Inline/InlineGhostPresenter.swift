@@ -16,15 +16,19 @@ extension NativeTerminalView {
         return overlay
     }
 
-    // MARK: - Candidate List Overlay (Warp-style ↑/↓ popup)
+    // MARK: - Persistent Candidate List Overlay (N=1)
 
-    func ensureCandidatePopover() -> InlineCandidatePopoverController {
-        if let candidatePopoverController { return candidatePopoverController }
-        let controller = InlineCandidatePopoverController(owner: self) { [weak self] index in
+    func ensureCandidateListOverlay() -> InlineCandidateListOverlay {
+        if let candidateListOverlay { return candidateListOverlay }
+        let overlay = InlineCandidateListOverlay()
+        overlay.font = font
+        overlay.isHidden = true
+        overlay.onSelect = { [weak self] index in
             self?.acceptCandidate(at: index)
         }
-        candidatePopoverController = controller
-        return controller
+        addSubview(overlay, positioned: .above, relativeTo: nil)
+        candidateListOverlay = overlay
+        return overlay
     }
 
     /// Row height derived from font metrics, 2pt vertical padding per side.
@@ -34,8 +38,8 @@ extension NativeTerminalView {
 
     @MainActor
     func showCandidateList(items: [String], selectedIndex: Int?) {
-        // Popup is opt-in (default off) — gate here so nothing is built when disabled.
-        guard UserDefaults.standard.bool(forKey: "ai_inline_candidate_popup") else {
+        let enabled = UserDefaults.standard.object(forKey: "ai_inline_candidate_popup") as? Bool ?? true
+        guard enabled else {
             hideCandidateList()
             return
         }
@@ -44,20 +48,17 @@ extension NativeTerminalView {
             hideCandidateList()
             return
         }
-        let cell = Self.cellSize(for: font, backingScale: window?.backingScaleFactor ?? 2)
-        let (cursorX, cursorY) = terminal.getCursorLocation()
-        let cursorRect = NSRect(
-            x: CGFloat(cursorX) * cell.width,
-            y: bounds.height - CGFloat(cursorY + 1) * cell.height,
-            width: cell.width,
-            height: cell.height
-        )
-        ensureCandidatePopover().show(items: items, selectedIndex: selectedIndex, cursorRect: cursorRect, font: font)
+        let overlay = ensureCandidateListOverlay()
+        overlay.font = font
+        overlay.rowHeight = Self.candidateRowHeight(for: font)
+        overlay.items = items
+        overlay.selectedIndex = selectedIndex
+        overlay.isHidden = false
+        positionCandidateListOverlay()
     }
 
     @MainActor
     func hideCandidateList() {
-        candidatePopoverController?.hide()
         candidateListOverlay?.isHidden = true
         candidateListOverlay?.items = []
     }
@@ -158,33 +159,29 @@ extension NativeTerminalView {
             height: cell.height
         )
 
-        // Update popover positioning rect if visible
-        let cursorRect = NSRect(
-            x: originX,
-            y: bounds.height - CGFloat(cursorY + 1) * cell.height,
-            width: cell.width,
-            height: cell.height
-        )
-        if let pop = candidatePopoverController, pop.isShown() {
-            pop.updateCursorRect(cursorRect)
-        }
+        positionCandidateListOverlay()
+    }
 
-        // Anchor legacy candidate overlay if present
-        if let list = candidateListOverlay, !list.isHidden, list.visibleRowCount > 0, list.rowHeight > 0 {
-            let listHeight = list.totalHeight()
-            let listWidth = min(list.measuredWidth(), bounds.width - 16)
-            let x = min(originX, max(8, bounds.width - listWidth - 8))
-            let cursorRowBottom = bounds.height - CGFloat(cursorY + 1) * cell.height
-            let cursorRowTop = bounds.height - CGFloat(cursorY) * cell.height
+    /// Position the persistent candidate list overlay relative to the terminal cursor.
+    func positionCandidateListOverlay() {
+        guard let list = candidateListOverlay, !list.isHidden, list.visibleRowCount > 0, list.rowHeight > 0 else { return }
+        let cell = Self.cellSize(for: font, backingScale: window?.backingScaleFactor ?? 2)
+        let (cursorX, cursorY) = terminal.getCursorLocation()
+        let originX = CGFloat(cursorX) * cell.width
 
-            var y = cursorRowBottom - listHeight - 4
-            if y < 4 {
-                y = cursorRowTop + 4
-                if y + listHeight > bounds.height - 4 {
-                    y = max(4, bounds.height - listHeight - 4)
-                }
+        let listHeight = list.totalHeight()
+        let listWidth = min(list.measuredWidth(), bounds.width - 16)
+        let x = min(originX, max(8, bounds.width - listWidth - 8))
+        let cursorRowBottom = bounds.height - CGFloat(cursorY + 1) * cell.height
+        let cursorRowTop = bounds.height - CGFloat(cursorY) * cell.height
+
+        var y = cursorRowBottom - listHeight - 4
+        if y < 4 {
+            y = cursorRowTop + 4
+            if y + listHeight > bounds.height - 4 {
+                y = max(4, bounds.height - listHeight - 4)
             }
-            list.frame = NSRect(x: x, y: y, width: listWidth, height: listHeight)
         }
+        list.frame = NSRect(x: x, y: y, width: listWidth, height: listHeight)
     }
 }

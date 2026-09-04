@@ -64,7 +64,8 @@ final class InlineGhostOverlay: NSView {
 final class InlineCandidateListOverlay: NSView {
     /// Hard cap of visible rows — keeps the panel compact and redraws cheap.
     static let maxVisibleRows = 5
-    static let footerHeight: CGFloat = 20
+
+    var onSelect: ((Int) -> Void)?
 
     var items: [String] = [] {
         didSet {
@@ -144,6 +145,10 @@ final class InlineCandidateListOverlay: NSView {
         true
     }
 
+    override var acceptsFirstResponder: Bool {
+        false
+    }
+
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         effectView.frame = bounds
@@ -162,15 +167,29 @@ final class InlineCandidateListOverlay: NSView {
 
     func totalHeight() -> CGFloat {
         guard !itemsCache.isEmpty, rowHeight > 0 else { return 0 }
-        return CGFloat(itemsCache.count) * rowHeight + Self.footerHeight + 8
+        return CGFloat(itemsCache.count) * rowHeight + 8
     }
 
     var visibleRowCount: Int {
         itemsCache.count
     }
 
-    override func hitTest(_: NSPoint) -> NSView? {
-        nil
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard !isHidden, bounds.contains(point) else { return nil }
+        return self
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let location = convert(event.locationInWindow, from: nil)
+        let paddingY: CGFloat = 4
+        if location.y >= paddingY {
+            let row = Int((location.y - paddingY) / rowHeight)
+            if row >= 0, row < itemsCache.count {
+                onSelect?(row)
+                return
+            }
+        }
+        super.mouseDown(with: event)
     }
 
     fileprivate final class CandidateContentView: NSView {
@@ -233,31 +252,6 @@ final class InlineCandidateListOverlay: NSView {
                     ]
                 )
             }
-
-            // Footer separator & hint
-            let footerY = bounds.height - InlineCandidateListOverlay.footerHeight
-            NSColor.separatorColor.withAlphaComponent(0.2).setStroke()
-            let line = NSBezierPath()
-            line.move(to: NSPoint(x: paddingX, y: footerY))
-            line.line(to: NSPoint(x: bounds.width - paddingX, y: footerY))
-            line.lineWidth = 0.5
-            line.stroke()
-
-            let footerFont = NSFont.systemFont(ofSize: 9.5, weight: .regular)
-            let footerText = (owner.selectedIndex != nil ? "↵ / ⇥ 补全   ↑↓ 选择   Esc 取消" : "⇥ 补全   ↑↓ 选择   ↵ 执行") as NSString
-            let footerRect = NSRect(
-                x: paddingX + 4,
-                y: footerY + 3,
-                width: bounds.width - paddingX * 2,
-                height: 14
-            )
-            footerText.draw(
-                in: footerRect,
-                withAttributes: [
-                    .font: footerFont,
-                    .foregroundColor: NSColor.tertiaryLabelColor,
-                ]
-            )
         }
 
         override func hitTest(_: NSPoint) -> NSView? {

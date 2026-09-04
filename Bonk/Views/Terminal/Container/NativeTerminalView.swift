@@ -58,8 +58,8 @@ import SwiftTerm
             pipeline.onCandidatesChanged = { [weak self] count, engagement in
                 MainActor.assumeIsolated {
                     guard let self else { return }
-                    // Opt-in popup (default off) — gate both display and ↑/↓ interception.
-                    guard UserDefaults.standard.bool(forKey: "ai_inline_candidate_popup"), count > 1 else {
+                    let enabled = UserDefaults.standard.object(forKey: "ai_inline_candidate_popup") as? Bool ?? true
+                    guard enabled, count > 1 else {
                         self.hideCandidateList()
                         return
                     }
@@ -112,7 +112,6 @@ import SwiftTerm
         var ghostOverlay: InlineGhostOverlay?
         /// Warp-style candidate popup above the cursor (↑/↓ navigation).
         var candidateListOverlay: InlineCandidateListOverlay?
-        var candidatePopoverController: InlineCandidatePopoverController?
         // Ghost updates coalesced to display tick — LLM streams many deltas per frame.
         nonisolated(unsafe) var ghostCoalesceTask: Task<Void, Never>?
         private nonisolated(unsafe) var resignObserver: NSObjectProtocol?
@@ -239,16 +238,12 @@ import SwiftTerm
             let isFocused = MainActor.assumeIsolated { window?.firstResponder === self }
             guard isFocused else { return event }
 
-            let (hasSuggestion, isPopupVisible, candidateCount, popupEnabled, engagement) = MainActor.assumeIsolated {
+            let (hasSuggestion, candidateCount, popupEnabled, engagement) = MainActor.assumeIsolated {
                 let sug = self.inlinePipeline?.suggestion != nil
-                let popoverVisible = self.candidatePopoverController?.isShown() ?? false
-                let listVisible = popoverVisible || (self.candidateListOverlay != nil &&
-                    !(self.candidateListOverlay?.isHidden ?? true) &&
-                    (self.candidateListOverlay?.visibleRowCount ?? 0) > 0)
                 let count = self.inlinePipeline?.ranked.count ?? 0
-                let enabled = UserDefaults.standard.bool(forKey: "ai_inline_candidate_popup")
+                let enabled = UserDefaults.standard.object(forKey: "ai_inline_candidate_popup") as? Bool ?? true
                 let eng = self.inlinePipeline?.engagement ?? .passive
-                return (sug, listVisible, count, enabled, eng)
+                return (sug, count, enabled, eng)
             }
 
             // Enter behavior contract:
@@ -259,11 +254,63 @@ import SwiftTerm
                     acceptSuggestion()
                     return nil
                 }
+                if hasSuggestion {
+                    MainActor.assumeIsolated {
+                        self.pendingCompletionTask?.cancel()
+                        self.pendingCompletionTask = nil
+                        self.inlinePipeline?.cancel()
+                        self.hideGhost(reason: "enter")
+                    }
+                }
+                return event
+            }
+
+            // Tab — accept the suggestion, do not forward a real tab.
+            if keyCode == 48, modifiers.isEmpty, hasSuggestion {
+                acceptSuggestion()
+                return nil
+            }
+
+            // Esc — dismiss suggestion only.
+            if keyCode == 53, hasSuggestion {
                 MainActor.assumeIsolated {
                     self.pendingCompletionTask?.cancel()
                     self.pendingCompletionTask = nil
-                    self.inlinePipeline?.cancel()
-                    self.hideGhost(reason: "enter")
+                    self.inlinePipeline?.rejectCurrent()
+                    self.hideGhost(reason: "esc")
+                }
+                return nil
+            }
+
+            // Option+Down: engage candidate selection popup if candidates exist
+            if keyCode == 125, modifiers == .option, hasSuggestion, popupEnabled, candidateCount > 1 {
+                MainActor.assumeIsolated { self.inlinePipeline?.moveSelection(1) }
+                return nil
+            }
+
+            // Option+Up: engage candidate selection popup at previous/last
+            if keyCode == 126, modifiers == .option, hasSuggestion, popupEnabled, candidateCount > 1 {
+                MainActor.assumeIsolated { self.inlinePipeline?.moveSelection(-1) }
+                return nil
+            }
+
+            // Up / Down arrow navigation contract:
+            // - Engaged: ↑/↓ navigates candidates
+            // - Passive: ↑/↓ forwards 100% to Shell for command history browsing
+            if (keyCode == 125 || keyCode == 126), modifiers.isEmpty {
+                if hasSuggestion, engagement.isEngaged {
+                    let delta = keyCode == 125 ? 1 : -1
+                    MainActor.assumeIsolated { self.inlinePipeline?.moveSelection(delta) }
+                    return nil
+                }
+                // Passive: dismiss ghost and forward directly to shell for history
+                if hasSuggestion {
+                    MainActor.assumeIsolated {
+                        self.pendingCompletionTask?.cancel()
+                        self.pendingCompletionTask = nil
+                        self.inlinePipeline?.cancel()
+                        self.hideGhost(reason: "history-nav")
+                    }
                 }
                 return event
             }
@@ -278,52 +325,24 @@ import SwiftTerm
                 )
             }
 
-            if hasSuggestion {
-                if popupEnabled, candidateCount > 1, modifiers.isEmpty {
-                    if keyCode == 125 {
-                        // ↓ — next candidate (Warp-style popup navigation).
-                        MainActor.assumeIsolated { self.inlinePipeline?.moveSelection(1) }
-                        return nil
-                    }
-                    if keyCode == 126 {
-                        // ↑ — previous candidate.
-                        MainActor.assumeIsolated { self.inlinePipeline?.moveSelection(-1) }
-                        return nil
-                    }
+            if shouldSchedule {
+                // A new request is starting — drop any stale ghost text so the
+                // old suggestion doesn't linger while typing continues.
+                MainActor.assumeIsolated {
+                    self.inlinePipeline?.resetEngagement()
+                    self.inlinePipeline?.cancel()
+                    self.hideGhost(reason: "new-typing")
+                    self.scheduleCompletion()
                 }
-                if keyCode == 48, modifiers.isEmpty {
-                    // Tab — accept the suggestion, do not forward a real tab.
-                    acceptSuggestion()
-                    return nil
-                }
-                if keyCode == 53 {
-                    // Esc — dismiss only.
-                    MainActor.assumeIsolated {
-                        self.pendingCompletionTask?.cancel()
-                        self.pendingCompletionTask = nil
-                        self.inlinePipeline?.rejectCurrent()
-                        self.hideGhost(reason: "esc")
-                    }
-                    return nil
-                }
+            } else if hasSuggestion {
                 // Any other key — dismiss WITHOUT recording a rejection and
                 // forward normally. Normal typing/navigation is not negative
-                // feedback; only Esc (below) marks the suggestion rejected,
+                // feedback; only Esc (above) marks the suggestion rejected,
                 // otherwise the rejection cache poisons future suggestions.
                 MainActor.assumeIsolated {
                     self.pendingCompletionTask?.cancel()
                     self.inlinePipeline?.cancel()
                     self.hideGhost(reason: "other-key")
-                }
-            }
-
-            if shouldSchedule {
-                // A new request is starting — drop any stale ghost text so the
-                // old suggestion doesn't linger while typing continues.
-                MainActor.assumeIsolated {
-                    self.inlinePipeline?.cancel()
-                    self.hideGhost(reason: "new-typing")
-                    self.scheduleCompletion()
                 }
             }
             return event
@@ -384,8 +403,8 @@ import SwiftTerm
             pendingCompletionTask?.cancel()
             pendingCompletionTask = Task { @MainActor [weak self] in
                 // Allow SwiftTerm keyDown to finish and update inputBuffer / line state
-                // 70ms debounce avoids frantic layout thrashing during fast continuous typing
-                try? await Task.sleep(for: .milliseconds(70))
+                // 200ms debounce avoids frantic layout thrashing during fast continuous typing
+                try? await Task.sleep(for: .milliseconds(200))
                 guard !Task.isCancelled, let self else { return }
                 self.requestCompletion()
             }

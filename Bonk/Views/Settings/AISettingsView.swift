@@ -6,7 +6,7 @@ struct AISettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @AppStorage("ai_enabled") private var aiEnabled = false
     @AppStorage("ai_inline_suggestions") private var inlineSuggestionsEnabled = false
-    @AppStorage("ai_inline_candidate_popup") private var candidatePopupEnabled = false
+    @AppStorage("ai_inline_candidate_popup") private var candidatePopupEnabled = true
     @AppStorage("ai_include_terminal") private var includeTerminalOutput = true
     @AppStorage("ai_include_history") private var includeCommandHistory = true
     @AppStorage("ai_include_env") private var includeEnvironmentInfo = false

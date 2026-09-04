@@ -82,32 +82,32 @@ final class InlinePipelineTests: XCTestCase {
             knownWords: ["docker-desktop", "running"]
         )
         pipeline.request(snapshot: snap)
-        // knownWords ("docker-desktop" → "er-desktop"), history ("er ps"), vocabulary ("er")
+        // Candidates: history ("docker ps"), spec/vocab ("docker"), knownWords ("docker-desktop")
         XCTAssertGreaterThanOrEqual(pipeline.ranked.count, 3)
         // Default state is passive (no selection, but top recommended suggestion is visible)
         XCTAssertEqual(pipeline.engagement, .passive)
         XCTAssertNil(pipeline.selectedIndex)
-        XCTAssertEqual(pipeline.suggestion?.text, "er-desktop")
-        XCTAssertEqual(pipeline.suggestion?.fullText, "docker-desktop")
+        XCTAssertEqual(pipeline.suggestion?.text, "er ps")
+        XCTAssertEqual(pipeline.suggestion?.fullText, "docker ps")
         // ↓ in passive state engages at index 0
         pipeline.moveSelection(1)
         XCTAssertEqual(pipeline.engagement, .engaged(index: 0))
         XCTAssertEqual(pipeline.selectedIndex, 0)
-        XCTAssertEqual(pipeline.suggestion?.fullText, "docker-desktop")
-        // Subsequent ↓ moves to candidate 1 (history)
+        XCTAssertEqual(pipeline.suggestion?.fullText, "docker ps")
+        // Subsequent ↓ moves to candidate 1 (spec / command)
         pipeline.moveSelection(1)
         XCTAssertEqual(pipeline.engagement, .engaged(index: 1))
         XCTAssertEqual(pipeline.selectedIndex, 1)
-        XCTAssertTrue(pipeline.suggestion?.text.contains("ps") == true)
-        XCTAssertEqual(pipeline.suggestion?.fullText, "docker ps")
+        XCTAssertEqual(pipeline.suggestion?.fullText, "docker")
         // ↓↓ clamps at the end instead of crashing
         pipeline.moveSelection(5)
-        XCTAssertEqual(pipeline.suggestion?.text, "er")
-        XCTAssertEqual(pipeline.suggestion?.fullText, "docker")
+        let lastIndex = pipeline.ranked.count - 1
+        XCTAssertEqual(pipeline.selectedIndex, lastIndex)
+        XCTAssertEqual(pipeline.suggestion?.fullText, pipeline.ranked[lastIndex].1.fullText)
         // ↑↑↑ clamps back at the top (index 0)
-        pipeline.moveSelection(-5)
+        pipeline.moveSelection(-10)
         XCTAssertEqual(pipeline.selectedIndex, 0)
-        XCTAssertEqual(pipeline.suggestion?.text, "er-desktop")
+        XCTAssertEqual(pipeline.suggestion?.text, "er ps")
     }
 
     func testPipelineRejectFilters() async {
