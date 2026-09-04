@@ -270,6 +270,110 @@ final class CLISpecRegistry: @unchecked Sendable {
                 CLISubcommand(name: "services", summary: "Manage background services", commonFlags: ["list", "start", "stop", "restart"], priority: 80.0),
                 CLISubcommand(name: "cleanup", summary: "Remove stale files", priority: 75.0),
             ]
+        ),
+        CLISpec(
+            command: "journalctl",
+            summary: "Query the systemd journal",
+            subcommands: [
+                CLISubcommand(name: "-u", summary: "Show logs for specified unit", commonFlags: ["-f", "-n 100", "-xe", "--since \"1 hour ago\""], priority: 95.0),
+                CLISubcommand(name: "-f", summary: "Follow log stream in real time", priority: 92.0),
+                CLISubcommand(name: "-xe", summary: "Show explanatory texts and jump to end", priority: 90.0),
+                CLISubcommand(name: "-n", summary: "Number of journal entries to show", commonFlags: ["50", "100", "500"], priority: 88.0),
+                CLISubcommand(name: "-p", summary: "Filter by priority level", commonFlags: ["err", "warning", "info"], priority: 85.0),
+                CLISubcommand(name: "-b", summary: "Show messages from current boot", priority: 82.0),
+                CLISubcommand(name: "--vacuum-size", summary: "Reduce disk usage below size", commonFlags: ["500M", "1G"], priority: 75.0),
+            ]
+        ),
+        CLISpec(
+            command: "ssh",
+            summary: "OpenSSH remote login client",
+            subcommands: [
+                CLISubcommand(name: "-i", summary: "Select identity file (private key)", priority: 92.0),
+                CLISubcommand(name: "-p", summary: "Port to connect to on remote host", commonFlags: ["22", "2222"], priority: 90.0),
+                CLISubcommand(name: "-v", summary: "Verbose debugging mode", commonFlags: ["-vv", "-vvv"], priority: 85.0),
+                CLISubcommand(name: "-L", summary: "Local port forwarding", priority: 82.0),
+                CLISubcommand(name: "-R", summary: "Remote port forwarding", priority: 80.0),
+                CLISubcommand(name: "-N", summary: "Do not execute a remote command (port forward only)", priority: 78.0),
+                CLISubcommand(name: "-o", summary: "Pass option to SSH", commonFlags: ["StrictHostKeyChecking=no", "UserKnownHostsFile=/dev/null"], priority: 75.0),
+            ]
+        ),
+        CLISpec(
+            command: "curl",
+            summary: "Transfer data from or to a server",
+            subcommands: [
+                CLISubcommand(name: "-s", summary: "Silent mode", commonFlags: ["-S", "-o /dev/null", "-w \"%{http_code}\""], priority: 92.0),
+                CLISubcommand(name: "-I", summary: "Fetch headers only (HEAD request)", priority: 90.0),
+                CLISubcommand(name: "-v", summary: "Verbose debug output", priority: 88.0),
+                CLISubcommand(name: "-X", summary: "Specify request method", commonFlags: ["POST", "PUT", "DELETE", "GET"], priority: 86.0),
+                CLISubcommand(name: "-H", summary: "Pass custom header", commonFlags: ["\"Content-Type: application/json\"", "\"Authorization: Bearer \""], priority: 84.0),
+                CLISubcommand(name: "-d", summary: "HTTP POST data", commonFlags: ["'{}'"], priority: 82.0),
+                CLISubcommand(name: "-o", summary: "Write output to file", priority: 80.0),
+                CLISubcommand(name: "-L", summary: "Follow HTTP redirects", priority: 78.0),
+            ]
+        ),
+        CLISpec(
+            command: "tar",
+            summary: "Archive utility",
+            subcommands: [
+                CLISubcommand(name: "-czvf", summary: "Create compressed archive", priority: 95.0),
+                CLISubcommand(name: "-xzvf", summary: "Extract compressed archive", priority: 92.0),
+                CLISubcommand(name: "-tzvf", summary: "List contents of archive", priority: 88.0),
+                CLISubcommand(name: "-C", summary: "Change to target directory before extract", priority: 85.0),
+            ]
+        ),
+        CLISpec(
+            command: "find",
+            summary: "Search for files in directory hierarchy",
+            subcommands: [
+                CLISubcommand(name: ".", summary: "Search current directory", commonFlags: ["-name", "-type f", "-type d", "-mtime -7", "-size +100M"], priority: 95.0),
+                CLISubcommand(name: "-name", summary: "Match file pattern", priority: 92.0),
+                CLISubcommand(name: "-type", summary: "Filter by file type (f=file, d=dir)", commonFlags: ["f", "d", "l"], priority: 90.0),
+                CLISubcommand(name: "-mtime", summary: "Modified within N days", commonFlags: ["-1", "-7", "-30"], priority: 85.0),
+                CLISubcommand(name: "-size", summary: "Filter by file size", commonFlags: ["+100M", "+1G"], priority: 82.0),
+                CLISubcommand(name: "-exec", summary: "Execute command on each match", commonFlags: ["rm -rf {} +", "ls -lh {} +"], priority: 78.0),
+            ]
+        ),
+        CLISpec(
+            command: "grep",
+            summary: "Print lines matching a pattern",
+            subcommands: [
+                CLISubcommand(name: "-r", summary: "Recursive search", commonFlags: ["-n", "-i", "-l", "."], priority: 95.0),
+                CLISubcommand(name: "-i", summary: "Ignore case distinctions", priority: 92.0),
+                CLISubcommand(name: "-n", summary: "Prefix each line with line number", priority: 90.0),
+                CLISubcommand(name: "-v", summary: "Invert match (select non-matching)", priority: 88.0),
+                CLISubcommand(name: "-E", summary: "Extended regular expressions", priority: 85.0),
+                CLISubcommand(name: "-l", summary: "List matching filenames only", priority: 82.0),
+            ]
+        ),
+        CLISpec(
+            command: "ss",
+            summary: "Utility to dump socket statistics",
+            subcommands: [
+                CLISubcommand(name: "-tuln", summary: "Show listening TCP/UDP sockets without name resolution", priority: 95.0),
+                CLISubcommand(name: "-tulpn", summary: "Show listening sockets with process info", priority: 92.0),
+                CLISubcommand(name: "-s", summary: "Summary statistics", priority: 88.0),
+                CLISubcommand(name: "-ta", summary: "Show all TCP sockets", priority: 85.0),
+            ]
+        ),
+        CLISpec(
+            command: "lsof",
+            summary: "List open files and network listeners",
+            subcommands: [
+                CLISubcommand(name: "-i", summary: "Select Internet network files", commonFlags: [":80", ":443", ":8080", "-P -n"], priority: 95.0),
+                CLISubcommand(name: "-p", summary: "List open files for PID", priority: 88.0),
+                CLISubcommand(name: "-u", summary: "List open files for user", priority: 85.0),
+            ]
+        ),
+        CLISpec(
+            command: "nginx",
+            summary: "HTTP and reverse proxy server",
+            subcommands: [
+                CLISubcommand(name: "-t", summary: "Test configuration file for syntax validity", priority: 95.0),
+                CLISubcommand(name: "-s", summary: "Send signal to master process", commonFlags: ["reload", "stop", "quit", "reopen"], priority: 92.0),
+                CLISubcommand(name: "-v", summary: "Show nginx version", priority: 88.0),
+                CLISubcommand(name: "-V", summary: "Show compiler and configure options", priority: 85.0),
+                CLISubcommand(name: "-c", summary: "Specify alternative configuration file", priority: 80.0),
+            ]
         )
     ]
 }

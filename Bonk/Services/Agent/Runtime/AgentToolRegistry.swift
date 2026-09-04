@@ -155,12 +155,97 @@ struct SearchHistoryTool: AgentTool {
     }
 }
 
+/// System state inspection tool.
+struct InspectSystemTool: AgentTool {
+    let name = "inspect_system"
+    let description = "Inspect remote system state including OS, uptime, memory, and disk usage."
+
+    init() {}
+
+    var definition: LLMToolDefinition {
+        LLMToolDefinition(
+            name: name,
+            description: description,
+            parametersJSON: """
+            {
+              "type": "object",
+              "properties": {},
+              "required": []
+            }
+            """
+        )
+    }
+
+    func execute(
+        id: String,
+        arguments: [String: String],
+        executionManager: AgentExecutionManager,
+        executor: @Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> (output: String, exitCode: Int32)
+    ) async throws -> (output: String, exitCode: Int32) {
+        let cmd = "echo '--- OS ---'; uname -a; echo '--- UPTIME ---'; uptime; echo '--- MEMORY ---'; free -h 2>/dev/null || vm_stat; echo '--- DISK ---'; df -h /"
+        return try await executor(cmd) { handle in
+            Task {
+                await executionManager.registerActive(handle)
+            }
+        }
+    }
+}
+
+/// Directory listing tool with details.
+struct ListDirectoryTool: AgentTool {
+    let name = "list_dir"
+    let description = "List files and subdirectories with details (permissions, owner, size, date)."
+
+    init() {}
+
+    var definition: LLMToolDefinition {
+        LLMToolDefinition(
+            name: name,
+            description: description,
+            parametersJSON: """
+            {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Path to directory to list. Defaults to current directory if omitted."
+                }
+              },
+              "required": []
+            }
+            """
+        )
+    }
+
+    func execute(
+        id: String,
+        arguments: [String: String],
+        executionManager: AgentExecutionManager,
+        executor: @Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> (output: String, exitCode: Int32)
+    ) async throws -> (output: String, exitCode: Int32) {
+        let target = arguments["path"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "."
+        let safeTarget = (target.isEmpty ? "." : target).replacingOccurrences(of: "'", with: "'\\''")
+        let cmd = "ls -la '\(safeTarget)'"
+        return try await executor(cmd) { handle in
+            Task {
+                await executionManager.registerActive(handle)
+            }
+        }
+    }
+}
+
 /// Thread-safe registry containing declared tools available to the Agent.
 final class AgentToolRegistry: @unchecked Sendable {
     private var tools: [String: any AgentTool] = [:]
     private let lock = NSLock()
 
-    init(tools: [any AgentTool] = [BashRunTool(), ReadFileTool(), SearchHistoryTool()]) {
+    init(tools: [any AgentTool] = [
+        BashRunTool(),
+        ReadFileTool(),
+        SearchHistoryTool(),
+        InspectSystemTool(),
+        ListDirectoryTool()
+    ]) {
         for tool in tools {
             self.tools[tool.name] = tool
         }

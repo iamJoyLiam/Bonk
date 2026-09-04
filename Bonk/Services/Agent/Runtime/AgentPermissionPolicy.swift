@@ -32,8 +32,8 @@ struct DefaultAgentPermissionPolicy: AgentPermissionPolicy {
     }
 
     func evaluate(tool: String, arguments: [String: String]) -> PermissionDecision {
-        // Safe read-only tool definitions like inspect_history or read_file
-        if tool == "read_file" || tool == "search_history" {
+        // Safe read-only tool definitions like inspect_history, read_file, inspect_system, or list_dir
+        if tool == "read_file" || tool == "search_history" || tool == "inspect_system" || tool == "list_dir" {
             return .allowed
         }
 
