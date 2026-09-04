@@ -8,6 +8,7 @@ struct InteractiveCodeBlock: View {
     let language: String?
     var onRun: (@MainActor (String) -> Void)?
     @State private var copied = false
+    @State private var justExecuted = false
 
     private var isShellLanguage: Bool {
         guard let lang = language?.lowercased() else { return true }
@@ -17,13 +18,13 @@ struct InteractiveCodeBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header bar
-            HStack(spacing: 6) {
-                Image(systemName: "terminal.fill")
-                    .font(.system(size: AppStyle.fontCaption))
-                    .foregroundStyle(.green)
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "terminal.fill")
+                        .font(.system(size: AppStyle.fontCaption))
+                        .foregroundStyle(.green)
 
-                if let lang = language {
-                    Text(lang.uppercased())
+                    Text((language ?? "sh").uppercased())
                         .font(.system(size: AppStyle.fontCaption, design: .monospaced))
                         .fontWeight(.bold)
                         .foregroundStyle(.tertiary)
@@ -32,13 +33,27 @@ struct InteractiveCodeBlock: View {
                 Spacer()
 
                 if isShellLanguage, let onRun {
-                    Button { onRun(code) } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "play.fill")
-                            Text(i18n.t(.aiRun))
-                                .font(.system(size: AppStyle.fontCaption, weight: .semibold, design: .monospaced))
+                    Button {
+                        justExecuted = true
+                        onRun(code)
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .seconds(2))
+                            justExecuted = false
                         }
-                        .foregroundStyle(.green)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: justExecuted ? "checkmark.circle.fill" : "play.fill")
+                                .font(.system(size: 10, weight: .bold))
+                            Text(justExecuted ? i18n.t(.aiSent) : i18n.t(.aiRun))
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        }
+                        .foregroundStyle(justExecuted ? Color.green : Color.accentColor)
+                        .padding(.horizontal, AppStyle.spacingSPlus)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule()
+                                .fill(justExecuted ? Color.green.opacity(0.18) : Color.accentColor.opacity(0.12))
+                        )
                     }
                     .buttonStyle(.plain)
                 }
@@ -49,9 +64,21 @@ struct InteractiveCodeBlock: View {
                     copied = true
                     Task { @MainActor in try? await Task.sleep(for: .seconds(2)); copied = false }
                 } label: {
-                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: AppStyle.fontCaption))
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 3) {
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 11))
+                        if copied {
+                            Text(i18n.t(.copied))
+                                .font(.system(size: 10, weight: .medium))
+                        }
+                    }
+                    .foregroundStyle(copied ? Color.green : .secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule()
+                            .fill(Color(nsColor: .controlColor).opacity(copied ? 0.3 : 0))
+                    )
                 }
                 .buttonStyle(.plain)
             }

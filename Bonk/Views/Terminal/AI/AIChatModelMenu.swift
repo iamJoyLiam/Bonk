@@ -14,6 +14,8 @@ struct ModelPickerButton: View {
         let displayName = name.isEmpty ? (provider?.type.displayName ?? "") : name
 
         HStack(spacing: 4) {
+            Image(systemName: "cpu")
+                .font(.system(size: AppStyle.fontMicro))
             Text(displayName)
                 .font(.system(size: AppStyle.fontSmall))
                 .lineLimit(1)
@@ -22,9 +24,11 @@ struct ModelPickerButton: View {
                 .font(.system(size: AppStyle.fontMicro))
         }
         .foregroundStyle(.secondary)
-        .padding(.horizontal, AppStyle.spacingS)
-        .padding(.vertical, AppStyle.spacingXS)
-        .contentShape(Capsule())
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(Color(nsColor: .quaternaryLabelColor).opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .onTapGesture { isOpen.toggle() }
         .popover(isPresented: $isOpen, arrowEdge: .bottom) {
             let provider = store.activeProvider

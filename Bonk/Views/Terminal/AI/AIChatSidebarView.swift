@@ -43,6 +43,17 @@ struct AIChatSidebarView: View {
         return AIContextMention.allCases.filter { $0.token.lowercased().hasPrefix(query) }
     }
 
+    @State private var selectedPopupIndex = 0
+    @State private var isPopupDismissed = false
+
+    private var totalPopupMatchesCount: Int {
+        matchingSlashCommands.count + matchingMentions.count
+    }
+
+    private var isPopupOpen: Bool {
+        !isPopupDismissed && totalPopupMatchesCount > 0
+    }
+
     @State private var rotationAngle: Double = 0
     @State var wasCancelled = false
     @State private var showModelPicker = false
@@ -220,10 +231,11 @@ struct AIChatSidebarView: View {
 
     private var bottomBar: some View {
         VStack(spacing: 6) {
-            if !matchingSlashCommands.isEmpty || !matchingMentions.isEmpty {
+            if isPopupOpen {
                 SlashAndMentionPopup(
                     slashMatches: matchingSlashCommands,
                     mentionMatches: matchingMentions,
+                    selectedIndex: selectedPopupIndex,
                     onSelectSlash: { cmd in handleSelectSlash(cmd) },
                     onSelectMention: { mention in handleSelectMention(mention) }
                 )
@@ -246,6 +258,33 @@ struct AIChatSidebarView: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: AppStyle.fontBody))
                     .focused($isInputFocused)
+                    .onKeyPress(.downArrow) {
+                        guard isPopupOpen, totalPopupMatchesCount > 0 else { return .ignored }
+                        selectedPopupIndex = (selectedPopupIndex + 1) % totalPopupMatchesCount
+                        return .handled
+                    }
+                    .onKeyPress(.upArrow) {
+                        guard isPopupOpen, totalPopupMatchesCount > 0 else { return .ignored }
+                        selectedPopupIndex = (selectedPopupIndex - 1 + totalPopupMatchesCount) % totalPopupMatchesCount
+                        return .handled
+                    }
+                    .onKeyPress(.tab) {
+                        guard isPopupOpen, totalPopupMatchesCount > 0 else { return .ignored }
+                        acceptSelectedPopupItem()
+                        return .handled
+                    }
+                    .onKeyPress(.escape) {
+                        guard isPopupOpen else { return .ignored }
+                        isPopupDismissed = true
+                        return .handled
+                    }
+                    .onKeyPress(.return) {
+                        if isPopupOpen && !NSEvent.modifierFlags.contains(.shift) {
+                            acceptSelectedPopupItem()
+                            return .handled
+                        }
+                        return .ignored
+                    }
                     .onSubmit {
                         if !NSEvent.modifierFlags.contains(.shift) {
                             submit()
@@ -312,6 +351,10 @@ struct AIChatSidebarView: View {
         }
         .padding(.horizontal, AppStyle.spacingML)
         .padding(.vertical, AppStyle.spacingS)
+        .onChange(of: inputText) { _, _ in
+            isPopupDismissed = false
+            selectedPopupIndex = 0
+        }
         .onAppear {
             providerStore.setModelContext(modelContext)
             engine.activeProvider = providerStore.activeProvider
@@ -508,6 +551,22 @@ struct AIChatSidebarView: View {
         } else {
             inputText += (inputText.isEmpty || inputText.hasSuffix(" ") ? "" : " ") + mention.token + " "
         }
+    }
+
+    private func acceptSelectedPopupItem() {
+        guard isPopupOpen, totalPopupMatchesCount > 0 else { return }
+        let safeIndex = min(max(0, selectedPopupIndex), totalPopupMatchesCount - 1)
+        if safeIndex < matchingSlashCommands.count {
+            let cmd = matchingSlashCommands[safeIndex]
+            handleSelectSlash(cmd)
+        } else {
+            let mentionIndex = safeIndex - matchingSlashCommands.count
+            if mentionIndex < matchingMentions.count {
+                let mention = matchingMentions[mentionIndex]
+                handleSelectMention(mention)
+            }
+        }
+        selectedPopupIndex = 0
     }
 
     private func submitChat(text: String) {

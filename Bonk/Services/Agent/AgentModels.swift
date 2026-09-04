@@ -20,6 +20,7 @@ struct AgentMessage: Identifiable {
     }
 
     enum CommandStatus: String {
+        case running
         case success
         case failed
         case blocked
@@ -27,6 +28,7 @@ struct AgentMessage: Identifiable {
 
         var icon: String {
             switch self {
+            case .running: "circle.dotted"
             case .success: "checkmark.circle.fill"
             case .failed: "xmark.octagon.fill"
             case .blocked: "xmark.shield.fill"
@@ -36,10 +38,51 @@ struct AgentMessage: Identifiable {
 
         var color: Color {
             switch self {
+            case .running: .blue
             case .success: .green
             case .failed: .red
             case .blocked: .gray
             case .skipped: .orange
+            }
+        }
+    }
+
+    enum AccessMode: String, CaseIterable, Identifiable, Sendable {
+        case fullAccess = "fullAccess"  // 完全访问：自动执行常规命令
+        case supervised = "supervised"  // 逐步确认：中危修改命令需确认
+        case readOnly = "readOnly"      // 只读模式：只允许只读检查
+
+        var id: String { rawValue }
+
+        var localizedName: String {
+            switch self {
+            case .fullAccess: "完全访问"
+            case .supervised: "逐步确认"
+            case .readOnly: "只读模式"
+            }
+        }
+
+        var shortName: String {
+            switch self {
+            case .fullAccess: "完全访问"
+            case .supervised: "逐步确认"
+            case .readOnly: "只读"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .fullAccess: "bolt.shield.fill"
+            case .supervised: "hand.raised.fill"
+            case .readOnly: "lock.fill"
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .fullAccess: .green
+            case .supervised: .orange
+            case .readOnly: .blue
             }
         }
     }

@@ -38,7 +38,7 @@ enum LKey: String, CaseIterable {
     case addProvider = "add_provider", addCustomProvider = "add_custom_provider"
 
     // AI — Provider Detail
-    case apiKey = "api_key", apiKeySet = "api_key_set"
+    case apiKey = "api_key", apiKeySet = "api_key_set", apiKeyOptional = "api_key_optional"
     case testConnection = "test_connection", connectionSuccessful = "connection_successful"
     case authentication, connection, endpoint, model, name
     case save, cancel, add
@@ -76,7 +76,7 @@ enum LKey: String, CaseIterable {
     case terminalAssistant = "terminal_assistant"
     case aiThinking = "ai_thinking"
     case aiPaste = "ai_paste"
-    case aiRun = "ai_run"
+    case aiRun = "ai_run", aiSent = "ai_sent"
     case aiCopy = "ai_copy"
     case aiAnalyzing = "ai_analyzing"
     case aiNoHistory = "ai_no_history"

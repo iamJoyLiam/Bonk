@@ -107,6 +107,7 @@ enum AITerminalMirror {
 
     private static func icon(for status: AgentMessage.CommandStatus) -> String {
         switch status {
+        case .running: "⏳"
         case .success: "✓"
         case .failed: "✗"
         case .blocked: "⛔"
@@ -116,6 +117,7 @@ enum AITerminalMirror {
 
     private static func color(for status: AgentMessage.CommandStatus) -> String {
         switch status {
+        case .running: "34"
         case .success: "32"
         case .failed: "31"
         case .blocked: "90"
@@ -125,6 +127,7 @@ enum AITerminalMirror {
 
     private static func footerWord(for status: AgentMessage.CommandStatus) -> String {
         switch status {
+        case .running: "运行中"
         case .success: "完成"
         case .failed: "失败"
         case .blocked: "已阻止"

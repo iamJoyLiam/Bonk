@@ -654,10 +654,14 @@ final class SessionManager {
     /// Convenience: send text to the active pane (auto-appends Enter).
     func sendTextToActiveTab(_ text: String) {
         guard let tab = activeTab, let paneID = tab.activePaneID else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
         Task {
-            var bytes = Array(text.utf8)[...]
-            bytes.append(13) // Enter key
-            try? await sendInput(bytes, to: tab.id, paneID: paneID)
+            let cmdBytes = Array(trimmed.utf8)[...]
+            try? await sendInput(cmdBytes, to: tab.id, paneID: paneID)
+            try? await Task.sleep(for: .milliseconds(15))
+            let enterBytes: ArraySlice<UInt8> = [13]
+            try? await sendInput(enterBytes, to: tab.id, paneID: paneID)
         }
     }
 

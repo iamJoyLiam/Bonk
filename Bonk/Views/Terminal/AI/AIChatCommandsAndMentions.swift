@@ -72,6 +72,7 @@ enum AIContextMention: String, CaseIterable, Identifiable {
 struct SlashAndMentionPopup: View {
     let slashMatches: [AISlashCommand]
     let mentionMatches: [AIContextMention]
+    var selectedIndex: Int = 0
     let onSelectSlash: (AISlashCommand) -> Void
     let onSelectMention: (AIContextMention) -> Void
 
@@ -85,7 +86,8 @@ struct SlashAndMentionPopup: View {
                     .padding(.top, 6)
                     .padding(.bottom, 2)
 
-                ForEach(slashMatches) { cmd in
+                ForEach(Array(slashMatches.enumerated()), id: \.offset) { index, cmd in
+                    let isSelected = selectedIndex == index
                     Button {
                         onSelectSlash(cmd)
                     } label: {
@@ -108,6 +110,10 @@ struct SlashAndMentionPopup: View {
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
+                        )
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -126,7 +132,8 @@ struct SlashAndMentionPopup: View {
                     .padding(.top, 6)
                     .padding(.bottom, 2)
 
-                ForEach(mentionMatches) { mention in
+                ForEach(Array(mentionMatches.enumerated()), id: \.offset) { index, mention in
+                    let isSelected = selectedIndex == (slashMatches.count + index)
                     Button {
                         onSelectMention(mention)
                     } label: {
@@ -149,11 +156,25 @@ struct SlashAndMentionPopup: View {
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
+                        )
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
             }
+
+            Divider().opacity(0.4)
+            HStack(spacing: 8) {
+                Text("⇥ / ↵ 选定   ↑↓ 选择   Esc 关闭")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.tertiary)
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
         }
         .padding(4)
         .frame(maxWidth: .infinity, alignment: .leading)

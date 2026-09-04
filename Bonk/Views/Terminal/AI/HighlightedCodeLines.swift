@@ -13,21 +13,32 @@ struct HighlightedCodeLines: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyVStack(alignment: .leading, spacing: 3) {
-                ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                    HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        Text("\(index + 1)")
-                            .font(.system(size: fontSize - 1, design: .monospaced))
+                if lines.count <= 1 {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("$")
+                            .font(.system(size: fontSize, weight: .bold, design: .monospaced))
                             .foregroundStyle(.tertiary)
-                            .frame(minWidth: AppStyle.editorColumnSmall, alignment: .trailing)
                             .selectionDisabled(true)
-                        Text(ShellSyntaxHighlighter.highlight(line, fontSize: fontSize))
+                        Text(ShellSyntaxHighlighter.highlight(lines.first ?? "", fontSize: fontSize))
                             .textSelection(.enabled)
+                    }
+                } else {
+                    ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            Text("\(index + 1)")
+                                .font(.system(size: fontSize - 1, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                                .frame(minWidth: AppStyle.editorColumnSmall, alignment: .trailing)
+                                .selectionDisabled(true)
+                            Text(ShellSyntaxHighlighter.highlight(line, fontSize: fontSize))
+                                .textSelection(.enabled)
+                        }
                     }
                 }
             }
             .padding(AppStyle.spacingML)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(Color(nsColor: .textBackgroundColor).opacity(0.75))
     }
 }
