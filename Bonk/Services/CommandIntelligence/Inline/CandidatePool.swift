@@ -10,12 +10,15 @@
 import Foundation
 
 /// Pipeline stage that generates and hard-filters the candidate pool.
-struct CandidatePool: Sendable {
+final class CandidatePool: @unchecked Sendable {
     private let cliRegistry: CLISpecRegistry
     private let historySource: HistoryCandidateSource
     private let vocabularySource: CommandVocabularySource
     private let knownWordsSource: KnownWordsCandidateSource
     private let ranker: InlineRanker
+
+    // P0.4: Incremental candidate cache
+    private var lastQuery: (typed: String, hostKey: String, candidates: [CommandCandidate])?
 
     init(
         cliRegistry: CLISpecRegistry = .shared,
@@ -40,9 +43,44 @@ struct CandidatePool: Sendable {
         cacheKey: String?,
         isRejected: (String) -> Bool
     ) -> [CommandCandidate] {
-        var pool: [CommandCandidate] = []
         let trimmedTyped = typed.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmedTyped.count >= 2 else { return [] }
+        guard trimmedTyped.count >= 2 else {
+            lastQuery = nil
+            return []
+        }
+
+        let hostKey = snapshot.hostKey ?? ""
+
+        // P0.4: Exact query cache hit
+        if let last = lastQuery, last.typed == typed, last.hostKey == hostKey {
+            return last.candidates.filter { !isRejected($0.suggestion.text) }
+        }
+
+        // P0.4: Incremental filtering if typed extends lastQuery prefix
+        if let last = lastQuery, last.hostKey == hostKey, typed.hasPrefix(last.typed), !last.candidates.isEmpty {
+            let incremental = last.candidates.compactMap { cand -> CommandCandidate? in
+                guard let full = cand.suggestion.fullText else { return nil }
+                guard full.lowercased().hasPrefix(trimmedTyped.lowercased()) && full.count > typed.count else { return nil }
+                let suffix = String(full.dropFirst(typed.count))
+                guard !suffix.isEmpty, !isRejected(suffix) else { return nil }
+                let display = SuggestionFormatter.displaySuffix(suffix, typed: typed)
+                let newSug = Suggestion(text: suffix, displayText: display, fullText: full)
+                return CommandCandidate(
+                    source: cand.source,
+                    authority: cand.authority,
+                    suggestion: newSug,
+                    rawScore: cand.rawScore,
+                    isExactPrefixMatch: true
+                )
+            }
+            if !incremental.isEmpty {
+                let ranked = CandidateRanker.rank(candidates: incremental, isRejected: isRejected)
+                lastQuery = (typed, hostKey, ranked)
+                return ranked
+            }
+        }
+
+        var pool: [CommandCandidate] = []
 
         // 1. CLI Spec (Hard Gate for commands like docker, git, kubectl, etc.)
         let cliCandidates = cliRegistry.candidates(for: typed)
@@ -139,6 +177,8 @@ struct CandidatePool: Sendable {
         }
 
         // 7. Local Ranking:
-        return CandidateRanker.rank(candidates: filtered, isRejected: isRejected)
+        let ranked = CandidateRanker.rank(candidates: filtered, isRejected: isRejected)
+        lastQuery = (typed, hostKey, ranked)
+        return ranked
     }
 }

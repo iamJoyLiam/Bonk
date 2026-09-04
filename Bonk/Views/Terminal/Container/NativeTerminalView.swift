@@ -211,32 +211,18 @@ import SwiftTerm
         /// Called from the coordinator's keyDown monitor (before SwiftTerm's keyDown).
         /// The monitor always fires on the main thread.
         nonisolated func processKeyEvent(_ event: NSEvent) -> NSEvent? {
-            // Extract everything from the event first — NSEvent is not Sendable,
-            // so it must not cross into the MainActor closures below.
             let keyCode = event.keyCode
             let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
-
-            // App shortcuts handled directly (window-scoped, not
-            // first-responder-scoped) so they work even when the AI panel's
-            // text field holds focus, and the menu's FocusedValue chain can't
-            // swallow them. Event is consumed to avoid double-firing.
-            if !ShortcutManager.isRecording,
-               let shortcut = MainActor.assumeIsolated({
-                   shortcutNotification(for: keyCode, modifiers: modifiers)
-               }),
-               event.window === MainActor.assumeIsolated({ window })
-            {
-                NotificationCenter.default.post(name: shortcut, object: nil)
-                return nil
-            }
-            // Esc closes the search bar when it's open.
-            if keyCode == 53, MainActor.assumeIsolated({ TerminalSearchState.isActive }) {
-                NotificationCenter.default.post(name: .toggleTerminalSearch, object: nil)
-                return nil
-            }
+            let characters = event.characters
 
             let isFocused = MainActor.assumeIsolated { window?.firstResponder === self }
             guard isFocused else { return event }
+
+            let shortcut = !ShortcutManager.isRecording ? MainActor.assumeIsolated({
+                shortcutNotification(for: keyCode, modifiers: modifiers)
+            }) : nil
+
+            let isSearchActive = MainActor.assumeIsolated { TerminalSearchState.isActive }
 
             let (hasSuggestion, candidateCount, popupEnabled, engagement) = MainActor.assumeIsolated {
                 let sug = self.inlinePipeline?.suggestion != nil
@@ -246,33 +232,29 @@ import SwiftTerm
                 return (sug, count, enabled, eng)
             }
 
-            // Enter behavior contract:
-            // - Engaged + Enter: User explicitly navigated via ↑/↓ -> Accept selected candidate
-            // - Normal / Passive + Enter: User did NOT navigate -> 100% forward to Shell (NEVER hijack!)
-            if keyCode == 36 || keyCode == 76 {
-                if hasSuggestion, engagement.isEngaged, modifiers.isEmpty {
-                    acceptSuggestion()
-                    return nil
-                }
-                if hasSuggestion {
-                    MainActor.assumeIsolated {
-                        self.pendingCompletionTask?.cancel()
-                        self.pendingCompletionTask = nil
-                        self.inlinePipeline?.cancel()
-                        self.hideGhost(reason: "enter")
-                    }
-                }
-                return event
-            }
+            let decision = InlineKeyboardRouter.route(
+                keyCode: keyCode,
+                modifiers: modifiers,
+                characters: characters,
+                hasSuggestion: hasSuggestion,
+                engagement: engagement,
+                candidateCount: candidateCount,
+                isPopupEnabled: popupEnabled,
+                isSearchActive: isSearchActive,
+                shortcutNotification: shortcut
+            )
 
-            // Tab — accept the suggestion, do not forward a real tab.
-            if keyCode == 48, modifiers.isEmpty, hasSuggestion {
+            switch decision {
+            case .interceptAppShortcut(let name):
+                NotificationCenter.default.post(name: name, object: nil)
+                return nil
+            case .toggleSearch:
+                NotificationCenter.default.post(name: .toggleTerminalSearch, object: nil)
+                return nil
+            case .accept:
                 acceptSuggestion()
                 return nil
-            }
-
-            // Esc — dismiss suggestion only.
-            if keyCode == 53, hasSuggestion {
+            case .reject:
                 MainActor.assumeIsolated {
                     self.pendingCompletionTask?.cancel()
                     self.pendingCompletionTask = nil
@@ -280,72 +262,33 @@ import SwiftTerm
                     self.hideGhost(reason: "esc")
                 }
                 return nil
-            }
-
-            // Option+Down: engage candidate selection popup if candidates exist
-            if keyCode == 125, modifiers == .option, hasSuggestion, popupEnabled, candidateCount > 1 {
-                MainActor.assumeIsolated { self.inlinePipeline?.moveSelection(1) }
+            case .moveSelection(let delta):
+                MainActor.assumeIsolated { self.inlinePipeline?.moveSelection(delta) }
                 return nil
-            }
-
-            // Option+Up: engage candidate selection popup at previous/last
-            if keyCode == 126, modifiers == .option, hasSuggestion, popupEnabled, candidateCount > 1 {
-                MainActor.assumeIsolated { self.inlinePipeline?.moveSelection(-1) }
-                return nil
-            }
-
-            // Up / Down arrow navigation contract:
-            // - Engaged: ↑/↓ navigates candidates
-            // - Passive: ↑/↓ forwards 100% to Shell for command history browsing
-            if (keyCode == 125 || keyCode == 126), modifiers.isEmpty {
-                if hasSuggestion, engagement.isEngaged {
-                    let delta = keyCode == 125 ? 1 : -1
-                    MainActor.assumeIsolated { self.inlinePipeline?.moveSelection(delta) }
-                    return nil
+            case .engageSelection(let initialIndex):
+                MainActor.assumeIsolated {
+                    self.inlinePipeline?.moveSelection(initialIndex == 0 ? 1 : -1)
                 }
-                // Passive: dismiss ghost and forward directly to shell for history
-                if hasSuggestion {
-                    MainActor.assumeIsolated {
-                        self.pendingCompletionTask?.cancel()
-                        self.pendingCompletionTask = nil
-                        self.inlinePipeline?.cancel()
-                        self.hideGhost(reason: "history-nav")
-                    }
+                return nil
+            case .passthroughAndCancelSuggestion(let reason):
+                MainActor.assumeIsolated {
+                    self.pendingCompletionTask?.cancel()
+                    self.pendingCompletionTask = nil
+                    self.inlinePipeline?.cancel()
+                    self.hideGhost(reason: reason)
                 }
                 return event
-            }
-
-            let eventModifiers = event.modifierFlags
-            let eventCharacters = event.characters
-            let shouldSchedule = MainActor.assumeIsolated {
-                shouldTriggerCompletion(
-                    keyCode: keyCode,
-                    modifiers: eventModifiers,
-                    characters: eventCharacters
-                )
-            }
-
-            if shouldSchedule {
-                // A new request is starting — drop any stale ghost text so the
-                // old suggestion doesn't linger while typing continues.
+            case .passthroughAndSchedule:
                 MainActor.assumeIsolated {
                     self.inlinePipeline?.resetEngagement()
                     self.inlinePipeline?.cancel()
                     self.hideGhost(reason: "new-typing")
                     self.scheduleCompletion()
                 }
-            } else if hasSuggestion {
-                // Any other key — dismiss WITHOUT recording a rejection and
-                // forward normally. Normal typing/navigation is not negative
-                // feedback; only Esc (above) marks the suggestion rejected,
-                // otherwise the rejection cache poisons future suggestions.
-                MainActor.assumeIsolated {
-                    self.pendingCompletionTask?.cancel()
-                    self.inlinePipeline?.cancel()
-                    self.hideGhost(reason: "other-key")
-                }
+                return event
+            case .passthrough:
+                return event
             }
-            return event
         }
 
         /// Map app shortcuts to notifications. Returns nil for keys the
@@ -384,18 +327,6 @@ import SwiftTerm
             }
         }
 
-        /// Only plain typing (printable characters, backspace/delete) should
-        /// arm the completion debounce — not shortcuts, arrows, or modifiers.
-        private func shouldTriggerCompletion(
-            keyCode: UInt16,
-            modifiers: NSEvent.ModifierFlags,
-            characters: String?
-        ) -> Bool {
-            guard keyCode != 53 else { return false } // Esc is never typing
-            guard modifiers.isDisjoint(with: [.command, .control]) else { return false }
-            if keyCode == 51 || keyCode == 117 { return true }
-            return !(characters?.isEmpty ?? true)
-        }
 
         // MARK: - Completion Flow
 

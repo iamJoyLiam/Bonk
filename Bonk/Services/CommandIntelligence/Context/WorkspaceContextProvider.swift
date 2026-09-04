@@ -22,6 +22,17 @@ final class WorkspaceContextProvider: CommandContextProviding {
     private let historyLimit: Int
     private let knownWordsLimit: Int
 
+    // P0.4: Cached KnownWords and output
+    private var lastOutput: String = ""
+    private var lastOutputHash: Int = 0
+    private var cachedKnownWords: [String] = []
+
+    // P0.4: Cached Host History
+    private var lastHostKey: String = ""
+    private var lastHistoryCount: Int = 0
+    private var cachedHistoryCommands: [String] = []
+    private var cachedLastExit: Int? = nil
+
     init(
         history: GlobalCommandHistory = .shared,
         recentOutputLines: Int = 40,
@@ -41,26 +52,45 @@ final class WorkspaceContextProvider: CommandContextProviding {
     func snapshot(for tab: TerminalTab, inputBuffer: String?, selection: String?) -> CommandContextSnapshot {
         let output = tab.session?.ptySession?.recentOutput(maxLines: recentOutputLines) ?? ""
         let hostKey = tab.hostItem.id.uuidString
-        let historyCommands = history.commands
-            .filter { $0.hostKey == hostKey }
-            .suffix(historyLimit)
-            .map(\.command)
-        let lastExit = history.commands
-            .filter { $0.hostKey == hostKey }
-            .last?.exitCode
+
+        // P0.4: Incremental History Cache — avoid linear re-filtering during typing
+        let allHistory = history.commands
+        let historyCommands: [String]
+        let lastExit: Int?
+        if hostKey == lastHostKey, allHistory.count == lastHistoryCount {
+            historyCommands = cachedHistoryCommands
+            lastExit = cachedLastExit
+        } else {
+            let filtered = allHistory.filter { $0.hostKey == hostKey }
+            historyCommands = Array(filtered.suffix(historyLimit).map(\.command))
+            lastExit = filtered.last?.exitCode
+            lastHostKey = hostKey
+            lastHistoryCount = allHistory.count
+            cachedHistoryCommands = historyCommands
+            cachedLastExit = lastExit
+        }
 
         // Use provided buffer or fall back to session inputBuffer (live typing)
         let buffer = inputBuffer ?? tab.session?.inputBuffer ?? ""
 
-        // KnownWords extraction is Intelligence-owned pure function, not View-owned.
-        let knownWords = InlinePromptBuilder.extractKnownWords(from: output, limit: knownWordsLimit)
+        // P0.4: Incremental Output & KnownWords Cache — skip regex parsing if output hasn't changed
+        let outputHash = output.hashValue
+        let knownWords: [String]
+        if outputHash == lastOutputHash, output == lastOutput {
+            knownWords = cachedKnownWords
+        } else {
+            knownWords = InlinePromptBuilder.extractKnownWords(from: output, limit: knownWordsLimit)
+            lastOutput = output
+            lastOutputHash = outputHash
+            cachedKnownWords = knownWords
+        }
 
         return CommandContextSnapshot(
             inputBuffer: buffer,
             hostKey: hostKey,
             currentDirectory: tab.currentDirectory,
             shell: tab.session?.serverInfo?.shell,
-            recentCommands: Array(historyCommands),
+            recentCommands: historyCommands,
             recentOutput: output,
             lastExitCode: lastExit,
             knownWords: knownWords,
