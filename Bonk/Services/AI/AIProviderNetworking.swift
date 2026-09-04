@@ -357,18 +357,14 @@ enum AIProviderNetworking {
 
         // OpenAI / OpenRouter / OpenCode / Claude: { "data": [{ "id": "..." }] }
         if let data = json?["data"] as? [[String: Any]] {
-            return data.compactMap { $0["id"] as? String }.sorted()
+            return data.compactMap { ($0["id"] as? String)?.cleanedModelName }.sorted()
         }
 
         // Ollama / Gemini: { "models": [{ "name": "..." }] }
         if let models = json?["models"] as? [[String: Any]] {
             return models.compactMap { item -> String? in
                 guard let name = item["name"] as? String else { return nil }
-                // Gemini names are prefixed with "models/"
-                if type == .gemini {
-                    return name.replacingOccurrences(of: "models/", with: "")
-                }
-                return name
+                return name.cleanedModelName
             }.sorted()
         }
 

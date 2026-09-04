@@ -57,48 +57,54 @@ extension AIChatSidebarView {
         .padding(.top, AppStyle.spacingTop)
     }
 
-    // MARK: - Regular Bubbles
+    // MARK: - Regular Messages (Clean macOS Transcript Style)
 
     func bubble(_ msg: AIMessageRecord) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             if msg.role == .assistant {
-                HStack(spacing: 6) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color.accentColor)
-                    Text("Bonk AI")
-                        .font(.system(size: AppStyle.fontSmall, weight: .semibold))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                }
-                MarkdownTextView(
-                    content: msg.content,
-                    onRun: { code in sessionManager.sendTextToActiveTab(code) }
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                HStack(spacing: 6) {
-                    Image(systemName: "person.crop.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    Text(i18n.lang.hasPrefix("zh") ? "你" : "You")
-                        .font(.system(size: AppStyle.fontSmall, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                }
-                Text(msg.content)
-                    .font(.system(size: AppStyle.fontRegular))
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, AppStyle.spacingML)
-                    .padding(.vertical, AppStyle.spacingM)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(nsColor: .controlBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
-                            .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.accentColor)
+                        Text("Bonk AI")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(msg.content, forType: .string)
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    MarkdownTextView(
+                        content: msg.content,
+                        onRun: { code in sessionManager.sendTextToActiveTab(code) }
                     )
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.leading, 17)
+                .padding(.vertical, 2)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Color.accentColor)
+                            .padding(.top, 2)
+                        Text(msg.content)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.primary)
+                            .textSelection(.enabled)
+                        Spacer()
+                    }
+                }
+                .padding(.vertical, 3)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -108,19 +114,22 @@ extension AIChatSidebarView {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(Color.accentColor)
                 Text("Bonk AI")
-                    .font(.system(size: AppStyle.fontSmall, weight: .semibold))
-                    .foregroundStyle(.primary)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
                 Spacer()
             }
             MarkdownTextView(
                 content: text,
                 onRun: { code in sessionManager.sendTextToActiveTab(code) }
             )
+            .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(.leading, 17)
+        .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -129,6 +138,7 @@ extension AIChatSidebarView {
             TypingIndicator()
             Spacer()
         }
+        .padding(.leading, 17)
         .padding(.vertical, AppStyle.spacingS)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -141,12 +151,12 @@ extension AIChatSidebarView {
                 .font(.system(size: AppStyle.fontSmall))
         }
         .foregroundStyle(.secondary)
-        .padding(.horizontal, AppStyle.spacingL)
+        .padding(.leading, 17)
         .padding(.vertical, AppStyle.spacingXS)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: - Agent Bubbles
+    // MARK: - Agent Messages (Clean macOS Transcript Style)
 
     func agentBubble(_ msg: AgentMessage) -> some View {
         Group {
@@ -164,42 +174,32 @@ extension AIChatSidebarView {
     }
 
     private func agentUserContent(_ msg: AgentMessage) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: "person.crop.circle.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                Text(i18n.lang.hasPrefix("zh") ? "你" : "You")
-                    .font(.system(size: AppStyle.fontSmall, weight: .semibold))
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.top, 2)
+                Text(msg.content)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
                 Spacer()
             }
-            Text(msg.content)
-                .font(.system(size: AppStyle.fontRegular))
-                .foregroundStyle(.primary)
-                .textSelection(.enabled)
-                .padding(.horizontal, AppStyle.spacingML)
-                .padding(.vertical, AppStyle.spacingM)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(nsColor: .controlBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
-                        .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
-                )
         }
+        .padding(.vertical, 3)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func agentAssistantContent(_ msg: AgentMessage) -> some View {
-        VStack(alignment: .leading, spacing: AppStyle.spacingS) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(Color.accentColor)
                 Text("Bonk AI")
-                    .font(.system(size: AppStyle.fontSmall, weight: .semibold))
-                    .foregroundStyle(.primary)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
                 Spacer()
             }
             if let thinking = msg.thinking, !thinking.isEmpty {
@@ -219,11 +219,14 @@ extension AIChatSidebarView {
                     content: msg.content,
                     onRun: { code in sessionManager.sendTextToActiveTab(code) }
                 )
+                .textSelection(.enabled)
             }
             if let command = msg.command, !command.isEmpty {
                 agentCommandBlock(command)
             }
         }
+        .padding(.leading, 17)
+        .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -368,6 +371,7 @@ extension AIChatSidebarView {
                 Button {
                     pending.continuation(false)
                     engine.pendingConfirmation = nil
+                    engine.cancel()
                 } label: {
                     Label(i18n.t(.cancel), systemImage: "xmark")
                 }

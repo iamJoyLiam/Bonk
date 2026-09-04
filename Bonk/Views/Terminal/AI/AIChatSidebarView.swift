@@ -57,6 +57,8 @@ struct AIChatSidebarView: View {
     @State private var rotationAngle: Double = 0
     @State var wasCancelled = false
     @State private var showModelPicker = false
+    @State private var showModeMenu = false
+    @State private var showAccessModePopover = false
     @State var pendingDeleteConversation: UUID?
     @State var currentTask: Task<Void, Never>?
     @State var targetStore = AgentTargetStore.shared
@@ -167,12 +169,12 @@ struct AIChatSidebarView: View {
         .padding(.vertical, AppStyle.spacingML)
     }
 
-    // MARK: - Regular Message List (Ask/Edit modes)
+    // MARK: - Regular Message List (Ask/Agent modes)
 
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
                     if messages.isEmpty, !engine.isProcessing {
                         emptyState
                     }
@@ -207,7 +209,7 @@ struct AIChatSidebarView: View {
     private var agentMessageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
                     if engine.agentMessages.isEmpty, !engine.isProcessing {
                         agentEmptyState
                     }
@@ -242,102 +244,82 @@ struct AIChatSidebarView: View {
                 .transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .bottom)), removal: .opacity))
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(isInputFocused ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.secondary))
-                        .padding(.top, 4)
+            HStack(alignment: .bottom, spacing: 8) {
+                // Leading: Apple Intelligence kaleidoscope icon button
+                kaleidoscopeModeButton
 
-                    TextField(
-                        selectedMode == .agent ? i18n.t(.describeTask) : i18n.t(.terminalAssistant),
-                        text: $inputText,
-                        axis: .vertical
-                    )
-                    .lineLimit(1 ... 5)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: AppStyle.fontBody))
-                    .focused($isInputFocused)
-                    .onKeyPress(.downArrow) {
-                        guard isPopupOpen, totalPopupMatchesCount > 0 else { return .ignored }
-                        selectedPopupIndex = (selectedPopupIndex + 1) % totalPopupMatchesCount
-                        return .handled
-                    }
-                    .onKeyPress(.upArrow) {
-                        guard isPopupOpen, totalPopupMatchesCount > 0 else { return .ignored }
-                        selectedPopupIndex = (selectedPopupIndex - 1 + totalPopupMatchesCount) % totalPopupMatchesCount
-                        return .handled
-                    }
-                    .onKeyPress(.tab) {
-                        guard isPopupOpen, totalPopupMatchesCount > 0 else { return .ignored }
+                // Center: Text input field
+                TextField(
+                    selectedMode == .agent ? i18n.t(.describeTask) : i18n.t(.terminalAssistant),
+                    text: $inputText,
+                    axis: .vertical
+                )
+                .lineLimit(1 ... 5)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .focused($isInputFocused)
+                .padding(.vertical, 4)
+                .onKeyPress(.downArrow) {
+                    guard isPopupOpen, totalPopupMatchesCount > 0 else { return .ignored }
+                    selectedPopupIndex = (selectedPopupIndex + 1) % totalPopupMatchesCount
+                    return .handled
+                }
+                .onKeyPress(.upArrow) {
+                    guard isPopupOpen, totalPopupMatchesCount > 0 else { return .ignored }
+                    selectedPopupIndex = (selectedPopupIndex - 1 + totalPopupMatchesCount) % totalPopupMatchesCount
+                    return .handled
+                }
+                .onKeyPress(.tab) {
+                    guard isPopupOpen, totalPopupMatchesCount > 0 else { return .ignored }
+                    acceptSelectedPopupItem()
+                    return .handled
+                }
+                .onKeyPress(.escape) {
+                    guard isPopupOpen else { return .ignored }
+                    isPopupDismissed = true
+                    return .handled
+                }
+                .onKeyPress(.return) {
+                    if isPopupOpen && !NSEvent.modifierFlags.contains(.shift) {
                         acceptSelectedPopupItem()
                         return .handled
                     }
-                    .onKeyPress(.escape) {
-                        guard isPopupOpen else { return .ignored }
-                        isPopupDismissed = true
+                    if !NSEvent.modifierFlags.contains(.shift) {
+                        submit()
                         return .handled
                     }
-                    .onKeyPress(.return) {
-                        if isPopupOpen && !NSEvent.modifierFlags.contains(.shift) {
-                            acceptSelectedPopupItem()
-                            return .handled
-                        }
-                        return .ignored
-                    }
-                    .onSubmit {
-                        if !NSEvent.modifierFlags.contains(.shift) {
-                            submit()
-                        }
+                    return .ignored
+                }
+                .onSubmit {
+                    if !NSEvent.modifierFlags.contains(.shift) {
+                        submit()
                     }
                 }
-                .padding(.horizontal, 9)
-                .padding(.top, 7)
-                .padding(.bottom, 3)
 
+                // Trailing: Permission button + Send/Stop button
                 HStack(spacing: 6) {
-                    modeMenu
                     if selectedMode == .agent {
-                        agentAccessMenu
+                        agentAccessCircularButton
                     }
-                    modelMenu
-                    Spacer()
-
-                    if engine.isProcessing {
-                        Button { cancelCurrentTask() } label: {
-                            HStack(spacing: 3) {
-                                Image(systemName: "stop.fill")
-                                    .font(.system(size: 8, weight: .bold))
-                                Text(i18n.t(.cancel))
-                                    .font(.system(size: 10, weight: .medium))
-                            }
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .transition(.opacity)
-                    } else {
-                        Button { submit() } label: {
-                            Image(systemName: "arrow.up")
-                                .font(.system(size: 11, weight: .bold))
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
+                    circularSendButton
                 }
-                .padding(.horizontal, 7)
-                .padding(.bottom, 6)
+                .padding(.bottom, 2)
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .background(
-                RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
-                    .fill(Color(nsColor: .controlBackgroundColor))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(
-                        isInputFocused ? Color.accentColor.opacity(0.8) : Color(nsColor: .separatorColor).opacity(0.4),
-                        lineWidth: 1
+                        AngularGradient(
+                            gradient: Gradient(colors: aiColors),
+                            center: .center,
+                            angle: .degrees(rotationAngle)
+                        ),
+                        lineWidth: (isInputFocused || engine.isProcessing) ? 3.5 : 0
                     )
+                    .blur(radius: 6)
+                    .opacity((isInputFocused || engine.isProcessing) ? 0.8 : 0)
             )
         }
         .padding(.horizontal, AppStyle.spacingML)
@@ -350,6 +332,9 @@ struct AIChatSidebarView: View {
             providerStore.setModelContext(modelContext)
             engine.activeProvider = providerStore.activeProvider
             restoreLastConversation()
+            withAnimation(.linear(duration: 4.0).repeatForever(autoreverses: false)) {
+                rotationAngle = 360
+            }
         }
     }
 
@@ -360,59 +345,169 @@ struct AIChatSidebarView: View {
         currentConversation = conversations.first(where: { $0.id == lastID })
     }
 
-    private var modeMenu: some View {
-        Menu {
-            ForEach(AIMode.allCases, id: \.self) { mode in
-                Button { selectedMode = mode } label: {
-                    Label(mode.localizedName, systemImage: mode.icon)
-                }
-            }
+    // MARK: - Apple Intelligence Input Components
+
+    private var kaleidoscopeModeButton: some View {
+        Button {
+            showModeMenu.toggle()
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: selectedMode.icon).font(.system(size: 11))
-                Text(selectedMode.localizedName).font(.system(size: 11, weight: .medium))
-                Image(systemName: "chevron.down").font(.system(size: 9))
-            }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .background(Color(nsColor: .quaternaryLabelColor).opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            Image(systemName: "apple.intelligence")
+                .symbolRenderingMode(.multicolor)
+                .font(.system(size: 16, weight: .medium))
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton).fixedSize()
+        .buttonStyle(.plain)
+        .help("切换模式：\(selectedMode == .agent ? i18n.t(.aiModeAgent) : i18n.t(.aiModeAsk))")
+        .popover(isPresented: $showModeMenu, arrowEdge: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                Button {
+                    selectedMode = .ask
+                    showModeMenu = false
+                } label: {
+                    HStack {
+                        Text(i18n.t(.aiModeAsk))
+                            .font(.system(size: 12, weight: selectedMode == .ask ? .semibold : .regular))
+                            .foregroundStyle(Color.primary)
+                        Spacer()
+                        if selectedMode == .ask {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    selectedMode = .agent
+                    showModeMenu = false
+                } label: {
+                    HStack {
+                        Text(i18n.t(.aiModeAgent))
+                            .font(.system(size: 12, weight: selectedMode == .agent ? .semibold : .regular))
+                            .foregroundStyle(Color.primary)
+                        Spacer()
+                        if selectedMode == .agent {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(4)
+            .frame(width: 120)
+        }
     }
 
     private var currentAccessMode: AgentMessage.AccessMode {
         AgentMessage.AccessMode(rawValue: agentAccessModeRaw) ?? .supervised
     }
 
-    private var agentAccessMenu: some View {
-        Menu {
-            ForEach(AgentMessage.AccessMode.allCases) { mode in
-                Button {
-                    agentAccessModeRaw = mode.rawValue
-                } label: {
-                    HStack {
-                        Label(mode.localizedName, systemImage: mode.icon)
-                        if currentAccessMode == mode {
-                            Image(systemName: "checkmark")
+    private var agentAccessCircularButton: some View {
+        Button {
+            showAccessModePopover.toggle()
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(Color(nsColor: .quaternaryLabelColor).opacity(0.2))
+                    .frame(width: 26, height: 26)
+
+                Image(systemName: currentAccessMode.icon)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(currentAccessMode == .fullAccess ? Color.accentColor : Color.secondary)
+            }
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help("执行权限：\(currentAccessMode.localizedName)")
+        .popover(isPresented: $showAccessModePopover, arrowEdge: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(AgentMessage.AccessMode.allCases) { mode in
+                    Button {
+                        agentAccessModeRaw = mode.rawValue
+                        showAccessModePopover = false
+                    } label: {
+                        HStack {
+                            Text(mode.localizedName)
+                                .font(.system(size: 12, weight: currentAccessMode == mode ? .semibold : .regular))
+                                .foregroundStyle(Color.primary)
+                            Spacer()
+                            if currentAccessMode == mode {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(Color.accentColor)
+                            }
                         }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                 }
             }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: currentAccessMode.icon).font(.system(size: 11))
-                Text(currentAccessMode.shortName).font(.system(size: 11, weight: .medium))
-                Image(systemName: "chevron.down").font(.system(size: 9))
-            }
-            .foregroundStyle(currentAccessMode == .fullAccess ? Color.accentColor : Color.secondary)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .background(Color(nsColor: .quaternaryLabelColor).opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .padding(4)
+            .frame(width: 130)
         }
-        .menuStyle(.borderlessButton).fixedSize()
+    }
+
+    private var circularSendButton: some View {
+        Group {
+            if engine.isProcessing {
+                Button {
+                    cancelCurrentTask()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .stroke(
+                                AngularGradient(
+                                    colors: aiColors,
+                                    center: .center,
+                                    angle: .degrees(rotationAngle)
+                                ),
+                                lineWidth: 2
+                            )
+                            .frame(width: 26, height: 26)
+
+                        Circle()
+                            .fill(Color.red.opacity(0.16))
+                            .frame(width: 20, height: 20)
+
+                        Image(systemName: "square.fill")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(Color.red)
+                    }
+                }
+                .buttonStyle(.plain)
+                .help(i18n.t(.cancel))
+            } else {
+                let canSend = !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                Button {
+                    submit()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(canSend ? Color.accentColor : Color(nsColor: .quaternaryLabelColor).opacity(0.18))
+                            .frame(width: 26, height: 26)
+
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(canSend ? Color.white : Color.secondary.opacity(0.4))
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSend)
+                .help("发送 (↵)")
+            }
+        }
     }
 
     // MARK: - Actions

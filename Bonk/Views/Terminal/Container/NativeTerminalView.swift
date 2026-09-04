@@ -112,6 +112,7 @@ import SwiftTerm
         var ghostOverlay: InlineGhostOverlay?
         /// Warp-style candidate popup above the cursor (↑/↓ navigation).
         var candidateListOverlay: InlineCandidateListOverlay?
+        var candidatePopoverController: InlineCandidatePopoverController?
         // Ghost updates coalesced to display tick — LLM streams many deltas per frame.
         nonisolated(unsafe) var ghostCoalesceTask: Task<Void, Never>?
         private nonisolated(unsafe) var resignObserver: NSObjectProtocol?
@@ -240,9 +241,10 @@ import SwiftTerm
 
             let (hasSuggestion, isPopupVisible, candidateCount, popupEnabled, engagement) = MainActor.assumeIsolated {
                 let sug = self.inlinePipeline?.suggestion != nil
-                let listVisible = self.candidateListOverlay != nil &&
+                let popoverVisible = self.candidatePopoverController?.isShown() ?? false
+                let listVisible = popoverVisible || (self.candidateListOverlay != nil &&
                     !(self.candidateListOverlay?.isHidden ?? true) &&
-                    (self.candidateListOverlay?.visibleRowCount ?? 0) > 0
+                    (self.candidateListOverlay?.visibleRowCount ?? 0) > 0)
                 let count = self.inlinePipeline?.ranked.count ?? 0
                 let enabled = UserDefaults.standard.bool(forKey: "ai_inline_candidate_popup")
                 let eng = self.inlinePipeline?.engagement ?? .passive
@@ -382,7 +384,8 @@ import SwiftTerm
             pendingCompletionTask?.cancel()
             pendingCompletionTask = Task { @MainActor [weak self] in
                 // Allow SwiftTerm keyDown to finish and update inputBuffer / line state
-                try? await Task.sleep(for: .milliseconds(35))
+                // 70ms debounce avoids frantic layout thrashing during fast continuous typing
+                try? await Task.sleep(for: .milliseconds(70))
                 guard !Task.isCancelled, let self else { return }
                 self.requestCompletion()
             }
@@ -454,6 +457,14 @@ import SwiftTerm
                 // onSend → SessionManager → InputHandler (history preserved).
                 terminalDelegate?.send(source: self, data: bytes)
             }
+        }
+
+        @MainActor
+        func acceptCandidate(at index: Int) {
+            guard let p = inlinePipeline else { return }
+            let current = p.selectedIndex ?? 0
+            p.moveSelection(index - current)
+            acceptSuggestion()
         }
 
         /// Mirror of SwiftTerm's cell dimension computation for the current font.

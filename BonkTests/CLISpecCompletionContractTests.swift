@@ -156,4 +156,77 @@ struct CLISpecCompletionContractTests {
         #expect(reranked.count == 2)
         #expect(reranked.map { $0.suggestion.fullText } == ["docker ps", "docker images"])
     }
+
+    @Test("8. Candidate Pool normalizes multiple spaces and deduplicates (no 'docker ps' vs 'docker   ps')")
+    func testCandidatePoolDeduplicatesMultipleSpaces() {
+        let pool = CandidatePool()
+        let snapshot = CommandContextSnapshot(
+            inputBuffer: "docker ",
+            recentCommands: ["docker   ps", "docker ps"],
+            recentOutput: ""
+        )
+
+        let candidates = pool.buildCandidates(
+            typed: "docker ",
+            snapshot: snapshot,
+            cache: nil,
+            cacheKey: nil,
+            isRejected: { _ in false }
+        )
+
+        let dockerPsMatches = candidates.filter {
+            let text = ($0.suggestion.fullText ?? $0.suggestion.text).split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            return text == "docker ps"
+        }
+        #expect(dockerPsMatches.count == 1, "Duplicate 'docker ps' with irregular spacing must be deduplicated to 1")
+    }
+
+    @Test("9. Expanded DevOps CLI Specs provide instant subcommands for ufw, apt, rsync, ps, tail")
+    func testExpandedDevOpsCLISpecs() {
+        let registry = CLISpecRegistry.shared
+
+        let ufwCandidates = registry.candidates(for: "ufw ")
+        #expect(!ufwCandidates.isEmpty)
+        let ufwNames = ufwCandidates.map { $0.suggestion.fullText ?? "" }
+        #expect(ufwNames.contains("ufw status"))
+        #expect(ufwNames.contains("ufw allow"))
+
+        let aptCandidates = registry.candidates(for: "apt ")
+        #expect(!aptCandidates.isEmpty)
+        let aptNames = aptCandidates.map { $0.suggestion.fullText ?? "" }
+        #expect(aptNames.contains("apt update"))
+        #expect(aptNames.contains("apt install"))
+
+        let rsyncCandidates = registry.candidates(for: "rsync ")
+        #expect(!rsyncCandidates.isEmpty)
+        let rsyncNames = rsyncCandidates.map { $0.suggestion.fullText ?? "" }
+        #expect(rsyncNames.contains("rsync -avz"))
+
+        let psCandidates = registry.candidates(for: "ps ")
+        #expect(!psCandidates.isEmpty)
+        let psNames = psCandidates.map { $0.suggestion.fullText ?? "" }
+        #expect(psNames.contains("ps aux"))
+    }
+
+    @Test("10. ShellCommandParser separates multiple commands for individual execution")
+    func testShellCommandParser() {
+        let multiScript = """
+        # Step 1: check containers
+        docker ps
+
+        # Step 2: view logs
+        docker logs -fn 200 sentinel-syslog
+
+        # Step 3: restart
+        docker restart sentinel-syslog
+        """
+
+        let parsed = ShellCommandParser.parse(code: multiScript)
+        let commands = parsed.filter(\.isCommand)
+        #expect(commands.count == 3)
+        #expect(commands[0].commandText == "docker ps")
+        #expect(commands[1].commandText == "docker logs -fn 200 sentinel-syslog")
+        #expect(commands[2].commandText == "docker restart sentinel-syslog")
+        #expect(commands[0].commentLines.contains("# Step 1: check containers"))
+    }
 }

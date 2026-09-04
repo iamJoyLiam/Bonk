@@ -185,8 +185,10 @@ struct AgentRuntimeContractTests {
             executionManager: execManager
         )
 
+        let hasStarted = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
         let stream = runtime.run(input: "Run long command") { _, register in
             register?(mockHandle)
+            hasStarted.withLock { $0 = true }
             try? await Task.sleep(nanoseconds: 5_000_000_000)
             return ("done", 0)
         }
@@ -195,8 +197,11 @@ struct AgentRuntimeContractTests {
             for await _ in stream {}
         }
 
-        // Wait a moment for execution to begin
-        try await Task.sleep(nanoseconds: 50_000_000)
+        // Wait until execution has registered the handle
+        for _ in 0..<50 {
+            if hasStarted.withLock({ $0 }) { break }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
 
         // Cancel runtime
         runtime.cancel()
@@ -222,4 +227,54 @@ struct AgentRuntimeContractTests {
         #expect(transcript.contains("[Assistant]: Memory usage is healthy."))
         #expect(transcript.contains("[Completed]"))
     }
+
+    @Test("6. Rejecting command permission immediately terminates loop without prompting model again")
+    func testPermissionRejectionTerminatesLoopImmediately() async {
+        let toolCall = LLMToolCall(
+            id: "call-create",
+            name: "run_command",
+            argumentsJSON: "{\"command\":\"touch /tmp/data\"}"
+        )
+        let gateway = MockModelGateway(responses: [
+            LLMResponse(text: "", toolCalls: [toolCall]),
+            LLMResponse(text: "Should NOT reach here")
+        ])
+
+        let runtime = AgentRuntime(
+            modelGateway: gateway,
+            permissionPolicy: DefaultAgentPermissionPolicy(accessMode: .supervised)
+        )
+
+        let stream = runtime.run(input: "Create data") { _, _ in
+            ("ok", 0)
+        }
+
+        let task = Task {
+            var events: [AgentEvent] = []
+            for await event in stream {
+                events.append(event)
+                if case let .permissionRequested(id, _, _) = event {
+                    runtime.resolvePermission(id: id, approved: false)
+                }
+            }
+            return events
+        }
+
+        let events = await task.value
+        #expect(events.contains(where: {
+            if case let .permissionResolved(id, approved) = $0 {
+                return id == "call-create" && !approved
+            }
+            return false
+        }))
+        #expect(events.contains(where: {
+            if case let .executionInterrupted(reason) = $0 {
+                return reason.contains("取消") || reason.contains("rejected")
+            }
+            return false
+        }))
+        #expect(events.contains(.completed))
+        #expect(!events.contains(.assistantText("Should NOT reach here")))
+    }
 }
+

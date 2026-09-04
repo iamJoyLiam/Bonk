@@ -72,7 +72,10 @@ extension AgentEngine {
             return
         }
         let llm = LLMProviderFactory.provider(for: provider, apiKey: apiKey, workload: .chat)
-        let systemPrompt = "You are a helpful terminal assistant. The user has attached terminal context without requesting command execution. Please analyze and summarize the context concisely, highlighting key findings, command history or system status, and suggest helpful next actions if appropriate."
+        let isGreeting = UserIntent.isGreetingOrConversational(input)
+        let systemPrompt = isGreeting
+            ? "You are Bonk's AI terminal assistant. The user has sent a greeting or pleasantry. Respond warmly, politely, and concisely in the user's language, introducing how you can help with server inspection, diagnostics, and running terminal commands."
+            : "You are a helpful terminal assistant. The user has attached terminal context without requesting command execution. Please analyze and summarize the context concisely, highlighting key findings, command history or system status, and suggest helpful next actions if appropriate."
         let messages: [LLMMessage] = [
             .system(systemPrompt),
             .user(input)
@@ -224,10 +227,10 @@ extension AgentEngine {
                 let riskLevel: PendingCommand.RiskLevel = step.riskLevel == .dangerous ? .dangerous : .moderate
                 let confirmed = await requestConfirmation(command: step.command, riskLevel: riskLevel)
                 guard confirmed else {
-                    appendAgentMessage(.system, content: String(format: L.t(.skippedStep), step.command),
+                    appendAgentMessage(.system, content: "用户取消了命令执行，计划已停止。",
                                        conversation: conversation, context: context)
-                    results.append(StepResult(step: step, output: "Skipped by user", success: false, duration: 0))
-                    continue
+                    results.append(StepResult(step: step, output: "Cancelled by user", success: false, duration: 0))
+                    break
                 }
             }
 

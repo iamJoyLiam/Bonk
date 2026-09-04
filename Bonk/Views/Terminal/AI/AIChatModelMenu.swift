@@ -10,7 +10,7 @@ struct ModelPickerButton: View {
 
     var body: some View {
         let provider = store.activeProvider
-        let name = provider?.model ?? ""
+        let name = provider?.model.cleanedModelName ?? ""
         let displayName = name.isEmpty ? (provider?.type.displayName ?? "") : name
 
         HStack(spacing: 4) {
@@ -68,9 +68,9 @@ struct ModelPickerButton: View {
                         isOpen = false
                     } label: {
                         HStack {
-                            Text(model).font(.system(size: AppStyle.fontBody)).lineLimit(1)
+                            Text(model.cleanedModelName).font(.system(size: AppStyle.fontBody)).lineLimit(1)
                             Spacer()
-                            if model == selectedModel {
+                            if model == selectedModel || model.cleanedModelName == selectedModel.cleanedModelName {
                                 Image(systemName: "checkmark").font(.system(size: AppStyle.fontCaption))
                             }
                         }
@@ -86,7 +86,7 @@ struct ModelPickerButton: View {
                     isOpen = false
                 } label: {
                     HStack {
-                        Text(selectedModel).font(.system(size: AppStyle.fontBody)).lineLimit(1)
+                        Text(selectedModel.cleanedModelName).font(.system(size: AppStyle.fontBody)).lineLimit(1)
                         Spacer()
                         Image(systemName: "checkmark").font(.system(size: AppStyle.fontCaption))
                     }

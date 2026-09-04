@@ -59,36 +59,33 @@ extension MarkdownUI.Theme {
                 .padding(.vertical, AppStyle.spacingXS)
         }
 
-        // Headings — sized by level, tight margins, no heavy decoration.
-        theme.heading1 = headingStyle(size: 16)
-        theme.heading2 = headingStyle(size: 14)
-        theme.heading3 = headingStyle(size: 13)
+        // Headings — sized by level, tight margins, native macOS typography.
+        theme.heading1 = headingStyle(size: 15)
+        theme.heading2 = headingStyle(size: 13.5)
+        theme.heading3 = headingStyle(size: 12.5)
         theme.heading4 = headingStyle(size: 12)
 
         // Blockquotes — left accent bar, muted text.
         theme.blockquote = BlockStyle<BlockConfiguration> { configuration in
             HStack(spacing: 8) {
                 Rectangle()
-                    .fill(Color.accentColor.opacity(AppStyle.opacityDisabled))
-                    .frame(width: AppStyle.indicatorMedium)
+                    .fill(Color.accentColor.opacity(0.6))
+                    .frame(width: 3)
                 configuration.label
-                    .italic()
+                    .font(.system(size: 12.5))
                     .foregroundStyle(.secondary)
             }
-            .padding(.vertical, AppStyle.spacingXS)
+            .padding(.vertical, 2)
         }
 
-        // Tables — card background, readable header. Horizontally scrollable
-        // so wide AI summaries (disk layout, resource stats) never get
-        // squeezed into "…" in a narrow sidebar.
+        // Tables — card background, readable header.
         theme.table = BlockStyle<BlockConfiguration> { configuration in
-            ScrollView(.horizontal, showsIndicators: false) {
-                configuration.label
-                    .padding(AppStyle.spacingM)
-                    .background(Color(nsColor: .controlColor).opacity(AppStyle.opacityOverlayStrong))
-                    .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall))
-            }
-            .padding(.vertical, AppStyle.spacingXS)
+            configuration.label
+                .font(.system(size: 12))
+                .padding(8)
+                .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .padding(.vertical, 3)
         }
 
         return theme
@@ -98,8 +95,8 @@ extension MarkdownUI.Theme {
         BlockStyle<BlockConfiguration> { configuration in
             configuration.label
                 .font(.system(size: size, weight: .semibold))
-                .padding(.top, AppStyle.spacingM)
-                .padding(.bottom, AppStyle.indicatorMedium)
+                .padding(.top, 6)
+                .padding(.bottom, 2)
         }
     }
 }

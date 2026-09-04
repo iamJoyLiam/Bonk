@@ -57,4 +57,28 @@ struct UserIntentContractTests {
         )
         #expect(intent.executionRequested == false)
     }
+
+    @Test("Pure greeting inputs do not trigger command execution")
+    func pureGreetingsDoNotTriggerExecution() {
+        let g1 = UserIntent.parse(rawInput: "你好", defaultExecutionRequested: true)
+        #expect(g1.isConversational == true)
+        #expect(g1.executionRequested == false)
+
+        let g2 = UserIntent.parse(rawInput: "你好！", defaultExecutionRequested: true)
+        #expect(g2.isConversational == true)
+        #expect(g2.executionRequested == false)
+
+        let g3 = UserIntent.parse(rawInput: "hello", defaultExecutionRequested: true)
+        #expect(g3.isConversational == true)
+        #expect(g3.executionRequested == false)
+
+        let g4 = UserIntent.parse(rawInput: "在吗", defaultExecutionRequested: true)
+        #expect(g4.isConversational == true)
+        #expect(g4.executionRequested == false)
+
+        let mixed = UserIntent.parse(rawInput: "你好，查看系统当前内存使用情况", defaultExecutionRequested: true)
+        #expect(mixed.isConversational == false)
+        #expect(mixed.executionRequested == true)
+    }
 }
+

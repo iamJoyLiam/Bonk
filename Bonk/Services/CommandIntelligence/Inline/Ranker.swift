@@ -80,7 +80,7 @@ struct CandidateRanker: Sendable {
         candidates: [CommandCandidate],
         isRejected: (String) -> Bool = { _ in false }
     ) -> [CommandCandidate] {
-        var seenTexts = Set<String>()
+        var seenNormalized = Set<String>()
         return candidates
             .filter { candidate in
                 !isRejected(candidate.suggestion.text)
@@ -94,7 +94,9 @@ struct CandidateRanker: Sendable {
                 return lhs.rawScore > rhs.rawScore
             }
             .filter { candidate in
-                seenTexts.insert(candidate.suggestion.text).inserted
+                let full = candidate.suggestion.fullText ?? candidate.suggestion.text
+                let norm = full.split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
+                return seenNormalized.insert(norm).inserted
             }
     }
 }

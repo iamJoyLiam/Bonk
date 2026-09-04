@@ -183,13 +183,9 @@ final class AgentRuntime: @unchecked Sendable {
                     }
                     emit(.permissionResolved(id: callId, approved: approved))
                     if !approved {
-                        emit(.executionInterrupted(reason: "Tool call rejected by user: \(toolName)"))
-                        messages.append(LLMMessage(
-                            role: .tool,
-                            content: "Tool execution was rejected by the user.",
-                            toolCallID: callId
-                        ))
-                        continue
+                        emit(.executionInterrupted(reason: "用户取消了命令执行。"))
+                        emit(.completed)
+                        return
                     }
 
                 case let .blocked(reason):

@@ -86,7 +86,10 @@ final class InlineSuggestionPipeline {
     // MARK: - Public
 
     func request(snapshot: CommandContextSnapshot) {
-        lastKeystrokeTime = Date()
+        let now = Date()
+        let interval = lastKeystrokeTime.map { now.timeIntervalSince($0) } ?? 1.0
+        let isTypingFast = interval < 0.16
+        lastKeystrokeTime = now
         let trimmedLeading = String(snapshot.inputBuffer.drop(while: { $0.isWhitespace || $0.isNewline }))
         let typed = trimmedLeading.trimmingCharacters(in: .newlines)
         guard typed.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else {
@@ -96,7 +99,7 @@ final class InlineSuggestionPipeline {
         let gen = generationController.bumpGeneration()
         // Tier 1: deterministic local candidates (knownWords/cache/history) —
         // instant, no debounce. Warp-style: local ghost appears immediately.
-        performLocal(snapshot: snapshot, typed: typed, generation: gen)
+        performLocal(snapshot: snapshot, typed: typed, generation: gen, isTypingFast: isTypingFast)
 
         // Tier 2: Evaluate TriggerPolicy before scheduling LLM
         let confidence = evaluateConfidence(for: currentCandidates, typed: typed)
@@ -190,7 +193,7 @@ final class InlineSuggestionPipeline {
 
     // MARK: - Pipeline
 
-    private func performLocal(snapshot: CommandContextSnapshot, typed: String, generation: UInt64) {
+    private func performLocal(snapshot: CommandContextSnapshot, typed: String, generation: UInt64, isTypingFast: Bool) {
         guard generationController.isCurrent(generation) else { return }
 
         // Resolve cache key for provider-aware caching; fallback to local key when no provider for rejection tracking
@@ -214,7 +217,7 @@ final class InlineSuggestionPipeline {
             isRejected: isRejected
         )
 
-        setRankedCandidates(candidates, typed: typed, generation: generation)
+        setRankedCandidates(candidates, typed: typed, generation: generation, isTypingFast: isTypingFast)
 
         // Cache the top local candidate for parity with previous commit behavior.
         if let k = key, let first = ranked.first, !first.1.text.isEmpty {
@@ -251,14 +254,12 @@ final class InlineSuggestionPipeline {
         )
 
         guard generationController.isCurrent(generation) else { return }
-        setRankedCandidates(reranked, typed: typed, generation: generation)
+        setRankedCandidates(reranked, typed: typed, generation: generation, isTypingFast: false)
     }
 
     /// Replace the pipeline candidate list using ranked CommandCandidates and presentation policy.
-    private func setRankedCandidates(_ list: [CommandCandidate], typed: String, generation: UInt64) {
+    private func setRankedCandidates(_ list: [CommandCandidate], typed: String, generation: UInt64, isTypingFast: Bool = false) {
         guard generationController.isCurrent(generation) else { return }
-        let now = Date()
-        let isTypingFast = lastKeystrokeTime.map { now.timeIntervalSince($0) < 0.15 } ?? false
         applyPresentation(list: list, typed: typed, isTypingFast: isTypingFast, generation: generation)
     }
 

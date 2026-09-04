@@ -14,6 +14,10 @@ enum AgentPrompts {
     - Prefer safe read-only commands. Never destroy data without explicit user permission.
     - Do NOT repeat the exact same command if you already received its output.
 
+    ## Greetings and Conversational Queries (CRITICAL)
+    - If the user provides a greeting (e.g. "你好", "hello", "hi"), pleasantry, or general question that does NOT request running terminal commands, DO NOT CALL ANY TOOLS!
+    - Reply directly and politely in the user's language, introducing how you can assist with server inspection, diagnostics, and command execution.
+
     ## When to Conclude (CRITICAL)
     - As soon as you have gathered enough information to answer the user's request, STOP CALLING TOOLS IMMEDIATELY!
     - Provide your final summary and conclusion directly in the user's language.
@@ -55,6 +59,9 @@ enum AgentPrompts {
     - Never plan destructive commands (rm -rf /, mkfs, dd)
     - Prefer safe alternatives (docker stop over docker kill)
     - Mark risky operations in the description
+
+    ## Greetings and Conversational Queries
+    - If the user's input is a greeting (e.g. "你好", "hello") or general question that requires no commands, return an empty plan "plan": [] and provide a friendly greeting in "response".
     """
 
     /// Legacy single-command prompt (kept for backward compatibility).

@@ -374,6 +374,160 @@ final class CLISpecRegistry: @unchecked Sendable {
                 CLISubcommand(name: "-V", summary: "Show compiler and configure options", priority: 85.0),
                 CLISubcommand(name: "-c", summary: "Specify alternative configuration file", priority: 80.0),
             ]
+        ),
+        CLISpec(
+            command: "ufw",
+            summary: "Program for managing a netfilter firewall",
+            subcommands: [
+                CLISubcommand(name: "status", summary: "Show firewall status", commonFlags: ["verbose", "numbered"], priority: 95.0),
+                CLISubcommand(name: "enable", summary: "Enable firewall and reload", priority: 90.0),
+                CLISubcommand(name: "disable", summary: "Disable firewall", priority: 88.0),
+                CLISubcommand(name: "allow", summary: "Allow an incoming rule", commonFlags: ["ssh", "http", "https", "22/tcp", "80/tcp", "443/tcp"], priority: 92.0),
+                CLISubcommand(name: "deny", summary: "Deny an incoming rule", priority: 85.0),
+                CLISubcommand(name: "reload", summary: "Reload firewall configuration", priority: 86.0),
+                CLISubcommand(name: "delete", summary: "Delete rule", priority: 82.0),
+            ]
+        ),
+        CLISpec(
+            command: "apt",
+            summary: "Debian/Ubuntu package management tool",
+            subcommands: [
+                CLISubcommand(name: "update", summary: "Update list of available packages", priority: 96.0),
+                CLISubcommand(name: "upgrade", summary: "Upgrade packages to newer versions", commonFlags: ["-y"], priority: 94.0),
+                CLISubcommand(name: "install", summary: "Install new packages", commonFlags: ["-y"], priority: 95.0),
+                CLISubcommand(name: "remove", summary: "Remove packages", priority: 88.0),
+                CLISubcommand(name: "autoremove", summary: "Remove unused packages automatically", priority: 86.0),
+                CLISubcommand(name: "search", summary: "Search package descriptions", priority: 85.0),
+                CLISubcommand(name: "show", summary: "Show package details", priority: 80.0),
+            ]
+        ),
+        CLISpec(
+            command: "apt-get",
+            summary: "APT package handling utility",
+            subcommands: [
+                CLISubcommand(name: "update", summary: "Update package lists", priority: 96.0),
+                CLISubcommand(name: "upgrade", summary: "Perform an upgrade", commonFlags: ["-y"], priority: 94.0),
+                CLISubcommand(name: "install", summary: "Install packages", commonFlags: ["-y"], priority: 95.0),
+                CLISubcommand(name: "remove", summary: "Remove packages", priority: 88.0),
+                CLISubcommand(name: "purge", summary: "Remove and purge configuration files", priority: 85.0),
+                CLISubcommand(name: "clean", summary: "Erase downloaded archive files", priority: 80.0),
+            ]
+        ),
+        CLISpec(
+            command: "dnf",
+            summary: "Package manager for RPM-based Linux distributions",
+            subcommands: [
+                CLISubcommand(name: "install", summary: "Install packages", commonFlags: ["-y"], priority: 95.0),
+                CLISubcommand(name: "update", summary: "Update packages", commonFlags: ["-y"], priority: 94.0),
+                CLISubcommand(name: "remove", summary: "Remove packages", priority: 88.0),
+                CLISubcommand(name: "search", summary: "Search for packages", priority: 85.0),
+                CLISubcommand(name: "clean", summary: "Clean cache directory", commonFlags: ["all"], priority: 80.0),
+            ]
+        ),
+        CLISpec(
+            command: "yum",
+            summary: "Yellowdog Updater Modified package manager",
+            subcommands: [
+                CLISubcommand(name: "install", summary: "Install packages", commonFlags: ["-y"], priority: 95.0),
+                CLISubcommand(name: "update", summary: "Update packages", commonFlags: ["-y"], priority: 94.0),
+                CLISubcommand(name: "remove", summary: "Remove packages", priority: 88.0),
+                CLISubcommand(name: "search", summary: "Search packages", priority: 85.0),
+            ]
+        ),
+        CLISpec(
+            command: "service",
+            summary: "Run a System V init script",
+            subcommands: [
+                CLISubcommand(name: "status", summary: "Show service status", priority: 95.0),
+                CLISubcommand(name: "restart", summary: "Restart service", priority: 92.0),
+                CLISubcommand(name: "start", summary: "Start service", priority: 90.0),
+                CLISubcommand(name: "stop", summary: "Stop service", priority: 88.0),
+                CLISubcommand(name: "reload", summary: "Reload service configuration", priority: 85.0),
+            ]
+        ),
+        CLISpec(
+            command: "rsync",
+            summary: "Fast and versatile remote file copying tool",
+            subcommands: [
+                CLISubcommand(name: "-avz", summary: "Archive mode with compression and verbosity", priority: 95.0),
+                CLISubcommand(name: "-avzP", summary: "Archive with progress and resume partial", priority: 94.0),
+                CLISubcommand(name: "-P", summary: "Show progress and keep partially transferred files", priority: 90.0),
+                CLISubcommand(name: "--delete", summary: "Delete extraneous files from destination", priority: 86.0),
+                CLISubcommand(name: "-e", summary: "Specify the remote shell to use", commonFlags: ["ssh"], priority: 84.0),
+            ]
+        ),
+        CLISpec(
+            command: "ip",
+            summary: "Show / manipulate routing, network devices, and tunnels",
+            subcommands: [
+                CLISubcommand(name: "addr", summary: "Protocol address management", commonFlags: ["show"], priority: 95.0),
+                CLISubcommand(name: "route", summary: "Routing table management", commonFlags: ["show"], priority: 92.0),
+                CLISubcommand(name: "link", summary: "Network device configuration", commonFlags: ["show", "set"], priority: 90.0),
+                CLISubcommand(name: "neigh", summary: "Neighbour/ARP table management", commonFlags: ["show"], priority: 85.0),
+            ]
+        ),
+        CLISpec(
+            command: "ps",
+            summary: "Report current processes snapshot",
+            subcommands: [
+                CLISubcommand(name: "aux", summary: "Show all processes with BSD syntax", priority: 95.0),
+                CLISubcommand(name: "-ef", summary: "Show full process listing with standard syntax", priority: 93.0),
+                CLISubcommand(name: "-u", summary: "Show processes of specified user", priority: 88.0),
+            ]
+        ),
+        CLISpec(
+            command: "df",
+            summary: "Report file system disk space usage",
+            subcommands: [
+                CLISubcommand(name: "-h", summary: "Human-readable sizes (powers of 1024)", priority: 95.0),
+                CLISubcommand(name: "-T", summary: "Print file system type", priority: 90.0),
+                CLISubcommand(name: "-i", summary: "List inode information instead of block usage", priority: 85.0),
+            ]
+        ),
+        CLISpec(
+            command: "du",
+            summary: "Estimate file space usage",
+            subcommands: [
+                CLISubcommand(name: "-sh", summary: "Summary of human-readable sizes", commonFlags: ["*", "."], priority: 95.0),
+                CLISubcommand(name: "-h", summary: "Print sizes in human readable format", commonFlags: ["--max-depth=1"], priority: 90.0),
+            ]
+        ),
+        CLISpec(
+            command: "tail",
+            summary: "Output the last part of files",
+            subcommands: [
+                CLISubcommand(name: "-f", summary: "Output appended data as the file grows", priority: 95.0),
+                CLISubcommand(name: "-n", summary: "Output the last N lines", commonFlags: ["50", "100", "200", "500"], priority: 92.0),
+                CLISubcommand(name: "-F", summary: "Follow by file name, retrying if inaccessible", priority: 88.0),
+            ]
+        ),
+        CLISpec(
+            command: "chmod",
+            summary: "Change file mode bits",
+            subcommands: [
+                CLISubcommand(name: "+x", summary: "Add execution permission", priority: 95.0),
+                CLISubcommand(name: "755", summary: "rwxr-xr-x standard executable permission", priority: 92.0),
+                CLISubcommand(name: "644", summary: "rw-r--r-- standard file permission", priority: 90.0),
+                CLISubcommand(name: "600", summary: "rw------- private file permission (e.g. keys)", priority: 88.0),
+                CLISubcommand(name: "-R", summary: "Change files and directories recursively", commonFlags: ["755", "644"], priority: 86.0),
+            ]
+        ),
+        CLISpec(
+            command: "chown",
+            summary: "Change file owner and group",
+            subcommands: [
+                CLISubcommand(name: "-R", summary: "Operate on files and directories recursively", priority: 95.0),
+                CLISubcommand(name: "root:root", summary: "Set owner and group to root", priority: 90.0),
+                CLISubcommand(name: "www-data:www-data", summary: "Set owner and group to web server", priority: 88.0),
+            ]
+        ),
+        CLISpec(
+            command: "killall",
+            summary: "Kill processes by name",
+            subcommands: [
+                CLISubcommand(name: "-9", summary: "Send SIGKILL immediately", priority: 95.0),
+                CLISubcommand(name: "-15", summary: "Send SIGTERM gracefully", priority: 90.0),
+            ]
         )
     ]
 }

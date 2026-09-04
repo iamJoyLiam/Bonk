@@ -62,13 +62,17 @@ struct CandidatePool: Sendable {
             ))
         }
 
-        // Also check snapshot.recentCommands for prefix matches
+        // Also check snapshot.recentCommands for prefix matches (with normalized whitespace)
+        let normalizedTyped = typed.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         for cmd in snapshot.recentCommands.reversed() {
-            let trimmedCmd = cmd.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmedCmd.hasPrefix(typed) && trimmedCmd.count > typed.count {
-                let suffix = String(trimmedCmd.dropFirst(typed.count))
+            let normalizedCmd = cmd.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            if (normalizedCmd.hasPrefix(typed) && normalizedCmd.count > typed.count) ||
+               (normalizedCmd.hasPrefix(normalizedTyped) && normalizedCmd.count > normalizedTyped.count) {
+                let prefixLen = normalizedCmd.hasPrefix(typed) ? typed.count : normalizedTyped.count
+                let suffix = String(normalizedCmd.dropFirst(prefixLen))
+                guard !suffix.isEmpty else { continue }
                 let display = SuggestionFormatter.displaySuffix(suffix, typed: typed)
-                let sug = Suggestion(text: suffix, displayText: display, fullText: trimmedCmd)
+                let sug = Suggestion(text: suffix, displayText: display, fullText: normalizedCmd)
                 let score = ranker.score(suggestion: sug, source: "history")
                 pool.append(CommandCandidate(
                     source: "history",

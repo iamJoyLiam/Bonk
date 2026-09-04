@@ -18,12 +18,13 @@ extension NativeTerminalView {
 
     // MARK: - Candidate List Overlay (Warp-style ↑/↓ popup)
 
-    func ensureCandidateList() -> InlineCandidateListOverlay {
-        if let candidateListOverlay { return candidateListOverlay }
-        let list = InlineCandidateListOverlay()
-        addSubview(list, positioned: .above, relativeTo: ghostOverlay)
-        candidateListOverlay = list
-        return list
+    func ensureCandidatePopover() -> InlineCandidatePopoverController {
+        if let candidatePopoverController { return candidatePopoverController }
+        let controller = InlineCandidatePopoverController(owner: self) { [weak self] index in
+            self?.acceptCandidate(at: index)
+        }
+        candidatePopoverController = controller
+        return controller
     }
 
     /// Row height derived from font metrics, 2pt vertical padding per side.
@@ -43,26 +44,22 @@ extension NativeTerminalView {
             hideCandidateList()
             return
         }
-        let list = ensureCandidateList()
-        list.font = font
-        list.rowHeight = Self.candidateRowHeight(for: font)
-        let wasHidden = list.isHidden
-        let previousRowCount = list.visibleRowCount
-        list.items = items
-        list.selectedIndex = selectedIndex
-        // Reposition only when hidden or the row count changed the panel height;
-        // a pure selection change just marks rows for redraw.
-        if wasHidden || previousRowCount != list.visibleRowCount {
-            list.isHidden = false
-            scheduleGhostPositionCoalesced()
-        }
+        let cell = Self.cellSize(for: font, backingScale: window?.backingScaleFactor ?? 2)
+        let (cursorX, cursorY) = terminal.getCursorLocation()
+        let cursorRect = NSRect(
+            x: CGFloat(cursorX) * cell.width,
+            y: bounds.height - CGFloat(cursorY + 1) * cell.height,
+            width: cell.width,
+            height: cell.height
+        )
+        ensureCandidatePopover().show(items: items, selectedIndex: selectedIndex, cursorRect: cursorRect, font: font)
     }
 
     @MainActor
     func hideCandidateList() {
-        guard let list = candidateListOverlay else { return }
-        list.isHidden = true
-        list.items = []
+        candidatePopoverController?.hide()
+        candidateListOverlay?.isHidden = true
+        candidateListOverlay?.items = []
     }
 
     // Ghost updates coalesced to display tick — LLM streams many deltas per frame, but overlay
@@ -161,8 +158,18 @@ extension NativeTerminalView {
             height: cell.height
         )
 
-        // Anchor the candidate popup with a 4pt gap: below the cursor row by default,
-        // or above the cursor row if there is not enough room below.
+        // Update popover positioning rect if visible
+        let cursorRect = NSRect(
+            x: originX,
+            y: bounds.height - CGFloat(cursorY + 1) * cell.height,
+            width: cell.width,
+            height: cell.height
+        )
+        if let pop = candidatePopoverController, pop.isShown() {
+            pop.updateCursorRect(cursorRect)
+        }
+
+        // Anchor legacy candidate overlay if present
         if let list = candidateListOverlay, !list.isHidden, list.visibleRowCount > 0, list.rowHeight > 0 {
             let listHeight = list.totalHeight()
             let listWidth = min(list.measuredWidth(), bounds.width - 16)
@@ -170,11 +177,8 @@ extension NativeTerminalView {
             let cursorRowBottom = bounds.height - CGFloat(cursorY + 1) * cell.height
             let cursorRowTop = bounds.height - CGFloat(cursorY) * cell.height
 
-            // In non-flipped coordinate space (0 at bottom, bounds.height at top):
-            // Try placing below the cursor row:
             var y = cursorRowBottom - listHeight - 4
             if y < 4 {
-                // Not enough room below, place above cursor row:
                 y = cursorRowTop + 4
                 if y + listHeight > bounds.height - 4 {
                     y = max(4, bounds.height - listHeight - 4)

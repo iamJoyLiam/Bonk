@@ -422,20 +422,6 @@ extension AIMode {
             - Match the user's language.
             - If context is insufficient, say exactly what you need and ask once.
             """
-        case .edit:
-            """
-            You are a terminal command expert. The user describes a task and you produce
-            the exact commands to run on their remote server.
-
-            Output rules (strict):
-            - Put the commands in ONE ```bash block, runnable as-is.
-            - Lead with the block. A 1-2 sentence note only when a command is
-              destructive or surprising.
-            - Sparse same-line `#` comments only.
-            - No numbered lists, no extra formatting inside the block.
-            - Prefer read-only commands first; warn before irreversible operations.
-            - Match the user's language.
-            """
         case .agent:
             AgentPrompts.systemPrompt
         }
