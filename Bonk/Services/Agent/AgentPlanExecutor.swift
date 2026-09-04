@@ -9,24 +9,38 @@ extension AgentEngine {
     /// Run the agent: generate plan → wait for approval → execute steps → report.
     func runAgent(
         input: String,
+        displayInput: String? = nil,
         sshService: SSHNetworkService,
         hostName: String? = nil,
         conversation: AIConversationRecord? = nil,
         context: ModelContext? = nil
     ) async {
-        await runAgent(input: input, sshService: sshService, hybridSession: nil, hostName: hostName, conversation: conversation, context: context)
+        await runAgent(input: input, displayInput: displayInput, sshService: sshService, hybridSession: nil, hostName: hostName, conversation: conversation, context: context)
     }
 
     /// v3.3 Hybrid overload — activeTab's TerminalSession provides multiplexed exec.
     func runAgent(
         input: String,
+        displayInput: String? = nil,
         sshService: SSHNetworkService,
         hybridSession: TerminalSession?,
         hostName: String? = nil,
         conversation: AIConversationRecord? = nil,
         context: ModelContext? = nil
     ) async {
-        appendAgentMessage(.user, content: input, conversation: conversation, context: context)
+        let intent = UserIntent.parse(rawInput: displayInput ?? input, defaultExecutionRequested: true)
+        appendAgentMessage(.user, content: displayInput ?? input, conversation: conversation, context: context)
+
+        // If user provided context references only (@history, @terminal) without an execution prompt,
+        // do not run tool execution loop; perform safe direct synthesis instead.
+        if !intent.executionRequested {
+            await runAgentDirectSynthesis(
+                input: input,
+                conversation: conversation,
+                context: context
+            )
+            return
+        }
 
         let useToolLoop = resolveProvider().map { resolved in
             LLMProviderFactory.provider(
@@ -44,6 +58,35 @@ extension AgentEngine {
                 input: input, sshService: sshService, hybridSession: hybridSession,
                 conversation: conversation, context: context
             )
+        }
+    }
+
+    /// Direct synthesis when only context references (@history, @terminal) are provided without execution task.
+    func runAgentDirectSynthesis(
+        input: String,
+        conversation: AIConversationRecord?,
+        context: ModelContext?
+    ) async {
+        guard let (provider, apiKey) = resolveProvider() else {
+            appendAgentMessage(.system, content: lastError ?? L.t(.aiNoResponse), conversation: conversation, context: context)
+            return
+        }
+        let llm = LLMProviderFactory.provider(for: provider, apiKey: apiKey, workload: .chat)
+        let systemPrompt = "You are a helpful terminal assistant. The user has attached terminal context without requesting command execution. Please analyze and summarize the context concisely, highlighting key findings, command history or system status, and suggest helpful next actions if appropriate."
+        let messages: [LLMMessage] = [
+            .system(systemPrompt),
+            .user(input)
+        ]
+        do {
+            let turn = try await llm.chat(messages: messages, maxTokens: 1024, disableReasoning: false)
+            let text = turn.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty {
+                appendAgentMessage(.assistant, content: text, conversation: conversation, context: context)
+            } else {
+                appendAgentMessage(.system, content: "未发现需要关注的异常信息。", conversation: conversation, context: context)
+            }
+        } catch {
+            appendAgentMessage(.system, content: "AI error: \(error.localizedDescription)", conversation: conversation, context: context)
         }
     }
 
