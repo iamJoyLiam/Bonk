@@ -1,5 +1,18 @@
 import Foundation
 
+/// Explicit execution permission tiers (L0..L4).
+enum CommandSafetyLevel: Int, Comparable, Sendable {
+    case l0Explanation = 0     // Read-only / Pure explanation (no command execution)
+    case l1SafeInspection = 1  // Safe read-only inspection (ls, ps, pwd, git status, docker ps)
+    case l2StateMutation = 2   // State modification (mkdir, touch, cp, git commit, npm install)
+    case l3HighRisk = 3        // Destructive / dangerous (rm, kill, reboot, docker rm)
+    case l4Critical = 4        // Blocked / privilege escalation (sudo, mkfs, destructive root)
+
+    static func < (lhs: CommandSafetyLevel, rhs: CommandSafetyLevel) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+}
+
 /// Classifies shell commands by risk level for Agent mode.
 /// Handles pipes, chains (&&, ||, ;), and sudo subcommands.
 enum CommandSafety {
@@ -8,9 +21,23 @@ enum CommandSafety {
     case dangerous //  
     case blocked //  
 
+    var level: CommandSafetyLevel {
+        switch self {
+        case .safe: return .l1SafeInspection
+        case .moderate: return .l2StateMutation
+        case .dangerous: return .l3HighRisk
+        case .blocked: return .l4Critical
+        }
+    }
+
+    static func classifyLevel(_ command: String) -> CommandSafetyLevel {
+        classify(command).level
+    }
+
     static func classify(_ command: String) -> CommandSafety {
         let trimmed = command.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return .blocked }
+        if isBlocked(trimmed) { return .blocked }
 
         let segments = splitByChainOperators(trimmed)
         var highestRisk: CommandSafety = .safe
@@ -37,7 +64,7 @@ enum CommandSafety {
         if isBlocked(trimmed) { return .blocked }
 
         // Read-only listings are safe even for normally risky tools
-        // (e.g. `fdisk -l`, `parted -l`, bare `mount`).
+        // (e.g. `fdisk -l`, `parted -l`, bare `mount`, `docker ps`).
         if isReadOnlyListing(cmd, trimmed) { return .safe }
 
         // sudo → delegate to subcommand
@@ -76,6 +103,15 @@ enum CommandSafety {
             return !lower.contains(" -") // bare `mount` just lists mounts
         case "blkid", "findmnt", "lsblk":
             return true
+        case "docker", "podman":
+            let safeSubcommands = ["ps", "images", "version", "info", "stats", "top", "port", "container ls", "image ls"]
+            return safeSubcommands.contains { lower.hasPrefix("\(cmd) \($0)") || lower == "\(cmd) \($0)" }
+        case "kubectl":
+            let safeSubcommands = ["get", "describe", "logs", "version", "cluster-info", "top"]
+            return safeSubcommands.contains { lower.hasPrefix("\(cmd) \($0)") || lower == "\(cmd) \($0)" }
+        case "git":
+            let safeSubcommands = ["status", "log", "diff", "branch", "show", "tag"]
+            return safeSubcommands.contains { lower.hasPrefix("\(cmd) \($0)") || lower == "\(cmd) \($0)" }
         default:
             return false
         }
@@ -86,9 +122,9 @@ enum CommandSafety {
             "rm -rf /", "rm -rf /*", "rm -rf ~",
             "mkfs", "dd if=/dev/zero", "dd if=/dev/random",
             ":(){ :|:& };:",
-            "chmod -R 777 /", "chmod 777 /",
+            "chmod -r 777 /", "chmod 777 /",
             "> /dev/sda", "> /dev/nvme",
-            "wget -O- | sh", "curl | sh", "curl | bash",
+            "wget -o- | sh", "curl | sh", "curl | bash",
             "nc -e", "ncat -e",
         ]
         let lower = command.lowercased()

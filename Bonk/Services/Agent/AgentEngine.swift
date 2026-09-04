@@ -8,9 +8,17 @@ import SwiftData
 final class AgentEngine {
     static let shared = AgentEngine()
 
-    private static let logger = Logger(subsystem: "com.bonk", category: "AgentEngine")
-    /// Cap on tool-loop rounds before the agent is forced to answer.
-    nonisolated static let maxAgentIterations = 8
+    /// Cap on tool-loop rounds before the agent synthesizes answer. Configurable in preferences (default 25).
+    static var maxAgentIterations: Int {
+        let val = UserDefaults.standard.integer(forKey: "ai_agent_max_iterations")
+        return val > 0 ? val : 25
+    }
+
+    /// Access mode for agent tool execution (Full Access, Supervised, Read-Only).
+    static var accessMode: AgentMessage.AccessMode {
+        let raw = UserDefaults.standard.string(forKey: "ai_agent_access_mode") ?? ""
+        return AgentMessage.AccessMode(rawValue: raw) ?? .supervised
+    }
 
     // MARK: - Unified State
 
@@ -106,7 +114,7 @@ final class AgentEngine {
         let label = mode.rawValue
 
         // swiftlint:disable:next line_length
-        Self.logger.info("\(label, privacy: .public): provider=\(provider.name, privacy: .public) model=\(provider.model, privacy: .public)")
+        Log.ai.info("\(label, privacy: .public): provider=\(provider.name, privacy: .public) model=\(provider.model, privacy: .public)")
         let llmProvider = LLMProviderFactory.provider(
             for: provider, apiKey: apiKey, workload: .chat
         )
@@ -133,14 +141,19 @@ final class AgentEngine {
 
                 let sanitized = sanitizer.sanitize(response)
 
-                if sanitized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let finalResponse: String
+                if !sanitized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    finalResponse = sanitized
+                } else if !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    finalResponse = response.trimmingCharacters(in: .whitespacesAndNewlines)
+                } else {
                     // swiftlint:disable:next line_length
-                    Self.logger.warning("\(label, privacy: .public): empty response from \(provider.name, privacy: .public)")
+                    Log.ai.warning("\(label, privacy: .public): empty response from \(provider.name, privacy: .public)")
                     throw AIError.emptyResponse
                 }
 
-                currentExplanation = sanitized
-                return sanitized
+                currentExplanation = finalResponse
+                return finalResponse
             } catch {
                 if Task.isCancelled {
                     return nil
@@ -150,21 +163,21 @@ final class AgentEngine {
                 if let aiError = error as? AIError, !aiError.isRetryable {
                     lastError = error.localizedDescription
                     let errorMsg = error.localizedDescription
-                    Self.logger.error(
+                    Log.ai.error(
                         "\(label, privacy: .public): non-retryable error: \(errorMsg, privacy: .public)"
                     )
                     return nil
                 }
 
                 if attempt < maxRetries {
-                    Self.logger.warning(
+                    Log.ai.warning(
                         "\(label, privacy: .public): attempt \(attempt + 1) failed, retrying"
                     )
                     try? await Task.sleep(nanoseconds: UInt64(attempt + 1) * 1_000_000_000)
                 } else {
                     lastError = error.localizedDescription
                     // swiftlint:disable:next line_length
-                    Self.logger.error("\(label, privacy: .public): all attempts failed: \(error.localizedDescription, privacy: .public)")
+                    Log.ai.error("\(label, privacy: .public): all attempts failed: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }
@@ -196,14 +209,15 @@ final class AgentEngine {
             case let .textDelta(delta):
                 result += delta
                 let now = Date()
-                if now.timeIntervalSince(lastUIUpdate) > 0.1 {
-                    streamingResponse += delta
+                if now.timeIntervalSince(lastUIUpdate) > 0.05 {
+                    streamingResponse = result
                     lastUIUpdate = now
                 }
             case .reasoning, .toolCall, .completed:
                 break
             }
         }
+        streamingResponse = result
         return result
     }
 

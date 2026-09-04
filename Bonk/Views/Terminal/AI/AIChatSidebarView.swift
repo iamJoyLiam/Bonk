@@ -26,6 +26,22 @@ struct AIChatSidebarView: View {
 
     @AppStorage("ai_enabled") var aiEnabled = false
     @AppStorage("ai_allow_direct_connect") var allowDirectConnect = true
+    @AppStorage("ai_agent_access_mode") var agentAccessModeRaw = "supervised"
+
+    private var matchingSlashCommands: [AISlashCommand] {
+        guard inputText.hasPrefix("/") && !inputText.contains(" ") else { return [] }
+        let query = inputText.lowercased()
+        if query == "/" { return AISlashCommand.allCases }
+        return AISlashCommand.allCases.filter { $0.title.lowercased().hasPrefix(query) }
+    }
+
+    private var matchingMentions: [AIContextMention] {
+        guard let lastToken = inputText.split(separator: " ", omittingEmptySubsequences: false).last,
+              lastToken.hasPrefix("@") else { return [] }
+        let query = String(lastToken).lowercased()
+        if query == "@" { return AIContextMention.allCases }
+        return AIContextMention.allCases.filter { $0.token.lowercased().hasPrefix(query) }
+    }
 
     @State private var rotationAngle: Double = 0
     @State var wasCancelled = false
@@ -204,52 +220,102 @@ struct AIChatSidebarView: View {
 
     private var bottomBar: some View {
         VStack(spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: "apple.intelligence")
-                    .font(.system(size: AppStyle.fontBody, weight: .medium))
-                    .foregroundStyle(isInputFocused ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.secondary))
-
-                TextField(selectedMode == .agent ? i18n.t(.describeTask) : i18n.t(.terminalAssistant), text: $inputText)
-                    .textFieldStyle(.plain).font(.system(size: AppStyle.fontBody))
-                    .focused($isInputFocused).onSubmit { submit() }
-
-                if engine.isProcessing {
-                    Button { cancelCurrentTask() } label: {
-                        Image(systemName: "stop.circle.fill")
-                            .font(.system(size: AppStyle.fontBody))
-                            .foregroundStyle(.red)
-                    }
-                    .buttonStyle(.plain)
-                    .transition(.opacity)
-                }
+            if !matchingSlashCommands.isEmpty || !matchingMentions.isEmpty {
+                SlashAndMentionPopup(
+                    slashMatches: matchingSlashCommands,
+                    mentionMatches: matchingMentions,
+                    onSelectSlash: { cmd in handleSelectSlash(cmd) },
+                    onSelectMention: { mention in handleSelectMention(mention) }
+                )
+                .transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .bottom)), removal: .opacity))
             }
-            .padding(.horizontal, AppStyle.spacingL).frame(height: 34)
-            .background(.regularMaterial, in: Capsule())
-            .background(
-                Capsule()
-                    .stroke(
-                        AngularGradient(
-                            gradient: Gradient(colors: aiColors),
-                            center: .center,
-                            angle: .degrees(rotationAngle)
-                        ),
-                        lineWidth: isInputFocused ? 3 : 0
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(isInputFocused ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.secondary))
+                        .padding(.top, 4)
+
+                    TextField(
+                        selectedMode == .agent ? i18n.t(.describeTask) : i18n.t(.terminalAssistant),
+                        text: $inputText,
+                        axis: .vertical
                     )
-                    .blur(radius: 6).opacity(isInputFocused ? 0.6 : 0)
-            )
+                    .lineLimit(1 ... 5)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: AppStyle.fontBody))
+                    .focused($isInputFocused)
+                    .onSubmit {
+                        if !NSEvent.modifierFlags.contains(.shift) {
+                            submit()
+                        }
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, 8)
+                .padding(.bottom, 2)
 
-            HStack(spacing: 6) {
-                modeMenu
-                Spacer()
-                modelMenu
+                HStack(spacing: 6) {
+                    modeMenu
+                    if selectedMode == .agent {
+                        agentAccessMenu
+                    }
+                    modelMenu
+                    Spacer()
+
+                    if engine.isProcessing {
+                        Button { cancelCurrentTask() } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "stop.fill")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text(i18n.t(.cancel))
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.red)
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .transition(.opacity)
+                    } else {
+                        Button { submit() } label: {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundStyle(
+                                    !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                        ? Color.accentColor
+                                        : Color.secondary.opacity(0.3)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.bottom, 6)
             }
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(
+                        isInputFocused ? Color(nsColor: .controlAccentColor).opacity(0.75) : Color(nsColor: .separatorColor).opacity(0.55),
+                        lineWidth: isInputFocused ? 1.5 : 1
+                    )
+            )
+            .shadow(color: Color.black.opacity(isInputFocused ? 0.08 : 0.02), radius: 4, y: 1)
         }
-        .padding(.horizontal, AppStyle.spacingML).padding(.vertical, AppStyle.spacingM)
+        .padding(.horizontal, AppStyle.spacingML)
+        .padding(.vertical, AppStyle.spacingS)
         .onAppear {
             providerStore.setModelContext(modelContext)
             engine.activeProvider = providerStore.activeProvider
             restoreLastConversation()
-            withAnimation(.linear(duration: 4.0).repeatForever(autoreverses: false)) { rotationAngle = 360 }
         }
     }
 
@@ -269,14 +335,48 @@ struct AIChatSidebarView: View {
             }
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: selectedMode.icon).font(.system(size: AppStyle.fontSmall))
-                Text(selectedMode.localizedName).font(.system(size: AppStyle.fontSmall))
-                Image(systemName: "chevron.down").font(.system(size: AppStyle.fontTiny))
+                Image(systemName: selectedMode.icon).font(.system(size: 11))
+                Text(selectedMode.localizedName).font(.system(size: 11, weight: .medium))
+                Image(systemName: "chevron.down").font(.system(size: 9))
             }
             .foregroundStyle(.secondary)
-            .padding(.horizontal, AppStyle.spacingM).padding(.vertical, AppStyle.spacingXS)
-            .background(Color(nsColor: .controlColor))
-            .clipShape(Capsule())
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(Color(nsColor: .quaternaryLabelColor).opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+        .menuStyle(.borderlessButton).fixedSize()
+    }
+
+    private var currentAccessMode: AgentMessage.AccessMode {
+        AgentMessage.AccessMode(rawValue: agentAccessModeRaw) ?? .supervised
+    }
+
+    private var agentAccessMenu: some View {
+        Menu {
+            ForEach(AgentMessage.AccessMode.allCases) { mode in
+                Button {
+                    agentAccessModeRaw = mode.rawValue
+                } label: {
+                    HStack {
+                        Label(mode.localizedName, systemImage: mode.icon)
+                        if currentAccessMode == mode {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: currentAccessMode.icon).font(.system(size: 11))
+                Text(currentAccessMode.shortName).font(.system(size: 11, weight: .medium))
+                Image(systemName: "chevron.down").font(.system(size: 9))
+            }
+            .foregroundStyle(currentAccessMode == .fullAccess ? Color.accentColor : Color.secondary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(Color(nsColor: .quaternaryLabelColor).opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .menuStyle(.borderlessButton).fixedSize()
     }
@@ -322,6 +422,94 @@ struct AIChatSidebarView: View {
         }
     }
 
+    private func submitPrompt(_ prompt: String) {
+        if selectedMode == .agent {
+            submitAgent(text: prompt)
+        } else {
+            submitChat(text: prompt)
+        }
+    }
+
+    private func handleSelectSlash(_ cmd: AISlashCommand) {
+        switch cmd {
+        case .clear:
+            inputText = ""
+            createNewConversation()
+        case .fix:
+            inputText = ""
+            submitPrompt(i18n.lang.hasPrefix("zh") ? "请检查并修复终端上一个执行失败的命令：\n@terminal" : "Please diagnose and fix the last failed terminal command:\n@terminal")
+        case .explain:
+            inputText = ""
+            submitPrompt(i18n.lang.hasPrefix("zh") ? "请详细解释终端当前的输出内容与状态：\n@terminal" : "Please explain the current terminal output and status:\n@terminal")
+        case .compact:
+            inputText = ""
+            submitPrompt(i18n.lang.hasPrefix("zh") ? "请总结并压缩我们迄今为止的对话关键点，精简上下文。" : "Please summarize the key points of our conversation to compact context.")
+        case .help:
+            inputText = ""
+            let helpText = i18n.lang.hasPrefix("zh") ? """
+            ### Bonk AI 智能助手快捷指南
+
+            **快捷指令 (Slash Commands)**
+            - `/clear` - 清空会话并重置对话
+            - `/fix` - 诊断并修复终端最新执行报错
+            - `/explain` - 解释终端屏幕当前输出
+            - `/compact` - 总结对话历史压缩上下文
+            - `/help` - 查看此帮助文档
+
+            **上下文引用 (Context Mentions)**
+            - `@terminal` - 注入终端当前屏幕内容
+            - `@history` - 注入最近执行的命令记录
+            - `@host` - 注入当前服务器环境信息
+            - `@selection` - 注入终端选中的高亮文本
+
+            **Agent 模式执行权限**
+            - **完全访问**: 自动执行安全/查询与常规修改命令，高危命令弹窗确认
+            - **逐步确认**: 每次变更操作均需审批确认
+            - **只读模式**: 仅允许查询检测，阻断任何写操作
+            """ : """
+            ### Bonk AI Assistant Shortcuts
+
+            **Slash Commands**
+            - `/clear` - Clear and reset conversation
+            - `/fix` - Diagnose and fix last failed terminal command
+            - `/explain` - Explain current terminal output
+            - `/compact` - Summarize and compact conversation context
+            - `/help` - Show this help guide
+
+            **Context Mentions**
+            - `@terminal` - Attach recent terminal screen output
+            - `@history` - Attach recent command history
+            - `@host` - Attach connected host & server details
+            - `@selection` - Attach selected terminal text
+
+            **Agent Access Modes**
+            - **Full Access**: Automatically runs safe & regular commands; confirms dangerous operations
+            - **Supervised**: Manual confirmation required for mutating commands
+            - **Read Only**: Inspection only; write commands blocked
+            """
+            if selectedMode == .agent {
+                engine.agentMessages.append(AgentMessage(role: .assistant, content: helpText))
+            } else {
+                if currentConversation == nil { createNewConversation() }
+                if let conversation = currentConversation {
+                    conversationStore.addMessage(to: conversation, role: .assistant, content: helpText, context: modelContext)
+                }
+            }
+        }
+    }
+
+    private func handleSelectMention(_ mention: AIContextMention) {
+        var tokens = inputText.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
+        if let last = tokens.last, last.hasPrefix("@") {
+            tokens.removeLast()
+            tokens.append(mention.token)
+            tokens.append("")
+            inputText = tokens.joined(separator: " ")
+        } else {
+            inputText += (inputText.isEmpty || inputText.hasSuffix(" ") ? "" : " ") + mention.token + " "
+        }
+    }
+
     private func submitChat(text: String) {
         if currentConversation == nil { createNewConversation() }
         guard let conversation = currentConversation else { return }
@@ -331,10 +519,16 @@ struct AIChatSidebarView: View {
         inputText = ""
         engine.isProcessing = true
 
+        let expandedInput = ContextMentionResolver.expandMentions(
+            in: text,
+            terminalContext: terminalContext,
+            tab: tab
+        )
+
         currentTask?.cancel()
         currentTask = Task {
             let response = await engine.execute(
-                input: text,
+                input: expandedInput,
                 mode: selectedMode,
                 context: terminalContext ?? TerminalContext()
             )
