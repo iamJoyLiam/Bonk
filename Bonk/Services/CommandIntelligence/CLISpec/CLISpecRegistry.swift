@@ -49,10 +49,26 @@ final class CLISpecRegistry: @unchecked Sendable {
 
         let endsWithSpace = typed.hasSuffix(" ")
 
-        // Case 1: Just root command typed: "docker" or "docker "
+        // Case 1: Just root command typed: "docker"
         if tokens.count == 1 && !endsWithSpace {
-            // "docker" -> no subcommand query yet, user is at end of root token
-            return []
+            let matching = cliSpec.matchSubcommands(query: "")
+            return matching.map { sub -> CommandCandidate in
+                let fullCommand = "\(cliSpec.command) \(sub.name)"
+                let suffix = " " + sub.name
+                let sug = Suggestion(
+                    text: suffix,
+                    displayText: suffix,
+                    fullText: fullCommand
+                )
+                return CommandCandidate(
+                    source: "cliSpec",
+                    authority: .deterministic,
+                    suggestion: sug,
+                    rawScore: sub.priority - 20.0,
+                    isExactPrefixMatch: false,
+                    summary: sub.summary
+                )
+            }
         }
 
         // Case 2: Root command followed by space or partial subcommand

@@ -125,6 +125,9 @@ final class InlineSuggestionPipeline {
             return .low
         }
         if top.authority == .deterministic {
+            if typed.hasSuffix(" ") {
+                return .medium(candidates: candidates.map(\.suggestion))
+            }
             if top.rawScore >= 75.0 || top.isExactPrefixMatch {
                 return .high(candidate: top.suggestion)
             }
@@ -239,16 +242,34 @@ final class InlineSuggestionPipeline {
         }
     }
 
+    @MainActor private func resolveProvider(snapshot: CommandContextSnapshot) -> (AIProviderConfig, String)? {
+        let defaults = UserDefaults.standard
+        let overrideID = defaults.string(forKey: "ai_inline_provider_id") ?? ""
+        let provider: AIProviderConfig?
+        if !overrideID.isEmpty {
+            provider = providerStore.providers.first { $0.id.uuidString == overrideID }
+        } else {
+            provider = ModelRouter.shared.provider(for: IntelligenceTask.inlineCompletion, snapshot: snapshot) ?? providerStore.activeProvider
+        }
+        guard var p = provider ?? providerStore.providers.first(where: { !$0.apiKey.isEmpty || !$0.type.needsAPIKey }) else { return nil }
+        if let inlineModel = defaults.string(forKey: "ai_inline_model"),
+           !inlineModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            p.model = inlineModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let key = p.apiKey
+        guard !p.type.needsAPIKey || !key.isEmpty else { return nil }
+        return (p, key)
+    }
+
     private func performLLM(snapshot: CommandContextSnapshot, typed: String, generation: UInt64) async {
         guard generationController.isCurrent(generation) else { return }
 
         let isNaturalLanguage = typed.hasPrefix("#") || InlineTriggerPolicy.isNaturalLanguageIntent(typed)
 
-        // For standard command completion, we need candidates in the pool
-        if !isNaturalLanguage && currentCandidates.isEmpty { return }
-
-        let provider = providerStore.activeProvider
-        guard let p = provider, (!p.type.needsAPIKey || !p.apiKey.isEmpty) else { return }
+        guard let (p, apiKey) = resolveProvider(snapshot: snapshot) else {
+            logger.debug("[InlinePipeline] performLLM skipped: no active or valid provider resolved")
+            return
+        }
 
         isRequesting = true
         onRequestingChanged?(true)
@@ -262,7 +283,7 @@ final class InlineSuggestionPipeline {
         if isNaturalLanguage {
             // Mode B: Natural Language Intent Translation Channel
             let prompt = InlinePromptBuilder.buildNaturalLanguagePrompt(snapshot: snapshot, query: typed)
-            let llm = LLMProviderFactory.provider(for: p, apiKey: p.apiKey, workload: .inlineCompletion)
+            let llm = LLMProviderFactory.provider(for: p, apiKey: apiKey, workload: .inlineCompletion)
             do {
                 let response = try await llm.chat(
                     messages: [
@@ -295,18 +316,57 @@ final class InlineSuggestionPipeline {
                 logger.debug("[InlinePipeline] Natural language translation skipped or failed: \(error.localizedDescription)")
             }
         } else {
-            // Mode A: Standard CLI Channel - Optional AI Reranking
-            let reranked = await reranker.rerank(
+            // Mode A: Standard CLI Channel - AI Reranking + Generative AI Completion
+            let prompt = InlinePromptBuilder.buildPrompt(snapshot: snapshot)
+            let llm = LLMProviderFactory.provider(for: p, apiKey: apiKey, workload: .inlineCompletion)
+
+            async let rerankedTask = reranker.rerank(
                 candidates: currentCandidates,
                 typed: typed,
                 snapshot: snapshot,
                 provider: p,
-                apiKey: p.apiKey
+                apiKey: apiKey
             )
 
+            async let generativeTask: CommandCandidate? = {
+                do {
+                    let response = try await llm.chat(
+                        messages: [
+                            .system(prompt),
+                            .user(typed)
+                        ],
+                        maxTokens: 32,
+                        disableReasoning: true
+                    )
+                    guard let sug = LLMCompletionAdapter.adapt(rawOutput: response.text, typed: typed) else {
+                        return nil
+                    }
+                    let full = sug.withFullCommand(typed: typed)
+                    return CommandCandidate(
+                        source: CandidateSource.ai.rawValue,
+                        authority: .generative,
+                        suggestion: full,
+                        rawScore: 70.0,
+                        summary: "AI 智能预测"
+                    )
+                } catch {
+                    return nil
+                }
+            }()
+
+            let reranked = await rerankedTask
+            let aiCandidate = await generativeTask
+
             guard generationController.isCurrent(generation) else { return }
+            var combined = reranked
+            if let aiCandidate {
+                let aiFull = (aiCandidate.suggestion.fullText ?? aiCandidate.suggestion.displayText).trimmingCharacters(in: .whitespaces)
+                if !combined.contains(where: { ($0.suggestion.fullText ?? $0.suggestion.displayText).trimmingCharacters(in: .whitespaces) == aiFull }) {
+                    combined.append(aiCandidate)
+                }
+            }
             let balanced = CandidateRanker.balanceChannels(
-                ranked: reranked,
+                ranked: combined,
                 totalLimit: Self.maxCandidates,
                 maxAICandidates: 1
             )

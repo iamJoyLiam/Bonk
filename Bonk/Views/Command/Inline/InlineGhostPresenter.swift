@@ -44,7 +44,7 @@ extension NativeTerminalView {
             return
         }
         guard window?.firstResponder === self else { return }
-        guard items.count > 1 else {
+        guard !items.isEmpty else {
             hideCandidateList()
             return
         }

@@ -80,11 +80,32 @@ struct InlineCandidateDisplayItem: Sendable, Equatable {
     }
 }
 
+struct NativeVisualEffectBlur: NSViewRepresentable {
+    var material: NSVisualEffectView.Material = .popover
+    var blendingMode: NSVisualEffectView.BlendingMode = .withinWindow
+    var state: NSVisualEffectView.State = .active
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = blendingMode
+        view.state = state
+        view.wantsLayer = true
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.blendingMode = blendingMode
+        nsView.state = state
+    }
+}
+
 struct CandidateBubbleShape: Shape {
     var arrowEdge: Edge = .top
     var arrowTipX: CGFloat = 24
-    let arrowHeight: CGFloat = 7
-    let arrowWidth: CGFloat = 14
+    let arrowHeight: CGFloat = 8
+    let arrowWidth: CGFloat = 18
     let cornerRadius: CGFloat = 10
 
     func path(in rect: CGRect) -> Path {
@@ -100,25 +121,98 @@ struct CandidateBubbleShape: Shape {
         if arrowEdge == .top {
             let bodyTop = ah
             let bodyBottom = h
-            path.move(to: CGPoint(x: clampedTipX - halfAw, y: bodyTop))
-            path.addLine(to: CGPoint(x: clampedTipX, y: 0))
-            path.addLine(to: CGPoint(x: clampedTipX + halfAw, y: bodyTop))
+
+            // Start on top edge just to the right of the arrow
+            path.move(to: CGPoint(x: clampedTipX + halfAw, y: bodyTop))
+
+            // Top edge to top-right corner
+            path.addLine(to: CGPoint(x: w - r, y: bodyTop))
             path.addArc(tangent1End: CGPoint(x: w, y: bodyTop), tangent2End: CGPoint(x: w, y: bodyBottom), radius: r)
+
+            // Right edge to bottom-right corner
+            path.addLine(to: CGPoint(x: w, y: bodyBottom - r))
             path.addArc(tangent1End: CGPoint(x: w, y: bodyBottom), tangent2End: CGPoint(x: 0, y: bodyBottom), radius: r)
+
+            // Bottom edge to bottom-left corner
+            path.addLine(to: CGPoint(x: r, y: bodyBottom))
             path.addArc(tangent1End: CGPoint(x: 0, y: bodyBottom), tangent2End: CGPoint(x: 0, y: bodyTop), radius: r)
+
+            // Left edge to top-left corner
+            path.addLine(to: CGPoint(x: 0, y: bodyTop + r))
             path.addArc(tangent1End: CGPoint(x: 0, y: bodyTop), tangent2End: CGPoint(x: clampedTipX - halfAw, y: bodyTop), radius: r)
+
+            // Top edge to left base of arrow
+            path.addLine(to: CGPoint(x: clampedTipX - halfAw, y: bodyTop))
+
+            // Smooth upward curve from left base into arrow (concave fillet)
+            path.addCurve(
+                to: CGPoint(x: clampedTipX - 2.8, y: 1.5),
+                control1: CGPoint(x: clampedTipX - halfAw + 3.5, y: bodyTop),
+                control2: CGPoint(x: clampedTipX - 4.8, y: 4.0)
+            )
+
+            // Smooth rounded apex over the tip (convex cap)
+            path.addCurve(
+                to: CGPoint(x: clampedTipX + 2.8, y: 1.5),
+                control1: CGPoint(x: clampedTipX - 1.2, y: 0.0),
+                control2: CGPoint(x: clampedTipX + 1.2, y: 0.0)
+            )
+
+            // Smooth downward curve from arrow into right base (concave fillet)
+            path.addCurve(
+                to: CGPoint(x: clampedTipX + halfAw, y: bodyTop),
+                control1: CGPoint(x: clampedTipX + 4.8, y: 4.0),
+                control2: CGPoint(x: clampedTipX + halfAw - 3.5, y: bodyTop)
+            )
+
             path.closeSubpath()
         } else {
             let bodyTop: CGFloat = 0
             let bodyBottom = h - ah
+
+            // Start on top edge at top-left corner
             path.move(to: CGPoint(x: r, y: bodyTop))
+
+            // Top edge to top-right corner
+            path.addLine(to: CGPoint(x: w - r, y: bodyTop))
             path.addArc(tangent1End: CGPoint(x: w, y: bodyTop), tangent2End: CGPoint(x: w, y: bodyBottom), radius: r)
+
+            // Right edge to bottom-right corner
+            path.addLine(to: CGPoint(x: w, y: bodyBottom - r))
             path.addArc(tangent1End: CGPoint(x: w, y: bodyBottom), tangent2End: CGPoint(x: clampedTipX + halfAw, y: bodyBottom), radius: r)
+
+            // Bottom edge to right base of arrow
             path.addLine(to: CGPoint(x: clampedTipX + halfAw, y: bodyBottom))
-            path.addLine(to: CGPoint(x: clampedTipX, y: h))
-            path.addLine(to: CGPoint(x: clampedTipX - halfAw, y: bodyBottom))
+
+            // Smooth downward curve from right base into arrow (concave fillet)
+            path.addCurve(
+                to: CGPoint(x: clampedTipX + 2.8, y: h - 1.5),
+                control1: CGPoint(x: clampedTipX + halfAw - 3.5, y: bodyBottom),
+                control2: CGPoint(x: clampedTipX + 4.8, y: h - 4.0)
+            )
+
+            // Smooth rounded apex at the bottom tip (convex cap)
+            path.addCurve(
+                to: CGPoint(x: clampedTipX - 2.8, y: h - 1.5),
+                control1: CGPoint(x: clampedTipX + 1.2, y: h),
+                control2: CGPoint(x: clampedTipX - 1.2, y: h)
+            )
+
+            // Smooth upward curve from arrow into left base (concave fillet)
+            path.addCurve(
+                to: CGPoint(x: clampedTipX - halfAw, y: bodyBottom),
+                control1: CGPoint(x: clampedTipX - 4.8, y: h - 4.0),
+                control2: CGPoint(x: clampedTipX - halfAw + 3.5, y: bodyBottom)
+            )
+
+            // Bottom edge to bottom-left corner
+            path.addLine(to: CGPoint(x: r, y: bodyBottom))
             path.addArc(tangent1End: CGPoint(x: 0, y: bodyBottom), tangent2End: CGPoint(x: 0, y: bodyTop), radius: r)
-            path.addArc(tangent1End: CGPoint(x: 0, y: bodyTop), tangent2End: CGPoint(x: w, y: bodyTop), radius: r)
+
+            // Left edge to top-left corner
+            path.addLine(to: CGPoint(x: 0, y: bodyTop + r))
+            path.addArc(tangent1End: CGPoint(x: 0, y: bodyTop), tangent2End: CGPoint(x: r, y: bodyTop), radius: r)
+
             path.closeSubpath()
         }
         return path
@@ -140,59 +234,52 @@ struct CandidateBubbleView: View {
                 Button {
                     onSelect(index)
                 } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 8) {
-                            Text(item.text)
-                                .font(.system(size: 12, weight: isSelected ? .semibold : .regular, design: .monospaced))
-                                .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                                .lineLimit(1)
-                            Spacer(minLength: 8)
-                            if item.isAI {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "sparkles")
-                                        .font(.system(size: 9, weight: .bold))
-                                    Text("AI")
-                                        .font(.system(size: 9, weight: .bold))
-                                }
-                                .foregroundStyle(Color.accentColor)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1.5)
-                                .background(Color.accentColor.opacity(0.12), in: Capsule())
+                    HStack(spacing: 8) {
+                        Text(item.text)
+                            .font(.system(size: 12, weight: isSelected ? .medium : .regular, design: .monospaced))
+                            .foregroundStyle(isSelected ? Color.primary : Color.primary.opacity(0.85))
+                            .lineLimit(1)
+                        Spacer(minLength: 8)
+                        if item.isAI {
+                            HStack(spacing: 3) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text("AI")
+                                    .font(.system(size: 9, weight: .bold))
                             }
-                            if isSelected {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(Color.accentColor)
-                            }
+                            .foregroundStyle(Color.accentColor)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(Color.accentColor.opacity(0.12), in: Capsule())
                         }
-                        if let summary = item.summary, !summary.isEmpty {
-                            Text(summary)
-                                .font(.system(size: 10, weight: .regular))
-                                .foregroundStyle(isSelected ? Color.secondary : Color.secondary.opacity(0.8))
-                                .lineLimit(1)
-                                .truncationMode(.tail)
+                        if isSelected {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(Color.accentColor)
                         }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, item.summary != nil ? 5 : 6)
+                    .padding(.horizontal, 9)
+                    .frame(height: 24)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        isSelected
-                            ? Color.accentColor.opacity(0.16)
-                            : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    )
+                    .background(Color.clear)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 4)
-        .padding(.top, arrowEdge == .top ? 11 : 4)
-        .padding(.bottom, arrowEdge == .bottom ? 11 : 4)
-        .background(.ultraThinMaterial, in: shape)
+        .padding(.top, arrowEdge == .top ? 12 : 4)
+        .padding(.bottom, arrowEdge == .bottom ? 12 : 4)
+        .background(
+            ZStack {
+                NativeVisualEffectBlur(material: .popover, blendingMode: .withinWindow)
+                Color(nsColor: .windowBackgroundColor).opacity(0.25)
+            }
+            .clipShape(shape)
+        )
         .overlay(shape.stroke(Color.primary.opacity(0.12), lineWidth: 0.5))
-        .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 3)
+        .shadow(color: Color.black.opacity(0.08), radius: 3, x: 0, y: 1)
+        .shadow(color: Color.black.opacity(0.20), radius: 12, x: 0, y: 5)
     }
 }
 
@@ -229,9 +316,21 @@ final class InlineCandidateListOverlay: NSView {
         }
     }
 
-    let arrowHeight: CGFloat = 7
-    let arrowWidth: CGFloat = 14
+    let arrowHeight: CGFloat = 8
+    let arrowWidth: CGFloat = 18
     let cornerRadius: CGFloat = 10
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+    }
 
     var displayItems: [InlineCandidateDisplayItem] = [] {
         didSet {
@@ -256,7 +355,7 @@ final class InlineCandidateListOverlay: NSView {
     }
 
     var font: NSFont = .monospacedSystemFont(ofSize: 12, weight: .regular)
-    var rowHeight: CGFloat = 28
+    var rowHeight: CGFloat = 24
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { false }
@@ -280,6 +379,8 @@ final class InlineCandidateListOverlay: NSView {
             hostingView.isHidden = false
         } else {
             let h = NonFocusHostingView(rootView: bubble)
+            h.wantsLayer = true
+            h.layer?.backgroundColor = NSColor.clear.cgColor
             addSubview(h)
             hostingView = h
         }
@@ -299,23 +400,16 @@ final class InlineCandidateListOverlay: NSView {
     func measuredWidth() -> CGFloat {
         guard !displayItemsCache.isEmpty else { return 0 }
         let textWidth = displayItemsCache.map { item -> CGFloat in
-            let tw = (item.text as NSString).size(withAttributes: [.font: font]).width
-            let sw = item.summary.map { ($0 as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 10)]).width } ?? 0
-            return max(tw, sw)
+            (item.text as NSString).size(withAttributes: [.font: font]).width
         }.max() ?? 0
-        return max(180, min(360, textWidth + 64))
+        return max(180, min(380, textWidth + 56))
     }
 
     func totalHeight() -> CGFloat {
         guard !displayItemsCache.isEmpty else { return 0 }
-        var total: CGFloat = 0
-        for item in displayItemsCache {
-            let hasSummary = item.summary != nil && !item.summary!.isEmpty
-            let rowH: CGFloat = hasSummary ? 38 : 28
-            total += rowH
-        }
+        let count = CGFloat(displayItemsCache.count)
         let spacing = CGFloat(max(0, displayItemsCache.count - 1)) * 2
-        return total + spacing + 15
+        return (count * rowHeight) + spacing + 16
     }
 
     var visibleRowCount: Int {
