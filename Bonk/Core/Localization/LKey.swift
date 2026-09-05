@@ -341,6 +341,8 @@ enum LKey: String, CaseIterable {
     case actionSplitVertical = "action_split_vertical"
     case actionSftpBrowser = "action_sftp_browser"
     case actionAiAssistant = "action_ai_assistant"
+    case actionInlineNextCandidate = "action_inline_next_candidate"
+    case actionInlinePreviousCandidate = "action_inline_previous_candidate"
 
     // Command History
     case commandHistory = "command_history"

@@ -122,8 +122,12 @@ final class CandidatePool: @unchecked Sendable {
             }
         }
 
+        let tokens = typed.split(whereSeparator: \.isWhitespace)
+        let rootCommand = tokens.first.map(String.init)?.lowercased() ?? ""
+        let isKnownCLI = cliRegistry.spec(for: rootCommand) != nil
+
         // 3. Command Vocabulary (Root commands e.g. dock -> docker)
-        if let vocabSug = vocabularySource.syncSuggestion(for: snapshot, typed: typed) {
+        if !isKnownCLI, let vocabSug = vocabularySource.syncSuggestion(for: snapshot, typed: typed) {
             let full = vocabSug.withFullCommand(typed: typed)
             let score = ranker.score(suggestion: full, source: vocabularySource.name)
             pool.append(CommandCandidate(
@@ -136,7 +140,17 @@ final class CandidatePool: @unchecked Sendable {
         }
 
         // 4. Runtime Context / Known Words (Screen output tokens)
-        if let kwSug = knownWordsSource.syncSuggestion(for: snapshot, typed: typed) {
+        // For known CLI tools, only query known words for parameters/arguments, never to mangle subcommands.
+        // Never query known words when user is on whitespace (new argument position).
+        let shouldQueryKnownWords: Bool = {
+            guard !typed.hasSuffix(" ") else { return false }
+            guard !isKnownCLI else {
+                return tokens.count >= 3
+            }
+            return true
+        }()
+
+        if shouldQueryKnownWords, let kwSug = knownWordsSource.syncSuggestion(for: snapshot, typed: typed) {
             let full = kwSug.withFullCommand(typed: typed)
             let score = ranker.score(suggestion: full, source: knownWordsSource.name)
             pool.append(CommandCandidate(

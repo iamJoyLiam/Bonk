@@ -467,24 +467,14 @@ struct AIChatSidebarView: View {
                 } label: {
                     ZStack {
                         Circle()
-                            .stroke(
-                                AngularGradient(
-                                    colors: aiColors,
-                                    center: .center,
-                                    angle: .degrees(rotationAngle)
-                                ),
-                                lineWidth: 2
-                            )
+                            .fill(Color(nsColor: .quaternaryLabelColor).opacity(0.25))
                             .frame(width: 26, height: 26)
 
-                        Circle()
-                            .fill(Color.red.opacity(0.16))
-                            .frame(width: 20, height: 20)
-
-                        Image(systemName: "square.fill")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(Color.red)
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(Color.primary)
                     }
+                    .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .help(i18n.t(.cancel))

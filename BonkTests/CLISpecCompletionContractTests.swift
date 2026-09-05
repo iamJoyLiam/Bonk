@@ -229,4 +229,51 @@ struct CLISpecCompletionContractTests {
         #expect(commands[2].commandText == "docker restart sentinel-syslog")
         #expect(commands[0].commentLines.contains("# Step 1: check containers"))
     }
+
+    @Test("11. Exact CLI subcommands (e.g. 'docker ps') do not mangle subcommands with random suffixes")
+    func testExactCLISubcommandsDoNotAppendNonsense() {
+        let pool = CandidatePool()
+        let snapshot = CommandContextSnapshot(
+            inputBuffer: "docker ps",
+            recentCommands: [],
+            recentOutput: "psm is running, psql is ready"
+        )
+
+        let candidates = pool.buildCandidates(
+            typed: "docker ps",
+            snapshot: snapshot,
+            cache: nil,
+            cacheKey: nil,
+            isRejected: { _ in false }
+        )
+
+        let suffixes = candidates.map { $0.suggestion.text }
+        #expect(!suffixes.contains("m"))
+        #expect(!suffixes.contains("ql"))
+    }
+
+    @Test("12. Exact CLI subcommand with trailing space (e.g. 'docker ps ') suggests flags, never knownWords suffix 'm'")
+    func testExactCLISubcommandWithTrailingSpaceDoesNotSuggestKnownWords() {
+        let pool = CandidatePool()
+        let snapshot = CommandContextSnapshot(
+            inputBuffer: "docker ps ",
+            recentCommands: [],
+            recentOutput: "psm is running, psql is ready"
+        )
+
+        let candidates = pool.buildCandidates(
+            typed: "docker ps ",
+            snapshot: snapshot,
+            cache: nil,
+            cacheKey: nil,
+            isRejected: { _ in false }
+        )
+
+        let suffixes = candidates.map { $0.suggestion.text }
+        #expect(!suffixes.contains("m"))
+        #expect(!suffixes.contains("ql"))
+        // Must suggest CLI flags like -a or -q
+        #expect(suffixes.contains("-a"))
+        #expect(suffixes.contains("-q"))
+    }
 }

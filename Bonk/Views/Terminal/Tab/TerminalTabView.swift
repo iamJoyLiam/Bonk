@@ -183,6 +183,12 @@ struct TerminalTabView: View {
             duration: duration, output: output, hostName: host
         )
         cached.view.feed(text: text)
+
+        if status == .success || status == .failed {
+            Task { @MainActor in
+                cached.view.window?.makeFirstResponder(cached.view)
+            }
+        }
     }
 
     private func toggleAIChat() {

@@ -40,15 +40,20 @@ final class AgentEngine {
     private let providerStore: AIProviderStore
     private let conversationStore: AIConversationStore
     let sanitizer = AIOutputSanitizer.self
-    let executionManager = AgentExecutionManager.shared
+    let executionManager: AgentExecutionManager
 
     // Plan approval state
     var currentPlan: AgentPlan?
     var planApprovalContinuation: CheckedContinuation<Bool, Never>?
 
-    init(providerStore: AIProviderStore = .shared, conversationStore: AIConversationStore = .shared) {
+    init(
+        providerStore: AIProviderStore = .shared,
+        conversationStore: AIConversationStore = .shared,
+        executionManager: AgentExecutionManager = .shared
+    ) {
         self.providerStore = providerStore
         self.conversationStore = conversationStore
+        self.executionManager = executionManager
     }
 
     // MARK: - Provider Resolution

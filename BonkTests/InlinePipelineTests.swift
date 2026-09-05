@@ -89,16 +89,15 @@ final class InlinePipelineTests: XCTestCase {
         XCTAssertNil(pipeline.selectedIndex)
         XCTAssertEqual(pipeline.suggestion?.text, "er ps")
         XCTAssertEqual(pipeline.suggestion?.fullText, "docker ps")
-        // ↓ in passive state engages at index 0
-        pipeline.moveSelection(1)
-        XCTAssertEqual(pipeline.engagement, .engaged(index: 0))
-        XCTAssertEqual(pipeline.selectedIndex, 0)
-        XCTAssertEqual(pipeline.suggestion?.fullText, "docker ps")
-        // Subsequent ↓ moves to candidate 1 (spec / command)
+        // ↓ in passive state advances to candidate 1 (advances past passive default 0)
         pipeline.moveSelection(1)
         XCTAssertEqual(pipeline.engagement, .engaged(index: 1))
         XCTAssertEqual(pipeline.selectedIndex, 1)
         XCTAssertEqual(pipeline.suggestion?.fullText, "docker")
+        // Subsequent ↓ moves to candidate 2
+        pipeline.moveSelection(1)
+        XCTAssertEqual(pipeline.engagement, .engaged(index: 2))
+        XCTAssertEqual(pipeline.selectedIndex, 2)
         // ↓↓ clamps at the end instead of crashing
         pipeline.moveSelection(5)
         let lastIndex = pipeline.ranked.count - 1

@@ -48,9 +48,6 @@ final class AgentRuntime: @unchecked Sendable {
 
     /// Cancels active task and sends instant SIGINT via executionManager.
     func cancel(reason: String = "User cancelled execution") {
-        activeTask.withLock { task in
-            task?.cancel()
-        }
         let approvals = pendingApprovals.withLock { state -> [CheckedContinuation<Bool, Never>] in
             let values = Array(state.values)
             state.removeAll()
@@ -61,6 +58,9 @@ final class AgentRuntime: @unchecked Sendable {
         }
         Task {
             await executionManager.cancelActive()
+        }
+        activeTask.withLock { task in
+            task?.cancel()
         }
     }
 
@@ -227,6 +227,9 @@ final class AgentRuntime: @unchecked Sendable {
                     }
                     output = "Execution failed: \(error.localizedDescription)"
                     exitCode = 1
+                }
+                if !Task.isCancelled {
+                    await executionManager.clearActive()
                 }
 
                 let duration = Date().timeIntervalSince(startTime)

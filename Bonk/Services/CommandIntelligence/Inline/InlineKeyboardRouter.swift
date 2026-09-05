@@ -19,6 +19,7 @@ public enum KeyRoutingDecision: Equatable, Sendable {
     case engageSelection(initialIndex: Int)
     case interceptAppShortcut(name: Notification.Name)
     case toggleSearch
+    case consume(reason: String)
 }
 
 public struct InlineKeyboardRouter: Sendable {
@@ -45,7 +46,9 @@ public struct InlineKeyboardRouter: Sendable {
         candidateCount: Int,
         isPopupEnabled: Bool,
         isSearchActive: Bool,
-        shortcutNotification: Notification.Name?
+        shortcutNotification: Notification.Name?,
+        isNextCandidate: Bool = false,
+        isPreviousCandidate: Bool = false
     ) -> KeyRoutingDecision {
         // 1. App shortcuts override terminal keys
         if let shortcut = shortcutNotification {
@@ -78,7 +81,24 @@ public struct InlineKeyboardRouter: Sendable {
             return .reject
         }
 
-        // 6. Option+Down / Option+Up to engage candidate selection
+        // 6. Configured Candidate Selection Shortcuts (Default: Cmd+Down / Cmd+Up)
+        if isNextCandidate {
+            if hasSuggestion, isPopupEnabled, candidateCount > 1 {
+                return .moveSelection(delta: 1)
+            }
+            // Consume shortcut when idle or single candidate to prevent sending escape sequences () to shell
+            return .consume(reason: "candidate-nav-idle")
+        }
+
+        if isPreviousCandidate {
+            if hasSuggestion, isPopupEnabled, candidateCount > 1 {
+                return .moveSelection(delta: -1)
+            }
+            // Consume shortcut when idle or single candidate to prevent sending escape sequences () to shell
+            return .consume(reason: "candidate-nav-idle")
+        }
+
+        // 7. Option+Down / Option+Up to engage candidate selection (legacy compatibility)
         if keyCode == 125, modifiers.contains(.option), hasSuggestion, isPopupEnabled, candidateCount > 1 {
             return .engageSelection(initialIndex: 0)
         }
@@ -86,25 +106,33 @@ public struct InlineKeyboardRouter: Sendable {
             return .engageSelection(initialIndex: candidateCount - 1)
         }
 
-        // 7. Arrow Up / Down navigation
+        // 8. Plain Arrow Up / Down navigation (without Cmd/Option)
         if (keyCode == 125 || keyCode == 126), modifiers.isEmpty {
-            if hasSuggestion, engagement.isEngaged {
-                let delta = keyCode == 125 ? 1 : -1
-                return .moveSelection(delta: delta)
+            if hasSuggestion, isPopupEnabled, candidateCount > 1, engagement.isEngaged {
+                if keyCode == 125 { // Down
+                    return .moveSelection(delta: 1)
+                } else { // Up
+                    if (engagement.selectedIndex ?? 0) > 0 {
+                        return .moveSelection(delta: -1)
+                    } else {
+                        // At top candidate, navigating up exits popup and accesses shell history
+                        return .passthroughAndCancelSuggestion(reason: "history-nav")
+                    }
+                }
             }
             if hasSuggestion {
-                // Passive mode: forward 100% to Shell for command history navigation
+                // Passive mode: forward 100% to Shell for command history navigation without conflict
                 return .passthroughAndCancelSuggestion(reason: "history-nav")
             }
             return .passthrough(reason: "history-nav")
         }
 
-        // 8. Normal typing & backspace
+        // 9. Normal typing & backspace
         if shouldTriggerCompletion(keyCode: keyCode, modifiers: modifiers, characters: characters) {
             return .passthroughAndSchedule(characters: characters)
         }
 
-        // 9. Other keys (e.g. arrows with modifiers, function keys)
+        // 10. Other keys (e.g. arrows with modifiers, function keys)
         if hasSuggestion {
             return .passthroughAndCancelSuggestion(reason: "other-key")
         }

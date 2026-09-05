@@ -76,8 +76,8 @@ struct InlineKeyboardRouterTests {
         #expect(decision == .accept)
     }
 
-    @Test("5. Passive mode: Up and Down arrow pass through to Shell for history")
-    func testPassiveArrowPassthrough() {
+    @Test("5. Passive mode: Both Up and Down pass through to Shell history without conflict")
+    func testPassiveArrowRouting() {
         let upDecision = InlineKeyboardRouter.route(
             keyCode: 126, // Up
             modifiers: [],
@@ -105,10 +105,82 @@ struct InlineKeyboardRouterTests {
         #expect(downDecision == .passthroughAndCancelSuggestion(reason: "history-nav"))
     }
 
-    @Test("6. Engaged mode: Up and Down arrow navigate candidates")
-    func testEngagedArrowNavigation() {
+    @Test("6. Candidate shortcuts navigate candidates, and idle shortcut is consumed to prevent garbled characters")
+    func testCandidateShortcutsAndIdleSwallowing() {
         let downDecision = InlineKeyboardRouter.route(
-            keyCode: 125, // Down
+            keyCode: 125, // Cmd+Down
+            modifiers: .command,
+            characters: nil,
+            hasSuggestion: true,
+            engagement: .engaged(index: 0),
+            candidateCount: 3,
+            isPopupEnabled: true,
+            isSearchActive: false,
+            shortcutNotification: nil,
+            isNextCandidate: true
+        )
+        #expect(downDecision == .moveSelection(delta: 1))
+
+        let upDecision = InlineKeyboardRouter.route(
+            keyCode: 126, // Cmd+Up
+            modifiers: .command,
+            characters: nil,
+            hasSuggestion: true,
+            engagement: .engaged(index: 1),
+            candidateCount: 3,
+            isPopupEnabled: true,
+            isSearchActive: false,
+            shortcutNotification: nil,
+            isPreviousCandidate: true
+        )
+        #expect(upDecision == .moveSelection(delta: -1))
+
+        // When no suggestions are active, pressing candidate shortcut is consumed to prevent sending escape sequences ()
+        let idleNext = InlineKeyboardRouter.route(
+            keyCode: 125,
+            modifiers: .command,
+            characters: nil,
+            hasSuggestion: false,
+            engagement: .passive,
+            candidateCount: 0,
+            isPopupEnabled: true,
+            isSearchActive: false,
+            shortcutNotification: nil,
+            isNextCandidate: true
+        )
+        #expect(idleNext == .consume(reason: "candidate-nav-idle"))
+
+        let idlePrev = InlineKeyboardRouter.route(
+            keyCode: 126,
+            modifiers: .command,
+            characters: nil,
+            hasSuggestion: false,
+            engagement: .passive,
+            candidateCount: 0,
+            isPopupEnabled: true,
+            isSearchActive: false,
+            shortcutNotification: nil,
+            isPreviousCandidate: true
+        )
+        #expect(idlePrev == .consume(reason: "candidate-nav-idle"))
+
+        // Plain Up/Down arrow in passive mode forwards to Shell history without conflict
+        let plainUpPassive = InlineKeyboardRouter.route(
+            keyCode: 126,
+            modifiers: [],
+            characters: nil,
+            hasSuggestion: true,
+            engagement: .passive,
+            candidateCount: 3,
+            isPopupEnabled: true,
+            isSearchActive: false,
+            shortcutNotification: nil
+        )
+        #expect(plainUpPassive == .passthroughAndCancelSuggestion(reason: "history-nav"))
+
+        // When at top candidate (index 0), pressing plain Up exits to Shell history
+        let plainUpAtTop = InlineKeyboardRouter.route(
+            keyCode: 126,
             modifiers: [],
             characters: nil,
             hasSuggestion: true,
@@ -118,20 +190,7 @@ struct InlineKeyboardRouterTests {
             isSearchActive: false,
             shortcutNotification: nil
         )
-        #expect(downDecision == .moveSelection(delta: 1))
-
-        let upDecision = InlineKeyboardRouter.route(
-            keyCode: 126, // Up
-            modifiers: [],
-            characters: nil,
-            hasSuggestion: true,
-            engagement: .engaged(index: 1),
-            candidateCount: 3,
-            isPopupEnabled: true,
-            isSearchActive: false,
-            shortcutNotification: nil
-        )
-        #expect(upDecision == .moveSelection(delta: -1))
+        #expect(plainUpAtTop == .passthroughAndCancelSuggestion(reason: "history-nav"))
     }
 
     @Test("7. Option+Down and Option+Up engage candidate selection")

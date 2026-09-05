@@ -92,6 +92,7 @@ extension AIChatSidebarView {
                 conversation: conversation, context: modelContext
             )
             engine.isProcessing = false
+            NotificationCenter.default.post(name: .focusTerminal, object: nil)
         }
     }
 

@@ -65,8 +65,13 @@ import SwiftTerm
                     }
                     // Popup rows show the FULL command; ghost keeps showing the
                     // selected candidate's continuation suffix.
-                    let items = self.inlinePipeline?.ranked.map { $0.1.fullText ?? $0.1.displayText } ?? []
-                    self.showCandidateList(items: items, selectedIndex: engagement.selectedIndex)
+                    guard let pipeline = self.inlinePipeline else { return }
+                    let displayItems: [InlineCandidateDisplayItem] = pipeline.ranked.map { item in
+                        let text = item.1.fullText ?? item.1.displayText
+                        let isAI = item.0 == "llm" || item.0 == "generative"
+                        return InlineCandidateDisplayItem(text: text, isAI: isAI)
+                    }
+                    self.showCandidateList(items: displayItems, selectedIndex: engagement.selectedIndex)
                 }
             }
             pipeline.onRequestingChanged = { [weak self] isReq in
@@ -232,6 +237,13 @@ import SwiftTerm
                 return (sug, count, enabled, eng)
             }
 
+            let (isNextCandidate, isPrevCandidate) = !ShortcutManager.isRecording ? MainActor.assumeIsolated({
+                (
+                    self.matchesAction(.inlineNextCandidate, keyCode: keyCode, modifiers: modifiers),
+                    self.matchesAction(.inlinePreviousCandidate, keyCode: keyCode, modifiers: modifiers)
+                )
+            }) : (false, false)
+
             let decision = InlineKeyboardRouter.route(
                 keyCode: keyCode,
                 modifiers: modifiers,
@@ -241,7 +253,9 @@ import SwiftTerm
                 candidateCount: candidateCount,
                 isPopupEnabled: popupEnabled,
                 isSearchActive: isSearchActive,
-                shortcutNotification: shortcut
+                shortcutNotification: shortcut,
+                isNextCandidate: isNextCandidate,
+                isPreviousCandidate: isPrevCandidate
             )
 
             switch decision {
@@ -267,7 +281,7 @@ import SwiftTerm
                 return nil
             case .engageSelection(let initialIndex):
                 MainActor.assumeIsolated {
-                    self.inlinePipeline?.moveSelection(initialIndex == 0 ? 1 : -1)
+                    self.inlinePipeline?.selectIndex(initialIndex)
                 }
                 return nil
             case .passthroughAndCancelSuggestion(let reason):
@@ -288,7 +302,19 @@ import SwiftTerm
                 return event
             case .passthrough:
                 return event
+            case .consume:
+                return nil
             }
+        }
+
+        private func matchesAction(
+            _ action: ShortcutAction,
+            keyCode: UInt16,
+            modifiers: NSEvent.ModifierFlags
+        ) -> Bool {
+            guard let equivalent = ShortcutManager.shared.keyEquivalent(for: action) else { return false }
+            return equivalent.keyCode == keyCode &&
+                   equivalent.modifiers.nsModifierFlags.intersection([.command, .control, .option, .shift]) == modifiers
         }
 
         /// Map app shortcuts to notifications. Returns nil for keys the
@@ -323,7 +349,7 @@ import SwiftTerm
             case .splitVertical: .terminalSplitVertical
             case .sftpBrowser: .toggleSFTP
             case .aiAssistant: .toggleAIChat
-            case .nextTab, .previousTab, .settings: nil
+            case .nextTab, .previousTab, .settings, .inlineNextCandidate, .inlinePreviousCandidate: nil
             }
         }
 

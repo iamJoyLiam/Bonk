@@ -128,20 +128,24 @@ struct AgentCancellationContractTests {
     @Test("5. AgentEngine.cancel() triggers ExecutionManager cancellation")
     @MainActor
     func testAgentEngineCancelTriggersExecutionManager() async {
-        let engine = AgentEngine.shared
+        let manager = AgentExecutionManager()
+        let engine = AgentEngine(executionManager: manager)
         let handle = MockExecutionHandle()
 
-        await engine.executionManager.registerActive(handle)
-        let hasActive = await engine.executionManager.hasActiveHandle
+        await manager.registerActive(handle)
+        let hasActive = await manager.hasActiveHandle
         #expect(hasActive)
 
         engine.cancel()
 
-        // Wait 50ms for Task { await executionManager.cancelActive() } to dispatch interrupt
-        try? await Task.sleep(nanoseconds: 50_000_000)
+        // Wait for Task { await executionManager.cancelActive() } to dispatch interrupt
+        for _ in 0..<15 {
+            if handle.interruptCount == 1 { break }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
         #expect(handle.interruptCount == 1)
 
-        await engine.executionManager.clearActive()
+        await manager.clearActive()
     }
 
     @Test("6. AnyCommandExecutionHandle correctly bridges closures")

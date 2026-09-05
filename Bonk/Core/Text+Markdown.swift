@@ -20,7 +20,7 @@ extension MarkdownUI.Theme {
     static func bonk(onRun: (@MainActor (String) -> Void)? = nil) -> MarkdownUI.Theme {
         var theme = Theme.basic
 
-        // Code blocks with proper spacing to prevent sticking to adjacent text
+        // Code blocks with compact ChatGPT-like spacing
         theme.codeBlock = BlockStyle<CodeBlockConfiguration> { configuration in
             VStack(alignment: .leading, spacing: 0) {
                 if let onRun {
@@ -36,32 +36,32 @@ extension MarkdownUI.Theme {
                     )
                 }
             }
-            .padding(.vertical, AppStyle.spacingM)
+            .padding(.vertical, 4)
         }
 
-        // Lists with proper indentation and spacing
+        // Lists with compact indentation and spacing
         theme.list = BlockStyle<BlockConfiguration> { configuration in
             configuration.label
-                .padding(.leading, AppStyle.spacingM)
-                .padding(.vertical, AppStyle.spacingXS)
+                .padding(.leading, 12)
+                .padding(.vertical, 2)
         }
 
-        // List items with spacing between them
+        // List items with tight spacing
         theme.listItem = BlockStyle<BlockConfiguration> { configuration in
             configuration.label
-                .padding(.vertical, AppStyle.spacingXXS)
+                .padding(.vertical, 1)
         }
 
-        // Paragraphs with line spacing
+        // Paragraphs with comfortable line spacing and compact margins
         theme.paragraph = BlockStyle<BlockConfiguration> { configuration in
             configuration.label
-                .lineSpacing(4)
-                .padding(.vertical, AppStyle.spacingXS)
+                .lineSpacing(3)
+                .padding(.vertical, 2)
         }
 
         // Headings — sized by level, tight margins, native macOS typography.
-        theme.heading1 = headingStyle(size: 15)
-        theme.heading2 = headingStyle(size: 13.5)
+        theme.heading1 = headingStyle(size: 14)
+        theme.heading2 = headingStyle(size: 13)
         theme.heading3 = headingStyle(size: 12.5)
         theme.heading4 = headingStyle(size: 12)
 
@@ -82,10 +82,10 @@ extension MarkdownUI.Theme {
         theme.table = BlockStyle<BlockConfiguration> { configuration in
             configuration.label
                 .font(.system(size: 12))
-                .padding(8)
+                .padding(6)
                 .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .padding(.vertical, 3)
+                .padding(.vertical, 2)
         }
 
         return theme
@@ -95,7 +95,7 @@ extension MarkdownUI.Theme {
         BlockStyle<BlockConfiguration> { configuration in
             configuration.label
                 .font(.system(size: size, weight: .semibold))
-                .padding(.top, 6)
+                .padding(.top, 5)
                 .padding(.bottom, 2)
         }
     }
@@ -114,12 +114,8 @@ struct CodeBlockView: View {
             HStack(spacing: 6) {
                 if let lang = language, !lang.isEmpty {
                     Text(lang.lowercased())
-                        .font(.system(size: AppStyle.fontSmallest, weight: .bold, design: .monospaced))
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, AppStyle.spacingS)
-                        .padding(.vertical, AppStyle.spacingXXS)
-                        .background(Color.accentColor.opacity(AppStyle.opacityBackgroundStrong))
-                        .clipShape(Capsule())
                 }
                 Spacer()
                 Button {
@@ -128,20 +124,30 @@ struct CodeBlockView: View {
                     copied = true
                     Task { @MainActor in try? await Task.sleep(for: .seconds(2)); copied = false }
                 } label: {
-                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: AppStyle.fontCaption))
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 4) {
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 10))
+                        Text(copied ? "Copied" : "Copy")
+                            .font(.system(size: 10.5, weight: .medium))
+                    }
+                    .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, AppStyle.spacingML)
-            .padding(.vertical, AppStyle.spacingSPlus)
-            .background(Color(nsColor: .controlColor).opacity(AppStyle.opacityDisabled))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.85))
+
+            Divider().opacity(0.2)
 
             // Code content
             HighlightedCodeLines(code: code)
         }
-        .background(Color(nsColor: .controlColor).opacity(AppStyle.opacityOverlayDim))
-        .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall))
+        .background(Color(nsColor: .textBackgroundColor).opacity(0.75))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor).opacity(0.3), lineWidth: 0.5)
+        )
     }
 }

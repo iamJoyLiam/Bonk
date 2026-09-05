@@ -73,7 +73,7 @@ final class CLISpecRegistry: @unchecked Sendable {
                     suffix = sub.name.hasPrefix(typedSub) ? String(sub.name.dropFirst(typedSub.count)) : sub.name
                 }
 
-                let display = sub.summary.isEmpty ? suffix : "\(suffix) (\(sub.summary))"
+                let display = suffix
                 let sug = Suggestion(
                     text: suffix,
                     displayText: display,

@@ -148,18 +148,27 @@ final class InlineSuggestionPipeline {
     }
 
     /// Move the candidate selection (↑/↓ in the popup).
-    /// Passive + ↓ engages at 0; Passive + ↑ engages at last candidate.
+    /// Passive + ↓ advances to candidate 1 (or 0 if single candidate); Passive + ↑ engages at last candidate.
     /// Engaged + ↑/↓ changes index with boundary clamping.
     func moveSelection(_ delta: Int) {
         guard !ranked.isEmpty else { return }
         switch engagement {
         case .passive:
-            let target = delta > 0 ? 0 : max(0, ranked.count - 1)
+            let target = delta > 0 ? (ranked.count > 1 ? 1 : 0) : max(0, ranked.count - 1)
             engagement = .engaged(index: target)
         case .engaged(let current):
             let target = max(0, min(ranked.count - 1, current + delta))
             engagement = .engaged(index: target)
         }
+        onSuggestionChanged?(suggestion)
+        onCandidatesChanged?(ranked.count, engagement)
+    }
+
+    /// Directly select a candidate by index.
+    func selectIndex(_ index: Int) {
+        guard !ranked.isEmpty else { return }
+        let target = max(0, min(ranked.count - 1, index))
+        engagement = .engaged(index: target)
         onSuggestionChanged?(suggestion)
         onCandidatesChanged?(ranked.count, engagement)
     }

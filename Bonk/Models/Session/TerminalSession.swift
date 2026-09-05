@@ -127,10 +127,7 @@ final class TerminalSession {
         registerHandle: (@Sendable (any CommandExecutionHandle) -> Void)? = nil
     ) async throws -> String {
         if let vnext = vnextSession {
-            if let pty = ptySession {
-                registerHandle?(PTYSessionCommandHandle(ptySession: pty))
-            }
-            let result = try await vnext.execute(command)
+            let result = try await vnext.execute(command, registerHandle: registerHandle)
             return result.output
         }
         guard let sshService else { throw SSHServiceError.notConnected }

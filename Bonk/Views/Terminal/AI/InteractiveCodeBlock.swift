@@ -204,7 +204,7 @@ struct InteractiveCodeBlock: View {
             .padding(.vertical, 5)
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.85))
 
-            Divider().opacity(0.3)
+            Divider().opacity(0.2)
 
             // Code content
             if isMultiCommand {
@@ -214,10 +214,10 @@ struct InteractiveCodeBlock: View {
             }
         }
         .background(Color(nsColor: .textBackgroundColor).opacity(0.75))
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor).opacity(0.3), lineWidth: 0.5)
         )
     }
 

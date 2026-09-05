@@ -57,90 +57,80 @@ extension AIChatSidebarView {
         .padding(.top, AppStyle.spacingTop)
     }
 
-    // MARK: - Regular Messages (Clean macOS Transcript Style)
+    // MARK: - Regular Messages (Modern ChatGPT/Codex Style)
 
     func bubble(_ msg: AIMessageRecord) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        Group {
             if msg.role == .assistant {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(Color.accentColor)
-                        Text("Bonk AI")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(msg.content, forType: .string)
-                        } label: {
-                            Image(systemName: "doc.on.doc")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.tertiary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    MarkdownTextView(
-                        content: msg.content,
-                        onRun: { code in sessionManager.sendTextToActiveTab(code) }
-                    )
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(.leading, 17)
-                .padding(.vertical, 2)
+                assistantBubble(content: msg.content)
             } else {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .top, spacing: 6) {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Color.accentColor)
-                            .padding(.top, 2)
-                        Text(msg.content)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.primary)
-                            .textSelection(.enabled)
-                        Spacer()
-                    }
-                }
-                .padding(.vertical, 3)
+                userBubble(content: msg.content)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    func streamingBubble(_ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.accentColor)
-                Text("Bonk AI")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
+    private func userBubble(content: String) -> some View {
+        HStack {
+            Spacer(minLength: 40)
+            Text(content)
+                .font(.system(size: 13))
+                .foregroundStyle(Color.primary)
+                .textSelection(.enabled)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(nsColor: .controlAccentColor).opacity(0.14))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.accentColor.opacity(0.22), lineWidth: 0.5)
+                )
+        }
+        .padding(.vertical, 3)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    private func assistantBubble(content: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
             MarkdownTextView(
-                content: text,
+                content: content,
                 onRun: { code in sessionManager.sendTextToActiveTab(code) }
             )
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack {
+                Spacer()
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(content, forType: .string)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
         }
-        .padding(.leading, 17)
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    func streamingBubble(_ text: String) -> some View {
+        MarkdownTextView(
+            content: text,
+            onRun: { code in sessionManager.sendTextToActiveTab(code) }
+        )
+        .textSelection(.enabled)
         .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     var loadingBubble: some View {
-        HStack(spacing: AppStyle.spacingM) {
-            TypingIndicator()
-            Spacer()
-        }
-        .padding(.leading, 17)
-        .padding(.vertical, AppStyle.spacingS)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        TypingIndicator()
+            .padding(.vertical, AppStyle.spacingS)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     var stoppedIndicator: some View {
@@ -151,12 +141,11 @@ extension AIChatSidebarView {
                 .font(.system(size: AppStyle.fontSmall))
         }
         .foregroundStyle(.secondary)
-        .padding(.leading, 17)
         .padding(.vertical, AppStyle.spacingXS)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: - Agent Messages (Clean macOS Transcript Style)
+    // MARK: - Agent Messages (Modern ChatGPT/Codex Style)
 
     func agentBubble(_ msg: AgentMessage) -> some View {
         Group {
@@ -174,34 +163,11 @@ extension AIChatSidebarView {
     }
 
     private func agentUserContent(_ msg: AgentMessage) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color.accentColor)
-                    .padding(.top, 2)
-                Text(msg.content)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
-                Spacer()
-            }
-        }
-        .padding(.vertical, 3)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        userBubble(content: msg.content)
     }
 
     private func agentAssistantContent(_ msg: AgentMessage) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.accentColor)
-                Text("Bonk AI")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
+        VStack(alignment: .leading, spacing: 5) {
             if let thinking = msg.thinking, !thinking.isEmpty {
                 DisclosureGroup {
                     Text(thinking)
@@ -225,7 +191,6 @@ extension AIChatSidebarView {
                 agentCommandBlock(command)
             }
         }
-        .padding(.leading, 17)
         .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
     }

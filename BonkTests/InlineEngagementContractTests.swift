@@ -69,16 +69,16 @@ struct InlineEngagementContractTests {
         #expect(pipeline.suggestion == nil)
     }
 
-    @Test("4. Passive + ↓ engages keyboard selection at index 0")
+    @Test("4. Passive + ↓ engages keyboard selection at candidate 1")
     func testArrowDownEngagesSelection() {
         let pipeline = makePipelineWithCandidates()
         #expect(pipeline.engagement == .passive)
 
         pipeline.moveSelection(1)
-        #expect(pipeline.engagement == .engaged(index: 0))
-        #expect(pipeline.selectedIndex == 0)
+        #expect(pipeline.engagement == .engaged(index: 1))
+        #expect(pipeline.selectedIndex == 1)
         #expect(pipeline.engagement.isEngaged)
-        #expect(pipeline.suggestion?.text == pipeline.ranked[0].1.text)
+        #expect(pipeline.suggestion?.text == pipeline.ranked[1].1.text)
     }
 
     @Test("5. Passive + ↑ engages keyboard selection at last candidate")
@@ -97,9 +97,8 @@ struct InlineEngagementContractTests {
     @Test("6. Engaged + Enter accepts candidate")
     func testEngagedEnterAcceptsCandidate() {
         let pipeline = makePipelineWithCandidates()
-        // Move selection to candidate 1
-        pipeline.moveSelection(1) // engages at 0
-        pipeline.moveSelection(1) // moves to 1
+        // Single ↓ press immediately moves selection to candidate 1
+        pipeline.moveSelection(1)
         #expect(pipeline.selectedIndex == 1)
         let selectedCandidate = pipeline.ranked[1].1
 
@@ -114,8 +113,8 @@ struct InlineEngagementContractTests {
     @Test("7. Engaged + Tab accepts candidate")
     func testEngagedTabAcceptsCandidate() {
         let pipeline = makePipelineWithCandidates()
-        pipeline.moveSelection(1) // engages at 0
-        pipeline.moveSelection(1) // moves to 1
+        // Single ↓ press immediately moves selection to candidate 1
+        pipeline.moveSelection(1)
         #expect(pipeline.selectedIndex == 1)
         let selectedCandidate = pipeline.ranked[1].1
 

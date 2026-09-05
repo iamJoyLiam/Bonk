@@ -58,204 +58,232 @@ final class InlineGhostOverlay: NSView {
     }
 }
 
+import SwiftUI
+
+// MARK: - Native Popover Bubble Shape & View (1:1 with AI Assistant Mode Menu)
+
+struct InlineCandidateDisplayItem: Sendable, Equatable {
+    let text: String
+    let isAI: Bool
+
+    init(text: String, isAI: Bool = false) {
+        self.text = text
+        self.isAI = isAI
+    }
+}
+
+struct CandidateBubbleShape: Shape {
+    var arrowEdge: Edge = .top
+    var arrowTipX: CGFloat = 24
+    let arrowHeight: CGFloat = 7
+    let arrowWidth: CGFloat = 14
+    let cornerRadius: CGFloat = 10
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let w = rect.width
+        let h = rect.height
+        guard w > 0, h > 0 else { return path }
+        let r = cornerRadius
+        let ah = arrowHeight
+        let halfAw = arrowWidth / 2
+        let clampedTipX = max(r + halfAw + 2, min(w - r - halfAw - 2, arrowTipX))
+
+        if arrowEdge == .top {
+            let bodyTop = ah
+            let bodyBottom = h
+            path.move(to: CGPoint(x: clampedTipX - halfAw, y: bodyTop))
+            path.addLine(to: CGPoint(x: clampedTipX, y: 0))
+            path.addLine(to: CGPoint(x: clampedTipX + halfAw, y: bodyTop))
+            path.addArc(tangent1End: CGPoint(x: w, y: bodyTop), tangent2End: CGPoint(x: w, y: bodyBottom), radius: r)
+            path.addArc(tangent1End: CGPoint(x: w, y: bodyBottom), tangent2End: CGPoint(x: 0, y: bodyBottom), radius: r)
+            path.addArc(tangent1End: CGPoint(x: 0, y: bodyBottom), tangent2End: CGPoint(x: 0, y: bodyTop), radius: r)
+            path.addArc(tangent1End: CGPoint(x: 0, y: bodyTop), tangent2End: CGPoint(x: clampedTipX - halfAw, y: bodyTop), radius: r)
+            path.closeSubpath()
+        } else {
+            let bodyTop: CGFloat = 0
+            let bodyBottom = h - ah
+            path.move(to: CGPoint(x: r, y: bodyTop))
+            path.addArc(tangent1End: CGPoint(x: w, y: bodyTop), tangent2End: CGPoint(x: w, y: bodyBottom), radius: r)
+            path.addArc(tangent1End: CGPoint(x: w, y: bodyBottom), tangent2End: CGPoint(x: clampedTipX + halfAw, y: bodyBottom), radius: r)
+            path.addLine(to: CGPoint(x: clampedTipX + halfAw, y: bodyBottom))
+            path.addLine(to: CGPoint(x: clampedTipX, y: h))
+            path.addLine(to: CGPoint(x: clampedTipX - halfAw, y: bodyBottom))
+            path.addArc(tangent1End: CGPoint(x: 0, y: bodyBottom), tangent2End: CGPoint(x: 0, y: bodyTop), radius: r)
+            path.addArc(tangent1End: CGPoint(x: 0, y: bodyTop), tangent2End: CGPoint(x: w, y: bodyTop), radius: r)
+            path.closeSubpath()
+        }
+        return path
+    }
+}
+
+struct CandidateBubbleView: View {
+    let items: [InlineCandidateDisplayItem]
+    let selectedIndex: Int?
+    let arrowEdge: Edge
+    let arrowTipX: CGFloat
+    let onSelect: (Int) -> Void
+
+    var body: some View {
+        let shape = CandidateBubbleShape(arrowEdge: arrowEdge, arrowTipX: arrowTipX)
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                let isSelected = (selectedIndex ?? 0) == index
+                Button {
+                    onSelect(index)
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(item.text)
+                            .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                            .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                            .lineLimit(1)
+                        Spacer(minLength: 12)
+                        if isSelected {
+                            if item.isAI {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(Color.accentColor)
+                            } else {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(Color.accentColor)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, arrowEdge == .top ? 11 : 4)
+        .padding(.bottom, arrowEdge == .bottom ? 11 : 4)
+        .background(.ultraThinMaterial, in: shape)
+        .overlay(shape.stroke(Color.primary.opacity(0.12), lineWidth: 0.5))
+        .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 3)
+    }
+}
+
+fileprivate final class NonFocusHostingView<Content: View>: NSHostingView<Content> {
+    override var acceptsFirstResponder: Bool { false }
+}
+
 /// Warp-style candidate list drawn near the cursor: ↑/↓ moves the selection,
-/// Tab accepts the selected row. Frosted translucent panel, layer-backed,
-/// clear text, selection highlight and keyboard hint footer.
+/// Tab accepts the selected row. Genuine native Popover bubble with arrow pointer,
+/// pure translucent frosted glass, subtle border, shadow, and 1:1 styling with AI assistant popover.
 final class InlineCandidateListOverlay: NSView {
     /// Hard cap of visible rows — keeps the panel compact and redraws cheap.
     static let maxVisibleRows = 5
 
+    enum ArrowEdge: Sendable, Equatable {
+        case top    // Bubble is below cursor; arrow points up at cursor
+        case bottom // Bubble is above cursor; arrow points down at cursor
+        var swiftUIEdge: Edge { self == .top ? .top : .bottom }
+    }
+
     var onSelect: ((Int) -> Void)?
 
-    var items: [String] = [] {
+    var arrowEdge: ArrowEdge = .top {
         didSet {
-            let capped = Array(items.prefix(Self.maxVisibleRows))
-            guard capped != itemsCache else { return }
-            itemsCache = capped
-            cachedWidth = capped
-                .map { ($0 as NSString).size(withAttributes: [.font: font]).width }
-                .max() ?? 0
-            contentView.needsDisplay = true
+            guard arrowEdge != oldValue else { return }
+            updateContent()
         }
     }
-    private var itemsCache: [String] = []
-    private var cachedWidth: CGFloat = 0
+
+    var arrowTipX: CGFloat = 24 {
+        didSet {
+            guard arrowTipX != oldValue else { return }
+            updateContent()
+        }
+    }
+
+    let arrowHeight: CGFloat = 7
+    let arrowWidth: CGFloat = 14
+    let cornerRadius: CGFloat = 10
+
+    var displayItems: [InlineCandidateDisplayItem] = [] {
+        didSet {
+            displayItemsCache = Array(displayItems.prefix(Self.maxVisibleRows))
+            updateContent()
+        }
+    }
+    private var displayItemsCache: [InlineCandidateDisplayItem] = []
+
+    var items: [String] {
+        get { displayItemsCache.map(\.text) }
+        set {
+            displayItems = newValue.map { InlineCandidateDisplayItem(text: $0, isAI: false) }
+        }
+    }
 
     var selectedIndex: Int? = nil {
         didSet {
             guard selectedIndex != oldValue else { return }
-            contentView.needsDisplay = true
+            updateContent()
         }
     }
 
-    var font: NSFont = .monospacedSystemFont(ofSize: 12, weight: .regular) {
-        didSet {
-            guard font != oldValue else { return }
-            cachedWidth = itemsCache
-                .map { ($0 as NSString).size(withAttributes: [.font: font]).width }
-                .max() ?? 0
-            contentView.needsDisplay = true
+    var font: NSFont = .monospacedSystemFont(ofSize: 12, weight: .regular)
+    var rowHeight: CGFloat = 28
+
+    override var isFlipped: Bool { true }
+    override var acceptsFirstResponder: Bool { false }
+
+    private var hostingView: NonFocusHostingView<CandidateBubbleView>?
+
+    private func updateContent() {
+        guard !displayItemsCache.isEmpty else {
+            hostingView?.isHidden = true
+            return
         }
-    }
-
-    var rowHeight: CGFloat = 22 {
-        didSet {
-            guard rowHeight != oldValue else { return }
-            contentView.needsDisplay = true
+        let bubble = CandidateBubbleView(
+            items: displayItemsCache,
+            selectedIndex: selectedIndex,
+            arrowEdge: arrowEdge.swiftUIEdge,
+            arrowTipX: arrowTipX,
+            onSelect: { [weak self] idx in self?.onSelect?(idx) }
+        )
+        if let hostingView {
+            hostingView.rootView = bubble
+            hostingView.isHidden = false
+        } else {
+            let h = NonFocusHostingView(rootView: bubble)
+            addSubview(h)
+            hostingView = h
         }
-    }
-
-    private let effectView = NSVisualEffectView()
-    private lazy var contentView = CandidateContentView(owner: self)
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        setup()
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        setup()
-    }
-
-    private func setup() {
-        wantsLayer = true
-        layer?.cornerRadius = 8
-        layer?.masksToBounds = false
-        layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.28
-        layer?.shadowRadius = 8
-        layer?.shadowOffset = CGSize(width: 0, height: -2)
-        layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.3).cgColor
-        layer?.borderWidth = 1
-
-        effectView.wantsLayer = true
-        effectView.layer?.cornerRadius = 8
-        effectView.layer?.masksToBounds = true
-        effectView.material = .popover
-        effectView.blendingMode = .withinWindow
-        effectView.state = .active
-        addSubview(effectView)
-
-        contentView.wantsLayer = true
-        addSubview(contentView)
-    }
-
-    override var isFlipped: Bool {
-        true
-    }
-
-    override var acceptsFirstResponder: Bool {
-        false
+        hostingView?.frame = bounds
     }
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
-        effectView.frame = bounds
-        contentView.frame = bounds
+        hostingView?.frame = bounds
     }
 
     override func setFrameOrigin(_ newOrigin: NSPoint) {
         super.setFrameOrigin(newOrigin)
-        effectView.frame = bounds
-        contentView.frame = bounds
+        hostingView?.frame = bounds
     }
 
     func measuredWidth() -> CGFloat {
-        max(180, cachedWidth + 36)
+        guard !displayItemsCache.isEmpty else { return 0 }
+        let textWidth = displayItemsCache.map { ($0.text as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+        return max(160, textWidth + 64)
     }
 
     func totalHeight() -> CGFloat {
-        guard !itemsCache.isEmpty, rowHeight > 0 else { return 0 }
-        return CGFloat(itemsCache.count) * rowHeight + 8
+        guard !displayItemsCache.isEmpty else { return 0 }
+        let rows = CGFloat(displayItemsCache.count)
+        return rows * 28 + max(0, rows - 1) * 2 + 15
     }
 
     var visibleRowCount: Int {
-        itemsCache.count
+        displayItemsCache.count
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard !isHidden, bounds.contains(point) else { return nil }
-        return self
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        let location = convert(event.locationInWindow, from: nil)
-        let paddingY: CGFloat = 4
-        if location.y >= paddingY {
-            let row = Int((location.y - paddingY) / rowHeight)
-            if row >= 0, row < itemsCache.count {
-                onSelect?(row)
-                return
-            }
-        }
-        super.mouseDown(with: event)
-    }
-
-    fileprivate final class CandidateContentView: NSView {
-        weak var owner: InlineCandidateListOverlay?
-
-        init(owner: InlineCandidateListOverlay) {
-            self.owner = owner
-            super.init(frame: .zero)
-        }
-
-        required init?(coder: NSCoder) { fatalError() }
-
-        override var isFlipped: Bool { true }
-
-        override func draw(_: NSRect) {
-            guard let owner, !owner.itemsCache.isEmpty, owner.rowHeight > 0 else { return }
-
-            let iconFont = NSFont.systemFont(ofSize: 10, weight: .semibold)
-            let iconColor = NSColor.controlAccentColor
-            let paddingY: CGFloat = 4
-            let paddingX: CGFloat = 6
-
-            for (index, item) in owner.itemsCache.enumerated() {
-                let rowRect = NSRect(
-                    x: paddingX,
-                    y: paddingY + CGFloat(index) * owner.rowHeight,
-                    width: bounds.width - paddingX * 2,
-                    height: owner.rowHeight
-                )
-
-                let isSelected = owner.selectedIndex != nil && index == owner.selectedIndex
-                if isSelected {
-                    let path = NSBezierPath(roundedRect: rowRect, xRadius: 5, yRadius: 5)
-                    NSColor.controlAccentColor.withAlphaComponent(0.24).setFill()
-                    path.fill()
-                }
-
-                // AI Sparkle indicator
-                let iconRect = NSRect(x: rowRect.minX + 6, y: rowRect.midY - 6, width: 12, height: 12)
-                ("✦" as NSString).draw(
-                    in: iconRect,
-                    withAttributes: [
-                        .font: iconFont,
-                        .foregroundColor: isSelected ? iconColor : NSColor.tertiaryLabelColor
-                    ]
-                )
-
-                let textColor: NSColor = isSelected ? .labelColor : .secondaryLabelColor
-                let textRect = NSRect(
-                    x: rowRect.minX + 22,
-                    y: rowRect.origin.y + (owner.rowHeight - (owner.font.pointSize + 4)) / 2,
-                    width: rowRect.width - 26,
-                    height: owner.rowHeight
-                )
-                (item as NSString).draw(
-                    in: textRect,
-                    withAttributes: [
-                        .font: owner.font,
-                        .foregroundColor: textColor,
-                    ]
-                )
-            }
-        }
-
-        override func hitTest(_: NSPoint) -> NSView? {
-            nil
-        }
+        return super.hitTest(point)
     }
 }

@@ -14,6 +14,7 @@ final class KnownWordsCandidateSource: SyncInlineCandidateSource, @unchecked Sen
 
     func syncSuggestion(for snapshot: CommandContextSnapshot, typed: String) -> Suggestion? {
         guard typed.count >= 2 else { return nil }
+        guard !typed.hasSuffix(" ") else { return nil }
         guard let lastToken = typed.split(whereSeparator: { $0.isWhitespace }).last else { return nil }
         let token = String(lastToken)
         guard let match = snapshot.knownWords.first(where: {
@@ -32,6 +33,7 @@ final class SortedKnownWordsCandidateSource: SyncInlineCandidateSource, @uncheck
 
     func syncSuggestion(for snapshot: CommandContextSnapshot, typed: String) -> Suggestion? {
         guard typed.count >= 2 else { return nil }
+        guard !typed.hasSuffix(" ") else { return nil }
         guard let lastToken = typed.split(whereSeparator: { $0.isWhitespace }).last else { return nil }
         let token = String(lastToken)
         guard let match = snapshot.knownWords
@@ -54,8 +56,9 @@ final class CommandVocabularySource: SyncInlineCandidateSource, @unchecked Senda
 
     func syncSuggestion(for snapshot: CommandContextSnapshot, typed: String) -> Suggestion? {
         guard typed.count >= 2 else { return nil }
-        guard let lastToken = typed.split(whereSeparator: { $0.isWhitespace }).last else { return nil }
-        let token = String(lastToken)
+        // Vocabulary is strictly for root commands (before first argument space).
+        guard !typed.contains(" ") else { return nil }
+        let token = typed.trimmingCharacters(in: .whitespaces)
         guard let match = vocabulary.match(for: token) else { return nil }
         let suffix = String(match.dropFirst(token.count))
         guard !suffix.isEmpty else { return nil }

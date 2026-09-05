@@ -259,6 +259,8 @@ enum ShortcutAction: String, CaseIterable, Identifiable {
     case splitVertical
     case sftpBrowser
     case aiAssistant
+    case inlineNextCandidate
+    case inlinePreviousCandidate
 
     var id: String {
         rawValue
@@ -280,6 +282,8 @@ enum ShortcutAction: String, CaseIterable, Identifiable {
         case .splitVertical: KeyboardShortcut(keyCode: 2, modifiers: [.command, .shift]) // Cmd+Shift+D
         case .sftpBrowser: KeyboardShortcut(keyCode: 1, modifiers: [.command, .shift]) // Cmd+Shift+S
         case .aiAssistant: KeyboardShortcut(keyCode: 40, modifiers: [.command, .shift]) // Cmd+Shift+K
+        case .inlineNextCandidate: KeyboardShortcut(keyCode: 125, modifiers: .command) // Cmd+Down
+        case .inlinePreviousCandidate: KeyboardShortcut(keyCode: 126, modifiers: .command) // Cmd+Up
         }
     }
 
@@ -299,6 +303,8 @@ enum ShortcutAction: String, CaseIterable, Identifiable {
         case .splitVertical: "action_split_vertical"
         case .sftpBrowser: "action_sftp_browser"
         case .aiAssistant: "action_ai_assistant"
+        case .inlineNextCandidate: "action_inline_next_candidate"
+        case .inlinePreviousCandidate: "action_inline_previous_candidate"
         }
     }
 }

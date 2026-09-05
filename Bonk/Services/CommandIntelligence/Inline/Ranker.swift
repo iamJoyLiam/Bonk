@@ -45,11 +45,11 @@ struct InlineRanker: Sendable {
         // Base priority by source
         let base: Double
         switch source {
-        case "knownWords", "knownWordsSorted": base = 100
         case "cache": base = 90
-        case "history": base = 80
+        case "history": base = 85
         case "vocabulary": base = 75
         case "llm": base = 70
+        case "knownWords", "knownWordsSorted": base = 50
         default: base = 50
         }
         let lenPenalty = Double(suggestion.text.count) * 0.05

@@ -171,21 +171,21 @@ struct InputCriticalPathContractTests {
         UserDefaults.standard.set(true, forKey: "ai_inline_candidate_popup")
         defer { UserDefaults.standard.removeObject(forKey: "ai_inline_candidate_popup") }
 
-        // Engage selection at 0
+        // Engage selection at 1
         pipeline.moveSelection(1)
-        #expect(pipeline.selectedIndex == 0)
+        #expect(pipeline.selectedIndex == 1)
 
-        // Down arrow (125) moves to index 1
+        // Down arrow (125) moves to index 2
         let downEvent = makeKeyEvent(keyCode: 125, window: window)
         let downResult = view.processKeyEvent(downEvent)
         #expect(downResult == nil)
-        #expect(pipeline.selectedIndex == 1)
+        #expect(pipeline.selectedIndex == 2)
 
-        // Up arrow (126) moves back to index 0
+        // Up arrow (126) moves back to index 1
         let upEvent = makeKeyEvent(keyCode: 126, window: window)
         let upResult = view.processKeyEvent(upEvent)
         #expect(upResult == nil)
-        #expect(pipeline.selectedIndex == 0)
+        #expect(pipeline.selectedIndex == 1)
     }
 
     @Test("7. Engaged mode: Enter accepts the currently selected candidate")
@@ -196,8 +196,7 @@ struct InputCriticalPathContractTests {
             return
         }
 
-        // Engage selection at 1
-        pipeline.moveSelection(1)
+        // Engage selection at 1 on single down press
         pipeline.moveSelection(1)
         #expect(pipeline.selectedIndex == 1)
 
@@ -277,5 +276,18 @@ struct InputCriticalPathContractTests {
     func testCandidateListOverlayNeverAcceptsFirstResponder() {
         let overlay = InlineCandidateListOverlay()
         #expect(!overlay.acceptsFirstResponder)
+    }
+
+    @Test("11. Candidate list overlay supports distinct source item display (AI vs Library)")
+    func testCandidateListOverlaySupportsSourceDisplayItems() {
+        let overlay = InlineCandidateListOverlay()
+        overlay.displayItems = [
+            InlineCandidateDisplayItem(text: "docker ps", isAI: false),
+            InlineCandidateDisplayItem(text: "docker build", isAI: true),
+        ]
+        #expect(overlay.visibleRowCount == 2)
+        #expect(overlay.items == ["docker ps", "docker build"])
+        #expect(overlay.displayItems[0].isAI == false)
+        #expect(overlay.displayItems[1].isAI == true)
     }
 }
