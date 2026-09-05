@@ -161,4 +161,48 @@ struct InlinePresentationPolicyContractTests {
         )
         #expect(action == .hide)
     }
+
+    @Test("Single character with multiple candidates delays 350ms when typing fast")
+    func singleCharMultipleCandidatesDelays350msWhenTypingFast() {
+        let c1 = CommandCandidate(
+            source: "vocabulary",
+            authority: .deterministic,
+            suggestion: Suggestion(text: "ocker", displayText: "ocker", fullText: "docker"),
+            rawScore: 80.0
+        )
+        let c2 = CommandCandidate(
+            source: "vocabulary",
+            authority: .deterministic,
+            suggestion: Suggestion(text: "f", displayText: "f", fullText: "df"),
+            rawScore: 78.0
+        )
+        let action = InlinePresentationPolicy.evaluate(
+            ranked: [c1, c2],
+            inputBuffer: "d",
+            isTypingFast: true
+        )
+        #expect(action == .delay(ms: 350))
+    }
+
+    @Test("Single character with multiple candidates shows popup immediately when not typing fast")
+    func singleCharMultipleCandidatesShowsImmediatelyWhenNotFast() {
+        let c1 = CommandCandidate(
+            source: "vocabulary",
+            authority: .deterministic,
+            suggestion: Suggestion(text: "ocker", displayText: "ocker", fullText: "docker"),
+            rawScore: 80.0
+        )
+        let c2 = CommandCandidate(
+            source: "vocabulary",
+            authority: .deterministic,
+            suggestion: Suggestion(text: "f", displayText: "f", fullText: "df"),
+            rawScore: 78.0
+        )
+        let action = InlinePresentationPolicy.evaluate(
+            ranked: [c1, c2],
+            inputBuffer: "d",
+            isTypingFast: false
+        )
+        #expect(action == .show(suggestion: c1.suggestion, showPopup: true))
+    }
 }

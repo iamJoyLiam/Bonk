@@ -44,7 +44,7 @@ final class CandidatePool: @unchecked Sendable {
         isRejected: (String) -> Bool
     ) -> [CommandCandidate] {
         let trimmedTyped = typed.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmedTyped.count >= 2 else {
+        guard !trimmedTyped.isEmpty else {
             lastQuery = nil
             return []
         }
@@ -86,39 +86,40 @@ final class CandidatePool: @unchecked Sendable {
         let cliCandidates = cliRegistry.candidates(for: typed)
         pool.append(contentsOf: cliCandidates)
 
-        // 2. History Candidates
-        // Query history source for matching past commands
-        if let histSug = historySource.syncSuggestion(for: snapshot, typed: typed) {
-            let full = histSug.withFullCommand(typed: typed)
-            let score = ranker.score(suggestion: full, source: historySource.name)
-            pool.append(CommandCandidate(
-                source: historySource.name,
-                authority: .deterministic,
-                suggestion: full,
-                rawScore: score + 5.0, // Habit bonus for user's own past commands
-                isExactPrefixMatch: true
-            ))
-        }
-
-        // Also check snapshot.recentCommands for prefix matches (with normalized whitespace)
-        let normalizedTyped = typed.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        for cmd in snapshot.recentCommands.reversed() {
-            let normalizedCmd = cmd.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-            if (normalizedCmd.hasPrefix(typed) && normalizedCmd.count > typed.count) ||
-               (normalizedCmd.hasPrefix(normalizedTyped) && normalizedCmd.count > normalizedTyped.count) {
-                let prefixLen = normalizedCmd.hasPrefix(typed) ? typed.count : normalizedTyped.count
-                let suffix = String(normalizedCmd.dropFirst(prefixLen))
-                guard !suffix.isEmpty else { continue }
-                let display = SuggestionFormatter.displaySuffix(suffix, typed: typed)
-                let sug = Suggestion(text: suffix, displayText: display, fullText: normalizedCmd)
-                let score = ranker.score(suggestion: sug, source: "history")
+        // 2. History Candidates (only when typed >= 2 characters to avoid aggressive ghosting on 1st char)
+        if trimmedTyped.count >= 2 {
+            if let histSug = historySource.syncSuggestion(for: snapshot, typed: typed) {
+                let full = histSug.withFullCommand(typed: typed)
+                let score = ranker.score(suggestion: full, source: historySource.name)
                 pool.append(CommandCandidate(
-                    source: "history",
+                    source: historySource.name,
                     authority: .deterministic,
-                    suggestion: sug,
-                    rawScore: score,
+                    suggestion: full,
+                    rawScore: score + 5.0, // Habit bonus for user's own past commands
                     isExactPrefixMatch: true
                 ))
+            }
+
+            // Also check snapshot.recentCommands for prefix matches (with normalized whitespace)
+            let normalizedTyped = typed.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            for cmd in snapshot.recentCommands.reversed() {
+                let normalizedCmd = cmd.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+                if (normalizedCmd.hasPrefix(typed) && normalizedCmd.count > typed.count) ||
+                   (normalizedCmd.hasPrefix(normalizedTyped) && normalizedCmd.count > normalizedTyped.count) {
+                    let prefixLen = normalizedCmd.hasPrefix(typed) ? typed.count : normalizedTyped.count
+                    let suffix = String(normalizedCmd.dropFirst(prefixLen))
+                    guard !suffix.isEmpty else { continue }
+                    let display = SuggestionFormatter.displaySuffix(suffix, typed: typed)
+                    let sug = Suggestion(text: suffix, displayText: display, fullText: normalizedCmd)
+                    let score = ranker.score(suggestion: sug, source: "history")
+                    pool.append(CommandCandidate(
+                        source: "history",
+                        authority: .deterministic,
+                        suggestion: sug,
+                        rawScore: score,
+                        isExactPrefixMatch: true
+                    ))
+                }
             }
         }
 
@@ -131,7 +132,7 @@ final class CandidatePool: @unchecked Sendable {
             let indexMatches = CompositeCommandIndex.shared.matches(prefix: typed, limit: 5)
             if !indexMatches.isEmpty {
                 pool.append(contentsOf: indexMatches)
-            } else if let vocabSug = vocabularySource.syncSuggestion(for: snapshot, typed: typed) {
+            } else if trimmedTyped.count >= 2, let vocabSug = vocabularySource.syncSuggestion(for: snapshot, typed: typed) {
                 let full = vocabSug.withFullCommand(typed: typed)
                 let score = ranker.score(suggestion: full, source: vocabularySource.name)
                 pool.append(CommandCandidate(
@@ -146,8 +147,9 @@ final class CandidatePool: @unchecked Sendable {
 
         // 4. Runtime Context / Known Words (Screen output tokens)
         // For known CLI tools, only query known words for parameters/arguments, never to mangle subcommands.
-        // Never query known words when user is on whitespace (new argument position).
+        // Never query known words when user is on whitespace or for single character.
         let shouldQueryKnownWords: Bool = {
+            guard trimmedTyped.count >= 2 else { return false }
             guard !typed.hasSuffix(" ") else { return false }
             guard !isKnownCLI else {
                 return tokens.count >= 3

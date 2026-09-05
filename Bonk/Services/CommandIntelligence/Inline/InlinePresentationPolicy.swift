@@ -26,7 +26,15 @@ struct InlinePresentationPolicy: Sendable {
             return .hide
         }
 
-        // 1. If top candidate is deterministic, always display immediately
+        let trimmed = inputBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // 1. Single character root command with multiple candidates:
+        // When typing fast (< 160ms interval), delay 350ms to prevent popup jitter during continuous typing
+        if trimmed.count == 1 && ranked.count > 1 && isTypingFast {
+            return .delay(ms: 350)
+        }
+
+        // 2. If top candidate is deterministic, always display immediately
         if top.authority == .deterministic {
             let showPopup = ranked.count > 1
             return .show(suggestion: top.suggestion, showPopup: showPopup)
@@ -45,7 +53,6 @@ struct InlinePresentationPolicy: Sendable {
         }
 
         // If input is too short (< minGenerativeStandaloneChars) and no local candidate corroborated it, hide ghost
-        let trimmed = inputBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.count < minGenerativeStandaloneChars {
             return .hide
         }

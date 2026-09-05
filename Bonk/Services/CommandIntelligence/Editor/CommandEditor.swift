@@ -32,7 +32,7 @@ enum CommandEditor {
     /// Pick the command text to complete: prefer pure buffer tail, else prompt stripping.
     @MainActor static func resolveTypedText(rawLine: String, inputBuffer: String) -> String? {
         let typed = inputBuffer.trimmingCharacters(in: .whitespaces)
-        if typed.count >= 2, rawLine.hasSuffix(typed) { return typed }
+        if !typed.isEmpty, rawLine.hasSuffix(typed) { return typed }
         return SuggestionFormatter.commandText(from: rawLine)
     }
 
@@ -85,7 +85,7 @@ enum CommandEditor {
         rawLine: String
     ) -> CommandContextSnapshot? {
         guard let typed = resolveTypedText(rawLine: rawLine, inputBuffer: base.inputBuffer),
-              typed.count >= 2 else { return nil }
+              !typed.isEmpty else { return nil }
         var snap = base
         snap.inputBuffer = typed
         return snap

@@ -106,4 +106,45 @@ final class TriggerPolicyContractTests: XCTestCase {
         // Because confidence is high, LLM is never requested (isRequesting stays false)
         XCTAssertFalse(pipeline.isRequesting)
     }
+
+    // MARK: - Test 8: Single character root triggers 350ms delay tier without LLM
+    func testSingleCharacterRootUses350msTier() {
+        let snapshot = CommandContextSnapshot(inputBuffer: "d")
+        let decision = InlineTriggerPolicy.evaluate(
+            typed: "d",
+            snapshot: snapshot,
+            confidence: .low
+        )
+        XCTAssertFalse(decision.shouldRequestLLM)
+        XCTAssertEqual(decision.debounceMs, 350)
+        XCTAssertEqual(decision.tier, .singleCharDelay)
+    }
+
+    // MARK: - Test 9: Parameter completion (trailing space) triggers 80ms fast tier
+    func testParameterCompletionUses80msFastTier() {
+        let snapshot = CommandContextSnapshot(inputBuffer: "docker ")
+        let decision = InlineTriggerPolicy.evaluate(
+            typed: "docker ",
+            snapshot: snapshot,
+            confidence: .low
+        )
+        XCTAssertTrue(decision.shouldRequestLLM)
+        XCTAssertEqual(decision.debounceMs, 80)
+        XCTAssertEqual(decision.tier, .parameter)
+    }
+
+    // MARK: - Test 10: Explicit hotkey trigger uses 0ms immediate tier
+    func testExplicitHotkeyUses0msImmediateTier() {
+        let snapshot = CommandContextSnapshot(inputBuffer: "randomcmd")
+        let decision = InlineTriggerPolicy.evaluate(
+            typed: "randomcmd",
+            snapshot: snapshot,
+            confidence: .low,
+            isExplicitHotkey: true
+        )
+        XCTAssertTrue(decision.shouldRequestLLM)
+        XCTAssertEqual(decision.debounceMs, 0)
+        XCTAssertEqual(decision.tier, .immediate)
+        XCTAssertEqual(decision.reason, .explicitAIRequest)
+    }
 }

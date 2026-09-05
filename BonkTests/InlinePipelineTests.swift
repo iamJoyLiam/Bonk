@@ -141,4 +141,23 @@ final class InlinePipelineTests: XCTestCase {
             XCTAssertNil(pipeline.suggestion)
         }
     }
+
+    func testSingleCharacterRootMatching() {
+        let cache = InlineSuggestionCache()
+        let pipeline = InlineSuggestionPipeline(providerStore: .shared, cache: cache)
+        let snap = CommandContextSnapshot(
+            inputBuffer: "d",
+            recentCommands: ["docker ps"],
+            recentOutput: ""
+        )
+        pipeline.request(snapshot: snap)
+        // Root index candidates for 'd': docker, df, du, etc.
+        XCTAssertGreaterThanOrEqual(pipeline.ranked.count, 3)
+        XCTAssertEqual(pipeline.rankedCandidates.first?.fullText, "docker")
+        XCTAssertEqual(pipeline.rankedCandidates.first?.summary, "Container application platform")
+        // History commands (e.g. docker ps) should NOT be suggested for single char 'd'
+        XCTAssertNotEqual(pipeline.suggestion?.fullText, "docker ps")
+        // LLM is never requested for 1 char
+        XCTAssertFalse(pipeline.isRequesting)
+    }
 }

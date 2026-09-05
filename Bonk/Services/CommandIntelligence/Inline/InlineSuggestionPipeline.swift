@@ -93,7 +93,7 @@ final class InlineSuggestionPipeline {
         lastKeystrokeTime = now
         let trimmedLeading = String(snapshot.inputBuffer.drop(while: { $0.isWhitespace || $0.isNewline }))
         let typed = trimmedLeading.trimmingCharacters(in: .newlines)
-        guard typed.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else {
+        guard !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             cancel()
             return
         }

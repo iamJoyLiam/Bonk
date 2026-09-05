@@ -409,7 +409,7 @@ import SwiftTerm
         @available(*, deprecated, message: "Use CommandEditor.resolveTypedText")
         private func resolveTypedText(raw: String, inputBuffer: String) -> String? {
             let typed = inputBuffer.trimmingCharacters(in: .whitespaces)
-            if typed.count >= 2, raw.hasSuffix(typed) { return typed }
+            if !typed.isEmpty, raw.hasSuffix(typed) { return typed }
             return SuggestionFormatter.commandText(from: raw)
         }
 
