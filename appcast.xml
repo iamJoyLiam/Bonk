@@ -6,6 +6,37 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.3.0</title>
+            <pubDate>Sat, 05 Sep 2026 17:52:00 +0800</pubDate>
+            <sparkle:version>20263000</sparkle:version>
+            <sparkle:shortVersionString>2026.3.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Changes
+- Added Warp-style inline command suggestions with an instant local tier, native candidate popup, and single-press accept with realignment.
+- Added isolated AI and local completion channels with learned ranking, semantic trigger policy, and tiered debouncing.
+- Modernized the AI assistant UI with reasoning streams, custom provider configurations, and a supervised-by-default agent runtime with anti-loop safety guards.
+- Fixed SSH ChannelError 5 alerts on dead input and closed the connection-recovery state machine loop.
+- Fixed SFTP large-file transfer failures and improved throughput with gap-free pipelining.
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.3.0/Bonk-2026.3.0-arm64.dmg"
+                length="24077017"
+                type="application/octet-stream"
+                sparkle:edSignature="/NK4l1AzClPld1ndBFXjF9gdnatGE81wrFAIjaQ+u5Yj+NNm+dasNmbO0TDzwiExxE4MBe1HmHDTyPe0ES05CA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.3.0/Bonk-2026.3.0-x86_64.dmg"
+                length="25326089"
+                type="application/octet-stream"
+                sparkle:edSignature="2arHLgNWm5qfznwKenPXwmPBBibFH5Xw1ZtXEh2InnHS/kBCkpq7yWk0hV4RnXf6RZ+0ehGOdqSztWkg4ZvSAg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.2.9</title>
             <pubDate>Wed, 03 Sep 2026 14:20:00 +0800</pubDate>
             <sparkle:version>20262009</sparkle:version>
