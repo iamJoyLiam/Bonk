@@ -140,26 +140,48 @@ struct CandidateBubbleView: View {
                 Button {
                     onSelect(index)
                 } label: {
-                    HStack(spacing: 8) {
-                        Text(item.text)
-                            .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
-                            .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                            .lineLimit(1)
-                        Spacer(minLength: 12)
-                        if isSelected {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 8) {
+                            Text(item.text)
+                                .font(.system(size: 12, weight: isSelected ? .semibold : .regular, design: .monospaced))
+                                .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                                .lineLimit(1)
+                            Spacer(minLength: 8)
                             if item.isAI {
-                                Image(systemName: "sparkles")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundStyle(Color.accentColor)
-                            } else {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "sparkles")
+                                        .font(.system(size: 9, weight: .bold))
+                                    Text("AI")
+                                        .font(.system(size: 9, weight: .bold))
+                                }
+                                .foregroundStyle(Color.accentColor)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1.5)
+                                .background(Color.accentColor.opacity(0.12), in: Capsule())
+                            }
+                            if isSelected {
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 11, weight: .bold))
+                                    .font(.system(size: 10, weight: .bold))
                                     .foregroundStyle(Color.accentColor)
                             }
                         }
+                        if let summary = item.summary, !summary.isEmpty {
+                            Text(summary)
+                                .font(.system(size: 10, weight: .regular))
+                                .foregroundStyle(isSelected ? Color.secondary : Color.secondary.opacity(0.8))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
                     }
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, item.summary != nil ? 5 : 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        isSelected
+                            ? Color.accentColor.opacity(0.16)
+                            : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    )
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -276,14 +298,24 @@ final class InlineCandidateListOverlay: NSView {
 
     func measuredWidth() -> CGFloat {
         guard !displayItemsCache.isEmpty else { return 0 }
-        let textWidth = displayItemsCache.map { ($0.text as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
-        return max(160, textWidth + 64)
+        let textWidth = displayItemsCache.map { item -> CGFloat in
+            let tw = (item.text as NSString).size(withAttributes: [.font: font]).width
+            let sw = item.summary.map { ($0 as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 10)]).width } ?? 0
+            return max(tw, sw)
+        }.max() ?? 0
+        return max(180, min(360, textWidth + 64))
     }
 
     func totalHeight() -> CGFloat {
         guard !displayItemsCache.isEmpty else { return 0 }
-        let rows = CGFloat(displayItemsCache.count)
-        return rows * 28 + max(0, rows - 1) * 2 + 15
+        var total: CGFloat = 0
+        for item in displayItemsCache {
+            let hasSummary = item.summary != nil && !item.summary!.isEmpty
+            let rowH: CGFloat = hasSummary ? 38 : 28
+            total += rowH
+        }
+        let spacing = CGFloat(max(0, displayItemsCache.count - 1)) * 2
+        return total + spacing + 15
     }
 
     var visibleRowCount: Int {

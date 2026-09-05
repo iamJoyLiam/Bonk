@@ -290,4 +290,17 @@ struct InputCriticalPathContractTests {
         #expect(overlay.displayItems[0].isAI == false)
         #expect(overlay.displayItems[1].isAI == true)
     }
+
+    @Test("12. Candidate list overlay supports two-row command and summary items")
+    func testCandidateListOverlaySupportsSummaryItems() {
+        let overlay = InlineCandidateListOverlay()
+        overlay.displayItems = [
+            InlineCandidateDisplayItem(text: "docker", isAI: false, summary: "Container application platform"),
+            InlineCandidateDisplayItem(text: "df", isAI: false, summary: "Display free disk space"),
+        ]
+        #expect(overlay.visibleRowCount == 2)
+        #expect(overlay.displayItems[0].summary == "Container application platform")
+        #expect(overlay.totalHeight() > 0)
+        #expect(overlay.measuredWidth() >= 180)
+    }
 }
