@@ -241,12 +241,15 @@ final class InlineSuggestionPipeline {
 
     private func performLLM(snapshot: CommandContextSnapshot, typed: String, generation: UInt64) async {
         guard generationController.isCurrent(generation) else { return }
-        guard !currentCandidates.isEmpty else { return }
+
+        let isNaturalLanguage = typed.hasPrefix("#") || InlineTriggerPolicy.isNaturalLanguageIntent(typed)
+
+        // For standard command completion, we need candidates in the pool
+        if !isNaturalLanguage && currentCandidates.isEmpty { return }
 
         let provider = providerStore.activeProvider
         guard let p = provider, (!p.type.needsAPIKey || !p.apiKey.isEmpty) else { return }
 
-        // P1 Optional AI Reranking: LLM ONLY reranks candidates in Candidate Pool; never invents commands.
         isRequesting = true
         onRequestingChanged?(true)
         defer {
@@ -256,16 +259,59 @@ final class InlineSuggestionPipeline {
             }
         }
 
-        let reranked = await reranker.rerank(
-            candidates: currentCandidates,
-            typed: typed,
-            snapshot: snapshot,
-            provider: p,
-            apiKey: p.apiKey
-        )
+        if isNaturalLanguage {
+            // Mode B: Natural Language Intent Translation Channel
+            let prompt = InlinePromptBuilder.buildNaturalLanguagePrompt(snapshot: snapshot, query: typed)
+            let llm = LLMProviderFactory.provider(for: p, apiKey: p.apiKey, workload: .inlineCompletion)
+            do {
+                let response = try await llm.chat(
+                    messages: [
+                        .system(prompt),
+                        .user(typed)
+                    ],
+                    maxTokens: 64,
+                    disableReasoning: true
+                )
+                guard generationController.isCurrent(generation) else { return }
+                guard let sug = LLMCompletionAdapter.adaptNaturalLanguage(rawOutput: response.text, typed: typed) else {
+                    return
+                }
 
-        guard generationController.isCurrent(generation) else { return }
-        setRankedCandidates(reranked, typed: typed, generation: generation, isTypingFast: false)
+                let aiCandidate = CommandCandidate(
+                    source: CandidateSource.ai.rawValue,
+                    authority: .generative,
+                    suggestion: sug,
+                    rawScore: 99.0,
+                    summary: "AI 翻译: \(sug.fullText ?? sug.displayText)"
+                )
+
+                let combined = CandidateRanker.balanceChannels(
+                    ranked: [aiCandidate] + currentCandidates,
+                    totalLimit: Self.maxCandidates,
+                    maxAICandidates: 1
+                )
+                setRankedCandidates(combined, typed: typed, generation: generation, isTypingFast: false)
+            } catch {
+                logger.debug("[InlinePipeline] Natural language translation skipped or failed: \(error.localizedDescription)")
+            }
+        } else {
+            // Mode A: Standard CLI Channel - Optional AI Reranking
+            let reranked = await reranker.rerank(
+                candidates: currentCandidates,
+                typed: typed,
+                snapshot: snapshot,
+                provider: p,
+                apiKey: p.apiKey
+            )
+
+            guard generationController.isCurrent(generation) else { return }
+            let balanced = CandidateRanker.balanceChannels(
+                ranked: reranked,
+                totalLimit: Self.maxCandidates,
+                maxAICandidates: 1
+            )
+            setRankedCandidates(balanced, typed: typed, generation: generation, isTypingFast: false)
+        }
     }
 
     /// Replace the pipeline candidate list using ranked CommandCandidates and presentation policy.
@@ -281,16 +327,21 @@ final class InlineSuggestionPipeline {
         generation: UInt64
     ) {
         guard generationController.isCurrent(generation) else { return }
-        currentCandidates = list
-        let action = InlinePresentationPolicy.evaluate(
+        let balanced = CandidateRanker.balanceChannels(
             ranked: list,
+            totalLimit: Self.maxCandidates,
+            maxAICandidates: 1
+        )
+        currentCandidates = balanced
+        let action = InlinePresentationPolicy.evaluate(
+            ranked: balanced,
             inputBuffer: typed,
             isTypingFast: isTypingFast
         )
         switch action {
         case .show(let sug, let showPopup):
-            ranked = Array(list.map { ($0.source, $0.suggestion) }.prefix(Self.maxCandidates))
-            rankedCandidates = Array(list.prefix(Self.maxCandidates))
+            ranked = Array(balanced.map { ($0.source, $0.suggestion) })
+            rankedCandidates = balanced
             engagement = .passive
             onSuggestionChanged?(sug)
             onCandidatesChanged?(showPopup ? ranked.count : 0, .passive)
@@ -327,7 +378,12 @@ final class InlineSuggestionPipeline {
         let existingNonLLM = currentCandidates.filter { $0.source != llmSource.name }
         let allCandidates = existingNonLLM + [llmCandidate]
         let rankedList = CandidateRanker.rank(candidates: allCandidates, isRejected: isRejected)
-        setRankedCandidates(rankedList, typed: typed, generation: generation)
+        let balanced = CandidateRanker.balanceChannels(
+            ranked: rankedList,
+            totalLimit: Self.maxCandidates,
+            maxAICandidates: 1
+        )
+        setRankedCandidates(balanced, typed: typed, generation: generation)
 
         if let k = key, !sug.text.isEmpty { cache.store(suffix: sug.text, for: k) }
         if key == nil, !sug.text.isEmpty { cache.store(suffix: sug.text, for: effectiveKey) }

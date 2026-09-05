@@ -73,6 +73,59 @@ struct LLMCompletionAdapter: Sendable {
         return Suggestion(text: suffix, displayText: display)
     }
 
+    /// Adapts raw LLM output into a validated Suggestion for natural language intent translation.
+    /// Returns nil if output is invalid, conversational, or empty.
+    static func adaptNaturalLanguage(rawOutput: String, typed: String) -> Suggestion? {
+        let trimmedTyped = typed.trimmingCharacters(in: .whitespaces)
+        guard !trimmedTyped.isEmpty else { return nil }
+
+        // 1. Strip reasoning tags (<think>...</think>)
+        var cleaned = stripReasoningTags(rawOutput)
+        guard !cleaned.isEmpty else { return nil }
+
+        // 2. Reject if conversational chatter or explanatory sentences are detected
+        guard !SuggestionFormatter.isConversationalOrExplanatory(cleaned) else {
+            return nil
+        }
+
+        // 3. Strip markdown blocks, code fences, inline backticks, leading prompts
+        cleaned = stripMarkdown(cleaned)
+        guard !cleaned.isEmpty else { return nil }
+
+        // 4. Strip leading '#' or comment indicators if the model repeated them
+        if cleaned.hasPrefix("#") {
+            cleaned = String(cleaned.drop(while: { $0 == "#" || $0.isWhitespace }))
+        }
+        guard !cleaned.isEmpty else { return nil }
+
+        // 5. Take the first non-empty line
+        if let firstLine = cleaned.components(separatedBy: .newlines).first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) {
+            cleaned = firstLine.trimmingCharacters(in: .whitespaces)
+        }
+        guard !cleaned.isEmpty else { return nil }
+
+        // 6. Length sanity check (shell commands should typically be <= 200 chars)
+        guard cleaned.count <= 200 else { return nil }
+
+        // 7. Make sure it doesn't just repeat the user's natural language input
+        let cleanTypedQuery = typed.hasPrefix("#") ? String(typed.dropFirst()).trimmingCharacters(in: .whitespaces) : trimmedTyped
+        if cleaned.lowercased() == cleanTypedQuery.lowercased() {
+            return nil
+        }
+
+        // 8. Construct Suggestion:
+        // When accepted, typed is erased by sending DEL (\u{7F}) for typed.count times, followed by the command.
+        let backspaces = String(repeating: "\u{7F}", count: typed.count)
+        let replacementText = backspaces + cleaned
+        let displayText = " -> " + cleaned
+
+        return Suggestion(
+            text: replacementText,
+            displayText: displayText,
+            fullText: cleaned
+        )
+    }
+
     /// Strips `<think>...</think>` and unclosed `<think>...` blocks.
     static func stripReasoningTags(_ text: String) -> String {
         var result = text
@@ -116,9 +169,16 @@ struct LLMCompletionAdapter: Sendable {
         if suffix.contains(":") || suffix.contains("?") || suffix.contains(";") || suffix.contains("!") {
             return false
         }
-        // Sentence-level full stop not allowed (paths like ./file or .bashrc are fine, but "word. word" is conversational)
-        if suffix.contains(". ") {
-            return false
+        // Sentence-level full stop not allowed (paths like ./file, standalone "." or .bashrc are fine, but "word. word" is conversational)
+        var searchStart = suffix.startIndex
+        while let range = suffix.range(of: ". ", range: searchStart..<suffix.endIndex) {
+            if range.lowerBound > suffix.startIndex {
+                let prevChar = suffix[suffix.index(before: range.lowerBound)]
+                if prevChar.isLetter {
+                    return false
+                }
+            }
+            searchStart = range.upperBound
         }
         // If suffix does not start with space, the combined token must be continuation of last token
         if !suffix.hasPrefix(" ") {

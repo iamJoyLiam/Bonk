@@ -68,4 +68,38 @@ final class LLMCompletionAdapterContractTests: XCTestCase {
         XCTAssertNotNil(adapted)
         XCTAssertEqual(adapted?.text, "ckout")
     }
+
+    // MARK: - Test 9: Natural language intent strips markdown code blocks
+    func testNaturalLanguageMarkdownStripped() {
+        let raw = "```bash\ndocker ps\n```"
+        let adapted = LLMCompletionAdapter.adaptNaturalLanguage(rawOutput: raw, typed: "# list containers")
+        XCTAssertNotNil(adapted)
+        XCTAssertEqual(adapted?.fullText, "docker ps")
+        XCTAssertEqual(adapted?.displayText, " -> docker ps")
+        let backspaces = String(repeating: "\u{7F}", count: "# list containers".count)
+        XCTAssertEqual(adapted?.text, backspaces + "docker ps")
+    }
+
+    // MARK: - Test 10: Natural language intent strips reasoning tags
+    func testNaturalLanguageReasoningStripped() {
+        let raw = "<think>The user wants to find swift files.</think>find . -name \"*.swift\""
+        let adapted = LLMCompletionAdapter.adaptNaturalLanguage(rawOutput: raw, typed: "# 查找swift文件")
+        XCTAssertNotNil(adapted)
+        XCTAssertEqual(adapted?.fullText, "find . -name \"*.swift\"")
+        XCTAssertEqual(adapted?.displayText, " -> find . -name \"*.swift\"")
+    }
+
+    // MARK: - Test 11: Natural language intent rejects conversational chatter
+    func testNaturalLanguageConversationalRejected() {
+        let raw = "Here is the command you can run to list containers: docker ps"
+        let adapted = LLMCompletionAdapter.adaptNaturalLanguage(rawOutput: raw, typed: "# list containers")
+        XCTAssertNil(adapted, "Conversational responses must be strictly rejected")
+    }
+
+    // MARK: - Test 12: Natural language intent rejects repeated query
+    func testNaturalLanguageRepeatedQueryRejected() {
+        let raw = "list containers"
+        let adapted = LLMCompletionAdapter.adaptNaturalLanguage(rawOutput: raw, typed: "# list containers")
+        XCTAssertNil(adapted, "Echoed query without translation must be rejected")
+    }
 }

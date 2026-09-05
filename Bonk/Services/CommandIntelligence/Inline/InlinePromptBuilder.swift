@@ -74,6 +74,50 @@ enum InlinePromptBuilder {
         return parts.joined(separator: "\n\n")
     }
 
+    @MainActor static func buildNaturalLanguagePrompt(
+        snapshot: CommandContextSnapshot,
+        query: String
+    ) -> String {
+        let cleanQuery = query.hasPrefix("#") ? String(query.dropFirst()).trimmingCharacters(in: .whitespaces) : query
+        var parts: [String] = [
+            """
+            You are an expert command line AI assistant embedded in a macOS/Linux SSH terminal.
+            Translate the user's natural language request into a single, valid, idiomatic executable shell command.
+
+            Rules:
+            - Output ONLY the raw executable shell command.
+            - STRICTLY FORBIDDEN: Markdown fences (```), commentary, explanations, backticks, conversational phrases (e.g. "You can use...", "Here is the command...").
+            - STRICTLY FORBIDDEN: Starting with '#' or repeating the prompt.
+            - Output a single line only.
+            - Do not ask clarifying questions. If ambiguous, generate the safest standard command.
+            - Respect the user's current environment, shell, and working directory.
+
+            Examples:
+            Request: "list all running docker containers" -> completion: "docker ps"
+            Request: "find all files larger than 100MB in current dir" -> completion: "find . -type f -size +100M"
+            Request: "restart nginx service" -> completion: "sudo systemctl restart nginx"
+            Request: "查看当前系统内存使用情况" -> completion: "free -h"
+            Request: "查看端口8080被谁占用" -> completion: "lsof -i :8080"
+            """,
+        ]
+        var contextLines: [String] = []
+        if let cwd = snapshot.currentDirectory, !cwd.isEmpty {
+            contextLines.append("- Working directory: \(cwd)")
+        }
+        if let shell = snapshot.shell, !shell.isEmpty {
+            contextLines.append("- Shell: \(shell)")
+        }
+        if !snapshot.recentCommands.isEmpty {
+            let history = snapshot.recentCommands.suffix(5).joined(separator: "; ")
+            contextLines.append("- Recent commands: \(history)")
+        }
+        if !contextLines.isEmpty {
+            parts.append("Context:\n" + contextLines.joined(separator: "\n"))
+        }
+        parts.append("User Request: \"\(cleanQuery)\"")
+        return parts.joined(separator: "\n\n")
+    }
+
     static func extractKnownWords(from output: String, limit: Int = 30) -> [String] {
         let cleaned = stripANSI(output)
         let tokens = cleaned.split { ch in !(ch.isLetter || ch.isNumber || "._/-".contains(ch)) }

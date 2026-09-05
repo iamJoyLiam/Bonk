@@ -52,8 +52,11 @@ struct InlinePresentationPolicy: Sendable {
             return .delay(ms: 120)
         }
 
-        // If input is too short (< minGenerativeStandaloneChars) and no local candidate corroborated it, hide ghost
-        if trimmed.count < minGenerativeStandaloneChars {
+        // If input is too short (< minGenerativeStandaloneChars) and no local candidate corroborated it, hide ghost.
+        // Natural language intent (# or CJK) is allowed with >= 2 characters.
+        let isNaturalLanguage = trimmed.hasPrefix("#") || InlineTriggerPolicy.isNaturalLanguageIntent(trimmed)
+        let minChars = isNaturalLanguage ? 2 : minGenerativeStandaloneChars
+        if trimmed.count < minChars {
             return .hide
         }
 

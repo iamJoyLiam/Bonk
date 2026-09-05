@@ -99,5 +99,43 @@ struct CandidateRanker: Sendable {
                 return seenNormalized.insert(norm).inserted
             }
     }
+
+    /// Balances local (deterministic/contextual) and AI (generative) candidate channels.
+    /// In mixed mode, caps AI candidates to at most `maxAICandidates` (default: 1) and reserves the top slots
+    /// (up to `totalLimit - maxAICandidates`, default: 4) for local candidates to prevent layout jumps and displacement.
+    /// If only local or only AI candidates exist, fills up to `totalLimit`.
+    static func balanceChannels(
+        ranked: [CommandCandidate],
+        totalLimit: Int = 5,
+        maxAICandidates: Int = 1
+    ) -> [CommandCandidate] {
+        guard !ranked.isEmpty else { return [] }
+
+        let isAI: (CommandCandidate) -> Bool = { candidate in
+            candidate.authority == .generative || candidate.typedSource.isAI
+        }
+
+        let localCandidates = ranked.filter { !isAI($0) }
+        let aiCandidates = ranked.filter { isAI($0) }
+
+        // If no AI candidates, fill up to totalLimit with local candidates
+        if aiCandidates.isEmpty {
+            return Array(localCandidates.prefix(totalLimit))
+        }
+
+        // If no local candidates (e.g. natural language translation mode), fill up to totalLimit with AI candidates
+        if localCandidates.isEmpty {
+            return Array(aiCandidates.prefix(totalLimit))
+        }
+
+        // Mixed mode: ensure local candidates dominate top positions (80%), AI is strictly bounded (20%)
+        let localCap = max(1, totalLimit - maxAICandidates)
+        let selectedLocal = Array(localCandidates.prefix(localCap))
+        let remainingSlots = max(0, totalLimit - selectedLocal.count)
+        let aiCap = min(maxAICandidates, remainingSlots)
+        let selectedAI = Array(aiCandidates.prefix(aiCap))
+
+        return selectedLocal + selectedAI
+    }
 }
 

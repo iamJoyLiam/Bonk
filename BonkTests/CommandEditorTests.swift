@@ -33,4 +33,18 @@ final class CommandEditorTests: XCTestCase {
         XCTAssertEqual(CommandEditor.resolveTypedText(rawLine: "user@host:~$ docker", inputBuffer: "docker"), "docker")
         XCTAssertNotNil(CommandEditor.resolveTypedText(rawLine: "$ ls -la", inputBuffer: "ls"))
     }
+
+    func testAlignedAcceptSuffix() {
+        let raw = "user@host:~$ git check"
+        let sug = "checkout -b feature"
+        // Overlap is "check" (5 chars), remainder is "out -b feature"
+        XCTAssertEqual(CommandEditor.alignedAcceptSuffix(suggestion: sug, rawLine: raw), "out -b feature")
+    }
+
+    func testAlignedAcceptSuffixWithReplacementBackspaces() {
+        let raw = "user@host:~$ # list containers"
+        let sug = "\u{7F}\u{7F}\u{7F}\u{7F}\u{7F}docker ps"
+        // When suggestion starts with backspace \u{7F}, it must be returned unmodified
+        XCTAssertEqual(CommandEditor.alignedAcceptSuffix(suggestion: sug, rawLine: raw), sug)
+    }
 }

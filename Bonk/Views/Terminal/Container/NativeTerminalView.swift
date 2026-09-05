@@ -433,9 +433,9 @@ import SwiftTerm
                     payloadText = text
                 }
                 guard !payloadText.isEmpty else { return }
-                // Respect bracketed paste mode when inserting accepted ghost text
+                // Respect bracketed paste mode when inserting accepted ghost text (bypass for replacement backspaces)
                 let payload: String
-                if self.terminal.bracketedPasteMode {
+                if self.terminal.bracketedPasteMode && !payloadText.contains("\u{7F}") {
                     payload = "\u{1B}[200~" + payloadText + "\u{1B}[201~"
                 } else {
                     payload = payloadText

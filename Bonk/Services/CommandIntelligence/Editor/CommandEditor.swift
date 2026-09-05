@@ -64,6 +64,10 @@ enum CommandEditor {
     /// the suggestion); returns nil when nothing would remain to insert.
     static func alignedAcceptSuffix(suggestion: String, rawLine: String) -> String? {
         guard !suggestion.isEmpty else { return nil }
+        // Full command replacement with backspaces (e.g. natural language translation)
+        if suggestion.hasPrefix("\u{7F}") {
+            return suggestion
+        }
         var overlap = 0
         let maxOverlap = min(rawLine.count, suggestion.count)
         if maxOverlap > 0 {

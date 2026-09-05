@@ -90,8 +90,18 @@ enum SuggestionFormatter {
                 return true
             }
         }
-        if text.contains(". ") || text.contains("? ") || text.contains("! ") {
+        if text.contains("? ") || text.contains("! ") {
             return true
+        }
+        var searchStart = text.startIndex
+        while let range = text.range(of: ". ", range: searchStart..<text.endIndex) {
+            if range.lowerBound > text.startIndex {
+                let prevChar = text[text.index(before: range.lowerBound)]
+                if prevChar.isLetter {
+                    return true
+                }
+            }
+            searchStart = range.upperBound
         }
         return false
     }
