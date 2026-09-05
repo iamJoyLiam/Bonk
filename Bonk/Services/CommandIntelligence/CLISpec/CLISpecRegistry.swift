@@ -88,7 +88,8 @@ final class CLISpecRegistry: @unchecked Sendable {
                     authority: .deterministic,
                     suggestion: sug,
                     rawScore: rawScore,
-                    isExactPrefixMatch: isExact
+                    isExactPrefixMatch: isExact,
+                    summary: sub.summary
                 )
             }
         }
@@ -126,7 +127,8 @@ final class CLISpecRegistry: @unchecked Sendable {
                         authority: .deterministic,
                         suggestion: sug,
                         rawScore: 85.0,
-                        isExactPrefixMatch: flag == lastToken
+                        isExactPrefixMatch: flag == lastToken,
+                        summary: matchedSub.summary
                     ))
                 }
                 if !candidates.isEmpty {

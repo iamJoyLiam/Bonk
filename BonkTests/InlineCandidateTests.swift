@@ -94,4 +94,35 @@ final class InlineCandidateTests: XCTestCase {
         let set = InlineCandidateSet(candidates: [])
         XCTAssertTrue(set.isEmpty)
     }
+
+    func testInlineCandidateDomainProperties() {
+        let candidate = InlineCandidate(
+            source: .cliSpec,
+            authority: .deterministic,
+            text: "ps",
+            displayText: "ps",
+            fullText: "docker ps",
+            summary: "List containers",
+            score: 95.0,
+            isExactPrefixMatch: true,
+            metadata: CandidateMetadata(fullCommand: "docker ps", isExactPrefixMatch: true)
+        )
+
+        XCTAssertEqual(candidate.typedSource, .cliSpec)
+        XCTAssertFalse(candidate.typedSource.isAI)
+        XCTAssertEqual(candidate.summary, "List containers")
+        XCTAssertEqual(candidate.suggestion.text, "ps")
+        XCTAssertEqual(candidate.fullText, "docker ps")
+        XCTAssertEqual(candidate.rawScore, 95.0)
+        XCTAssertTrue(candidate.isExactPrefixMatch)
+    }
+
+    func testInlineMetricsLatency() {
+        var metrics = InlineMetrics(keyPressedAt: Date(timeIntervalSince1970: 1000.0))
+        metrics.markCandidateProduced()
+        metrics.markRenderCompleted()
+
+        XCTAssertNotNil(metrics.computeLatencyMs)
+        XCTAssertNotNil(metrics.totalLatencyMs)
+    }
 }

@@ -18,6 +18,7 @@ final class InlineSuggestionPipeline {
     /// Ranked candidate list, best first. The ghost shows the selected entry;
     /// count > 1 renders the Warp-style ↑/↓ popup above the cursor.
     private(set) var ranked: [(String, Suggestion)] = []
+    private(set) var rankedCandidates: [InlineCandidate] = []
     private var currentCandidates: [CommandCandidate] = []
     private(set) var engagement: SuggestionEngagement = .passive
 
@@ -138,6 +139,7 @@ final class InlineSuggestionPipeline {
         presentationTask = nil
         currentCandidates = []
         ranked = []
+        rankedCandidates = []
         engagement = .passive
         onSuggestionChanged?(nil)
         onCandidatesChanged?(0, .passive)
@@ -288,11 +290,13 @@ final class InlineSuggestionPipeline {
         switch action {
         case .show(let sug, let showPopup):
             ranked = Array(list.map { ($0.source, $0.suggestion) }.prefix(Self.maxCandidates))
+            rankedCandidates = Array(list.prefix(Self.maxCandidates))
             engagement = .passive
             onSuggestionChanged?(sug)
             onCandidatesChanged?(showPopup ? ranked.count : 0, .passive)
         case .hide:
             ranked = []
+            rankedCandidates = []
             engagement = .passive
             onSuggestionChanged?(nil)
             onCandidatesChanged?(0, .passive)

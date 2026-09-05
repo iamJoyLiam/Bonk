@@ -66,12 +66,22 @@ import SwiftTerm
                     // Popup rows show the FULL command; ghost keeps showing the
                     // selected candidate's continuation suffix.
                     guard let pipeline = self.inlinePipeline else { return }
-                    let displayItems: [InlineCandidateDisplayItem] = pipeline.ranked.map { item in
-                        let text = item.1.fullText ?? item.1.displayText
-                        let isAI = item.0 == "llm" || item.0 == "generative"
-                        return InlineCandidateDisplayItem(text: text, isAI: isAI)
-                    }
+                    let displayItems: [InlineCandidateDisplayItem] = {
+                        if !pipeline.rankedCandidates.isEmpty {
+                            return pipeline.rankedCandidates.map { c in
+                                let text = c.fullText ?? c.displayText
+                                return InlineCandidateDisplayItem(text: text, isAI: c.typedSource.isAI, summary: c.summary)
+                            }
+                        } else {
+                            return pipeline.ranked.map { item in
+                                let text = item.1.fullText ?? item.1.displayText
+                                let isAI = item.0 == "llm" || item.0 == "generative"
+                                return InlineCandidateDisplayItem(text: text, isAI: isAI)
+                            }
+                        }
+                    }()
                     self.showCandidateList(items: displayItems, selectedIndex: engagement.selectedIndex)
+                    self.currentMetrics.markCandidateProduced()
                 }
             }
             pipeline.onRequestingChanged = { [weak self] isReq in
@@ -121,6 +131,7 @@ import SwiftTerm
         nonisolated(unsafe) var ghostCoalesceTask: Task<Void, Never>?
         private nonisolated(unsafe) var resignObserver: NSObjectProtocol?
         nonisolated(unsafe) var rightClickMonitor: Any?
+        var currentMetrics = InlineMetrics()
 
         override func layout() {
             super.layout()
@@ -358,6 +369,7 @@ import SwiftTerm
 
         private func scheduleCompletion() {
             pendingCompletionTask?.cancel()
+            currentMetrics = InlineMetrics(keyPressedAt: Date())
             pendingCompletionTask = Task { @MainActor [weak self] in
                 // Allow SwiftTerm keyDown to finish and update inputBuffer / line state
                 // 200ms debounce avoids frantic layout thrashing during fast continuous typing

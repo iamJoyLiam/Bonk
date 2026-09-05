@@ -65,10 +65,18 @@ import SwiftUI
 struct InlineCandidateDisplayItem: Sendable, Equatable {
     let text: String
     let isAI: Bool
+    let summary: String?
 
     init(text: String, isAI: Bool = false) {
         self.text = text
         self.isAI = isAI
+        self.summary = nil
+    }
+
+    init(text: String, isAI: Bool, summary: String?) {
+        self.text = text
+        self.isAI = isAI
+        self.summary = summary
     }
 }
 
