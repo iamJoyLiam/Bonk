@@ -8,9 +8,17 @@ import SwiftData
 final class AgentEngine {
     static let shared = AgentEngine()
 
-    private static let logger = Logger(subsystem: "com.bonk", category: "AgentEngine")
-    /// Cap on tool-loop rounds before the agent is forced to answer.
-    nonisolated static let maxAgentIterations = 8
+    /// Cap on tool-loop rounds before the agent synthesizes answer. Configurable in preferences (default 25).
+    static var maxAgentIterations: Int {
+        let val = UserDefaults.standard.integer(forKey: "ai_agent_max_iterations")
+        return val > 0 ? val : 25
+    }
+
+    /// Access mode for agent tool execution (Full Access, Supervised, Read-Only).
+    static var accessMode: AgentMessage.AccessMode {
+        let raw = UserDefaults.standard.string(forKey: "ai_agent_access_mode") ?? ""
+        return AgentMessage.AccessMode(rawValue: raw) ?? .supervised
+    }
 
     // MARK: - Unified State
 
@@ -23,6 +31,7 @@ final class AgentEngine {
     // Agent-specific state
     var agentMessages: [AgentMessage] = []
     var pendingConfirmation: PendingCommand?
+    var activeRuntime: AgentRuntime?
 
     private var currentTask: Task<Void, Never>?
 
@@ -31,14 +40,20 @@ final class AgentEngine {
     private let providerStore: AIProviderStore
     private let conversationStore: AIConversationStore
     let sanitizer = AIOutputSanitizer.self
+    let executionManager: AgentExecutionManager
 
     // Plan approval state
     var currentPlan: AgentPlan?
     var planApprovalContinuation: CheckedContinuation<Bool, Never>?
 
-    init(providerStore: AIProviderStore = .shared, conversationStore: AIConversationStore = .shared) {
+    init(
+        providerStore: AIProviderStore = .shared,
+        conversationStore: AIConversationStore = .shared,
+        executionManager: AgentExecutionManager = .shared
+    ) {
         self.providerStore = providerStore
         self.conversationStore = conversationStore
+        self.executionManager = executionManager
     }
 
     // MARK: - Provider Resolution
@@ -58,15 +73,35 @@ final class AgentEngine {
         return (provider, key)
     }
 
-    // MARK: - Unified Entry Point
+    // MARK: - Unified Entry Point (snapshot-first)
 
-    /// Execute an AI request in the specified mode.
-    /// Returns the response text. For streaming modes, updates `streamingResponse` in real-time.
+    /// Execute with CommandContextSnapshot (Intelligence-owned, preferred).
+    func execute(
+        input: String,
+        mode: AIMode,
+        snapshot: CommandContextSnapshot,
+        systemPromptOverride: String? = nil
+    ) async -> String? {
+        await execute(input: input, mode: mode, context: snapshot.asLegacyTerminalContext, systemPromptOverride: systemPromptOverride, snapshotForLog: snapshot)
+    }
+
+    /// Legacy entry point (TerminalContext) — delegates to snapshot path for parity.
     func execute(
         input: String,
         mode: AIMode,
         context: TerminalContext = TerminalContext(),
         systemPromptOverride: String? = nil
+    ) async -> String? {
+        let snapshot = CommandContextSnapshot(legacy: context)
+        return await execute(input: input, mode: mode, context: context, systemPromptOverride: systemPromptOverride, snapshotForLog: snapshot)
+    }
+
+    private func execute(
+        input: String,
+        mode: AIMode,
+        context: TerminalContext,
+        systemPromptOverride: String?,
+        snapshotForLog: CommandContextSnapshot
     ) async -> String? {
         isProcessing = true
         streamingResponse = ""
@@ -79,14 +114,14 @@ final class AgentEngine {
         }
 
         var basePrompt = systemPromptOverride ?? mode.systemPrompt
-        if let ctx = buildContextString(context) {
+        if let ctx = buildContextString(snapshotForLog) ?? buildContextString(context) {
             basePrompt += "\n\n## Terminal Context\n\(ctx)"
         }
         let systemPrompt = CustomInstructions.buildSystemPrompt(base: basePrompt)
         let label = mode.rawValue
 
         // swiftlint:disable:next line_length
-        Self.logger.info("\(label, privacy: .public): provider=\(provider.name, privacy: .public) model=\(provider.model, privacy: .public)")
+        Log.ai.info("\(label, privacy: .public): provider=\(provider.name, privacy: .public) model=\(provider.model, privacy: .public)")
         let llmProvider = LLMProviderFactory.provider(
             for: provider, apiKey: apiKey, workload: .chat
         )
@@ -113,14 +148,19 @@ final class AgentEngine {
 
                 let sanitized = sanitizer.sanitize(response)
 
-                if sanitized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let finalResponse: String
+                if !sanitized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    finalResponse = sanitized
+                } else if !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    finalResponse = response.trimmingCharacters(in: .whitespacesAndNewlines)
+                } else {
                     // swiftlint:disable:next line_length
-                    Self.logger.warning("\(label, privacy: .public): empty response from \(provider.name, privacy: .public)")
+                    Log.ai.warning("\(label, privacy: .public): empty response from \(provider.name, privacy: .public)")
                     throw AIError.emptyResponse
                 }
 
-                currentExplanation = sanitized
-                return sanitized
+                currentExplanation = finalResponse
+                return finalResponse
             } catch {
                 if Task.isCancelled {
                     return nil
@@ -130,21 +170,21 @@ final class AgentEngine {
                 if let aiError = error as? AIError, !aiError.isRetryable {
                     lastError = error.localizedDescription
                     let errorMsg = error.localizedDescription
-                    Self.logger.error(
+                    Log.ai.error(
                         "\(label, privacy: .public): non-retryable error: \(errorMsg, privacy: .public)"
                     )
                     return nil
                 }
 
                 if attempt < maxRetries {
-                    Self.logger.warning(
+                    Log.ai.warning(
                         "\(label, privacy: .public): attempt \(attempt + 1) failed, retrying"
                     )
                     try? await Task.sleep(nanoseconds: UInt64(attempt + 1) * 1_000_000_000)
                 } else {
                     lastError = error.localizedDescription
                     // swiftlint:disable:next line_length
-                    Self.logger.error("\(label, privacy: .public): all attempts failed: \(error.localizedDescription, privacy: .public)")
+                    Log.ai.error("\(label, privacy: .public): all attempts failed: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }
@@ -176,14 +216,15 @@ final class AgentEngine {
             case let .textDelta(delta):
                 result += delta
                 let now = Date()
-                if now.timeIntervalSince(lastUIUpdate) > 0.1 {
-                    streamingResponse += delta
+                if now.timeIntervalSince(lastUIUpdate) > 0.05 {
+                    streamingResponse = result
                     lastUIUpdate = now
                 }
             case .reasoning, .toolCall, .completed:
                 break
             }
         }
+        streamingResponse = result
         return result
     }
 
@@ -267,6 +308,20 @@ final class AgentEngine {
         return parts.isEmpty ? nil : parts.joined(separator: "\n")
     }
 
+    private func buildContextString(_ snapshot: CommandContextSnapshot) -> String? {
+        var parts: [String] = []
+        if let cwd = snapshot.currentDirectory { parts.append("Working directory: `\(cwd)`") }
+        if let shell = snapshot.shell { parts.append("Shell: \(shell)") }
+        if !snapshot.recentCommands.isEmpty {
+            let cmds = snapshot.recentCommands.suffix(5).joined(separator: ", ")
+            parts.append("Recent commands: \(cmds)")
+        }
+        if !snapshot.recentOutput.isEmpty {
+            parts.append("Recent output: \(snapshot.recentOutput.prefix(600))")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n")
+    }
+
     func buildAgentMessages() -> [[String: String]] {
         var messages: [[String: String]] = []
         for msg in agentMessages.suffix(20) {
@@ -309,6 +364,8 @@ final class AgentEngine {
         currentTask?.cancel()
         currentTask = nil
         isProcessing = false
+        activeRuntime?.cancel()
+        activeRuntime = nil
         if let pending = pendingConfirmation {
             pending.continuation(false)
             pendingConfirmation = nil
@@ -318,6 +375,16 @@ final class AgentEngine {
         currentPlan = nil
         streamingResponse = ""
         currentExplanation = nil
+
+        Task {
+            await executionManager.cancelActive()
+        }
+    }
+
+    /// Asynchronous cancellation with guaranteed completion of the escalation cycle.
+    func cancelAsync() async {
+        cancel()
+        await executionManager.cancelActive()
     }
 
     // MARK: - Timeout Helper
@@ -359,20 +426,6 @@ extension AIMode {
             - Short bullets only when they add value.
             - Match the user's language.
             - If context is insufficient, say exactly what you need and ask once.
-            """
-        case .edit:
-            """
-            You are a terminal command expert. The user describes a task and you produce
-            the exact commands to run on their remote server.
-
-            Output rules (strict):
-            - Put the commands in ONE ```bash block, runnable as-is.
-            - Lead with the block. A 1-2 sentence note only when a command is
-              destructive or surprising.
-            - Sparse same-line `#` comments only.
-            - No numbered lists, no extra formatting inside the block.
-            - Prefer read-only commands first; warn before irreversible operations.
-            - Match the user's language.
             """
         case .agent:
             AgentPrompts.systemPrompt

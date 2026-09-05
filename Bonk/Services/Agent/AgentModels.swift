@@ -3,14 +3,34 @@ import SwiftUI
 
 /// A message in an Agent conversation.
 struct AgentMessage: Identifiable {
-    let id = UUID()
+    let id: UUID
     let role: Role
-    let content: String
+    var content: String
     let command: String?
-    let thinking: String?
-    let status: CommandStatus?
-    let duration: TimeInterval?
-    let timestamp = Date()
+    var thinking: String?
+    var status: CommandStatus?
+    var duration: TimeInterval?
+    let timestamp: Date
+
+    init(
+        id: UUID = UUID(),
+        role: Role,
+        content: String,
+        command: String? = nil,
+        thinking: String? = nil,
+        status: CommandStatus? = nil,
+        duration: TimeInterval? = nil,
+        timestamp: Date = Date()
+    ) {
+        self.id = id
+        self.role = role
+        self.content = content
+        self.command = command
+        self.thinking = thinking
+        self.status = status
+        self.duration = duration
+        self.timestamp = timestamp
+    }
 
     enum Role {
         case user
@@ -20,6 +40,7 @@ struct AgentMessage: Identifiable {
     }
 
     enum CommandStatus: String {
+        case running
         case success
         case failed
         case blocked
@@ -27,6 +48,7 @@ struct AgentMessage: Identifiable {
 
         var icon: String {
             switch self {
+            case .running: "circle.dotted"
             case .success: "checkmark.circle.fill"
             case .failed: "xmark.octagon.fill"
             case .blocked: "xmark.shield.fill"
@@ -36,6 +58,7 @@ struct AgentMessage: Identifiable {
 
         var color: Color {
             switch self {
+            case .running: .blue
             case .success: .green
             case .failed: .red
             case .blocked: .gray
@@ -44,20 +67,44 @@ struct AgentMessage: Identifiable {
         }
     }
 
-    init(
-        role: Role,
-        content: String,
-        command: String? = nil,
-        thinking: String? = nil,
-        status: CommandStatus? = nil,
-        duration: TimeInterval? = nil
-    ) {
-        self.role = role
-        self.content = content
-        self.command = command
-        self.thinking = thinking
-        self.status = status
-        self.duration = duration
+    enum AccessMode: String, CaseIterable, Identifiable, Sendable {
+        case fullAccess = "fullAccess"  // 完全访问：自动执行常规命令
+        case supervised = "supervised"  // 逐步确认：中危修改命令需确认
+        case readOnly = "readOnly"      // 只读模式：只允许只读检查
+
+        var id: String { rawValue }
+
+        var localizedName: String {
+            switch self {
+            case .fullAccess: "完全访问"
+            case .supervised: "逐步确认"
+            case .readOnly: "只读模式"
+            }
+        }
+
+        var shortName: String {
+            switch self {
+            case .fullAccess: "完全访问"
+            case .supervised: "逐步确认"
+            case .readOnly: "只读"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .fullAccess: "bolt.shield.fill"
+            case .supervised: "hand.raised.fill"
+            case .readOnly: "lock.fill"
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .fullAccess: .green
+            case .supervised: .orange
+            case .readOnly: .blue
+            }
+        }
     }
 
     /// Convert to AI API message format.

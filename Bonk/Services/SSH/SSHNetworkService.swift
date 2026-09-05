@@ -306,7 +306,10 @@ public actor SSHNetworkService {
     /// Execute a command via a separate SSH exec channel (no PTY).
     /// Only ready allows exec to avoid stdin race.
     /// Returns clean stdout with no ANSI codes, no prompt, no echo.
-    public func executeCommand(_ command: String) async throws -> String {
+    public func executeCommand(
+        _ command: String,
+        registerHandle: (@Sendable (any CommandExecutionHandle) -> Void)? = nil
+    ) async throws -> String {
         guard case .connected = connectionState else {
             throw SSHServiceError.notConnected
         }
@@ -315,7 +318,7 @@ public actor SSHNetworkService {
                 // Commands normally finish in seconds; a half-open connection
                 // would hang this forever, so bound it.
                 return try await withThrowingTimeout(of: .seconds(30)) {
-                    try await openSSHBackend.executeCommand(command)
+                    try await openSSHBackend.executeCommand(command, registerHandle: registerHandle)
                 }
             }
         #endif

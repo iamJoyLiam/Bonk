@@ -70,7 +70,7 @@ enum AIProviderType: String, CaseIterable, Identifiable, Codable {
 
     var needsAPIKey: Bool {
         switch self {
-        case .ollama: false
+        case .ollama, .custom: false
         default: true
         }
     }

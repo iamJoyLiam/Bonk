@@ -6,12 +6,14 @@ struct AISettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @AppStorage("ai_enabled") private var aiEnabled = false
     @AppStorage("ai_inline_suggestions") private var inlineSuggestionsEnabled = false
-    @AppStorage("ai_debounce_ms") private var inlineSuggestionDebounceMs = 500
+    @AppStorage("ai_inline_candidate_popup") private var candidatePopupEnabled = true
     @AppStorage("ai_include_terminal") private var includeTerminalOutput = true
     @AppStorage("ai_include_history") private var includeCommandHistory = true
     @AppStorage("ai_include_env") private var includeEnvironmentInfo = false
     @AppStorage("ai_connection_policy") private var defaultConnectionPolicyRaw = "askEachTime"
     @AppStorage("ai_allow_direct_connect") private var allowDirectConnect = true
+    @AppStorage("ai_agent_access_mode") private var agentAccessModeRaw = "supervised"
+    @AppStorage("ai_agent_max_iterations") private var agentMaxIterations = 25
     @AppStorage("ai_inline_provider_id") private var inlineProviderID = ""
 
     @State private var store = AIProviderStore.shared
@@ -19,8 +21,6 @@ struct AISettingsView: View {
     @State private var editingProviderID: UUID?
     @State private var addingProviderType: AIProviderType?
     @State private var pendingDeleteID: UUID?
-
-    private let debounceRange = 100 ... 3000
 
     private var defaultConnectionPolicy: AIConnectionPolicy {
         get { AIConnectionPolicy(rawValue: defaultConnectionPolicyRaw) ?? .askEachTime }
@@ -230,28 +230,19 @@ struct AISettingsView: View {
     private var inlineSuggestionsSection: some View {
         Section {
             Toggle(i18n.t(.enableInlineSuggestions), isOn: $inlineSuggestionsEnabled)
-                .disabled(store.activeProviderID == nil)
-                .help(store.activeProviderID != nil ? "" : i18n.t(.configureProviderHint))
             Picker(i18n.t(.aiInlineModel), selection: $inlineProviderID) {
                 Text(i18n.t(.aiFollowMainProvider)).tag("")
                 ForEach(store.providers) { provider in
                     Text(provider.displayName).tag(provider.id.uuidString)
                 }
             }
-            .disabled(!inlineSuggestionsEnabled)
-            HStack {
-                Text(i18n.t(.debounce))
-                Spacer()
-                Text("\(inlineSuggestionDebounceMs) ms")
-                    .foregroundStyle(.secondary)
-                Stepper(value: debounceBinding, in: debounceRange, step: 50) {}
-                    .labelsHidden()
-                    .disabled(!inlineSuggestionsEnabled)
-            }
+            .disabled(!inlineSuggestionsEnabled || store.activeProviderID == nil)
+            Toggle(i18n.t(.aiCandidatePopup), isOn: $candidatePopupEnabled)
+                .disabled(!inlineSuggestionsEnabled)
         } header: {
             Text(i18n.t(.inlineSuggestions))
         } footer: {
-            Text("\(i18n.t(.inlineSuggestionsFooter))\n\(i18n.t(.aiInlineModelDesc))")
+            Text(i18n.t(.aiInlineModelDesc))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -261,11 +252,17 @@ struct AISettingsView: View {
 
     private var agentSection: some View {
         Section {
+            Picker("执行权限模式", selection: $agentAccessModeRaw) {
+                ForEach(AgentMessage.AccessMode.allCases) { mode in
+                    Label(mode.localizedName, systemImage: mode.icon).tag(mode.rawValue)
+                }
+            }
+            Stepper("最大执行轮次: \(agentMaxIterations) 轮", value: $agentMaxIterations, in: 5...50, step: 5)
             Toggle(i18n.t(.aiAllowDirectConnect), isOn: $allowDirectConnect)
         } header: {
             Text(i18n.t(.agentMode))
         } footer: {
-            Text(i18n.t(.aiDirectConnectDesc))
+            Text("完全访问：自主执行常规命令，高危命令仍需确认；逐步确认：修改命令需逐一确认；只读模式：只允许只读检查。\n\(i18n.t(.aiDirectConnectDesc))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -296,13 +293,6 @@ struct AISettingsView: View {
         } header: {
             Text(i18n.t(.privacy))
         }
-    }
-
-    private var debounceBinding: Binding<Int> {
-        Binding(
-            get: { inlineSuggestionDebounceMs },
-            set: { inlineSuggestionDebounceMs = min(max($0, debounceRange.lowerBound), debounceRange.upperBound) }
-        )
     }
 
     private var connectionPolicyBinding: Binding<AIConnectionPolicy> {

@@ -10,10 +10,12 @@ struct ModelPickerButton: View {
 
     var body: some View {
         let provider = store.activeProvider
-        let name = provider?.model ?? ""
+        let name = provider?.model.cleanedModelName ?? ""
         let displayName = name.isEmpty ? (provider?.type.displayName ?? "") : name
 
         HStack(spacing: 4) {
+            Image(systemName: "cpu")
+                .font(.system(size: AppStyle.fontMicro))
             Text(displayName)
                 .font(.system(size: AppStyle.fontSmall))
                 .lineLimit(1)
@@ -22,9 +24,11 @@ struct ModelPickerButton: View {
                 .font(.system(size: AppStyle.fontMicro))
         }
         .foregroundStyle(.secondary)
-        .padding(.horizontal, AppStyle.spacingS)
-        .padding(.vertical, AppStyle.spacingXS)
-        .contentShape(Capsule())
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(Color(nsColor: .quaternaryLabelColor).opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .onTapGesture { isOpen.toggle() }
         .popover(isPresented: $isOpen, arrowEdge: .bottom) {
             let provider = store.activeProvider
@@ -64,9 +68,9 @@ struct ModelPickerButton: View {
                         isOpen = false
                     } label: {
                         HStack {
-                            Text(model).font(.system(size: AppStyle.fontBody)).lineLimit(1)
+                            Text(model.cleanedModelName).font(.system(size: AppStyle.fontBody)).lineLimit(1)
                             Spacer()
-                            if model == selectedModel {
+                            if model == selectedModel || model.cleanedModelName == selectedModel.cleanedModelName {
                                 Image(systemName: "checkmark").font(.system(size: AppStyle.fontCaption))
                             }
                         }
@@ -82,7 +86,7 @@ struct ModelPickerButton: View {
                     isOpen = false
                 } label: {
                     HStack {
-                        Text(selectedModel).font(.system(size: AppStyle.fontBody)).lineLimit(1)
+                        Text(selectedModel.cleanedModelName).font(.system(size: AppStyle.fontBody)).lineLimit(1)
                         Spacer()
                         Image(systemName: "checkmark").font(.system(size: AppStyle.fontCaption))
                     }

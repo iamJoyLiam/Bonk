@@ -72,8 +72,7 @@ struct ContentView: View {
                 ensurePreferences()
                 AIDataMigration.migrateIfNeeded(context: modelContext)
                 sessionManager.setModelContext(modelContext)
-                AIProviderStore.shared.setModelContext(modelContext)
-                InlineCompletionService.shared.attachModelContext(modelContext)
+                CommandIntelligenceAssembly.configure(modelContext: modelContext)
                 sessionManager.broadcastManager = workspace.broadcastManager
                 ServerResourceMonitor.shared.start(sessionManager: sessionManager)
                 TerminalViewCache.shared.configureMemoryPressure {

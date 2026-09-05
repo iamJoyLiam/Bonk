@@ -21,9 +21,81 @@ import SwiftTerm
         /// Called when AppKit completes physical layout with accurate cols/rows.
         var onPhysicalLayout: ((Int, Int) -> Void)?
 
-        /// Provides the terminal context (typed text, cwd, history, output) used
-        /// to build inline completion requests. Set by the owning pane.
-        var completionContextProvider: (@MainActor () -> InlineCompletionContext)?
+        /// Intelligence-owned snapshot provider (single source of truth)
+        var commandSnapshotProvider: (@MainActor () -> CommandContextSnapshot)?
+        /// Single pipeline (Intelligence owns inline)
+        var inlinePipeline: InlineSuggestionPipeline? {
+            didSet { bindPipeline() }
+        }
+
+        private nonisolated(unsafe) var pendingCompletionTask: Task<Void, Never>?
+
+        private func bindPipeline() {
+            guard let pipeline = inlinePipeline else { return }
+            pipeline.onSuggestionChanged = { [weak self] sug in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if let s = sug {
+                        let textToDisplay: String
+                        let (_, cursorY) = self.terminal.getCursorLocation()
+                        if cursorY >= 0, cursorY < self.terminal.rows,
+                           let line = self.terminal.getLine(row: cursorY) {
+                            let raw = line.translateToString(trimRight: true)
+                            textToDisplay = CommandEditor.alignedAcceptSuffix(suggestion: s.displayText, rawLine: raw) ?? s.displayText
+                        } else {
+                            textToDisplay = s.displayText
+                        }
+                        if !textToDisplay.isEmpty {
+                            self.showGhost(text: textToDisplay)
+                        } else {
+                            self.hideGhost(reason: "aligned-empty")
+                        }
+                    } else {
+                        self.hideGhost(reason: "pipeline-nil")
+                    }
+                }
+            }
+            pipeline.onCandidatesChanged = { [weak self] count, engagement in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    let enabled = UserDefaults.standard.object(forKey: "ai_inline_candidate_popup") as? Bool ?? true
+                    guard enabled, count > 1 else {
+                        self.hideCandidateList()
+                        return
+                    }
+                    // Popup rows show the FULL command; ghost keeps showing the
+                    // selected candidate's continuation suffix.
+                    guard let pipeline = self.inlinePipeline else { return }
+                    let displayItems: [InlineCandidateDisplayItem] = {
+                        if !pipeline.rankedCandidates.isEmpty {
+                            return pipeline.rankedCandidates.map { c in
+                                let text = c.fullText ?? c.displayText
+                                return InlineCandidateDisplayItem(text: text, isAI: c.typedSource.isAI, summary: c.summary)
+                            }
+                        } else {
+                            return pipeline.ranked.map { item in
+                                let text = item.1.fullText ?? item.1.displayText
+                                let isAI = item.0 == "llm" || item.0 == "generative"
+                                return InlineCandidateDisplayItem(text: text, isAI: isAI)
+                            }
+                        }
+                    }()
+                    self.showCandidateList(items: displayItems, selectedIndex: engagement.selectedIndex)
+                    self.currentMetrics.markCandidateProduced()
+                }
+            }
+            pipeline.onRequestingChanged = { [weak self] isReq in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if isReq {
+                        let hasPipelineGhost = !(self.inlinePipeline?.suggestion?.displayText.isEmpty ?? true)
+                        if !hasPipelineGhost {
+                            self.showWaiting()
+                        }
+                    }
+                }
+            }
+        }
 
         private var lastSyncedCols = -1
         private var lastSyncedRows = -1
@@ -50,15 +122,16 @@ import SwiftTerm
             focusRingType = .none
         }
 
-        // MARK: - Inline Completion
+        // MARK: - Inline Completion (pipeline only)
 
-        let completionService = InlineCompletionService.shared
-        private nonisolated(unsafe) var completionDebounceTask: Task<Void, Never>?
         var ghostOverlay: InlineGhostOverlay?
+        /// Warp-style candidate popup above the cursor (↑/↓ navigation).
+        var candidateListOverlay: InlineCandidateListOverlay?
         // Ghost updates coalesced to display tick — LLM streams many deltas per frame.
         nonisolated(unsafe) var ghostCoalesceTask: Task<Void, Never>?
         private nonisolated(unsafe) var resignObserver: NSObjectProtocol?
         nonisolated(unsafe) var rightClickMonitor: Any?
+        var currentMetrics = InlineMetrics()
 
         override func layout() {
             super.layout()
@@ -105,8 +178,8 @@ import SwiftTerm
             }
             guard let window else {
                 MainActor.assumeIsolated {
-                    completionService.dismiss()
-                    hideGhost(reason: "window-nil")
+                    self.inlinePipeline?.cancel()
+                    self.hideGhost(reason: "window-nil")
                 }
                 return
             }
@@ -120,14 +193,12 @@ import SwiftTerm
                 queue: .main
             ) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    guard let self,
-                          self.completionService.isRequesting || !self.completionService.suggestion.isEmpty
-                    else { return }
+                    guard let self else { return }
+                    let hasPipeline = (self.inlinePipeline?.isRequesting ?? false) || self.inlinePipeline?.suggestion != nil
+                    guard hasPipeline else { return }
                     if self.window?.isKeyWindow == true, self.window?.firstResponder === self {
-                        // Focus is back — re-show a suggestion that was hidden
-                        // by a transient resign.
-                        if !self.completionService.suggestion.isEmpty {
-                            self.showGhost(text: self.completionService.suggestion)
+                        if let s = self.inlinePipeline?.suggestion {
+                            self.showGhost(text: s.displayText)
                         }
                     } else {
                         self.hideGhost(reason: "resign")
@@ -138,7 +209,6 @@ import SwiftTerm
         }
 
         deinit {
-            completionDebounceTask?.cancel()
             resizeDebounceTask?.cancel()
             ghostCoalesceTask?.cancel()
             if let observer = resignObserver {
@@ -157,87 +227,105 @@ import SwiftTerm
         /// Called from the coordinator's keyDown monitor (before SwiftTerm's keyDown).
         /// The monitor always fires on the main thread.
         nonisolated func processKeyEvent(_ event: NSEvent) -> NSEvent? {
-            // Extract everything from the event first — NSEvent is not Sendable,
-            // so it must not cross into the MainActor closures below.
             let keyCode = event.keyCode
             let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
-
-            // App shortcuts handled directly (window-scoped, not
-            // first-responder-scoped) so they work even when the AI panel's
-            // text field holds focus, and the menu's FocusedValue chain can't
-            // swallow them. Event is consumed to avoid double-firing.
-            if !ShortcutManager.isRecording,
-               let shortcut = MainActor.assumeIsolated({
-                   shortcutNotification(for: keyCode, modifiers: modifiers)
-               }),
-               event.window === MainActor.assumeIsolated({ window })
-            {
-                NotificationCenter.default.post(name: shortcut, object: nil)
-                return nil
-            }
-            // Esc closes the search bar when it's open.
-            if keyCode == 53, MainActor.assumeIsolated({ TerminalSearchState.isActive }) {
-                NotificationCenter.default.post(name: .toggleTerminalSearch, object: nil)
-                return nil
-            }
-            // Enter — the command is running. Drop any pending suggestion and
-            // never arm a new request, or the ghost would render over the
-            // command's output.
-            if keyCode == 36 || keyCode == 76 {
-                MainActor.assumeIsolated {
-                    completionDebounceTask?.cancel()
-                    completionService.dismiss()
-                    hideGhost(reason: "enter")
-                }
-                return event
-            }
-
-            let eventModifiers = event.modifierFlags
-            let eventCharacters = event.characters
-            let shouldSchedule = MainActor.assumeIsolated {
-                shouldTriggerCompletion(
-                    keyCode: keyCode,
-                    modifiers: eventModifiers,
-                    characters: eventCharacters
-                )
-            }
+            let characters = event.characters
 
             let isFocused = MainActor.assumeIsolated { window?.firstResponder === self }
             guard isFocused else { return event }
 
-            let hasSuggestion = MainActor.assumeIsolated { !completionService.suggestion.isEmpty }
+            let shortcut = !ShortcutManager.isRecording ? MainActor.assumeIsolated({
+                shortcutNotification(for: keyCode, modifiers: modifiers)
+            }) : nil
 
-            if hasSuggestion {
-                if keyCode == 48, modifiers.isEmpty {
-                    // Tab — accept the suggestion, do not forward a real tab.
-                    acceptSuggestion()
-                    return nil
-                }
-                if keyCode == 53 {
-                    // Esc — dismiss only.
-                    completionDebounceTask?.cancel()
-                    MainActor.assumeIsolated {
-                        completionService.dismiss(rejected: true)
-                        hideGhost(reason: "esc")
-                    }
-                    return nil
-                }
-                // Any other key — dismiss and forward normally.
-                MainActor.assumeIsolated {
-                    completionService.dismiss(rejected: true)
-                    hideGhost(reason: "other-key")
-                }
+            let isSearchActive = MainActor.assumeIsolated { TerminalSearchState.isActive }
+
+            let (hasSuggestion, candidateCount, popupEnabled, engagement) = MainActor.assumeIsolated {
+                let sug = self.inlinePipeline?.suggestion != nil
+                let count = self.inlinePipeline?.ranked.count ?? 0
+                let enabled = UserDefaults.standard.object(forKey: "ai_inline_candidate_popup") as? Bool ?? true
+                let eng = self.inlinePipeline?.engagement ?? .passive
+                return (sug, count, enabled, eng)
             }
 
-            if shouldSchedule {
-                // A new request is starting — drop any stale ghost text so the
-                // old suggestion doesn't linger while the model thinks.
+            let (isNextCandidate, isPrevCandidate) = !ShortcutManager.isRecording ? MainActor.assumeIsolated({
+                (
+                    self.matchesAction(.inlineNextCandidate, keyCode: keyCode, modifiers: modifiers),
+                    self.matchesAction(.inlinePreviousCandidate, keyCode: keyCode, modifiers: modifiers)
+                )
+            }) : (false, false)
+
+            let decision = InlineKeyboardRouter.route(
+                keyCode: keyCode,
+                modifiers: modifiers,
+                characters: characters,
+                hasSuggestion: hasSuggestion,
+                engagement: engagement,
+                candidateCount: candidateCount,
+                isPopupEnabled: popupEnabled,
+                isSearchActive: isSearchActive,
+                shortcutNotification: shortcut,
+                isNextCandidate: isNextCandidate,
+                isPreviousCandidate: isPrevCandidate
+            )
+
+            switch decision {
+            case .interceptAppShortcut(let name):
+                NotificationCenter.default.post(name: name, object: nil)
+                return nil
+            case .toggleSearch:
+                NotificationCenter.default.post(name: .toggleTerminalSearch, object: nil)
+                return nil
+            case .accept:
+                acceptSuggestion()
+                return nil
+            case .reject:
                 MainActor.assumeIsolated {
-                    hideGhost(reason: "new-typing")
-                    scheduleCompletion()
+                    self.pendingCompletionTask?.cancel()
+                    self.pendingCompletionTask = nil
+                    self.inlinePipeline?.rejectCurrent()
+                    self.hideGhost(reason: "esc")
                 }
+                return nil
+            case .moveSelection(let delta):
+                MainActor.assumeIsolated { self.inlinePipeline?.moveSelection(delta) }
+                return nil
+            case .engageSelection(let initialIndex):
+                MainActor.assumeIsolated {
+                    self.inlinePipeline?.selectIndex(initialIndex)
+                }
+                return nil
+            case .passthroughAndCancelSuggestion(let reason):
+                MainActor.assumeIsolated {
+                    self.pendingCompletionTask?.cancel()
+                    self.pendingCompletionTask = nil
+                    self.inlinePipeline?.cancel()
+                    self.hideGhost(reason: reason)
+                }
+                return event
+            case .passthroughAndSchedule:
+                MainActor.assumeIsolated {
+                    self.inlinePipeline?.resetEngagement()
+                    self.inlinePipeline?.cancel()
+                    self.hideGhost(reason: "new-typing")
+                    self.scheduleCompletion()
+                }
+                return event
+            case .passthrough:
+                return event
+            case .consume:
+                return nil
             }
-            return event
+        }
+
+        private func matchesAction(
+            _ action: ShortcutAction,
+            keyCode: UInt16,
+            modifiers: NSEvent.ModifierFlags
+        ) -> Bool {
+            guard let equivalent = ShortcutManager.shared.keyEquivalent(for: action) else { return false }
+            return equivalent.keyCode == keyCode &&
+                   equivalent.modifiers.nsModifierFlags.intersection([.command, .control, .option, .shift]) == modifiers
         }
 
         /// Map app shortcuts to notifications. Returns nil for keys the
@@ -272,111 +360,99 @@ import SwiftTerm
             case .splitVertical: .terminalSplitVertical
             case .sftpBrowser: .toggleSFTP
             case .aiAssistant: .toggleAIChat
-            case .nextTab, .previousTab, .settings: nil
+            case .nextTab, .previousTab, .settings, .inlineNextCandidate, .inlinePreviousCandidate: nil
             }
         }
 
-        /// Only plain typing (printable characters, backspace/delete) should
-        /// arm the completion debounce — not shortcuts, arrows, or modifiers.
-        private func shouldTriggerCompletion(
-            keyCode: UInt16,
-            modifiers: NSEvent.ModifierFlags,
-            characters: String?
-        ) -> Bool {
-            guard keyCode != 53 else { return false } // Esc is never typing
-            guard modifiers.isDisjoint(with: [.command, .control]) else { return false }
-            if keyCode == 51 || keyCode == 117 { return true }
-            return !(characters?.isEmpty ?? true)
-        }
 
         // MARK: - Completion Flow
 
         private func scheduleCompletion() {
-            completionDebounceTask?.cancel()
-            let debounceMs = MainActor.assumeIsolated { completionService.debounceMilliseconds }
-            completionDebounceTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .milliseconds(Double(debounceMs)))
-                guard !Task.isCancelled else { return }
-                self?.requestCompletion()
+            pendingCompletionTask?.cancel()
+            currentMetrics = InlineMetrics(keyPressedAt: Date())
+            pendingCompletionTask = Task { @MainActor [weak self] in
+                // Allow SwiftTerm keyDown to finish and update inputBuffer / line state
+                // 200ms debounce avoids frantic layout thrashing during fast continuous typing
+                try? await Task.sleep(for: .milliseconds(200))
+                guard !Task.isCancelled, let self else { return }
+                self.requestCompletion()
             }
         }
 
         @MainActor
         private func requestCompletion() {
-            guard completionService.isEnabled,
-                  !terminal.isCurrentBufferAlternate, // vim / less / man: no completion
-                  let contextProvider = completionContextProvider else { return }
-
+            // Single Intelligence entry: CommandContextSnapshot → InlinePipeline
+            guard let pipeline = inlinePipeline, let snapshotProvider = commandSnapshotProvider else { return }
+            // Keep isEnabled gate (legacy check via UserDefaults, now via pipeline's provider will also check, but keep early gate)
+            guard UserDefaults.standard.bool(forKey: "ai_enabled"), UserDefaults.standard.bool(forKey: "ai_inline_suggestions") else { return }
+            guard !terminal.isCurrentBufferAlternate else { return }
             let (cursorX, cursorY) = terminal.getCursorLocation()
             let yDisp = terminal.getTopVisibleRow()
-
-            // The cursor must be on the last screen row — i.e. typing at a prompt.
-            // At the bottom of the buffer (yDisp == yBase) the cursor row from
-            // getCursorLocation() equals the screen row. scrollPosition hits 1.0
-            // only when scrolled to the end; yDisp == 0 covers buffers smaller
-            // than the viewport.
-            let atBottom = scrollPosition >= 1.0 || yDisp == 0
-            // Prefer OSC 133 prompt marks when the shell emits them (semantic
-            // prompt integration); fall back to the bottom-of-buffer heuristic
-            // for shells without the integration.
-            let bufferRow = yDisp + cursorY
-            let onPromptRow: Bool
-            if let rowKind = terminal.semanticRowKind(at: bufferRow) {
-                onPromptRow = rowKind == .initial || rowKind == .continuation
-            } else {
-                onPromptRow = atBottom
-            }
-            guard onPromptRow, cursorY >= 0, cursorY < terminal.rows,
+            guard cursorY >= 0, cursorY < terminal.rows,
                   let line = terminal.getLine(row: cursorY) else { return }
-
-            let baseContext = contextProvider()
+            let isPromptRow: Bool? = {
+                if let kind = terminal.semanticRowKind(at: yDisp + cursorY) {
+                    return kind == .initial || kind == .continuation
+                }
+                return nil
+            }()
+            let lineLen = line.getTrimmedLength()
+            guard CommandEditor.isCompletable(cursorX: cursorX, cursorY: cursorY, rows: terminal.rows, yDisp: yDisp, scrollPosition: scrollPosition, isAlternate: terminal.isCurrentBufferAlternate, lineTrimmedLength: lineLen, isPromptRow: isPromptRow) else { return }
+            let base = snapshotProvider()
             let raw = line.translateToString(trimRight: true)
-            guard let typed = resolveTypedText(raw: raw, inputBuffer: baseContext.inputBuffer),
-                  typed.count >= 2 else { return }
-
-            // Only complete when the cursor sits at the end of the line.
-            guard cursorX >= line.getTrimmedLength() - 3 else { return }
-
-            var context = baseContext
-            context.inputBuffer = typed
-            completionService.request(context: context) { [weak self] text in
-                guard let self else { return }
-                self.showGhost(text: text)
-            }
-            // No instant history match — show a subtle pending indicator so a
-            // slow model doesn't look like it silently gave up.
-            if completionService.suggestion.isEmpty {
-                showWaiting()
-            }
+            guard let typedSnap = CommandEditor.typedSnapshot(base: base, rawLine: raw) else { return }
+            pipeline.request(snapshot: typedSnap)
         }
 
         /// Pick the command text to complete: prefer the pure typed buffer when it
         /// is really the tail of the visible line, else fall back to prompt stripping.
+        @available(*, deprecated, message: "Use CommandEditor.resolveTypedText")
         private func resolveTypedText(raw: String, inputBuffer: String) -> String? {
             let typed = inputBuffer.trimmingCharacters(in: .whitespaces)
-            if typed.count >= 2, raw.hasSuffix(typed) { return typed }
-            return InlineCompletionService.commandText(from: raw)
+            if !typed.isEmpty, raw.hasSuffix(typed) { return typed }
+            return SuggestionFormatter.commandText(from: raw)
         }
 
         /// Accept the current suggestion: send its text through the normal input
         /// path (history recording and broadcast included), then clear it.
         private nonisolated func acceptSuggestion() {
             MainActor.assumeIsolated {
-                let text = completionService.accept()
-                hideGhost(reason: "accept")
-                guard !text.isEmpty else { return }
-                // Respect bracketed paste mode when inserting accepted ghost text
-                let payload: String
-                if self.terminal.bracketedPasteMode {
-                    payload = "\u{1B}[200~" + text + "\u{1B}[201~"
+                guard let p = self.inlinePipeline, p.suggestion != nil else { return }
+                let text = p.accept()
+                self.hideGhost(reason: "accept")
+                // Re-align against the current line before inserting: the
+                // suggestion may be stale (generated for an earlier typed
+                // prefix mid-LLM-stream). Never duplicate what the user typed.
+                let payloadText: String
+                let (_, cursorY) = self.terminal.getCursorLocation()
+                if cursorY >= 0, cursorY < self.terminal.rows,
+                   let line = self.terminal.getLine(row: cursorY) {
+                    let raw = line.translateToString(trimRight: true)
+                    payloadText = CommandEditor.alignedAcceptSuffix(suggestion: text, rawLine: raw) ?? ""
                 } else {
-                    payload = text
+                    payloadText = text
+                }
+                guard !payloadText.isEmpty else { return }
+                // Respect bracketed paste mode when inserting accepted ghost text (bypass for replacement backspaces)
+                let payload: String
+                if self.terminal.bracketedPasteMode && !payloadText.contains("\u{7F}") {
+                    payload = "\u{1B}[200~" + payloadText + "\u{1B}[201~"
+                } else {
+                    payload = payloadText
                 }
                 let bytes = ArraySlice(payload.utf8)
                 // Same forwarding as SwiftTerm's internal send — goes through
                 // onSend → SessionManager → InputHandler (history preserved).
                 terminalDelegate?.send(source: self, data: bytes)
             }
+        }
+
+        @MainActor
+        func acceptCandidate(at index: Int) {
+            guard let p = inlinePipeline else { return }
+            let current = p.selectedIndex ?? 0
+            p.moveSelection(index - current)
+            acceptSuggestion()
         }
 
         /// Mirror of SwiftTerm's cell dimension computation for the current font.

@@ -75,6 +75,12 @@ extension AIChatSidebarView {
         if currentConversation == nil { createNewConversation() }
         let conversation = currentConversation
 
+        let expanded = ContextMentionResolver.expandMentions(
+            in: text,
+            terminalContext: terminalContext,
+            tab: tab
+        )
+
         inputText = ""
         wasCancelled = false
         engine.isProcessing = true
@@ -82,10 +88,11 @@ extension AIChatSidebarView {
         currentTask?.cancel()
         currentTask = Task {
             await engine.runAgent(
-                input: text, sshService: ssh, hybridSession: hybridSession, hostName: hostName,
+                input: expanded, displayInput: text, sshService: ssh, hybridSession: hybridSession, hostName: hostName,
                 conversation: conversation, context: modelContext
             )
             engine.isProcessing = false
+            NotificationCenter.default.post(name: .focusTerminal, object: nil)
         }
     }
 

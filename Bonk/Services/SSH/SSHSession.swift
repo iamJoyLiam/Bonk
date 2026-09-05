@@ -68,8 +68,22 @@ public protocol SSHSession: Sendable {
 
     func openPTY(size: TerminalSize) async throws -> any SSHPTYChannel
     func execute(_ command: String) async throws -> SSHCommandResult
+    func execute(
+        _ command: String,
+        registerHandle: (@Sendable (any CommandExecutionHandle) -> Void)?
+    ) async throws -> SSHCommandResult
     func openSFTP() async throws -> any SFTPChannel
     func close() async
+}
+
+public extension SSHSession {
+    func execute(
+        _ command: String,
+        registerHandle: (@Sendable (any CommandExecutionHandle) -> Void)?
+    ) async throws -> SSHCommandResult {
+        _ = registerHandle
+        return try await execute(command)
+    }
 }
 
 // MARK: - Notes

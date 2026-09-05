@@ -123,10 +123,8 @@ struct TerminalAIPanel: View {
     private var inputBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "apple.intelligence")
+                .symbolRenderingMode(.multicolor)
                 .font(.system(size: AppStyle.fontMedium, weight: .medium))
-                .foregroundStyle(
-                    isInputFocused ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.secondary)
-                )
 
             TextField(i18n.t(.terminalAssistant), text: $inputText)
                 .textFieldStyle(.plain)

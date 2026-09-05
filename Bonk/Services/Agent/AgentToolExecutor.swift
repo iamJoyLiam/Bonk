@@ -6,7 +6,7 @@ import SwiftData
 private struct AgentToolContext {
     let llmProvider: any LLMProvider
     let sshService: SSHNetworkService
-    let hybridExec: (@Sendable (String) async throws -> String)? // v3.3 — multiplexed channel when available
+    let hybridExec: (@Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> String)? // v3.3 — multiplexed channel when available
     let hostName: String?
     let conversation: AIConversationRecord?
     let context: ModelContext?
@@ -42,36 +42,96 @@ extension AgentEngine {
         let llmProvider = LLMProviderFactory.provider(
             for: provider, apiKey: apiKey, workload: .agentToolLoop
         )
-        let hybridExec: (@Sendable (String) async throws -> String)? = if let session = hybridSession {
-            { @Sendable command async throws -> String in try await session.executeHybrid(command) }
-        } else { nil }
-        let toolContext = AgentToolContext(
-            llmProvider: llmProvider,
-            sshService: sshService, hybridExec: hybridExec, hostName: hostName,
-            conversation: conversation, context: context
+
+        let modelGateway = LLMProviderModelGateway(provider: llmProvider)
+        let contextProvider = DefaultAgentContextProvider(
+            hostInfo: hostName
+        )
+        let permissionPolicy = DefaultAgentPermissionPolicy(accessMode: AgentEngine.accessMode)
+        let runtime = AgentRuntime(
+            contextProvider: contextProvider,
+            modelGateway: modelGateway,
+            permissionPolicy: permissionPolicy,
+            executionManager: executionManager,
+            maxIterations: AgentEngine.maxAgentIterations
         )
 
-        let systemPrompt = CustomInstructions.buildSystemPrompt(base: AgentPrompts.toolSystemPrompt)
-        var messages: [LLMMessage] = [
-            .system(systemPrompt),
-            .user(input),
-        ]
-
-        for iteration in 0 ..< Self.maxAgentIterations {
-            guard !Task.isCancelled else { break }
-            let result = await runToolIteration(
-                iteration: iteration, input: input,
-                toolContext: toolContext, messages: messages
-            )
-            messages = result.messages
-            if result.finished { return }
+        self.activeRuntime = runtime
+        defer {
+            if self.activeRuntime === runtime {
+                self.activeRuntime = nil
+            }
         }
 
-        appendAgentMessage(
-            .system,
-            content: String(format: "Reached iteration limit (%d tool rounds).", Self.maxAgentIterations),
-            conversation: toolContext.conversation, context: toolContext.context
-        )
+        let executor: @Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> (output: String, exitCode: Int32) = { command, registerHandle in
+            if let session = hybridSession {
+                let out = try await session.executeHybrid(command, registerHandle: registerHandle)
+                return (out, 0)
+            } else {
+                let out = try await sshService.executeCommand(command, registerHandle: registerHandle)
+                return (out, 0)
+            }
+        }
+
+        let eventStream = runtime.run(input: input, executor: executor)
+
+        for await event in eventStream {
+            switch event {
+            case .userMessage:
+                break
+
+            case let .assistantText(text):
+                if let lastIndex = agentMessages.indices.last, agentMessages[lastIndex].role == .assistant {
+                    agentMessages[lastIndex].content = text
+                } else {
+                    appendAgentMessage(.assistant, content: text, conversation: conversation, context: context)
+                }
+
+            case let .thinking(thought):
+                if let lastIndex = agentMessages.indices.last, agentMessages[lastIndex].role == .assistant {
+                    agentMessages[lastIndex].thinking = thought
+                }
+
+            case let .toolCallStarted(_, _, inputArgs):
+                let argsDict = (try? JSONSerialization.jsonObject(with: Data(inputArgs.utf8)) as? [String: Any]) ?? [:]
+                let cmd = (argsDict["command"] as? String) ?? inputArgs
+                let msg = AgentMessage(
+                    role: .commandOutput,
+                    content: "",
+                    command: cmd,
+                    status: .running
+                )
+                agentMessages.append(msg)
+
+            case let .permissionRequested(id, description, level):
+                let riskLevel: PendingCommand.RiskLevel = (level == .confirmRequired ? .moderate : .dangerous)
+                let confirmed = await requestConfirmation(command: description, riskLevel: riskLevel)
+                runtime.resolvePermission(id: id, approved: confirmed)
+
+            case .permissionResolved:
+                pendingConfirmation = nil
+
+            case let .toolOutput(_, output):
+                if let lastIndex = agentMessages.indices.last, agentMessages[lastIndex].role == .commandOutput {
+                    agentMessages[lastIndex].content = output
+                }
+
+            case let .toolCompleted(_, exitCode, duration):
+                if let lastIndex = agentMessages.indices.last, agentMessages[lastIndex].role == .commandOutput {
+                    agentMessages[lastIndex].status = (exitCode == 0 ? .success : .failed)
+                    agentMessages[lastIndex].duration = duration
+                }
+
+            case let .executionInterrupted(reason):
+                appendAgentMessage(.system, content: reason, conversation: conversation, context: context)
+
+            case let .error(err):
+                appendAgentMessage(.system, content: err, conversation: conversation, context: context)
+
+            case .completed:
+                break
+            }
+        }
     }
 
     /// One model round-trip: call the API, surface the model's text, execute
@@ -80,7 +140,8 @@ extension AgentEngine {
         iteration: Int,
         input: String,
         toolContext: AgentToolContext,
-        messages: [LLMMessage]
+        messages: [LLMMessage],
+        terminationGuard: TerminationGuard
     ) async -> (messages: [LLMMessage], finished: Bool) {
         let turn: AgentChatTurn
         do {
@@ -135,9 +196,28 @@ extension AgentEngine {
             content: turn.text,
             toolCalls: turn.toolCalls
         ))
-        nextMessages.append(contentsOf: await executeToolCalls(
+        let toolResults = await executeToolCalls(
             turn.toolCalls, toolContext: toolContext
-        ))
+        )
+        nextMessages.append(contentsOf: toolResults)
+
+        // Evaluate progress via TerminationGuard to detect anti-patterns / loops
+        for (call, result) in zip(turn.toolCalls, toolResults) {
+            let eval = terminationGuard.recordAndEvaluate(
+                toolName: call.name,
+                arguments: call.argumentsJSON,
+                output: result.content
+            )
+            switch eval {
+            case .proceed:
+                break
+            case .warnDuplicate(let toolName):
+                nextMessages.append(.system("提示：你刚刚重复调用了 '\(toolName)' 并得到了相同输出。如果已有足够信息，请停止调用工具并直接给出最终结论。"))
+            case .terminateLoop(let reason):
+                appendAgentMessage(.system, content: reason, conversation: toolContext.conversation, context: toolContext.context)
+                return (nextMessages, true)
+            }
+        }
         return (nextMessages, false)
     }
 
@@ -174,13 +254,27 @@ extension AgentEngine {
         _ command: String,
         toolContext: AgentToolContext
     ) async -> String {
+        guard !Task.isCancelled else {
+            let message = "Command cancelled by user."
+            appendAgentMessage(
+                .commandOutput, content: message, command: command,
+                status: .failed,
+                conversation: toolContext.conversation, context: toolContext.context
+            )
+            return message
+        }
+
         appendAgentMessage(
-            .system, content: "Running: \(command)",
-            conversation: toolContext.conversation, context: toolContext.context
+            .commandOutput, content: "", command: command,
+            status: .running,
+            conversation: nil, context: nil
         )
 
         let risk = CommandSafety.classify(command)
         if risk == .blocked {
+            if let last = agentMessages.last, last.role == .commandOutput, last.command == command, last.status == .running {
+                agentMessages.removeLast()
+            }
             let message = "Blocked: \(command) violates the safety policy."
             appendAgentMessage(
                 .commandOutput, content: message, command: command,
@@ -191,18 +285,58 @@ extension AgentEngine {
             return message
         }
 
-        if risk != .safe {
-            let riskLevel: PendingCommand.RiskLevel = risk == .dangerous ? .dangerous : .moderate
-            let confirmed = await requestConfirmation(command: command, riskLevel: riskLevel)
-            guard confirmed else {
-                let message = "Skipped by user."
-                appendAgentMessage(
-                    .commandOutput, content: message, command: command,
-                    status: .skipped,
-                    conversation: toolContext.conversation, context: toolContext.context
-                )
-                mirror(command: command, status: .skipped, output: message, toolContext: toolContext)
-                return message
+        let accessMode = AgentEngine.accessMode
+        if accessMode == .readOnly && risk != .safe {
+            if let last = agentMessages.last, last.role == .commandOutput, last.command == command, last.status == .running {
+                agentMessages.removeLast()
+            }
+            let message = "已处于只读模式（Read-Only），已阻止修改命令：\(command)"
+            appendAgentMessage(
+                .commandOutput, content: message, command: command,
+                status: .blocked,
+                conversation: toolContext.conversation, context: toolContext.context
+            )
+            mirror(command: command, status: .blocked, output: message, toolContext: toolContext)
+            return message
+        }
+
+        if accessMode == .fullAccess {
+            // Full Access: automatically execute safe and moderate commands!
+            // Only confirm dangerous commands (e.g. rm -rf, mkfs, dd)
+            if risk == .dangerous {
+                let confirmed = await requestConfirmation(command: command, riskLevel: .dangerous)
+                guard confirmed else {
+                    if let last = agentMessages.last, last.role == .commandOutput, last.command == command, last.status == .running {
+                        agentMessages.removeLast()
+                    }
+                    let message = "Skipped by user."
+                    appendAgentMessage(
+                        .commandOutput, content: message, command: command,
+                        status: .skipped,
+                        conversation: toolContext.conversation, context: toolContext.context
+                    )
+                    mirror(command: command, status: .skipped, output: message, toolContext: toolContext)
+                    return message
+                }
+            }
+        } else {
+            // Supervised mode: confirm moderate and dangerous commands
+            if risk != .safe {
+                let riskLevel: PendingCommand.RiskLevel = risk == .dangerous ? .dangerous : .moderate
+                let confirmed = await requestConfirmation(command: command, riskLevel: riskLevel)
+                guard confirmed else {
+                    if let last = agentMessages.last, last.role == .commandOutput, last.command == command, last.status == .running {
+                        agentMessages.removeLast()
+                    }
+                    let message = "Skipped by user."
+                    appendAgentMessage(
+                        .commandOutput, content: message, command: command,
+                        status: .skipped,
+                        conversation: toolContext.conversation, context: toolContext.context
+                    )
+                    mirror(command: command, status: .skipped, output: message, toolContext: toolContext)
+                    return message
+                }
             }
         }
 
@@ -212,13 +346,21 @@ extension AgentEngine {
             let sshService = toolContext.sshService
             let output = try await withTimeout(seconds: 30) {
                 if let exec = hybridExec {
-                    return try await exec(command)
+                    return try await exec(command) { handle in
+                        Task { await AgentExecutionManager.shared.registerActive(handle) }
+                    }
                 }
-                return try await sshService.executeCommand(command)
+                return try await sshService.executeCommand(command) { handle in
+                    Task { await AgentExecutionManager.shared.registerActive(handle) }
+                }
             }
+            await AgentExecutionManager.shared.clearActive()
             let duration = Date().timeIntervalSince(start)
-            let truncated = String(output.prefix(4000))
-            let message = truncated.isEmpty ? "(no output)" : truncated
+            let guarded = OutputGuard.guardOutput(output)
+            let message = guarded.content.isEmpty ? "(no output)" : guarded.content
+            if let last = agentMessages.last, last.role == .commandOutput, last.command == command, last.status == .running {
+                agentMessages.removeLast()
+            }
             appendAgentMessage(
                 .commandOutput, content: message, command: command,
                 status: .success, duration: duration,
@@ -228,10 +370,14 @@ extension AgentEngine {
                 command: command, status: .success, duration: duration,
                 output: message, toolContext: toolContext
             )
-            OperationLog.shared.record(command: command, output: truncated, success: true)
+            OperationLog.shared.record(command: command, output: message, success: true)
             return message
         } catch {
-            let message = "Error: \(error.localizedDescription)"
+            await AgentExecutionManager.shared.clearActive()
+            let message = Task.isCancelled ? "Command was cancelled by user." : "Error: \(error.localizedDescription)"
+            if let last = agentMessages.last, last.role == .commandOutput, last.command == command, last.status == .running {
+                agentMessages.removeLast()
+            }
             appendAgentMessage(
                 .commandOutput, content: message, command: command,
                 status: .failed,

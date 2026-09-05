@@ -6,6 +6,7 @@
 //
 
 import os.log
+import SwiftData
 import SwiftTerm
 import SwiftUI
 
@@ -31,26 +32,17 @@ import SwiftUI
         let onTitleChange: (@Sendable (String) -> Void)?
         let onReconnect: (() -> Void)?
 
-        /// Lazily gathers terminal context for inline AI completion.
-        private var completionContext: @MainActor () -> InlineCompletionContext {
+        /// Intelligence-owned snapshot provider (single source of truth)
+        private var commandSnapshot: @MainActor () -> CommandContextSnapshot {
             { [weak tab] in
-                let output = tab?.session?.ptySession?.recentOutput(maxLines: 40) ?? ""
-                let hostKey = tab?.hostItem.id.uuidString
-                let history = GlobalCommandHistory.shared.commands.filter {
-                    $0.hostKey == hostKey
-                }
-                return InlineCompletionContext(
-                    inputBuffer: tab?.session?.inputBuffer ?? "",
-                    hostKey: hostKey,
-                    currentDirectory: tab?.currentDirectory,
-                    shell: tab?.session?.serverInfo?.shell,
-                    recentCommands: history.suffix(50).map(\.command),
-                    recentOutput: output,
-                    lastExitCode: history.last?.exitCode,
-                    knownWords: InlineCompletionService.extractKnownWords(from: output)
-                )
+                guard let tab else { return CommandContextSnapshot(inputBuffer: "") }
+                let provider = WorkspaceContextProvider()
+                return provider.snapshot(for: tab)
             }
         }
+
+        @State private var inlinePipeline = InlineSuggestionPipeline()
+        @Environment(\.modelContext) private var modelContext
 
         var body: some View {
             ZStack {
@@ -78,7 +70,8 @@ import SwiftUI
                             onSend: onSend,
                             onResize: onResize,
                             onTitleChange: onTitleChange,
-                            completionContext: completionContext,
+                            commandSnapshot: commandSnapshot,
+                            inlinePipeline: inlinePipeline,
                             onViewReady: connectOutputStreamWithRetry
                         )
                     case let .reconnecting(attempt, max):
@@ -95,6 +88,7 @@ import SwiftUI
             }
             .onAppear {
                 connectOutputStreamWithRetry()
+                inlinePipeline.attachModelContext(modelContext)
             }
             .onReceive(NotificationCenter.default.publisher(for: .terminalPTYSessionReady)) { note in
                 if let tid = note.userInfo?["tabID"] as? UUID, tid == tab.id {
@@ -213,7 +207,8 @@ import SwiftUI
         let onSend: @Sendable (ArraySlice<UInt8>) -> Void
         let onResize: (@Sendable (Int, Int) -> Void)?
         let onTitleChange: (@Sendable (String) -> Void)?
-        let completionContext: (@MainActor () -> InlineCompletionContext)?
+        let commandSnapshot: (@MainActor () -> CommandContextSnapshot)?
+        let inlinePipeline: InlineSuggestionPipeline?
         /// Fired every time this bridge attaches a terminal view for a pane.
         /// SwiftUI reuses the surrounding container across tab switches, so
         /// onAppear is unreliable — updateNSView is the reliable hook.
@@ -251,6 +246,10 @@ import SwiftUI
             if let existing = TerminalViewCache.shared.retrieve(paneID) {
                 cached = existing
                 created = false
+                if let native = cached.view as? NativeTerminalView {
+                    native.commandSnapshotProvider = commandSnapshot
+                    native.inlinePipeline = inlinePipeline
+                }
             } else {
                 cached = createTerminalView(for: paneID, context: context)
                 created = true
@@ -288,7 +287,8 @@ import SwiftUI
             let font = createSafeFont(family: fontFamily, size: CGFloat(fontSize))
             let terminal = NativeTerminalView(frame: .zero, font: font)
             terminal.configureNativeColors()
-            terminal.completionContextProvider = completionContext
+            terminal.commandSnapshotProvider = commandSnapshot
+            terminal.inlinePipeline = inlinePipeline
 
             // Scrollbar: hidden initially, show on scroll, small
             for subview in terminal.subviews {
@@ -339,6 +339,10 @@ import SwiftUI
             if let existing = TerminalViewCache.shared.retrieve(paneID) {
                 cached = existing
                 created = false
+                if let native = cached.view as? NativeTerminalView {
+                    native.commandSnapshotProvider = commandSnapshot
+                    native.inlinePipeline = inlinePipeline
+                }
             } else {
                 cached = createTerminalView(for: paneID, context: context)
                 created = true

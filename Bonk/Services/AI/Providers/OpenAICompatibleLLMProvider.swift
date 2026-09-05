@@ -76,6 +76,7 @@ final class OpenAICompatibleLLMProvider: LLMProvider, @unchecked Sendable {
                     }
 
                     var result = ""
+                    var reasoningResult = ""
                     var buffer = Data()
                     for try await byte in bytes {
                         buffer.append(byte)
@@ -92,7 +93,14 @@ final class OpenAICompatibleLLMProvider: LLMProvider, @unchecked Sendable {
                         if let text = AIProviderNetworking.extractDelta(from: object) {
                             result += text
                             continuation.yield(.textDelta(text))
+                        } else if let reasoning = AIProviderNetworking.extractReasoningDelta(from: object) {
+                            reasoningResult += reasoning
+                            continuation.yield(.reasoning(reasoning))
                         }
+                    }
+                    if result.isEmpty && !reasoningResult.isEmpty {
+                        result = reasoningResult
+                        continuation.yield(.textDelta(reasoningResult))
                     }
                     if !result.isEmpty { continuation.yield(.completed) }
                     continuation.finish()
@@ -164,7 +172,7 @@ final class OpenAICompatibleLLMProvider: LLMProvider, @unchecked Sendable {
 
         var body: [String: Any] = [
             "model": config.model,
-            "max_tokens": maxTokens ?? config.maxOutputTokens ?? 500,
+            "max_tokens": maxTokens ?? config.maxOutputTokens ?? 4096,
             "temperature": 0.0,
             "messages": messages.map(\.chatCompletionsPayload),
             "stream": stream,

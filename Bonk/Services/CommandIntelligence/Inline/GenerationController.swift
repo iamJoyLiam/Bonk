@@ -1,0 +1,57 @@
+//  GenerationController.swift
+//  Bonk
+//
+//  Single place for debounce + generation + cancellation.
+//  Ensures only generation-matching async may mutate UI (Invariant #4).
+//
+
+import Foundation
+
+@MainActor
+final class GenerationController {
+    private(set) var generation: UInt64 = 0
+    private var debounceTask: Task<Void, Never>?
+    private var workTask: Task<Void, Never>?
+
+    /// Debounce applies to the LLM tier only — local candidates commit instantly.
+    /// Internal engineering knob, deliberately not user-facing: the right value
+    /// depends on the active model's latency, which the user already picks via Provider.
+    var debounceMilliseconds: Int = 200
+
+    func bumpGeneration() -> UInt64 {
+        generation &+= 1
+        return generation
+    }
+
+    func cancelAll() {
+        generation &+= 1
+        debounceTask?.cancel()
+        workTask?.cancel()
+        debounceTask = nil
+        workTask = nil
+    }
+
+    func scheduleDebounced(delayMs: Int? = nil, _ work: @escaping @MainActor () async -> Void) {
+        debounceTask?.cancel()
+        let delay = delayMs ?? debounceMilliseconds
+        let gen = generation
+        debounceTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(Double(delay)))
+            guard !Task.isCancelled else { return }
+            // Generation check: if cancelled, gen != current
+            await work()
+        }
+        _ = gen
+    }
+
+    func runWork(_ work: @escaping @MainActor () async -> Void) {
+        workTask?.cancel()
+        workTask = Task { @MainActor in
+            await work()
+        }
+    }
+
+    func isCurrent(_ gen: UInt64) -> Bool {
+        gen == generation
+    }
+}

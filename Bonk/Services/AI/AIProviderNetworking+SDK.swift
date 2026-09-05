@@ -56,7 +56,7 @@ extension AIProviderNetworking {
         return OpenAI(configuration: .init(
             // Empty token must stay nil — the SDK otherwise sends
             // `Authorization: Bearer `, which proxies like litellm reject.
-            token: provider.type.needsAPIKey && !apiKey.isEmpty ? apiKey : nil,
+            token: !apiKey.isEmpty ? apiKey : nil,
             host: host,
             port: port,
             scheme: scheme,
@@ -101,7 +101,7 @@ extension AIProviderNetworking {
             temperature: 0.0,
             stream: stream
         )
-        query.maxTokens = maxTokens ?? provider.maxOutputTokens ?? 500
+        query.maxTokens = maxTokens ?? provider.maxOutputTokens ?? 4096
         return query
     }
 
@@ -380,6 +380,22 @@ extension AIProviderNetworking {
            let text = message["content"] as? String
         { return text }
 
+        return nil
+    }
+
+    /// Extract reasoning/thinking delta from SSE event (e.g., DeepSeek-R1, QwQ, local thinking models).
+    static func extractReasoningDelta(from json: [String: Any]) -> String? {
+        if let choices = json["choices"] as? [[String: Any]],
+           let first = choices.first,
+           let delta = first["delta"] as? [String: Any]
+        {
+            if let reasoning = delta["reasoning_content"] as? String, !reasoning.isEmpty {
+                return reasoning
+            }
+            if let reasoning = delta["reasoning"] as? String, !reasoning.isEmpty {
+                return reasoning
+            }
+        }
         return nil
     }
 

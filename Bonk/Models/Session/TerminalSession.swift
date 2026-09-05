@@ -10,7 +10,11 @@ final class TerminalSession {
     var phase: SSHConnectionPhase = .idle
     var terminalState: TerminalState = .idle
     var sshService: SSHNetworkService?
-    var ptySession: PTYSession?
+    var ptySession: PTYSession? {
+        didSet {
+            observeShellBufferReports()
+        }
+    }
     var sftpService: SFTPService?
     private var sftpConnectionTask: Task<SFTPService, Error>?
     var vnextSession: (any SSHSession)?
@@ -73,6 +77,8 @@ final class TerminalSession {
     var commandHistory = CommandHistory()
     /// Accumulated input buffer for command history recording.
     var inputBuffer: String = ""
+    /// Observes OSC 133;9 ground-truth buffer reports from the shell integration.
+    private var shellBufferReportObserver: (any NSObjectProtocol)?
     var stateObservationTask: Task<Void, Never>?
     var stateObserverToken = UUID()
     /// Whether this session owns the SSH service (and should disconnect it on teardown).
@@ -95,15 +101,37 @@ final class TerminalSession {
         self.tabID = tabID
     }
 
+    /// Shell integration (OSC 133;9) reports the real line-editor buffer on
+    /// every redraw — overwrite the echo-based heuristic buffer with ground
+    /// truth so the inline Editor never guesses (doccker-class bug prevention).
+    private func observeShellBufferReports() {
+        if let shellBufferReportObserver {
+            NotificationCenter.default.removeObserver(shellBufferReportObserver)
+            self.shellBufferReportObserver = nil
+        }
+        guard let ptySession else { return }
+        shellBufferReportObserver = NotificationCenter.default.addObserver(
+            forName: .shellBufferDidReport, object: ptySession, queue: .main
+        ) { [weak self] note in
+            let buffer = note.userInfo?["buffer"] as? String ?? ""
+            MainActor.assumeIsolated {
+                self?.inputBuffer = buffer
+            }
+        }
+    }
+
     /// v3.3 Hybrid exec — prefers multiplexed SSHSession (Native or Compatibility)
     /// over the legacy SSHNetworkService path. One connection, many exec channels.
-    func executeHybrid(_ command: String) async throws -> String {
+    func executeHybrid(
+        _ command: String,
+        registerHandle: (@Sendable (any CommandExecutionHandle) -> Void)? = nil
+    ) async throws -> String {
         if let vnext = vnextSession {
-            let result = try await vnext.execute(command)
+            let result = try await vnext.execute(command, registerHandle: registerHandle)
             return result.output
         }
         guard let sshService else { throw SSHServiceError.notConnected }
-        return try await sshService.executeCommand(command)
+        return try await sshService.executeCommand(command, registerHandle: registerHandle)
     }
 
     /// Return the existing SFTP service, or coalesce concurrent connection

@@ -38,7 +38,7 @@ enum LKey: String, CaseIterable {
     case addProvider = "add_provider", addCustomProvider = "add_custom_provider"
 
     // AI — Provider Detail
-    case apiKey = "api_key", apiKeySet = "api_key_set"
+    case apiKey = "api_key", apiKeySet = "api_key_set", apiKeyOptional = "api_key_optional"
     case testConnection = "test_connection", connectionSuccessful = "connection_successful"
     case authentication, connection, endpoint, model, name
     case save, cancel, add
@@ -50,9 +50,9 @@ enum LKey: String, CaseIterable {
     case inlineSuggestions = "inline_suggestions"
     case enableInlineSuggestions = "enable_inline_suggestions"
     case configureProviderHint = "configure_provider_hint"
-    case debounce
+    case aiCandidatePopup = "ai_candidate_popup"
+    case aiCandidatePopupDesc = "ai_candidate_popup_desc"
     case inlineSuggestionsFooter = "inline_suggestions_footer"
-
     // AI — Context
     case context
     case includeTerminalOutput = "include_terminal_output"
@@ -76,7 +76,7 @@ enum LKey: String, CaseIterable {
     case terminalAssistant = "terminal_assistant"
     case aiThinking = "ai_thinking"
     case aiPaste = "ai_paste"
-    case aiRun = "ai_run"
+    case aiRun = "ai_run", aiSent = "ai_sent"
     case aiCopy = "ai_copy"
     case aiAnalyzing = "ai_analyzing"
     case aiNoHistory = "ai_no_history"
@@ -341,6 +341,8 @@ enum LKey: String, CaseIterable {
     case actionSplitVertical = "action_split_vertical"
     case actionSftpBrowser = "action_sftp_browser"
     case actionAiAssistant = "action_ai_assistant"
+    case actionInlineNextCandidate = "action_inline_next_candidate"
+    case actionInlinePreviousCandidate = "action_inline_previous_candidate"
 
     // Command History
     case commandHistory = "command_history"

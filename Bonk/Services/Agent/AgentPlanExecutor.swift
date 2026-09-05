@@ -9,24 +9,38 @@ extension AgentEngine {
     /// Run the agent: generate plan → wait for approval → execute steps → report.
     func runAgent(
         input: String,
+        displayInput: String? = nil,
         sshService: SSHNetworkService,
         hostName: String? = nil,
         conversation: AIConversationRecord? = nil,
         context: ModelContext? = nil
     ) async {
-        await runAgent(input: input, sshService: sshService, hybridSession: nil, hostName: hostName, conversation: conversation, context: context)
+        await runAgent(input: input, displayInput: displayInput, sshService: sshService, hybridSession: nil, hostName: hostName, conversation: conversation, context: context)
     }
 
     /// v3.3 Hybrid overload — activeTab's TerminalSession provides multiplexed exec.
     func runAgent(
         input: String,
+        displayInput: String? = nil,
         sshService: SSHNetworkService,
         hybridSession: TerminalSession?,
         hostName: String? = nil,
         conversation: AIConversationRecord? = nil,
         context: ModelContext? = nil
     ) async {
-        appendAgentMessage(.user, content: input, conversation: conversation, context: context)
+        let intent = UserIntent.parse(rawInput: displayInput ?? input, defaultExecutionRequested: true)
+        appendAgentMessage(.user, content: displayInput ?? input, conversation: conversation, context: context)
+
+        // If user provided context references only (@history, @terminal) without an execution prompt,
+        // do not run tool execution loop; perform safe direct synthesis instead.
+        if !intent.executionRequested {
+            await runAgentDirectSynthesis(
+                input: input,
+                conversation: conversation,
+                context: context
+            )
+            return
+        }
 
         let useToolLoop = resolveProvider().map { resolved in
             LLMProviderFactory.provider(
@@ -44,6 +58,38 @@ extension AgentEngine {
                 input: input, sshService: sshService, hybridSession: hybridSession,
                 conversation: conversation, context: context
             )
+        }
+    }
+
+    /// Direct synthesis when only context references (@history, @terminal) are provided without execution task.
+    func runAgentDirectSynthesis(
+        input: String,
+        conversation: AIConversationRecord?,
+        context: ModelContext?
+    ) async {
+        guard let (provider, apiKey) = resolveProvider() else {
+            appendAgentMessage(.system, content: lastError ?? L.t(.aiNoResponse), conversation: conversation, context: context)
+            return
+        }
+        let llm = LLMProviderFactory.provider(for: provider, apiKey: apiKey, workload: .chat)
+        let isGreeting = UserIntent.isGreetingOrConversational(input)
+        let systemPrompt = isGreeting
+            ? "You are Bonk's AI terminal assistant. The user has sent a greeting or pleasantry. Respond warmly, politely, and concisely in the user's language, introducing how you can help with server inspection, diagnostics, and running terminal commands."
+            : "You are a helpful terminal assistant. The user has attached terminal context without requesting command execution. Please analyze and summarize the context concisely, highlighting key findings, command history or system status, and suggest helpful next actions if appropriate."
+        let messages: [LLMMessage] = [
+            .system(systemPrompt),
+            .user(input)
+        ]
+        do {
+            let turn = try await llm.chat(messages: messages, maxTokens: 1024, disableReasoning: false)
+            let text = turn.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty {
+                appendAgentMessage(.assistant, content: text, conversation: conversation, context: context)
+            } else {
+                appendAgentMessage(.system, content: "未发现需要关注的异常信息。", conversation: conversation, context: context)
+            }
+        } catch {
+            appendAgentMessage(.system, content: "AI error: \(error.localizedDescription)", conversation: conversation, context: context)
         }
     }
 
@@ -149,8 +195,10 @@ extension AgentEngine {
         conversation: AIConversationRecord?,
         context: ModelContext?
     ) async -> ExecutionReport {
-        let hybridExec: (@Sendable (String) async throws -> String)? = if let session = hybridSession {
-            { @Sendable command async throws -> String in try await session.executeHybrid(command) }
+        let hybridExec: (@Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> String)? = if let session = hybridSession {
+            { @Sendable command, registerHandle async throws -> String in
+                try await session.executeHybrid(command, registerHandle: registerHandle)
+            }
         } else { nil }
         var results: [StepResult] = []
         let startTime = Date()
@@ -179,10 +227,10 @@ extension AgentEngine {
                 let riskLevel: PendingCommand.RiskLevel = step.riskLevel == .dangerous ? .dangerous : .moderate
                 let confirmed = await requestConfirmation(command: step.command, riskLevel: riskLevel)
                 guard confirmed else {
-                    appendAgentMessage(.system, content: String(format: L.t(.skippedStep), step.command),
+                    appendAgentMessage(.system, content: "用户取消了命令执行，计划已停止。",
                                        conversation: conversation, context: context)
-                    results.append(StepResult(step: step, output: "Skipped by user", success: false, duration: 0))
-                    continue
+                    results.append(StepResult(step: step, output: "Cancelled by user", success: false, duration: 0))
+                    break
                 }
             }
 
@@ -194,10 +242,15 @@ extension AgentEngine {
             do {
                 let output = try await withTimeout(seconds: 30) {
                     if let exec = hybridExec {
-                        return try await exec(command)
+                        return try await exec(command) { handle in
+                            Task { await AgentExecutionManager.shared.registerActive(handle) }
+                        }
                     }
-                    return try await sshService.executeCommand(command)
+                    return try await sshService.executeCommand(command) { handle in
+                        Task { await AgentExecutionManager.shared.registerActive(handle) }
+                    }
                 }
+                await AgentExecutionManager.shared.clearActive()
                 let truncated = String(output.prefix(4000))
                 let duration = Date().timeIntervalSince(stepStart)
                 appendAgentMessage(.commandOutput, content: truncated,
@@ -205,7 +258,8 @@ extension AgentEngine {
                 OperationLog.shared.record(command: step.command, output: truncated, success: true)
                 results.append(StepResult(step: step, output: truncated, success: true, duration: duration))
             } catch {
-                let errorMsg = "Failed: \(error.localizedDescription)"
+                await AgentExecutionManager.shared.clearActive()
+                let errorMsg = Task.isCancelled ? "Command was cancelled by user." : "Failed: \(error.localizedDescription)"
                 let duration = Date().timeIntervalSince(stepStart)
                 appendAgentMessage(.system, content: errorMsg,
                                    conversation: conversation, context: context)

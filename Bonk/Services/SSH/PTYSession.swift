@@ -235,6 +235,11 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         for event in shellEvents {
             switch event {
             case .commandStart(let range):
+                // Command submitted — clear any reported line-editor buffer so
+                // stale ground truth can't repopulate the input buffer.
+                NotificationCenter.default.post(
+                    name: .shellBufferDidReport, object: self, userInfo: ["buffer": ""]
+                )
                 let block = CommandBlock(
                     id: range.id,
                     command: range.command,
@@ -268,6 +273,12 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                     )
                     activeCommandBlock.withLockedValue { $0 = block }
                 }
+            case .bufferReport(let buffer):
+                // Live line-editor buffer from shell integration (OSC 133;9).
+                // Ground truth for the inline Editor's typed text.
+                NotificationCenter.default.post(
+                    name: .shellBufferDidReport, object: self, userInfo: ["buffer": buffer]
+                )
             default: break
             }
         }

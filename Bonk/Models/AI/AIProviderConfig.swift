@@ -64,7 +64,7 @@ struct AIProviderConfig: Identifiable, Hashable, Codable {
         self.id = id
         self.name = name
         self.type = type
-        self.model = model
+        self.model = model.cleanedModelName
         self.endpoint = endpoint.isEmpty ? type.defaultEndpoint : endpoint
         let resolvedProtocol = protocolType ?? type.defaultProtocolType
         self.protocolType = type.supportsResponses ? resolvedProtocol : .chatCompletions
@@ -92,7 +92,8 @@ extension AIProviderConfig {
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         type = try container.decode(AIProviderType.self, forKey: .type)
-        model = try container.decode(String.self, forKey: .model)
+        let decodedModel = try container.decode(String.self, forKey: .model)
+        model = decodedModel.cleanedModelName
         endpoint = try container.decode(String.self, forKey: .endpoint)
         let decodedProtocol = try container.decodeIfPresent(AIProviderProtocol.self, forKey: .protocolType)
             ?? type.defaultProtocolType
@@ -104,5 +105,20 @@ extension AIProviderConfig {
         maxOutputTokens = try container.decodeIfPresent(Int.self, forKey: .maxOutputTokens)
         telemetryEnabled = try container.decodeIfPresent(Bool.self, forKey: .telemetryEnabled) ?? false
         if endpoint.isEmpty { endpoint = type.defaultEndpoint }
+    }
+}
+
+// MARK: - Model Name Sanitizer
+
+extension String {
+    /// Strips leading "models/" or "model/" prefixes from model names.
+    var cleanedModelName: String {
+        var result = trimmingCharacters(in: .whitespacesAndNewlines)
+        if result.hasPrefix("models/") {
+            result = String(result.dropFirst(7))
+        } else if result.hasPrefix("model/") {
+            result = String(result.dropFirst(6))
+        }
+        return result
     }
 }

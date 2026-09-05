@@ -84,7 +84,7 @@ struct AIProviderDetailSheet: View {
                 }
             }
             .onAppear {
-                if draft.type == .ollama || (draft.type.needsAPIKey && !draft.apiKey.isEmpty) {
+                if !draft.type.needsAPIKey || !draft.apiKey.isEmpty {
                     fetchModels()
                 }
             }
@@ -119,8 +119,8 @@ struct AIProviderDetailSheet: View {
 
     private var apiKeyAuthSection: some View {
         Section(i18n.t(.authentication)) {
-            LabeledContent(i18n.t(.apiKey)) {
-                AutoEnglishSecureField(text: $apiKeyInput, placeholder: "")
+            LabeledContent(draft.type == .custom ? i18n.t(.apiKeyOptional) : i18n.t(.apiKey)) {
+                AutoEnglishSecureField(text: $apiKeyInput, placeholder: draft.type == .custom ? i18n.t(.apiKeyOptional) : "")
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .onChange(of: apiKeyInput) { _, newValue in
