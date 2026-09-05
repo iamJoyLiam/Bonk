@@ -126,17 +126,22 @@ final class CandidatePool: @unchecked Sendable {
         let rootCommand = tokens.first.map(String.init)?.lowercased() ?? ""
         let isKnownCLI = cliRegistry.spec(for: rootCommand) != nil
 
-        // 3. Command Vocabulary (Root commands e.g. dock -> docker)
-        if !isKnownCLI, let vocabSug = vocabularySource.syncSuggestion(for: snapshot, typed: typed) {
-            let full = vocabSug.withFullCommand(typed: typed)
-            let score = ranker.score(suggestion: full, source: vocabularySource.name)
-            pool.append(CommandCandidate(
-                source: vocabularySource.name,
-                authority: .deterministic,
-                suggestion: full,
-                rawScore: score,
-                isExactPrefixMatch: true
-            ))
+        // 3. Command Index (Root commands e.g. dock -> docker, df, du, etc.)
+        if !isKnownCLI && !typed.contains(" ") {
+            let indexMatches = CompositeCommandIndex.shared.matches(prefix: typed, limit: 5)
+            if !indexMatches.isEmpty {
+                pool.append(contentsOf: indexMatches)
+            } else if let vocabSug = vocabularySource.syncSuggestion(for: snapshot, typed: typed) {
+                let full = vocabSug.withFullCommand(typed: typed)
+                let score = ranker.score(suggestion: full, source: vocabularySource.name)
+                pool.append(CommandCandidate(
+                    source: vocabularySource.name,
+                    authority: .deterministic,
+                    suggestion: full,
+                    rawScore: score,
+                    isExactPrefixMatch: true
+                ))
+            }
         }
 
         // 4. Runtime Context / Known Words (Screen output tokens)

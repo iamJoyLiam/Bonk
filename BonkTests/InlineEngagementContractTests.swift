@@ -142,6 +142,7 @@ struct InlineEngagementContractTests {
 
     @Test("9. Escape cancels selection and marks suggestion rejected")
     func testEscapeCancelsSelection() {
+        defer { UserProfile.shared.clear() }
         let pipeline = makePipelineWithCandidates()
         pipeline.moveSelection(1) // engaged
         #expect(pipeline.suggestion != nil)

@@ -68,6 +68,7 @@ struct InlineUXContractTests {
 
     @Test("Rejection prevents candidate from resurfacing in subsequent requests")
     func rejectionPreventsGhostResurfacing() {
+        defer { UserProfile.shared.clear() }
         let cache = InlineSuggestionCache()
         let pipeline = InlineSuggestionPipeline(providerStore: .shared, cache: cache)
         let snapshot = CommandContextSnapshot(

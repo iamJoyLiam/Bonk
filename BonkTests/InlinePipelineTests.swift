@@ -72,6 +72,16 @@ final class InlinePipelineTests: XCTestCase {
         XCTAssertNil(source.syncSuggestion(for: full, typed: "docker"))
     }
 
+    override func setUp() {
+        super.setUp()
+        UserProfile.shared.clear()
+    }
+
+    override func tearDown() {
+        UserProfile.shared.clear()
+        super.tearDown()
+    }
+
     func testRankedCandidatesAndSelection() {
         let cache = InlineSuggestionCache()
         let pipeline = InlineSuggestionPipeline(providerStore: .shared, cache: cache)

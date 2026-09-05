@@ -125,4 +125,25 @@ final class InlineCandidateTests: XCTestCase {
         XCTAssertNotNil(metrics.computeLatencyMs)
         XCTAssertNotNil(metrics.totalLatencyMs)
     }
+
+    func testBuiltinCommandIndexPrefixD() {
+        let matches = BuiltinCommandIndex.shared.matches(prefix: "d", limit: 5)
+        XCTAssertEqual(matches.count, 5)
+        let names = matches.compactMap(\.fullText)
+        XCTAssertTrue(names.contains("docker"))
+        XCTAssertTrue(names.contains("df"))
+        XCTAssertTrue(names.contains("du"))
+        for m in matches {
+            XCTAssertNotNil(m.summary)
+            XCTAssertFalse(m.summary?.isEmpty ?? true)
+            XCTAssertEqual(m.typedSource, .vocabulary)
+        }
+    }
+
+    func testCompositeCommandIndexMultiCandidates() {
+        let matches = CompositeCommandIndex.shared.matches(prefix: "git", limit: 5)
+        XCTAssertFalse(matches.isEmpty)
+        XCTAssertEqual(matches.first?.fullText, "git")
+        XCTAssertEqual(matches.first?.summary, "Distributed version control system")
+    }
 }

@@ -145,6 +145,29 @@ struct CommandCandidate: Sendable, Identifiable, Equatable {
         )
     }
 
+    /// Convenience initializer bridging from Suggestion with typed CandidateSource
+    init(
+        source: CandidateSource,
+        authority: CandidateAuthority,
+        suggestion: Suggestion,
+        rawScore: Double,
+        isExactPrefixMatch: Bool = false,
+        summary: String? = nil,
+        metadata: CandidateMetadata? = nil
+    ) {
+        self.init(
+            source: source.rawValue,
+            authority: authority,
+            text: suggestion.text,
+            displayText: suggestion.displayText,
+            fullText: suggestion.fullText,
+            summary: summary,
+            score: rawScore,
+            isExactPrefixMatch: isExactPrefixMatch,
+            metadata: metadata
+        )
+    }
+
     /// Convenience initializer using typed CandidateSource
     init(
         source: CandidateSource,
