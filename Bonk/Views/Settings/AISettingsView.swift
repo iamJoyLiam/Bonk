@@ -230,21 +230,19 @@ struct AISettingsView: View {
     private var inlineSuggestionsSection: some View {
         Section {
             Toggle(i18n.t(.enableInlineSuggestions), isOn: $inlineSuggestionsEnabled)
-                .disabled(store.activeProviderID == nil)
-                .help(store.activeProviderID != nil ? "" : i18n.t(.configureProviderHint))
             Picker(i18n.t(.aiInlineModel), selection: $inlineProviderID) {
                 Text(i18n.t(.aiFollowMainProvider)).tag("")
                 ForEach(store.providers) { provider in
                     Text(provider.displayName).tag(provider.id.uuidString)
                 }
             }
-            .disabled(!inlineSuggestionsEnabled)
+            .disabled(!inlineSuggestionsEnabled || store.activeProviderID == nil)
             Toggle(i18n.t(.aiCandidatePopup), isOn: $candidatePopupEnabled)
                 .disabled(!inlineSuggestionsEnabled)
         } header: {
             Text(i18n.t(.inlineSuggestions))
         } footer: {
-            Text("\(i18n.t(.inlineSuggestionsFooter))\n\(i18n.t(.aiInlineModelDesc))\n\(i18n.t(.aiCandidatePopupDesc))")
+            Text(i18n.t(.aiInlineModelDesc))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
