@@ -12,6 +12,7 @@ import SwiftUI
 struct HostListView: View {
     @Environment(I18n.self) var i18n
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \HostItem.createdAt) private var hosts: [HostItem]
     @Query(sort: \HostGroup.sortOrder) private var hostGroups: [HostGroup]
     @Query(sort: \SSHBackendProfile.detectedAt, order: .reverse) private var backendProfiles: [SSHBackendProfile]
@@ -140,6 +141,12 @@ struct HostListView: View {
             NavigationStack {
                 KeychainManagerView()
                     .modelContext(modelContext)
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            // Safety net: flush any pending change when leaving the app.
+            if newPhase == .background {
+                try? modelContext.save()
             }
         }
         .sheet(isPresented: $showAddSheet) {

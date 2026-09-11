@@ -123,6 +123,7 @@ struct PortForwardView: View {
             Divider()
             Button(role: .destructive) {
                 modelContext.delete(rule)
+                try? modelContext.save()
             } label: {
                 Label(i18n.t(.delete), systemImage: "trash")
             }
@@ -241,6 +242,7 @@ struct PortForwardEditSheet: View {
                 remotePort: remotePortInt
             )
             modelContext.insert(newRule)
+            try? modelContext.save()
         }
     }
 }

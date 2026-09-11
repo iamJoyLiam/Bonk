@@ -132,6 +132,7 @@ struct GroupComboBoxView: View {
         let trimmed = group.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty, !groupExists else { return }
         modelContext.insert(HostGroup(name: trimmed))
+        try? modelContext.save()
     }
 }
 

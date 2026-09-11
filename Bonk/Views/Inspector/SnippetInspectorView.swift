@@ -24,7 +24,9 @@ struct SnippetInspectorView: View {
     @State private var showAIResult = false
 
     private var filteredSnippets: [Snippet] {
-        if searchText.isEmpty { return snippets }
+        if searchText.isEmpty {
+            return snippets
+        }
         let query = searchText.lowercased()
         return snippets.filter {
             $0.name.lowercased().contains(query)
@@ -216,6 +218,7 @@ struct SnippetInspectorView: View {
             Divider()
             Button(role: .destructive) {
                 modelContext.delete(snippet)
+                try? modelContext.save()
             } label: {
                 Label(i18n.t(.delete), systemImage: "trash")
             }

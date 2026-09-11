@@ -380,6 +380,7 @@ struct BonkApp: App {
     private struct SettingsContainerView: View {
         @Query private var allPreferences: [UserPreferences]
         @Environment(\.modelContext) private var modelContext
+        @Environment(\.scenePhase) private var scenePhase
         @Bindable var quakeController: QuakeController
 
         private var preferences: UserPreferences {
@@ -389,6 +390,7 @@ struct BonkApp: App {
         private func ensurePreferences() {
             if allPreferences.isEmpty {
                 modelContext.insert(UserPreferences())
+                try? modelContext.save()
             }
         }
 
@@ -397,6 +399,12 @@ struct BonkApp: App {
                 .onAppear {
                     ensurePreferences()
                     LogProfileStore.shared.configure(container: modelContext.container)
+                }
+                .onChange(of: scenePhase) { _, newPhase in
+                    // Safety net: flush any pending change when leaving the app.
+                    if newPhase == .background {
+                        try? modelContext.save()
+                    }
                 }
         }
     }

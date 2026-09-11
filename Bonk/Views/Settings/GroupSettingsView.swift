@@ -14,7 +14,11 @@ struct GroupSettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if groups.isEmpty { emptyState } else { groupList }
+            if groups.isEmpty {
+                emptyState
+            } else {
+                groupList
+            }
             Divider()
             HStack {
                 Spacer()
@@ -25,10 +29,16 @@ struct GroupSettingsView: View {
         .sheet(isPresented: $showAddSheet) { GroupEditSheet(group: nil, existingNames: groups.map(\.name)) }
         .sheet(item: $editingGroup) { GroupEditSheet(group: $0, existingNames: groups.map(\.name)) }
         .alert(i18n.t(.delete), isPresented: Binding(
-            get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }
+            get: { pendingDelete != nil }, set: {
+                if !$0 {
+                    pendingDelete = nil
+                }
+            }
         )) {
             Button(i18n.t(.delete), role: .destructive) {
-                if let target = pendingDelete { deleteGroup(target) }
+                if let target = pendingDelete {
+                    deleteGroup(target)
+                }
             }
             Button(i18n.t(.cancel), role: .cancel) { pendingDelete = nil }
         } message: {
@@ -159,6 +169,7 @@ struct GroupSettingsView: View {
             host.groupRef = nil
         }
         modelContext.delete(group)
+        try? modelContext.save()
     }
 }
 
@@ -184,7 +195,9 @@ struct GroupEditSheet: View {
     }
 
     private var filteredIcons: [String] {
-        if iconSearch.isEmpty { return Self.defaultIcons }
+        if iconSearch.isEmpty {
+            return Self.defaultIcons
+        }
         return SFSymbols.all.filter { $0.localizedCaseInsensitiveContains(iconSearch) }
     }
 
@@ -271,7 +284,9 @@ struct GroupEditSheet: View {
     private func iconCell(_ icon: String?) -> some View {
         Button {
             selectedIcon = icon
-            if icon != nil { showIconPicker = false }
+            if icon != nil {
+                showIconPicker = false
+            }
         } label: {
             Image(systemName: icon ?? "slash.circle")
                 .font(.system(size: AppStyle.fontLarge)).frame(width: AppStyle.spacingIndent, height: 32)
@@ -310,6 +325,7 @@ struct GroupEditSheet: View {
             )
             modelContext.insert(newGroup)
         }
+        try? modelContext.save()
         dismiss()
     }
 

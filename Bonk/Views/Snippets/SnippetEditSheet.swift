@@ -26,7 +26,9 @@ struct SnippetEditSheet: View {
 
     private var allCategories: [String] {
         var cats = existingCategories
-        if !cats.contains("General") { cats.insert("General", at: 0) }
+        if !cats.contains("General") {
+            cats.insert("General", at: 0)
+        }
         return cats.sorted()
     }
 
@@ -89,8 +91,12 @@ struct SnippetEditSheet: View {
                     command = snippet.command
                     category = snippet.category
                 } else {
-                    if !initialName.isEmpty { name = initialName }
-                    if !initialCommand.isEmpty { command = initialCommand }
+                    if !initialName.isEmpty {
+                        name = initialName
+                    }
+                    if !initialCommand.isEmpty {
+                        command = initialCommand
+                    }
                     if !initialCategory.isEmpty {
                         if existingCategories.contains(initialCategory) {
                             category = initialCategory
@@ -119,5 +125,6 @@ struct SnippetEditSheet: View {
             )
             modelContext.insert(newSnippet)
         }
+        try? modelContext.save()
     }
 }
