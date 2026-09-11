@@ -6,6 +6,38 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.3.2</title>
+            <pubDate>Fri, 11 Sep 2026 13:30:00 +0800</pubDate>
+            <sparkle:version>20263002</sparkle:version>
+            <sparkle:shortVersionString>2026.3.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Changes
+
+- Fixed host, group, snippet, and port-forward changes not being saved to disk, which emptied the sidebar after a crash or restart; changes now persist immediately, with a background safety-net save.
+- Fixed a crash when connecting with a tab whose host data was deleted; the session now shows an error message instead.
+- Added Help menu entries (Report an issue, Bonk website, Support Bonk) in the macOS menu bar.
+- Improved SSH keepalive detection with an active round-trip probe, bounded channel-write timeout, and more reliable reconnect state.
+- Added a Support page on the website with Afdian and QR-code payment options.
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.3.2/Bonk-2026.3.2-arm64.dmg"
+                length="24126977"
+                type="application/octet-stream"
+                sparkle:edSignature="+9AHiKCPyXTczvDDUoNajfIP9VHKkLZBcMzCQXs9hELYzFJSLqbfSWg3fIG/kLEQHAwBwp0xjHAtmD6l0Jn3DQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.3.2/Bonk-2026.3.2-x86_64.dmg"
+                length="25328188"
+                type="application/octet-stream"
+                sparkle:edSignature="hfkxzJB5T90nSLO09o7WkGkikKjg6IOXXjz1ju4ZZJrzmjONPU70pXFANZsAn36vGSyvBacknS3K/xmgh+hWAQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.3.1</title>
             <pubDate>Mon, 07 Sep 2026 10:21:00 +0800</pubDate>
             <sparkle:version>20263001</sparkle:version>
