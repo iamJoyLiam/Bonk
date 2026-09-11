@@ -25,7 +25,7 @@ public enum RecoveryReason: Sendable, Equatable, CustomStringConvertible {
         switch self {
         case .channelClosed: return "channelClosed"
         case .keepAliveTimeout: return "keepAliveTimeout"
-        case .wakeProbeFailed(let duration):
+        case let .wakeProbeFailed(duration):
             if let duration { return "wakeProbeFailed(sleep:\(Int(duration))s)" }
             return "wakeProbeFailed"
         case .networkChanged: return "networkChanged"
@@ -46,10 +46,10 @@ public enum RecoveryState: Sendable, Equatable, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .idle: return "idle"
-        case .probing: return "probing"
-        case .reconnecting(let attempt): return "reconnecting(\(attempt))"
-        case .backoff(let delay): return "backoff(\(delay))"
+        case .idle: "idle"
+        case .probing: "probing"
+        case let .reconnecting(attempt): "reconnecting(\(attempt))"
+        case let .backoff(delay): "backoff(\(delay))"
         }
     }
 }
@@ -60,7 +60,7 @@ actor SSHConnectionSupervisor {
     private var state: RecoveryState = .idle
     private var currentTask: Task<Void, Never>?
     private var attemptCount: Int = 0
-    private var suppressRecoveryUntil: Date? = nil // authFailed gate
+    private var suppressRecoveryUntil: Date? // authFailed gate
 
     // Injected dependencies - set by owning SSHNetworkService
     private var probe: (@Sendable () async -> Bool)?
@@ -158,7 +158,16 @@ actor SSHConnectionSupervisor {
         // Phase: probing
         Log.ssh.info("[RECOVERY] probing host=\(self.hostIdentifier, privacy: .public) reason=\(String(describing: reason), privacy: .public)")
 
-        let alive = await performProbe()
+        // keepAliveTimeout already proved death with 3 consecutive active
+        // round-trips — the passive probe cannot see half-open TCP, so it must
+        // not veto this trigger. Skip straight to reconnect.
+        let alive: Bool
+        if reason == .keepAliveTimeout {
+            Log.ssh.warning("[RECOVERY] keepalive confirmed dead — skipping passive probe")
+            alive = false
+        } else {
+            alive = await performProbe()
+        }
 
         if Task.isCancelled { return }
 
@@ -200,7 +209,7 @@ actor SSHConnectionSupervisor {
         // Exponential backoff: 1s,2s,4s,8s,16s,30s,60s max per spec
         let backoffSequence: [Duration] = [
             .seconds(1), .seconds(2), .seconds(4), .seconds(8),
-            .seconds(16), .seconds(30), .seconds(60)
+            .seconds(16), .seconds(30), .seconds(60),
         ]
 
         while attemptCount < limit, !Task.isCancelled {
@@ -259,5 +268,7 @@ actor SSHConnectionSupervisor {
         }
     }
 
-    func currentState() -> RecoveryState { state }
+    func currentState() -> RecoveryState {
+        state
+    }
 }

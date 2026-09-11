@@ -25,6 +25,11 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     static let maxChunkBytes = 64 * 1024 // 64 KB per chunk
     private static let maxCols = 500
     private static let maxRows = 200
+    /// Max time for one channel write before treating the channel as dead.
+    /// Normal writes finish in milliseconds; even large pastes stream through.
+    /// Timeout funnels into normal writeFailed recovery (3 transient-tolerant
+    /// cycles before any reconnect), so one slow write never reconnects alone.
+    private static let channelWriteTimeoutSeconds = 8
 
     /// Live output continuations — yields new data to all active feed tasks.
     let liveContinuations = OSAllocatedUnfairLock<[UUID: AsyncStream<String>.Continuation]>(uncheckedState: [:])
@@ -492,10 +497,17 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         }
 
         if let writer = writerBox.withLockedValue({ $0 }) {
-            var buffer = ByteBuffer()
-            buffer.writeBytes(bytes)
+            // Copy bytes for the timeout closure (Array is Sendable; the
+            // channel writer comes from Citadel under @preconcurrency).
+            let bytesCopy = Array(bytes)
             do {
-                try await writer.write(buffer)
+                // Bound the write: on half-open TCP it can hang until TCP gives
+                // up (minutes) — keystrokes would vanish with zero feedback.
+                try await withThrowingTimeout(of: .seconds(Self.channelWriteTimeoutSeconds)) {
+                    var timeoutBuffer = ByteBuffer()
+                    timeoutBuffer.writeBytes(bytesCopy)
+                    try await writer.write(timeoutBuffer)
+                }
             } catch {
                 Log.ssh.warning("[PTY] writeFailed trigger recovery: \(error.localizedDescription, privacy: .public)")
                 onWriteFailedBox.withLockedValue { $0 }?()

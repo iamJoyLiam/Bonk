@@ -815,8 +815,9 @@ public actor SSHNetworkService {
     }
 
     /// Liveness probe per hard constraint 1: Transport alive != Session/PTY ready.
-    /// OpenSSH: check ControlMaster then validate PTY; Citadel: check isConnected then PTY.
-    /// Never uses kill(pid,0) or exec true as health (spec).
+    /// OpenSSH: check ControlMaster then validate PTY; Citadel: fast-path isConnected,
+    /// then a bounded active round-trip — isConnected stays true on half-open TCP
+    /// (NAT/firewall drops the mapping with no FIN/RST), so only traffic proves life.
     func probeLiveness() async -> Bool {
         // Skip probe while connecting to avoid wake misjudge
         if case .connecting = connectionState {
@@ -857,9 +858,14 @@ public actor SSHNetworkService {
                 Log.ssh.warning("[PROBE] citadel no client -> dead")
                 return false
             }
-            let transportAlive = client.isConnected
-            guard transportAlive else {
+            // Fast-path negative only: a dead flag means dead, but a live flag
+            // proves nothing on half-open TCP — follow with a round-trip.
+            guard client.isConnected else {
                 Log.ssh.warning("[PROBE] citadel transport disconnected")
+                return false
+            }
+            guard await citadelRoundTrip(client) else {
+                Log.ssh.warning("[PROBE] citadel transport silent (half-open?)")
                 return false
             }
             if let pty = activePTYSession {
@@ -870,6 +876,30 @@ public actor SSHNetworkService {
                 return !closed
             }
             return true
+        }
+    }
+
+    /// Bounded active round-trip on the native transport — the only detector
+    /// for half-open TCP. `executeCommand("true")` returns no output; the
+    /// internal timeout converts silence to `false`. Callers add their own
+    /// timeouts on top; this never blocks longer than `timeout`.
+    private func citadelRoundTrip(_ client: SSHClient, timeout: Duration = .seconds(3)) async -> Bool {
+        await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                do {
+                    _ = try await client.executeCommand("true")
+                    return true
+                } catch {
+                    return false
+                }
+            }
+            group.addTask {
+                try? await Task.sleep(for: timeout)
+                return false
+            }
+            let result = await group.next() ?? false
+            group.cancelAll()
+            return result
         }
     }
 }

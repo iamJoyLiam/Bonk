@@ -272,6 +272,7 @@
   "search_hosts": "Search hosts...",
   "connect_to": "Connect to",
   "no_model_context": "Internal error: no model context",
+  "host_missing": "Host data is missing (may have been deleted), please re-add the host",
   "credentials_not_set": "Credentials not set",
   "invalid_port": "Invalid port number",
   "sftp_connect_failed": "SFTP connect failed: %@",
@@ -593,5 +594,8 @@
   "show_custom_tag": "Show custom tag",
   "custom_tag": "Custom Tag",
   "custom_tag_placeholder": "e.g., Prod, Test",
-  "custom_tag_hint": "Badge shown next to host name in sidebar. Tag appears before engine badge when both are enabled."
+  "custom_tag_hint": "Badge shown next to host name in sidebar. Tag appears before engine badge when both are enabled.",
+  "report_issue": "Report an issue",
+  "bonk_website": "Bonk website",
+  "support_bonk": "Support Bonk"
 }

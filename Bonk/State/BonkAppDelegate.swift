@@ -21,7 +21,7 @@ import SwiftUI
 
 @MainActor
 final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
-    static weak var shared: BonkAppDelegate?
+    weak static var shared: BonkAppDelegate?
     private var mainWindow: NSWindow?
     private var toolbarDelegate: BonkToolbarDelegate?
     private var toolbar: NSToolbar?
@@ -32,7 +32,7 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: - Launch
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    func applicationDidFinishLaunching(_: Notification) {
         Self.shared = self
         CrashReporter.install()
         // Reclaim PTYs held by orphaned bonk-ssh mux processes from a
@@ -63,7 +63,13 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         )
         window.identifier = NSUserInterfaceItemIdentifier("main")
         window.minSize = NSSize(width: 900, height: 600)
-        window.title = "Bonk"
+        #if DEBUG
+            // DEBUG builds use an in-memory store: data dies with the process.
+            // Mark the window so a dev build is never mistaken for production.
+            window.title = "Bonk (DEBUG · In-Memory Mode)"
+        #else
+            window.title = "Bonk"
+        #endif
         window.isReleasedWhenClosed = false
         window.setFrameAutosaveName("BonkMainWindow")
         window.toolbarStyle = .unified
@@ -110,14 +116,14 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         startToolbarKeepAlive(on: window)
 
         #if DEBUG
-        // --- Hand UI 5-step test trigger (DEBUG only, remove after fix) ---
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(1))
-            guard FileManager.default.fileExists(atPath: "/tmp/bonk_test_trigger") else { return }
-            Log.session.info("[TEST_TRIGGER] hand UI 5-step test starting via file trigger")
-            try? FileManager.default.removeItem(atPath: "/tmp/bonk_test_trigger")
-            await self?.runHandUITest()
-        }
+            // --- Hand UI 5-step test trigger (DEBUG only, remove after fix) ---
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                guard FileManager.default.fileExists(atPath: "/tmp/bonk_test_trigger") else { return }
+                Log.session.info("[TEST_TRIGGER] hand UI 5-step test starting via file trigger")
+                try? FileManager.default.removeItem(atPath: "/tmp/bonk_test_trigger")
+                await self?.runHandUITest()
+            }
         #endif
     }
 
@@ -159,7 +165,7 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // Monitor phases and auto-retry when auth fails (file trigger auto path)
         var didRetry = false
         let autoRetry = !FileManager.default.fileExists(atPath: "/tmp/bonk_test_ui_only")
-        for _ in 0..<30 {
+        for _ in 0 ..< 30 {
             try? await Task.sleep(for: .milliseconds(500))
             guard let tab = sessionManager.tabs.last else { continue }
             let phase = tab.session?.phase
@@ -180,7 +186,7 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 try? "SUCCESS".write(toFile: "/tmp/bonk_test_result", atomically: true, encoding: .utf8)
                 return
             }
-            if let profile = phase, case .failed(let msg) = profile, didRetry {
+            if let profile = phase, case let .failed(msg) = profile, didRetry {
                 // After retry still failed -> capture
                 Log.session.error("[TEST_TRIGGER] FAILED after retry msg=\(msg.prefix(120))")
                 try? "FAILED:\(msg)".write(toFile: "/tmp/bonk_test_result", atomically: true, encoding: .utf8)
@@ -228,14 +234,13 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// If anything ever swaps `window.toolbar` (SwiftUI's hosted toolbar
     /// bridge, or a stale autosave), put ours back on the next runloop turn.
     private func startToolbarKeepAlive(on window: NSWindow) {
-        toolbarObservation = window.observe(\.toolbar, options: [.new]) { [weak self] window, change in
+        toolbarObservation = window.observe(\.toolbar, options: [.new]) { [weak self] _, change in
             // KVO fires on the main thread; observe() annotates the closure
             // as @Sendable so hop back explicitly.
             Task { @MainActor [weak self] in
                 guard let self,
                       let current = change.newValue as? NSToolbar,
-                      current !== self.toolbar
-                else { return }
+                      current !== self.toolbar else { return }
                 Log.ui.warning("Window toolbar was replaced (delegate=\(String(describing: current.delegate.map { String(describing: type(of: $0)) }), privacy: .public)); restoring ours")
                 guard let window = self.mainWindow, window.toolbar !== self.toolbar else { return }
                 window.toolbar = self.toolbar
@@ -259,12 +264,12 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: - Window Lifecycle
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+    func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {
         // Keep running with the Quake terminal (global hotkey) available.
         false
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
+    func applicationWillTerminate(_: Notification) {
         // Kill every bonk-ssh child so no PTY-holding process survives the
         // app (a plain app exit leaves the ssh children behind until the
         // NEXT launch's cleanup runs).
@@ -273,7 +278,7 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         #endif
     }
 
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    func applicationShouldHandleReopen(_: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
             mainWindow?.makeKeyAndOrderFront(nil)
         }

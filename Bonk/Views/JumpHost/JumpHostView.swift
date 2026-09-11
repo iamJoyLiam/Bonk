@@ -206,7 +206,9 @@ struct JumpHostEditSheet: View {
     /// re-typing the user).
     private var resolvedUsername: String? {
         let typed = username.trimmingCharacters(in: .whitespaces)
-        if !typed.isEmpty { return typed }
+        if !typed.isEmpty {
+            return typed
+        }
         if authStyle == .credential,
            let credUser = selectedCredential?.username,
            !credUser.isEmpty
@@ -233,110 +235,110 @@ struct JumpHostEditSheet: View {
                 Divider()
                 Form {
                     Section(i18n.t(.hostInformation)) {
-                    TextField(i18n.t(.displayName), text: $name)
-                    TextField(
-                        i18n.t(.hostnameOrIp),
-                        text: $hostname,
-                        prompt: Text(name.isEmpty ? "" : name)
-                    )
-                    .onChange(of: hostname) { _, newValue in
-                        // Parse "user@host:port" shorthand as the user types.
-                        let parsed = SSHHostParser.parse(newValue)
-                        if let parsedUser = parsed.username,
-                           !parsedUser.isEmpty,
-                           username.isEmpty
-                        {
-                            username = parsedUser
-                        }
-                        if let parsedPort = parsed.port {
-                            port = String(parsedPort)
-                        }
-                    }
-                    TextField(i18n.t(.port), text: $port)
-                        .font(.system(size: AppStyle.fontRegular, design: .monospaced))
-                    TextField(i18n.t(.username), text: $username)
-                        .autocorrectionDisabled()
-                }
-
-                Section(i18n.t(.authentication)) {
-                    Picker(i18n.t(.authentication), selection: $authStyle) {
-                        Text(i18n.t(.password)).tag(JumpAuthStyle.password)
-                        Text(i18n.t(.privateKey)).tag(JumpAuthStyle.privateKey)
-                        Text(i18n.t(.credential)).tag(JumpAuthStyle.credential)
-                    }
-                    .pickerStyle(.segmented)
-
-                    switch authStyle {
-                    case .password:
-                        LabeledSecureField(title: i18n.t(.password), text: $password)
-                    case .privateKey:
-                        HStack {
-                            Text(i18n.t(.privateKey))
-                                .font(.headline)
-                            Spacer()
-                            Button(useFilePickerForKey ? i18n.t(.pasteManually) : i18n.t(.selectFile)) {
-                                useFilePickerForKey.toggle()
-                            }
-                            .font(.caption)
-                        }
-
-                        if useFilePickerForKey {
-                            FilePickerCard(
-                                url: $privateKeyFileURL,
-                                content: $privateKeyPEM,
-                                placeholder: i18n.t(.selectPrivateKeyFile)
-                            )
-                        } else {
-                            PEMEditorField(
-                                text: $privateKeyPEM,
-                                detectedType: detectedPrivateKeyType.map { i18n.tr(.detectedKeyType, args: $0) },
-                                hint: i18n.t(.pastePemKey)
-                            )
-                        }
-                    case .credential:
-                        Picker(i18n.t(.credential), selection: $selectedCredential) {
-                            Text(i18n.t(.custom)).tag(Credential?.none)
-                            ForEach(credentials.filter { $0.type == .password || $0.type == .privateKey }) { credential in
-                                Label(credential.name, systemImage: credential.type.symbolName)
-                                    .tag(Credential?.some(credential))
-                            }
-                        }
-                        .onChange(of: selectedCredential) { _, newCred in
-                            // Bring the credential's username along — the user
-                            // should never have to type it twice.
-                            if let newCred, let credUser = newCred.username,
-                               !credUser.isEmpty, username.isEmpty
+                        TextField(i18n.t(.displayName), text: $name)
+                        TextField(
+                            i18n.t(.hostnameOrIp),
+                            text: $hostname,
+                            prompt: Text(name.isEmpty ? "" : name)
+                        )
+                        .onChange(of: hostname) { _, newValue in
+                            // Parse "user@host:port" shorthand as the user types.
+                            let parsed = SSHHostParser.parse(newValue)
+                            if let parsedUser = parsed.username,
+                               !parsedUser.isEmpty,
+                               username.isEmpty
                             {
-                                username = credUser
+                                username = parsedUser
+                            }
+                            if let parsedPort = parsed.port {
+                                port = String(parsedPort)
                             }
                         }
+                        TextField(i18n.t(.port), text: $port)
+                            .font(.system(size: AppStyle.fontRegular, design: .monospaced))
+                        TextField(i18n.t(.username), text: $username)
+                            .autocorrectionDisabled()
                     }
-                }
 
-                Section(i18n.t(.connection)) {
-                    HStack {
-                        Button {
-                            testConnection()
-                        } label: {
-                            if testing {
-                                ProgressView().controlSize(.small)
-                                Text(i18n.t(.testConnection))
-                            } else {
-                                Label(i18n.t(.testConnection), systemImage: "network")
-                            }
+                    Section(i18n.t(.authentication)) {
+                        Picker(i18n.t(.authentication), selection: $authStyle) {
+                            Text(i18n.t(.password)).tag(JumpAuthStyle.password)
+                            Text(i18n.t(.privateKey)).tag(JumpAuthStyle.privateKey)
+                            Text(i18n.t(.credential)).tag(JumpAuthStyle.credential)
                         }
-                        .disabled(!canTest || testing || !canBuildAuth)
-                        .buttonStyle(.bordered)
+                        .pickerStyle(.segmented)
 
-                        if let testResult, !testing {
-                            Image(systemName: testResult ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                .foregroundStyle(testResult ? .green : .red)
-                            Text(testMessage)
+                        switch authStyle {
+                        case .password:
+                            LabeledSecureField(title: i18n.t(.password), text: $password)
+                        case .privateKey:
+                            HStack {
+                                Text(i18n.t(.privateKey))
+                                    .font(.headline)
+                                Spacer()
+                                Button(useFilePickerForKey ? i18n.t(.pasteManually) : i18n.t(.selectFile)) {
+                                    useFilePickerForKey.toggle()
+                                }
                                 .font(.caption)
-                                .foregroundStyle(testResult ? .green : .red)
+                            }
+
+                            if useFilePickerForKey {
+                                FilePickerCard(
+                                    url: $privateKeyFileURL,
+                                    content: $privateKeyPEM,
+                                    placeholder: i18n.t(.selectPrivateKeyFile)
+                                )
+                            } else {
+                                PEMEditorField(
+                                    text: $privateKeyPEM,
+                                    detectedType: detectedPrivateKeyType.map { i18n.tr(.detectedKeyType, args: $0) },
+                                    hint: i18n.t(.pastePemKey)
+                                )
+                            }
+                        case .credential:
+                            Picker(i18n.t(.credential), selection: $selectedCredential) {
+                                Text(i18n.t(.custom)).tag(Credential?.none)
+                                ForEach(credentials.filter { $0.type == .password || $0.type == .privateKey }) { credential in
+                                    Label(credential.name, systemImage: credential.type.symbolName)
+                                        .tag(Credential?.some(credential))
+                                }
+                            }
+                            .onChange(of: selectedCredential) { _, newCred in
+                                // Bring the credential's username along — the user
+                                // should never have to type it twice.
+                                if let newCred, let credUser = newCred.username,
+                                   !credUser.isEmpty, username.isEmpty
+                                {
+                                    username = credUser
+                                }
+                            }
                         }
                     }
-                }
+
+                    Section(i18n.t(.connection)) {
+                        HStack {
+                            Button {
+                                testConnection()
+                            } label: {
+                                if testing {
+                                    ProgressView().controlSize(.small)
+                                    Text(i18n.t(.testConnection))
+                                } else {
+                                    Label(i18n.t(.testConnection), systemImage: "network")
+                                }
+                            }
+                            .disabled(!canTest || testing || !canBuildAuth)
+                            .buttonStyle(.bordered)
+
+                            if let testResult, !testing {
+                                Image(systemName: testResult ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                    .foregroundStyle(testResult ? .green : .red)
+                                Text(testMessage)
+                                    .font(.caption)
+                                    .foregroundStyle(testResult ? .green : .red)
+                            }
+                        }
+                    }
                 }
                 .formStyle(.grouped)
             }
@@ -402,8 +404,7 @@ struct JumpHostEditSheet: View {
         case .credential:
             guard let selectedCredential,
                   let secret = selectedCredential.loadSecret(),
-                  !secret.isEmpty
-            else { return nil }
+                  !secret.isEmpty else { return nil }
             switch selectedCredential.type {
             case .password: return .password(secret)
             case .privateKey: return .privateKey(pemString: secret)
@@ -414,8 +415,7 @@ struct JumpHostEditSheet: View {
 
     private func testConnection() {
         guard let authMethod = buildAuthMethod(),
-              let effectiveUsername = resolvedUsername
-        else { return }
+              let effectiveUsername = resolvedUsername else { return }
         let portInt = Int(port) ?? SSHConstants.defaultPort
 
         testing = true
@@ -488,6 +488,7 @@ struct JumpHostEditSheet: View {
                 newHost.credentialRef = selectedCredential
             }
             modelContext.insert(newHost)
+            try? modelContext.save()
         }
     }
 }

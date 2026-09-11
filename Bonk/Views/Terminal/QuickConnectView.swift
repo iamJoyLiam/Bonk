@@ -159,6 +159,7 @@ struct QuickConnectView: View {
                     initialHost: searchText.isEmpty ? nil : searchText
                 ) { host in
                     modelContext.insert(host)
+                    try? modelContext.save()
                     sessionManager.openTab(for: host)
                     isPresented = false
                 }

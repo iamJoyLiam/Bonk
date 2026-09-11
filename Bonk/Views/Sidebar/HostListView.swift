@@ -28,7 +28,9 @@ struct HostListView: View {
     @State private var diagnosisHost: HostItem?
 
     private var filteredHosts: [HostItem] {
-        if searchText.isEmpty { return hosts }
+        if searchText.isEmpty {
+            return hosts
+        }
         return hosts.filter {
             $0.name.localizedCaseInsensitiveContains(searchText) ||
                 $0.host.localizedCaseInsensitiveContains(searchText)
@@ -48,8 +50,12 @@ struct HostListView: View {
         let grouped = Dictionary(grouping: filteredHosts) { $0.groupRef?.name ?? i18n.t(.unGrouped) }
         let ungroupedName = i18n.t(.unGrouped)
         return grouped.sorted { lhs, rhs in
-            if lhs.key == ungroupedName { return false }
-            if rhs.key == ungroupedName { return true }
+            if lhs.key == ungroupedName {
+                return false
+            }
+            if rhs.key == ungroupedName {
+                return true
+            }
             let orderA = hostGroups.first(where: { $0.name == lhs.key })?.sortOrder ?? Int.max
             let orderB = hostGroups.first(where: { $0.name == rhs.key })?.sortOrder ?? Int.max
             return orderA < orderB
@@ -75,7 +81,9 @@ struct HostListView: View {
                                 .tag(tab?.id as UUID?)
                         }
                         .onDelete { indexSet in
-                            if let idx = indexSet.first { pendingDeleteHost = items[idx] }
+                            if let idx = indexSet.first {
+                                pendingDeleteHost = items[idx]
+                            }
                         }
                     } header: {
                         groupHeader(groupName)
@@ -138,6 +146,7 @@ struct HostListView: View {
             NavigationStack {
                 AddHostSheet(defaultPort: defaultPort) { host in
                     modelContext.insert(host)
+                    try? modelContext.save()
                 }
             }
         }
@@ -149,7 +158,9 @@ struct HostListView: View {
                 }
             } else {
                 NavigationStack {
-                    AddHostSheet(existingHost: host, defaultPort: defaultPort) { _ in }
+                    AddHostSheet(existingHost: host, defaultPort: defaultPort) { _ in
+                        try? modelContext.save()
+                    }
                 }
             }
         }
@@ -158,6 +169,7 @@ struct HostListView: View {
                 if let host = pendingDeleteHost {
                     host.deleteCredentials()
                     modelContext.delete(host)
+                    try? modelContext.save()
                 }
                 pendingDeleteHost = nil
             }
@@ -188,7 +200,11 @@ struct HostListView: View {
     }
 
     private var deleteHostAlertBinding: Binding<Bool> {
-        Binding(get: { pendingDeleteHost != nil }, set: { if !$0 { pendingDeleteHost = nil } })
+        Binding(get: { pendingDeleteHost != nil }, set: {
+            if !$0 {
+                pendingDeleteHost = nil
+            }
+        })
     }
 
     // MARK: - Group Header
@@ -294,6 +310,7 @@ struct HostListView: View {
             Menu {
                 Button {
                     host.groupRef = nil
+                    try? modelContext.save()
                 } label: {
                     if host.groupRef == nil {
                         Label(i18n.t(.unGrouped), systemImage: "checkmark")
@@ -304,6 +321,7 @@ struct HostListView: View {
                 ForEach(hostGroups) { group in
                     Button {
                         host.groupRef = group
+                        try? modelContext.save()
                     } label: {
                         if host.groupRef?.id == group.id {
                             Label(group.name, systemImage: "checkmark")
@@ -427,7 +445,9 @@ struct HostListView: View {
     }
 
     private func badgeText(for profile: SSHBackendProfile, isNative: Bool) -> String {
-        if isNative { return "Native" }
+        if isNative {
+            return "Native"
+        }
         return profile.reasonRaw == SSHBackendReason.jumpHost.rawValue ? "OpenSSH·Jump" : "OpenSSH"
     }
 

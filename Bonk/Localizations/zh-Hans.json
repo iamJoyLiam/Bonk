@@ -272,6 +272,7 @@
   "search_hosts": "搜索主机...",
   "connect_to": "连接到",
   "no_model_context": "内部错误：无模型上下文",
+  "host_missing": "主机数据缺失（可能已被删除），请重新添加",
   "credentials_not_set": "未设置凭证",
   "invalid_port": "端口号无效",
   "sftp_connect_failed": "SFTP 连接失败：%@",
@@ -593,5 +594,8 @@
   "show_custom_tag": "显示自定义标签",
   "custom_tag": "自定义标签",
   "custom_tag_placeholder": "例如：生产、测试",
-  "custom_tag_hint": "显示在侧边栏主机名称旁的小标签。两者都开启时，标签在前、引擎在后。"
+  "custom_tag_hint": "显示在侧边栏主机名称旁的小标签。两者都开启时，标签在前、引擎在后。",
+  "report_issue": "报告问题",
+  "bonk_website": "Bonk 官网",
+  "support_bonk": "支持 Bonk"
 }

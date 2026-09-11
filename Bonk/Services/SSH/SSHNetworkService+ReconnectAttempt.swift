@@ -128,9 +128,7 @@ extension SSHNetworkService {
                 } else {
                     Log.ssh.info("[RECOVERY_STEP] transportReady=true (no PTY)")
                 }
-                connectionState = .connected
-                stateContinuation.yield(.connected)
-                lastSuccessfulConnectionAt = Date()
+                markReconnected()
                 Log.ssh.info("[RECOVERY] OpenSSH reconnect success (transport/pty/output all ready)")
                 await keepAlive.stop()
                 startNetworkMonitor()
@@ -177,6 +175,9 @@ extension SSHNetworkService {
                     Log.ssh.info("[RECOVERY_STEP] transportReady=true (no PTY)")
                 }
                 Log.ssh.info("[RECOVERY_STEP] transportReady=true ptyReady=\(self.lastPTYConfig != nil ? "true" : "no PTY", privacy: .public)")
+                // Publish .connected so the observer consumes pendingPTY and
+                // rebinds pane + output stream (same as the OpenSSH branch).
+                markReconnected()
                 startNetworkMonitor()
                 return true
             }
@@ -186,5 +187,13 @@ extension SSHNetworkService {
             Log.ssh.warning("[RECOVERY] single reconnect failed: \(error.localizedDescription, privacy: .public)")
             return false
         }
+    }
+
+    /// Shared tail of a successful reconnect attempt: publish .connected so
+    /// the observer consumes pendingPTY and rebinds pane + output stream.
+    func markReconnected() {
+        connectionState = .connected
+        stateContinuation.yield(.connected)
+        lastSuccessfulConnectionAt = Date()
     }
 }

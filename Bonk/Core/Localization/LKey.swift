@@ -233,6 +233,7 @@ enum LKey: String, CaseIterable {
     case deleteConfirm = "delete_confirm"
     case unGrouped = "ungrouped"
     case noModelContext = "no_model_context"
+    case hostMissing = "host_missing"
     case credentialsNotSet = "credentials_not_set"
     case invalidPort = "invalid_port"
     case sftpConnectFailed = "sftp_connect_failed"
@@ -251,10 +252,10 @@ enum LKey: String, CaseIterable {
     case noSnippets = "no_snippets", insertSnippet = "insert_snippet"
     case snippetCategory = "snippet_category"
 
-    // Command
+    /// Command
     case command
 
-    // Sessions
+    /// Sessions
     case noSessions = "no_sessions"
 
     // Port Forwarding
@@ -315,7 +316,7 @@ enum LKey: String, CaseIterable {
     case type, remote
 
     /// Terminal context menu / UI
-    case paste, linked = "linked", unsplit = "unsplit"
+    case paste, linked, unsplit
     case color, enter, folder
     case cancelled, run
     case sendFile = "send_file"
@@ -430,7 +431,7 @@ enum LKey: String, CaseIterable {
     case reconnectBaseDelay = "reconnect_base_delay"
 
     // SSH Certificate
-    case certificate = "certificate"
+    case certificate
     case pasteCertificate = "paste_certificate"
     case selectFile = "select_file"
     case pasteManually = "paste_manually"
@@ -443,16 +444,16 @@ enum LKey: String, CaseIterable {
     case keyType = "key_type"
     case passphraseOptional = "passphrase_optional"
     case passphraseHint = "passphrase_hint"
-    case fingerprint = "fingerprint"
+    case fingerprint
     case publicKey = "public_key"
     case privateKeyWarning = "private_key_warning"
     case privateKeyOverwriteWarning = "private_key_overwrite_warning"
     case copyPublicKey = "copy_public_key"
     case copyPrivateKey = "copy_private_key"
     case saveToFile = "save_to_file"
-    case generate = "generate"
+    case generate
     case generateNew = "generate_new"
-    case copied = "copied"
+    case copied
     case sshKeys = "ssh_keys"
     case detectedKeyType = "detected_key_type"
 
@@ -472,7 +473,7 @@ enum LKey: String, CaseIterable {
     case keyNotFound = "key_not_found"
     case secureEnclaveKeyGenerated = "secure_enclave_key_generated"
     case addPublicKeyToServer = "add_public_key_to_server"
-    case change = "change"
+    case change
 
     // SSH Connection Errors
     case sshErrorForwardingDisabled = "ssh_error_forwarding_disabled"
@@ -501,7 +502,7 @@ enum LKey: String, CaseIterable {
     case sshPolicyNoExpiry = "ssh_policy_no_expiry"
 
     // Workspaces
-    case workspaces = "workspaces"
+    case workspaces
     case saveWorkspace = "save_workspace"
     case loadWorkspace = "load_workspace"
     case deleteWorkspace = "delete_workspace"
@@ -513,45 +514,45 @@ enum LKey: String, CaseIterable {
     case saveCurrentAsWorkspace = "save_current_as_workspace"
     case deleteWorkspaceConfirm = "delete_workspace_confirm"
     case workspaceCount = "workspace_count"
-    case ago = "ago"
-    case template = "template"
-    case templates = "templates"
-    case all = "all"
+    case ago
+    case template
+    case templates
+    case all
     case saveAsTemplate = "save_as_template"
     case templateDescription = "template_description"
 
     // Quake Terminal
     case quakeEnabled = "quake_enabled"
     case accessibilityPermission = "accessibility_permission"
-    case granted = "granted"
+    case granted
     case grantPermission = "grant_permission"
     case toggleHotkey = "toggle_hotkey"
     case windowSettings = "window_settings"
-    case height = "height"
-    case width = "width"
+    case height
+    case width
     case autoHideOnFocusLoss = "auto_hide_on_focus_loss"
     case escKeyBehavior = "esc_key_behavior"
     case quakeTerminal = "quake_terminal"
     case connectFromMainWindow = "connect_from_main_window"
 
     // Recording (asciicast v2)
-    case recording = "recording"
+    case recording
     case startRecording = "start_recording"
     case stopRecording = "stop_recording"
     case showRecordings = "show_recordings"
-    case recordings = "recordings"
+    case recordings
     case noRecordings = "no_recordings"
     case noRecordingsHint = "no_recordings_hint"
-    case play = "play"
-    case replay = "replay"
-    case pause = "pause"
-    case share = "share"
+    case play
+    case replay
+    case pause
+    case share
     case deleteRecording = "delete_recording"
     case showLess = "show_less"
     case showAll = "show_all"
-    case rec = "rec"
+    case rec
 
-    case zmodem = "zmodem"
+    case zmodem
     case zmodemDesc = "zmodem_desc"
 
     // General — Recording / SSH Config (GeneralSettingsView)
@@ -594,22 +595,22 @@ enum LKey: String, CaseIterable {
     case noGuests = "no_guests"
     case grantControl = "grant_control"
     case revokeControl = "revoke_control"
-    case discovered = "discovered"
+    case discovered
     case noHostsFound = "no_hosts_found"
     case manualIP = "manual_ip"
     case liveTerminal = "live_terminal"
     case waitingForOutput = "waiting_for_output"
     case requestControl = "request_control"
     case typeCommand = "type_command"
-    case send = "send"
+    case send
     case connectedPeers = "connected_peers"
     case hostControls = "host_controls"
     case driver
     case teamHostHint = "team_host_hint"
     case controlRequestTitle = "control_request_title"
     case controlRequestMessage = "control_request_message"
-    case allow = "allow"
-    case deny = "deny"
+    case allow
+    case deny
     case teamVisitorMode = "team_visitor_mode"
     case shareHostsToGuest = "share_hosts_to_guest"
     case teamMaxGuests = "team_max_guests"
@@ -631,10 +632,15 @@ enum LKey: String, CaseIterable {
     case hideDetails = "hide_details"
 
     // Sidebar badges
-    case sidebar = "sidebar"
+    case sidebar
     case showEngineBadge = "show_engine_badge"
     case showCustomTag = "show_custom_tag"
     case customTag = "custom_tag"
     case customTagPlaceholder = "custom_tag_placeholder"
     case customTagHint = "custom_tag_hint"
+
+    // Help menu (macOS menu bar)
+    case reportIssue = "report_issue"
+    case bonkWebsite = "bonk_website"
+    case supportBonk = "support_bonk"
 }

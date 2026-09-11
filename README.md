@@ -2,7 +2,7 @@
 
 > A polished, native macOS SSH terminal client for daily server work.
 
-[中文文档](README.zh-CN.md) · [Releases](https://github.com/iamJoyLiam/Bonk/releases) · [Homepage](https://iamjoyliam.github.io/Bonk/)
+[中文文档](README.zh-CN.md) · [Releases](https://github.com/iamJoyLiam/Bonk/releases) · [Homepage](https://bonk-terminal.pages.dev/)
 
 ![macOS](https://img.shields.io/badge/macOS-15%2B-black) ![Swift](https://img.shields.io/badge/Swift-6-orange) ![Platform](https://img.shields.io/badge/Platform-macOS-lightgrey) ![Release](https://img.shields.io/github/v/release/iamJoyLiam/Bonk)
 

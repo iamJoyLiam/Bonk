@@ -46,7 +46,11 @@ final class SessionManager {
     }
 
     func setRetryState(_ state: AuthRetryState, for tabID: UUID) {
-        if case .idle = state { authRetryStates.removeValue(forKey: tabID) } else { authRetryStates[tabID] = state }
+        if case .idle = state {
+            authRetryStates.removeValue(forKey: tabID)
+        } else {
+            authRetryStates[tabID] = state
+        }
     }
 
     func isShowingDialog(for tabID: UUID) -> Bool {
@@ -54,7 +58,11 @@ final class SessionManager {
     }
 
     func setShowingDialog(_ showing: Bool, for tabID: UUID) {
-        if showing { showingAuthDialogs.insert(tabID) } else { showingAuthDialogs.remove(tabID) }
+        if showing {
+            showingAuthDialogs.insert(tabID)
+        } else {
+            showingAuthDialogs.remove(tabID)
+        }
     }
 
     // MARK: - Auth Retry Sheet (P1 bug 2/3/4)
@@ -369,7 +377,9 @@ final class SessionManager {
                         await connectTab(tab, ephemeralResult: reuse, resetAuthRetry: false)
                     }
                     if case .failed = tab.session?.phase {
-                    } else { setRetryState(.idle, for: tab.id) }
+                    } else {
+                        setRetryState(.idle, for: tab.id)
+                    }
                     return
                 }
                 if retryState(for: tab.id) == .cleanupDone {
@@ -387,7 +397,11 @@ final class SessionManager {
                 } else {
                     await connectTab(tab, ephemeralResult: result, resetAuthRetry: false)
                 }
-                if case .failed = tab.session?.phase { transientAuthResults[tab.id] = nil } else { setRetryState(.idle, for: tab.id) }
+                if case .failed = tab.session?.phase {
+                    transientAuthResults[tab.id] = nil
+                } else {
+                    setRetryState(.idle, for: tab.id)
+                }
                 return
             }
             if let svc = error as? SSHServiceError, case .hostKeyMismatch = svc {
@@ -463,13 +477,27 @@ final class SessionManager {
         var cipher: [String] = []
         let mac: [String] = []
         // Specific hints in message
-        if msg.contains("diffie-hellman-group1-sha1") { kex.append("diffie-hellman-group1-sha1") }
-        if msg.contains("diffie-hellman-group14-sha1") { kex.append("diffie-hellman-group14-sha1") }
-        if msg.contains("group-exchange") { kex.append("diffie-hellman-group-exchange-sha1") }
-        if msg.contains("ssh-rsa") { hostKey.append("ssh-rsa") }
-        if msg.contains("ssh-dss") { hostKey.append("ssh-dss") }
-        if msg.contains("aes128-cbc") { cipher.append("aes128-cbc") }
-        if msg.contains("3des") { cipher.append("3des-cbc") }
+        if msg.contains("diffie-hellman-group1-sha1") {
+            kex.append("diffie-hellman-group1-sha1")
+        }
+        if msg.contains("diffie-hellman-group14-sha1") {
+            kex.append("diffie-hellman-group14-sha1")
+        }
+        if msg.contains("group-exchange") {
+            kex.append("diffie-hellman-group-exchange-sha1")
+        }
+        if msg.contains("ssh-rsa") {
+            hostKey.append("ssh-rsa")
+        }
+        if msg.contains("ssh-dss") {
+            hostKey.append("ssh-dss")
+        }
+        if msg.contains("aes128-cbc") {
+            cipher.append("aes128-cbc")
+        }
+        if msg.contains("3des") {
+            cipher.append("3des-cbc")
+        }
         // Generic fallback for legacy bastion (covers H3C / old OpenSSH)
         if kex.isEmpty && hostKey.isEmpty && cipher.isEmpty {
             // Minimal legacy bundle — only added for this host via Compatibility path
@@ -506,7 +534,9 @@ final class SessionManager {
 
     func disconnectTab(_ id: UUID) async {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
-        if let svc = tab.session?.sshService { await svc.setAuthFailureHandler(nil) }
+        if let svc = tab.session?.sshService {
+            await svc.setAuthFailureHandler(nil)
+        }
         await sessionStore.disconnect(id)
         // Close all pane PTY sessions and clean up cached views
         for paneID in tab.paneIDs {
@@ -555,9 +585,17 @@ final class SessionManager {
 
     func resolveConnectionConfig(for tab: TerminalTab, session: TerminalSession) -> SSHConnectionConfig? {
         let hostItem = tab.hostItem
-        guard modelContext != nil else {
+        guard let ctx = modelContext else {
             session.connectionState = .disconnected
             session.errorMessage = I18n.shared.t(.noModelContext)
+            return nil
+        }
+        // The tab can outlive its store row (deleted elsewhere, torn-down
+        // context). Touching a dangling object traps inside generated
+        // accessors — fail with a message instead of crashing.
+        guard (ctx.registeredModel(for: hostItem.persistentModelID) as HostItem?) != nil else {
+            session.connectionState = .disconnected
+            session.errorMessage = I18n.shared.t(.hostMissing)
             return nil
         }
         switch SSHConnectionConfigBuilder.makeConfig(for: hostItem) {
@@ -602,7 +640,9 @@ final class SessionManager {
             onError: { [weak self, weak tab] message in
                 Task { @MainActor in
                     guard let self, let tab else { return }
-                    if case .authentication = session.failureReason { return }
+                    if case .authentication = session.failureReason {
+                        return
+                    }
                     let displayForPhase = SSHErrorMessageParser.explain(message, host: tab.hostItem.host, jumpHost: tab.hostItem.jumpHostRef?.host) ?? message
                     let isAuth = Self.isAuthFailure(message) || Self.isAuthFailure(displayForPhase)
                     guard isAuth else {

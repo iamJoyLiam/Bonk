@@ -113,6 +113,7 @@ struct BonkApp: App {
                 ConnectionMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
                 AIMenuCommands(i18n: i18n, shortcutManager: shortcutManager)
                 TeamMenuCommands(i18n: i18n)
+                HelpMenuCommands(i18n: i18n)
             }
         #endif
     }
@@ -136,8 +137,11 @@ struct BonkApp: App {
             CommandGroup(after: .newItem) {
                 Button(i18n.t(.newTerminal)) {
                     Task { @MainActor in
-                        if let coordinator = BonkAppDelegate.shared?.coordinator { coordinator.showAddHostSheet = true }
-                        else { NotificationCenter.default.post(name: .terminalNewTab, object: nil) }
+                        if let coordinator = BonkAppDelegate.shared?.coordinator {
+                            coordinator.showAddHostSheet = true
+                        } else {
+                            NotificationCenter.default.post(name: .terminalNewTab, object: nil)
+                        }
                     }
                 }
                 .keyboardShortcut(newTerminalShortcut.key, modifiers: newTerminalShortcut.modifiers)
@@ -208,8 +212,11 @@ struct BonkApp: App {
                 Divider()
                 Button(i18n.t(.sftpBrowser)) {
                     Task { @MainActor in
-                        if let workspace = BonkAppDelegate.shared?.workspace { workspace.toggleSFTPWindow() }
-                        else { NotificationCenter.default.post(name: .toggleSFTP, object: nil) }
+                        if let workspace = BonkAppDelegate.shared?.workspace {
+                            workspace.toggleSFTPWindow()
+                        } else {
+                            NotificationCenter.default.post(name: .toggleSFTP, object: nil)
+                        }
                     }
                 }
                 .keyboardShortcut(sftpBrowserShortcut.key, modifiers: sftpBrowserShortcut.modifiers)
@@ -230,6 +237,7 @@ struct BonkApp: App {
                 }
             }
         }
+
         @MainActor static func toggleRecording(coordinator: ToolbarCoordinator?) async {
             guard let coordinator, let tab = coordinator.sessionManager.activeTab else { return }
             let paneID: UUID = FocusManager.shared.focusedPaneID ?? tab.activePaneID ?? tab.layout.activePaneID
@@ -256,20 +264,27 @@ struct BonkApp: App {
                 }
                 Button(i18n.t(.disconnect)) {
                     Task { @MainActor in
-                        if let sessionManager = BonkAppDelegate.shared?.sessionManager, let id = sessionManager.activeTabID { await sessionManager.disconnectTab(id) }
+                        if let sessionManager = BonkAppDelegate.shared?.sessionManager, let id = sessionManager.activeTabID {
+                            await sessionManager.disconnectTab(id)
+                        }
                     }
                 }
                 Button(i18n.t(.reconnect)) {
                     Task { @MainActor in
-                        if let sessionManager = BonkAppDelegate.shared?.sessionManager, let id = sessionManager.activeTabID { await sessionManager.reconnectTab(id) }
+                        if let sessionManager = BonkAppDelegate.shared?.sessionManager, let id = sessionManager.activeTabID {
+                            await sessionManager.reconnectTab(id)
+                        }
                     }
                 }
                 .keyboardShortcut(reconnectShortcut.key, modifiers: reconnectShortcut.modifiers)
                 Divider()
                 Button(i18n.t(.snippets)) {
                     Task { @MainActor in
-                        if let coordinator = BonkAppDelegate.shared?.coordinator { coordinator.showSnippets() }
-                        else { NotificationCenter.default.post(name: .init("BonkShowSnippets"), object: nil) }
+                        if let coordinator = BonkAppDelegate.shared?.coordinator {
+                            coordinator.showSnippets()
+                        } else {
+                            NotificationCenter.default.post(name: .init("BonkShowSnippets"), object: nil)
+                        }
                     }
                 }
                 Button(i18n.t(.commandHistory)) {
@@ -299,8 +314,11 @@ struct BonkApp: App {
             CommandMenu(i18n.t(.menuAI)) {
                 Button(i18n.t(.aiAssistant)) {
                     Task { @MainActor in
-                        if let workspace = BonkAppDelegate.shared?.workspace { workspace.toggleRightPanel(.ai) }
-                        else { NotificationCenter.default.post(name: .toggleAIChat, object: nil) }
+                        if let workspace = BonkAppDelegate.shared?.workspace {
+                            workspace.toggleRightPanel(.ai)
+                        } else {
+                            NotificationCenter.default.post(name: .toggleAIChat, object: nil)
+                        }
                     }
                 }
                 .keyboardShortcut(aiAssistantShortcut.key, modifiers: aiAssistantShortcut.modifiers)
@@ -328,6 +346,34 @@ struct BonkApp: App {
             }
         }
     }
+
+    private struct HelpMenuCommands: Commands {
+        let i18n: I18n
+        var body: some Commands {
+            // Apple's recommended approach: replace the default Help menu (which otherwise
+            // shows only a search field / unavailable placeholder).
+            // All three entries just open external links in the browser — no FocusedValue
+            // dependency, unaffected by the AppKit-owned main window.
+            CommandGroup(replacing: .help) {
+                Button {
+                    SupportLinks.open(SupportLinks.newIssue)
+                } label: {
+                    Label(i18n.t(.reportIssue), systemImage: "exclamationmark.bubble")
+                }
+                Button {
+                    SupportLinks.open(SupportLinks.website)
+                } label: {
+                    Label(i18n.t(.bonkWebsite), systemImage: "globe")
+                }
+                Divider()
+                Button {
+                    SupportLinks.open(SupportLinks.supportPage)
+                } label: {
+                    Label(i18n.t(.supportBonk), systemImage: "heart")
+                }
+            }
+        }
+    }
 #endif
 
 #if os(macOS)
@@ -341,7 +387,9 @@ struct BonkApp: App {
         }
 
         private func ensurePreferences() {
-            if allPreferences.isEmpty { modelContext.insert(UserPreferences()) }
+            if allPreferences.isEmpty {
+                modelContext.insert(UserPreferences())
+            }
         }
 
         var body: some View {

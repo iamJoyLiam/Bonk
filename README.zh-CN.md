@@ -2,7 +2,7 @@
 
 > 一款精致的 macOS 原生 SSH 终端客户端，为日常服务器工作而生。
 
-[English README](README.md) · [Releases 发布页](https://github.com/iamJoyLiam/Bonk/releases) · [主页](https://iamjoyliam.github.io/Bonk/)
+[English README](README.md) · [Releases 发布页](https://github.com/iamJoyLiam/Bonk/releases) · [主页](https://bonk-terminal.pages.dev/)
 
 ![macOS](https://img.shields.io/badge/macOS-15%2B-black) ![Swift](https://img.shields.io/badge/Swift-6-orange) ![Platform](https://img.shields.io/badge/Platform-macOS-lightgrey) ![Release](https://img.shields.io/github/v/release/iamJoyLiam/Bonk)
 
