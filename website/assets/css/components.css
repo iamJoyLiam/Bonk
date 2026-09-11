@@ -1261,3 +1261,33 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* Support page: three payment cards */
+.support-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  max-width: 1020px;
+  margin: 0 auto;
+  align-items: stretch;
+}
+
+.support-grid .dl-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.support-grid .dl-card .btn {
+  margin-top: auto;
+  align-self: center;
+}
+
+/* Support page QR codes */
+.support-qr {
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+  margin: var(--space-4) auto 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}

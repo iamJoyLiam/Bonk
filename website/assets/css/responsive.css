@@ -74,6 +74,10 @@
     grid-template-columns: 1fr;
   }
 
+  .support-grid {
+    grid-template-columns: 1fr;
+  }
+
   .sig-grid {
     grid-template-columns: 1fr;
   }
