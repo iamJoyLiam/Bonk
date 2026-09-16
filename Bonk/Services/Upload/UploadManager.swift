@@ -3,25 +3,54 @@
 //  Bonk
 //
 //  Manages file upload operations with AsyncStream progress.
+//  Upload state is tracked per-tab (keyed by TerminalTab.id) so concurrent
+//  uploads to different tabs never clobber each other's progress overlay.
 //
 
 import Foundation
 import os.log
+
+/// Upload overlay state for a single tab.
+struct UploadState {
+    var message: String?
+    var progress: Double?
+}
 
 /// Manages file upload operations.
 @Observable @MainActor
 final class UploadManager {
     static let shared = UploadManager()
 
-    /// Message displayed in the drop overlay.
-    var dropMessage: String?
-
-    /// Upload progress (0.0 - 1.0).
-    var uploadProgress: Double?
+    /// Per-tab upload state. Views must only read the entry for their own tab.
+    var states: [UUID: UploadState] = [:]
 
     private let logger = Logger(subsystem: "com.bonk", category: "Upload")
 
     private init() {}
+
+    // MARK: - Per-tab accessors
+
+    /// Message displayed in the drop overlay for the given tab.
+    func message(for tabID: UUID) -> String? {
+        states[tabID]?.message
+    }
+
+    /// Upload progress (0.0 - 1.0) for the given tab.
+    func progress(for tabID: UUID) -> Double? {
+        states[tabID]?.progress
+    }
+
+    func setMessage(_ message: String?, for tabID: UUID) {
+        var state = states[tabID] ?? UploadState()
+        state.message = message
+        states[tabID] = state
+    }
+
+    private func setProgress(_ progress: Double?, for tabID: UUID) {
+        var state = states[tabID] ?? UploadState()
+        state.progress = progress
+        states[tabID] = state
+    }
 
     // MARK: - Public API
 
@@ -34,7 +63,7 @@ final class UploadManager {
         }
 
         guard tab.session?.sshService != nil else {
-            showMessage(i18n.t(.noSSHConnection), i18n: i18n)
+            showMessage(i18n.t(.noSSHConnection), for: tab.id, i18n: i18n)
             return true
         }
 
@@ -51,7 +80,7 @@ final class UploadManager {
             await performUpload(url, tab: tab, uploadDir: uploadDir, i18n: i18n)
             return true
         case nil:
-            showMessage(i18n.t(.sftpConnectFailed), i18n: i18n)
+            showMessage(i18n.t(.sftpConnectFailed), for: tab.id, i18n: i18n)
             return true
         }
     }
@@ -63,8 +92,9 @@ final class UploadManager {
         uploadDir: String? = nil,
         i18n: I18n
     ) async {
+        let tabID = tab.id
         guard tab.session?.sshService != nil else {
-            showMessage(i18n.t(.noSSHConnection), i18n: i18n)
+            showMessage(i18n.t(.noSSHConnection), for: tabID, i18n: i18n)
             return
         }
 
@@ -79,28 +109,30 @@ final class UploadManager {
         let filename = url.lastPathComponent
         let remotePath = (targetDir.hasSuffix("/") ? targetDir : targetDir + "/") + filename
 
-        // Show upload message with progress
-        dropMessage = "\(filename) → \(targetDir)"
-        uploadProgress = 0
+        // Show upload message with progress (scoped to this tab only)
+        setMessage("\(filename) → \(targetDir)", for: tabID)
+        setProgress(0, for: tabID)
 
         do {
             // Consume AsyncStream for progress updates
             let stream = sftp.upload(url, to: remotePath)
             for try await progress in stream {
-                uploadProgress = progress
+                // Stale guard: another upload may have taken over this tab's slot
+                guard message(for: tabID)?.hasPrefix(filename) == true else { return }
+                setProgress(progress, for: tabID)
             }
 
             // Success
-            uploadProgress = 1.0
-            dropMessage = i18n.tr(.uploadSuccess, args: filename, targetDir)
+            setProgress(1.0, for: tabID)
+            setMessage(i18n.tr(.uploadSuccess, args: filename, targetDir), for: tabID)
             try? await Task.sleep(for: .seconds(1))
-            clearState()
+            clear(tabID: tabID)
         } catch {
             logger.error("Upload failed: \(error.localizedDescription)")
-            uploadProgress = nil
-            dropMessage = i18n.tr(.uploadFailed, args: error.localizedDescription)
+            setProgress(nil, for: tabID)
+            setMessage(i18n.tr(.uploadFailed, args: error.localizedDescription), for: tabID)
             try? await Task.sleep(for: .seconds(3))
-            clearState()
+            clear(tabID: tabID)
         }
     }
 
@@ -150,25 +182,24 @@ final class UploadManager {
             let message = session.sftpErrorMessage.map {
                 i18n.tr(.sftpConnectFailed, args: $0)
             } ?? i18n.t(.sftpConnectFailed)
-            showMessage(message, i18n: i18n)
+            showMessage(message, for: tab.id, i18n: i18n)
             return nil
         }
     }
 
-    /// Show a temporary message.
-    private func showMessage(_ message: String, i18n _: I18n) {
-        dropMessage = message
+    /// Show a temporary message scoped to one tab.
+    private func showMessage(_ message: String, for tabID: UUID, i18n _: I18n) {
+        setMessage(message, for: tabID)
         Task {
             try? await Task.sleep(for: .seconds(2))
-            if dropMessage == message {
-                dropMessage = nil
+            if self.message(for: tabID) == message {
+                self.setMessage(nil, for: tabID)
             }
         }
     }
 
-    /// Clear upload state.
-    private func clearState() {
-        dropMessage = nil
-        uploadProgress = nil
+    /// Clear upload state for one tab. Other tabs are untouched.
+    func clear(tabID: UUID) {
+        states[tabID] = nil
     }
 }

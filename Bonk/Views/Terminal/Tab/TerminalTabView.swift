@@ -56,7 +56,8 @@ struct TerminalTabView: View {
                 if !isShowing {
                     if let tab = sessionManager.activeTab,
                        let paneID = tab.activePaneID,
-                       let cached = TerminalViewCache.shared.retrieve(paneID) {
+                       let cached = TerminalViewCache.shared.retrieve(paneID)
+                    {
                         cached.view.clearSearch()
                     }
                     searchText = ""
@@ -77,7 +78,7 @@ struct TerminalTabView: View {
             .terminalShortcuts(sessionManager)
             .renameAlert(i18n: i18n, renamingTab: $renamingTab, renameText: $renameText)
             .aiEnableAlert(i18n: i18n, isPresented: $showAIEnableAlert)
-            .dropOverlay(message: uploadManagerBinding, uploadProgress: uploadManager.uploadProgress)
+            .dropOverlay(message: uploadMessageBinding, uploadProgress: activeUploadProgress)
             .copyOverlay(message: $copyMessage)
             .overwriteDialog(
                 i18n: i18n,
@@ -90,7 +91,9 @@ struct TerminalTabView: View {
                 Task { await uploadManager.performUpload(url, tab: tab, i18n: i18n) }
             }
             .onChange(of: renamingTab?.id) { _, _ in
-                if let tab = renamingTab { renameText = tab.title }
+                if let tab = renamingTab {
+                    renameText = tab.title
+                }
             }
             .paneNavigation(navigatePane)
             .onReceive(NotificationCenter.default.publisher(for: .requestTerminalSelection)) { _ in
@@ -119,7 +122,9 @@ struct TerminalTabView: View {
         ZStack {
             mainContent
             aiFloatingBubble
-            if showSearch { searchBar }
+            if showSearch {
+                searchBar
+            }
         }
     }
 
@@ -153,7 +158,8 @@ struct TerminalTabView: View {
             currentMatch = 0
             if let tab = sessionManager.activeTab,
                let paneID = tab.activePaneID,
-               let cached = TerminalViewCache.shared.retrieve(paneID) {
+               let cached = TerminalViewCache.shared.retrieve(paneID)
+            {
                 cached.view.clearSearch()
             }
             return
@@ -172,8 +178,7 @@ struct TerminalTabView: View {
               let cached = TerminalViewCache.shared.retrieve(paneID),
               let command = notification.userInfo?[AITerminalMirror.commandKey] as? String,
               let raw = notification.userInfo?[AITerminalMirror.statusKey] as? String,
-              let status = AgentMessage.CommandStatus(rawValue: raw)
-        else { return }
+              let status = AgentMessage.CommandStatus(rawValue: raw) else { return }
 
         let duration = notification.userInfo?[AITerminalMirror.durationKey] as? Double
         let output = notification.userInfo?[AITerminalMirror.outputKey] as? String
@@ -218,8 +223,24 @@ struct TerminalTabView: View {
         }
     }
 
-    private var uploadManagerBinding: Binding<String?> {
-        Binding(get: { uploadManager.dropMessage }, set: { uploadManager.dropMessage = $0 })
+    /// Upload overlay reads only the active tab's state, so an upload in
+    /// tab A never shows its progress bar in tab B.
+    private var uploadMessageBinding: Binding<String?> {
+        Binding(
+            get: {
+                guard let tab = sessionManager.activeTab else { return nil }
+                return uploadManager.message(for: tab.id)
+            },
+            set: {
+                guard let tab = sessionManager.activeTab else { return }
+                uploadManager.setMessage($0, for: tab.id)
+            }
+        )
+    }
+
+    private var activeUploadProgress: Double? {
+        guard let tab = sessionManager.activeTab else { return nil }
+        return uploadManager.progress(for: tab.id)
     }
 
     private var overwriteAlwaysBinding: Binding<Bool> {
@@ -240,7 +261,9 @@ extension TerminalTabView {
 
     private var mainContent: some View {
         VStack(spacing: 0) {
-            if !sessionManager.tabs.isEmpty { tabBar }
+            if !sessionManager.tabs.isEmpty {
+                tabBar
+            }
             if let activeTab = sessionManager.activeTab {
                 TabLayoutView(
                     tab: activeTab, sessionManager: sessionManager,
@@ -304,17 +327,22 @@ extension TerminalTabView {
         switch direction {
         case .forward:
             found = cached.view.findNext(searchText)
-            if found { currentMatch = currentMatch >= matchCount ? 1 : currentMatch + 1 }
+            if found {
+                currentMatch = currentMatch >= matchCount ? 1 : currentMatch + 1
+            }
         case .backward:
             found = cached.view.findPrevious(searchText)
-            if found { currentMatch = currentMatch <= 1 ? matchCount : currentMatch - 1 }
+            if found {
+                currentMatch = currentMatch <= 1 ? matchCount : currentMatch - 1
+            }
         }
     }
 
     private func updateMatchCount(_ term: String) {
         guard let tab = sessionManager.activeTab,
               let paneID = tab.activePaneID,
-              let cached = TerminalViewCache.shared.retrieve(paneID) else {
+              let cached = TerminalViewCache.shared.retrieve(paneID) else
+        {
             matchCount = 0; return
         }
         let summary = cached.view.searchMatchSummary(term)

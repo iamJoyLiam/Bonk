@@ -48,14 +48,15 @@ struct PaneTerminalView: View {
                 .animation(.easeInOut(duration: 0.15), value: isDragOver)
         }
         .overlay(alignment: .bottom) {
-            // Upload progress overlay
-            if let msg = uploadManager.dropMessage {
+            // Upload progress overlay — scoped to this tab so another
+            // tab's upload never leaks its progress bar in here.
+            if let msg = uploadManager.message(for: tab.id) {
                 VStack(spacing: 4) {
                     Text(msg)
                         .font(.caption)
                         .lineLimit(1)
 
-                    if let progress = uploadManager.uploadProgress {
+                    if let progress = uploadManager.progress(for: tab.id) {
                         ProgressView(value: progress)
                             .progressViewStyle(.linear)
                             .frame(maxWidth: AppStyle.size200)
@@ -169,7 +170,6 @@ struct PaneTerminalView: View {
                 onDragStateChange: handleDragStateChange
             )
             .allowsHitTesting(true)
-
         }
         .overlay(alignment: .topTrailing) {
             TeamStatusOverlay(relay: teamRelay)
@@ -264,8 +264,7 @@ struct PaneTerminalView: View {
     @MainActor
     private func updateTeamSubscription() {
         guard let cached = TerminalViewCache.shared.retrieve(paneState.id),
-              let coordinator = cached.coordinator as? ContainerTerminalCoordinator
-        else { return }
+              let coordinator = cached.coordinator as? ContainerTerminalCoordinator else { return }
         // Only the shared pane (host) broadcasts; guest never broadcasts
         if teamRelay.isHosting, let shared = teamRelay.sharedSessionID, shared.paneID == paneState.id {
             coordinator.updateTeamSubscription(sessionID: shared)

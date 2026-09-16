@@ -5,9 +5,9 @@
 //  Context menu, drop indicator, and drag handlers for PaneTerminalView.
 //
 
+import os.log
 import SwiftTerm
 import SwiftUI
-import os.log
 
 extension PaneTerminalView {
     // MARK: - Context Menu
@@ -170,14 +170,16 @@ extension PaneTerminalView {
     func handleFileDrop(urls: [URL]) {
         guard tab.session?.connectionState.isConnected == true else { return }
 
-        for url in urls {
-            Task {
-                // Clear cached CWD to force fresh path detection
-                tab.currentDirectory = nil
+        // One Task, sequential uploads: concurrent performUpload calls on the
+        // same tab would clobber each other's per-tab progress slot.
+        Task {
+            // Clear cached CWD to force fresh path detection
+            tab.currentDirectory = nil
 
-                // Small delay to ensure terminal has processed any cd commands
-                try? await Task.sleep(for: .milliseconds(100))
+            // Small delay to ensure terminal has processed any cd commands
+            try? await Task.sleep(for: .milliseconds(100))
 
+            for url in urls {
                 // Use overwrite setting from preferences
                 let overwriteAlways = preferences.sftpOverwriteAlways ?? false
                 let uploaded = await uploadManager.handleDrop(
@@ -187,10 +189,13 @@ extension PaneTerminalView {
                     i18n: i18n
                 )
                 if !uploaded {
-                    // File exists, show overwrite dialog
+                    // File exists, show overwrite dialog (serializes the rest:
+                    // remaining files wait until the user answers the dialog
+                    // and the overwrite path calls performUpload directly)
                     pendingUploadURL = url
                     pendingUploadTab = tab
                     showOverwriteAlert = true
+                    return
                 }
             }
         }
@@ -244,7 +249,9 @@ extension PaneTerminalView {
 
     // MARK: - Recording
 
-    var recordingLabel: String { isRecording ? i18n.t(.stopRecording) : i18n.t(.startRecording) }
+    var recordingLabel: String {
+        isRecording ? i18n.t(.stopRecording) : i18n.t(.startRecording)
+    }
 
     func toggleRecording() async {
         let currently = await SessionRecordingService.shared.isRecording(paneID: paneState.id)
@@ -286,5 +293,4 @@ extension PaneTerminalView {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
-
 }
