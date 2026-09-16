@@ -99,7 +99,9 @@ import SwiftUI
 
         /// Connect output stream with retry mechanism.
         /// Retries until both the PTY session and the terminal view exist
-        /// (increasing delay, ~30s window), then attaches the output stream.
+        /// (increasing delay, ~21s window: transport timeout is 10s plus a
+        /// possible compatibility-fallback round, so the view must outwait
+        /// a slow-but-legit connect), then attaches the output stream.
         /// FIX: cancel previous retry task when a new connection starts (wrong→correct password)
         /// FIX: defer @State mutation to next run loop to avoid "Modifying state during view update" (#112).
         private func connectOutputStreamWithRetry() {
@@ -108,17 +110,23 @@ import SwiftUI
             Task { @MainActor in
                 self.retryTask?.cancel()
                 self.retryTask = Task { @MainActor in
-                    let maxRetries = 10
+                    let maxRetries = 16
                     var delay: UInt64 = 100
 
                     for attempt in 0 ..< maxRetries {
-                        if Task.isCancelled { Log.session.info("[PTY-RETRY] cancelled at attempt \(attempt + 1)"); return }
+                        if Task.isCancelled {
+                            Log.session.info("[PTY-RETRY] cancelled at attempt \(attempt + 1)"); return
+                        }
                         // If tab already failed/disconnected, no PTY will ever appear — stop retrying
                         if let state = tab.session?.connectionState, case .disconnected = state {
-                            if let phase = tab.session?.phase, case .failed = phase { Log.session.info("[PTY-RETRY] tab failed, abort retry"); return }
+                            if let phase = tab.session?.phase, case .failed = phase {
+                                Log.session.info("[PTY-RETRY] tab failed, abort retry"); return
+                            }
                         }
                         try? await Task.sleep(for: .milliseconds(Double(delay)))
-                        if Task.isCancelled { return }
+                        if Task.isCancelled {
+                            return
+                        }
 
                         guard let ptySession = paneState.ptySession else {
                             Log.session.info("[PTY-RETRY] No PTY session yet, retry \(attempt + 1)/\(maxRetries)")
@@ -141,7 +149,9 @@ import SwiftUI
                                 onBytesProcessed: result.onBytesProcessed,
                                 to: paneState.id
                             )
-                            if let coord = cached.coordinator as? ContainerTerminalCoordinator { coord.hostItem = tab.hostItem }
+                            if let coord = cached.coordinator as? ContainerTerminalCoordinator {
+                                coord.hostItem = tab.hostItem
+                            }
                             Log.session.info("[PTY-RETRY] Connected output stream on attempt \(attempt + 1)")
                             return
                         }
@@ -326,7 +336,8 @@ import SwiftUI
             TerminalViewCache.shared.store(tabID: paneID, parentTabID: tabID, view: terminal, coordinator: coordinator)
             // If this pane is already the shared one (restore path), subscribe team immediately
             if TeamRelay.shared.isHosting, TeamRelay.shared.sharedSessionID?.paneID == paneID,
-               let sid = TeamRelay.shared.sharedSessionID {
+               let sid = TeamRelay.shared.sharedSessionID
+            {
                 Task { @MainActor in coordinator.updateTeamSubscription(sessionID: sid) }
             }
             return cached
@@ -370,7 +381,8 @@ import SwiftUI
             // Ensure team subscription matches current shared pane (covers restore + cache reuse)
             if let tCoord = cached.coordinator as? ContainerTerminalCoordinator {
                 if TeamRelay.shared.isHosting, TeamRelay.shared.sharedSessionID?.paneID == paneID,
-                   let sid = TeamRelay.shared.sharedSessionID {
+                   let sid = TeamRelay.shared.sharedSessionID
+                {
                     Task { @MainActor in tCoord.updateTeamSubscription(sessionID: sid) }
                 } else {
                     Task { @MainActor in tCoord.updateTeamSubscription(sessionID: nil) }

@@ -6,6 +6,37 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.4.0</title>
+            <pubDate>Wed, 16 Sep 2026 13:54:00 +0800</pubDate>
+            <sparkle:version>20264000</sparkle:version>
+            <sparkle:shortVersionString>2026.4.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Changes
+
+- Added quick connect to saved hosts from Siri, Spotlight, and Shortcuts, including a `bonk://` URL scheme.
+- Fixed upload progress bars leaking across terminal tabs; concurrent uploads now track separately.
+- Hardened SSH reconnection after sleep and network changes, and stopped lingering sessions after closing tabs.
+- Localized Team alerts and dialogs in English.
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.4.0/Bonk-2026.4.0-arm64.dmg"
+                length="24137640"
+                type="application/octet-stream"
+                sparkle:edSignature="t9+02fqvNt6ojXZnBiyaxI6W4dxvB9dynyID7g0txa44HwYnWycAVsZvJ+WDqQdcVDXDKuFoOQAh30T3SLvFDw=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.4.0/Bonk-2026.4.0-x86_64.dmg"
+                length="25164034"
+                type="application/octet-stream"
+                sparkle:edSignature="VEGxyx15hh2/tsy8LSIXNAq+ruGIHPI8rAFw/IpdUjPJKXAxwdL7aaA5Mlw66E/EEOU45WlpBG4Np0xYQJlRAg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.3.2</title>
             <pubDate>Fri, 11 Sep 2026 13:30:00 +0800</pubDate>
             <sparkle:version>20263002</sparkle:version>

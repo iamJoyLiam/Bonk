@@ -616,6 +616,13 @@ enum LKey: String, CaseIterable {
     case teamMaxGuests = "team_max_guests"
     case teamMaxGuestsDesc = "team_max_guests_desc"
     case exportHosts = "export_hosts"
+    case controlRevokedTitle = "control_revoked_title"
+    case controlRevokedDefault = "control_revoked_default"
+    case peerDisconnectedTitle = "peer_disconnected_title"
+    case shareHostsTitle = "share_hosts_title"
+    case shareHostsMessage = "share_hosts_message"
+    case gotIt = "got_it"
+    case merge
 
     // Command Blocks (Warp-style)
     case blocks

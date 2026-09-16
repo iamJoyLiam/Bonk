@@ -597,5 +597,12 @@
   "custom_tag_hint": "Badge shown next to host name in sidebar. Tag appears before engine badge when both are enabled.",
   "report_issue": "Report an issue",
   "bonk_website": "Bonk website",
-  "support_bonk": "Support Bonk"
+  "support_bonk": "Support Bonk",
+  "control_revoked_title": "Control Revoked",
+  "control_revoked_default": "The host has revoked control. Request permission again to continue.",
+  "peer_disconnected_title": "Disconnected",
+  "share_hosts_title": "Received Shared Hosts",
+  "share_hosts_message": "The host shared %d hosts: %@. Merge them into your local list?",
+  "got_it": "Got it",
+  "merge": "Merge"
 }

@@ -242,6 +242,47 @@ final class SessionManager {
         await connectTab(tab, passwordOverride: nil, resetAuthRetry: false)
     }
 
+    /// Set up a fresh session + generation for a connect, tearing down any
+    /// previous service first. Prunes dead mux sockets so a wedged master
+    /// can't hang the new `ssh` on mux attach.
+    private func prepareConnectSession(_ tab: TerminalTab) async -> (session: TerminalSession, generation: UUID) {
+        let session = sessionStore.session(for: tab)
+        tab.session = session
+
+        // New generation for full-chain isolation
+        let generation = UUID()
+        session.generation = generation
+        session.cancelAuthFailureWaiter()
+
+        // Disconnect old service to avoid concurrent ssh/askpass
+        if let oldService = session.sshService {
+            await oldService.disconnect()
+        }
+
+        session.connectionState = .connecting
+        session.phase = .resolving
+        // Prune dead mux sockets first: a wedged master makes the new `ssh`
+        // hang on mux attach until ConnectTimeout. No-op without socket files.
+        await Self.pruneDeadControlSockets(
+            username: tab.hostItem.username, host: tab.hostItem.host,
+            port: UInt16(max(1, min(tab.hostItem.port, 65535)))
+        )
+        session.errorMessage = nil
+        session.failureReason = nil
+        return (session, generation)
+    }
+
+    /// Tear down a just-built service when its tab vanished mid-connect, so no
+    /// ghost connection (keepalive/supervisor/reconnect) outlives the tab.
+    /// Returns false when the caller must abort.
+    private func ensureTabAlive(_ tab: TerminalTab, service: SSHNetworkService) async -> Bool {
+        guard !Task.isCancelled, tabs.contains(where: { $0.id == tab.id }) else {
+            await service.disconnect()
+            return false
+        }
+        return true
+    }
+
     /// Connect a tab. `passwordOverride` supplies a freshly typed password
     /// (from the auth-failure dialog) that replaces the stored credential
     /// for this attempt; on success it is persisted back (vault credential
@@ -262,28 +303,13 @@ final class SessionManager {
         defer { sessionStore.markConnected(tab.id) }
         defer { connectTasks[tab.id] = nil }
 
-        let session = sessionStore.session(for: tab)
-        tab.session = session
-
-        // New generation for full-chain isolation
-        let generation = UUID()
-        session.generation = generation
-        session.cancelAuthFailureWaiter()
-
-        // Disconnect old service to avoid concurrent ssh/askpass
-        if let oldService = session.sshService {
-            await oldService.disconnect()
-        }
-
-        session.connectionState = .connecting
-        session.phase = .resolving
-        session.errorMessage = nil
-        session.failureReason = nil
+        let (session, generation) = await prepareConnectSession(tab)
 
         guard let setup = await resolveConnectionSetup(
             for: tab, session: session, generation: generation,
             passwordOverride: passwordOverride, ephemeralResult: ephemeralResult
         ) else { return }
+        guard await ensureTabAlive(tab, service: setup.service) else { return }
         var service = setup.service
         var effectiveConfig = setup.effectiveConfig
         let config = setup.config
@@ -350,7 +376,7 @@ final class SessionManager {
             }
             Log.session.info("[CONNECT] PTY session established successfully")
         } catch {
-            Log.session.error("[CONNECT] Connection failed: \(error.localizedDescription)")
+            Log.session.error("[CONNECT] Connection failed: \(error.localizedDescription, privacy: .public)")
             guard tabs.contains(where: { $0.id == tab.id }) else { return }
             let rawError = error.localizedDescription
             let displayError = SSHErrorMessageParser.explain(rawError, host: config.host, jumpHost: config.jumpHost?.host) ?? rawError
@@ -512,25 +538,7 @@ final class SessionManager {
         return req.isEmpty ? nil : req
     }
 
-    /// Remove stale ControlMaster sockets for a host so a reconnection starts
-    /// clean. The sockets are named /tmp/bonk-ssh-{user}-{host}-{port}-*.sock;
-    /// deleting one whose master has exited is harmless (OpenSSH recreates it).
-    static func cleanupHostControlSockets(username: String, host: String, port: UInt16) {
-        let safeUser = username.replacingOccurrences(of: "/", with: "_")
-        let safeHost = host.replacingOccurrences(of: "/", with: "_")
-        let pattern = "/tmp/bonk-ssh-\(safeUser)-\(safeHost)-\(port)-*.sock"
-        var globResult = glob_t()
-        let flags = GLOB_NOSORT | GLOB_ERR
-        if glob(pattern, flags, nil, &globResult) == 0 {
-            for index in 0 ..< globResult.gl_pathc {
-                if let pathPointer = globResult.gl_pathv[Int(index)] {
-                    let path = String(cString: pathPointer)
-                    try? FileManager.default.removeItem(atPath: path)
-                }
-            }
-            globfree(&globResult)
-        }
-    }
+    // NOTE: mux-socket pruning lives in SessionManager+ControlSockets.swift.
 
     func disconnectTab(_ id: UUID) async {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }

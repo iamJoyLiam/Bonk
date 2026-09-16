@@ -597,5 +597,12 @@
   "custom_tag_hint": "显示在侧边栏主机名称旁的小标签。两者都开启时，标签在前、引擎在后。",
   "report_issue": "报告问题",
   "bonk_website": "Bonk 官网",
-  "support_bonk": "支持 Bonk"
+  "support_bonk": "支持 Bonk",
+  "control_revoked_title": "控制权已收回",
+  "control_revoked_default": "主持人已收回控制权，需重新请求授权",
+  "peer_disconnected_title": "连接已断开",
+  "share_hosts_title": "收到共享主机",
+  "share_hosts_message": "主持人分享了 %d 台主机：%@，是否合并到本地？",
+  "got_it": "知道了",
+  "merge": "合并"
 }

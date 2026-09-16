@@ -39,19 +39,31 @@ struct ContentView: View {
         private var workspaceBindable: Bindable<WorkspaceManager> {
             Bindable(workspace)
         }
+
         private var controlRevokedBinding: Binding<Bool> {
             Binding(
                 get: {
-                    if workspace.isTeamWindowOpen { return false }
+                    if workspace.isTeamWindowOpen {
+                        return false
+                    }
                     return teamRelay.controlRevokedNotice != nil
                 },
-                set: { if !$0 { teamRelay.controlRevokedNotice = nil } }
+                set: {
+                    if !$0 {
+                        teamRelay.controlRevokedNotice = nil
+                    }
+                }
             )
         }
+
         private var peerDisconnectedBinding: Binding<Bool> {
             Binding(
                 get: { teamRelay.peerDisconnectedNotice != nil },
-                set: { if !$0 { teamRelay.peerDisconnectedNotice = nil } }
+                set: {
+                    if !$0 {
+                        teamRelay.peerDisconnectedNotice = nil
+                    }
+                }
             )
         }
     #endif
@@ -106,6 +118,7 @@ struct ContentView: View {
     }
 
     // MARK: - macOS Layout (detail pane; sidebar/inspector live in
+
     // MainSplitViewController)
 
     #if os(macOS)
@@ -119,182 +132,37 @@ struct ContentView: View {
             )
             .background(colorScheme.isTransparent ? Color.clear : Color(nsColor: colorScheme.background.nsColor))
             .clipped()
-            // SFTP independent window
-            .onChange(of: workspace.isSFTPWindowOpen) { _, isOpen in
-                if isOpen {
-                    openSFTPWindow()
-                } else {
-                    closeSFTPWindow()
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .toggleSFTP)) { _ in
-                workspace.toggleSFTPWindow()
-            }
-            // Team live terminal independent window (like SFTP)
-            .onChange(of: workspace.isTeamWindowOpen) { _, isOpen in
-                if isOpen {
-                    openTeamWindow()
-                } else {
-                    closeTeamWindow()
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("BonkShowTeam"))) { _ in
-                toolbarCoordinator.showTeam = true
-            }
-            .onChange(of: teamRelay.isConnected) { _, isConnected in
-                if isConnected, teamRelay.hostPeerID != nil {
-                    if !workspace.isTeamWindowOpen { workspace.isTeamWindowOpen = true }
-                    if toolbarCoordinator.showTeam { toolbarCoordinator.showTeam = false }
-                }
-            }
-            .onChange(of: teamRelay.hostPeerID) { _, hostPeerID in
-                if teamRelay.isConnected, hostPeerID != nil {
-                    if !workspace.isTeamWindowOpen { workspace.isTeamWindowOpen = true }
-                    if toolbarCoordinator.showTeam { toolbarCoordinator.showTeam = false }
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .terminalNewTab)) { _ in
-                handleNewTabShortcut()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("BonkToggleFind"))) { note in
-                if let show = note.userInfo?["show"] as? Bool { showTerminalSearch = show }
-                else { showTerminalSearch.toggle() }
-                // Keep AppStore in sync if this was triggered elsewhere
-                AppStore.shared.showSearch = showTerminalSearch
-            }
-            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("BonkCloseTab"))) { _ in
-                if let id = sessionManager.activeTabID { Task { await sessionManager.closeTab(id) } }
-            }
-            .onChange(of: preferences.autoSyncSSHConfig) { _, isOn in
-                if isOn == true { SSHConfigWatcher.shared.start() } else { SSHConfigWatcher.shared.stop() }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: SSHConfigWatcher.didChangeNotification)) { _ in
-                if preferences.autoSyncSSHConfig == true {
-                    toolbarCoordinator.showUnifiedImport = true
-                }
-            }
-            // Global Team control request — host sees popup even when Team sheet not open
-            .alert(
-                i18n.t(.controlRequestTitle),
-                isPresented: Binding(
-                    get: { teamRelay.pendingControlRequest != nil },
-                    set: { if !$0 { teamRelay.pendingControlRequest = nil } }
-                )
-            ) {
-                Button(i18n.t(.allow)) {
-                    if let req = teamRelay.pendingControlRequest {
-                        teamRelay.grantControl(to: req.peerID)
-                    }
-                }
-                Button(i18n.t(.deny), role: .cancel) {
-                    teamRelay.pendingControlRequest = nil
-                }
-            } message: {
-                if let req = teamRelay.pendingControlRequest {
-                    Text(i18n.tr(.controlRequestMessage, args: req.displayName))
-                }
-            }
-            .alert(
-                i18n.t(.connectionError),
-                isPresented: Binding(
-                    get: {
-                        guard teamRelay.lastError != nil else { return false }
-                        return !teamRelay.isConnected && !teamRelay.isHosting
-                    },
-                    set: { if !$0 { teamRelay.lastError = nil } }
-                )
-            ) {
-                Button(i18n.t(.ok)) { teamRelay.lastError = nil }
-            } message: {
-                Text(teamRelay.lastError ?? "")
-            }
-            .alert("控制权已收回", isPresented: controlRevokedBinding) {
-                Button("知道了") { teamRelay.controlRevokedNotice = nil }
-            } message: {
-                Text(teamRelay.controlRevokedNotice ?? "主持人已收回控制权，需重新请求授权")
-            }
-            .alert("连接已断开", isPresented: peerDisconnectedBinding) {
-                Button("知道了") { teamRelay.peerDisconnectedNotice = nil }
-            } message: {
-                Text(teamRelay.peerDisconnectedNotice ?? "")
-            }
-            .alert(
-                "收到共享主机",
-                isPresented: Binding(
-                    get: { teamRelay.pendingShareHosts != nil },
-                    set: { if !$0 { teamRelay.pendingShareHosts = nil } }
-                )
-            ) {
-                Button("合并") {
-                    if let hosts = teamRelay.pendingShareHosts {
-                        Task { await importSharedHosts(hosts) }
-                        teamRelay.pendingShareHosts = nil
-                    }
-                }
-                Button("取消", role: .cancel) { teamRelay.pendingShareHosts = nil }
-            } message: {
-                let count = teamRelay.pendingShareHosts?.count ?? 0
-                let names = teamRelay.pendingShareHosts?.map(\.name).joined(separator: "、") ?? ""
-                Text("主持人分享了 \(count) 台主机：\(names)，是否合并到本地？")
-            }
-            // Sheets
-            .sheet(isPresented: $toolbarCoordinator.showAddHostSheet) {
-                NavigationStack {
-                    AddHostSheet(defaultPort: preferences.defaultPort) { host in
-                        modelContext.insert(host)
-                    }
-                    .environment(i18n)
-                }
-            }
-            .sheet(isPresented: workspaceBindable.isSerialPortPresented) {
-                SerialPortView(isPresented: workspaceBindable.isSerialPortPresented) { config in
-                    sessionManager.openSerialTab(config: config)
-                }
-                .environment(i18n)
-            }
-            .sheet(item: $sessionManager.pendingSerialSave) { config in
-                NavigationStack {
-                    SerialPortSaveSheet(config: config)
-                        .environment(i18n)
-                }
-            }
-            .sheet(isPresented: workspaceBindable.isPortForwardingPresented) {
-                PortForwardView(
-                    isPresented: workspaceBindable.isPortForwardingPresented,
-                    sshService: sessionManager.activeTab?.session?.sshService,
-                    session: sessionManager.activeTab?.session
-                )
-                .environment(i18n)
-            }
-            .sheet(isPresented: $toolbarCoordinator.showUnifiedImport) {
-                UnifiedImportView(modelContext: modelContext)
-            }
-            .sheet(isPresented: $toolbarCoordinator.showSSHConfigImport) {
-                SSHConfigImportView(modelContext: modelContext)
-            }
-            .sheet(isPresented: $toolbarCoordinator.showTabbyImport) {
-                TabbyImportView(modelContext: modelContext)
-            }
-            .sheet(isPresented: $toolbarCoordinator.showKeyGenerator) {
-                SSHKeyGeneratorView()
-            }
-            .sheet(isPresented: $toolbarCoordinator.showWorkspaces) {
-                WorkspaceListView(sessionManager: sessionManager)
-            }
-            .sheet(isPresented: $toolbarCoordinator.showRecordings) {
-                NavigationStack {
-                    RecordingListView()
-                }
-            }
-            .sheet(isPresented: $toolbarCoordinator.showJumpHosts) {
-                JumpHostView(isPresented: $toolbarCoordinator.showJumpHosts)
-            }
-            .sheet(isPresented: $toolbarCoordinator.showTriggers) {
-                NavigationStack { TriggerSettingsView().environment(i18n) }
-            }
-            .sheet(isPresented: $toolbarCoordinator.showTeam) {
-                TeamSheet(relay: TeamRelay.shared, discovery: TeamDiscoveryService())
-            }
+            // Split from one giant chain into separate checking units (Xcode 27
+            // cannot type-check the full chain as a single expression).
+            // Ordering and behavior are unchanged.
+            .modifier(TerminalSyncModifiers(
+                workspace: workspace,
+                toolbarCoordinator: toolbarCoordinator,
+                teamRelay: teamRelay,
+                appStore: appStore,
+                sessionManager: sessionManager,
+                showTerminalSearch: $showTerminalSearch,
+                autoSyncSSHConfig: preferences.autoSyncSSHConfig,
+                onSFTPWindowChange: { $0 ? openSFTPWindow() : closeSFTPWindow() },
+                onTeamWindowChange: { $0 ? openTeamWindow() : closeTeamWindow() },
+                onNewTab: handleNewTabShortcut
+            ))
+            .modifier(TeamAlertModifiers(
+                i18n: i18n,
+                teamRelay: teamRelay,
+                controlRevoked: controlRevokedBinding,
+                peerDisconnected: peerDisconnectedBinding,
+                onMergeShareHosts: importSharedHosts
+            ))
+            .modifier(TerminalSheetModifiers(
+                toolbarCoordinator: toolbarCoordinator,
+                workspace: workspace,
+                sessionManager: sessionManager,
+                i18n: i18n,
+                defaultPort: preferences.defaultPort,
+                modelContext: modelContext
+            ))
+            // (alerts + sheets now live in TeamAlertModifiers / TerminalSheetModifiers)
         }
     #endif
 
@@ -413,13 +281,15 @@ struct ContentView: View {
         for exp in hosts {
             // deduplicate by host+port+username
             let exists = (try? modelContext.fetch(FetchDescriptor<HostItem>()))?.contains(where: { $0.host == exp.host && $0.port == exp.port && $0.username == exp.username }) ?? false
-            if exists { continue }
+            if exists {
+                continue
+            }
             let authType = AuthType(rawValue: exp.authType) ?? .password
             let host = HostItem(name: exp.name, host: exp.host, port: exp.port, username: exp.username, authType: authType)
             if let credExp = exp.credential, let secret = credExp.secret, !secret.isEmpty {
                 // SecureEnclave cannot be shared
                 if authType == .secureEnclave { /* skip secret */ } else {
-                    let type: CredentialType = CredentialType(rawValue: credExp.type) ?? .password
+                    let type = CredentialType(rawValue: credExp.type) ?? .password
                     if type != .apiKey {
                         let cred = Credential(name: credExp.name, type: type, username: credExp.username)
                         cred.storeSecret(secret)
@@ -429,8 +299,11 @@ struct ContentView: View {
                 }
             }
             if let secret = exp.credential?.secret, exp.credential == nil, !secret.isEmpty {
-                if authType == .password { host.storePassword(secret) }
-                else if authType == .privateKey { host.storePrivateKey(secret) }
+                if authType == .password {
+                    host.storePassword(secret)
+                } else if authType == .privateKey {
+                    host.storePrivateKey(secret)
+                }
             }
             modelContext.insert(host)
         }
@@ -515,14 +388,20 @@ struct ContentView: View {
         func body(content: Content) -> some View {
             content
                 .focusedSceneValue(\.menuCloseTab) {
-                    if let id = sessionManager.activeTabID { Task { await sessionManager.closeTab(id) } }
+                    if let id = sessionManager.activeTabID {
+                        Task { await sessionManager.closeTab(id) }
+                    }
                 }
                 .focusedSceneValue(\.menuNewTerminal) { toolbarCoordinator.showAddHostSheet = true }
                 .focusedSceneValue(\.menuDisconnect) {
-                    if let id = sessionManager.activeTabID { Task { await sessionManager.disconnectTab(id) } }
+                    if let id = sessionManager.activeTabID {
+                        Task { await sessionManager.disconnectTab(id) }
+                    }
                 }
                 .focusedSceneValue(\.menuReconnect) {
-                    if let id = sessionManager.activeTabID { Task { await sessionManager.reconnectTab(id) } }
+                    if let id = sessionManager.activeTabID {
+                        Task { await sessionManager.reconnectTab(id) }
+                    }
                 }
                 .focusedSceneValue(\.menuSplitHorizontal) { sessionManager.splitHorizontal() }
                 .focusedSceneValue(\.menuSplitVertical) { sessionManager.splitVertical() }

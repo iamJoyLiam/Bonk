@@ -23,8 +23,7 @@ struct HostEntity: AppEntity {
     static var typeDisplayRepresentation: TypeDisplayRepresentation {
         TypeDisplayRepresentation(name: LocalizedStringResource(
             "Host",
-            table: "AppIntents",
-            bundle: .main
+            table: "AppIntents"
         ))
     }
 
@@ -106,18 +105,17 @@ struct HostQuery: EntityQuery, EntityStringQuery {
 /// "Connect to a saved host with Bonk" — Siri, Spotlight, and Shortcuts.
 struct ConnectHostIntent: AppIntent {
     static var title: LocalizedStringResource {
-        LocalizedStringResource("Connect to Host", table: "AppIntents", bundle: .main)
+        LocalizedStringResource("Connect to Host", table: "AppIntents")
     }
 
     static var description: IntentDescription? {
         IntentDescription(LocalizedStringResource(
             "Open a terminal tab and connect to one of your saved hosts.",
-            table: "AppIntents",
-            bundle: .main
+            table: "AppIntents"
         ))
     }
 
-    @Parameter(title: LocalizedStringResource("Host", table: "AppIntents", bundle: .main))
+    @Parameter(title: LocalizedStringResource("Host", table: "AppIntents"))
     var host: HostEntity
 
     func perform() async throws -> some IntentResult {
@@ -150,7 +148,7 @@ struct BonkShortcuts: AppShortcutsProvider {
                 "Connect to \(\.$host) with \(.applicationName)",
                 "用\(.applicationName)连接\(\.$host)",
             ],
-            shortTitle: LocalizedStringResource("Connect Host", table: "AppIntents", bundle: .main),
+            shortTitle: LocalizedStringResource("Connect Host", table: "AppIntents"),
             systemImageName: "terminal"
         )
     }

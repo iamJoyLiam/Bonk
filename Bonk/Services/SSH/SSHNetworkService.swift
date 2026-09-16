@@ -159,7 +159,11 @@ public actor SSHNetworkService {
         self.config = config
         pendingFailure = nil
         // Forward generation if present else new
-        if let gen = config.generation { currentAttemptID = gen } else { currentAttemptID = UUID() }
+        if let gen = config.generation {
+            currentAttemptID = gen
+        } else {
+            currentAttemptID = UUID()
+        }
         // — 60s gate  authentication ，/Ephemeral
         await supervisor.reset()
         Log.ssh.info("[CONNECT] new attemptID=\(self.currentAttemptID.uuidString.prefix(8), privacy: .public) host=\(config.host, privacy: .public) gen=\(config.generation?.uuidString.prefix(8) ?? "nil", privacy: .public)")
@@ -196,6 +200,9 @@ public actor SSHNetworkService {
                 try await self.establishConnection(config: config)
             }
 
+            // Closed while connecting: don't resurrect a ghost session that
+            // outlives its tab (keepalive/supervisor would run forever).
+            try Task.checkCancellation()
             Log.ssh.info("[CONNECT] establishConnection returned successfully")
 
             guard let client else {
@@ -218,7 +225,7 @@ public actor SSHNetworkService {
             configureSupervisorForCurrentConnection()
             startWakeMonitoring()
         } catch {
-            Log.ssh.error("[CONNECT] Connection failed: \(error.localizedDescription)")
+            Log.ssh.error("[CONNECT] Connection failed: \(error.localizedDescription, privacy: .public)")
 
             client = nil
             try? await sftpNativeClient?.close()
@@ -480,7 +487,9 @@ public actor SSHNetworkService {
 
     /// Whether the connection state stream is already showing reconnecting.
     private var isReconnecting: Bool {
-        if case .reconnecting = connectionState { return true }
+        if case .reconnecting = connectionState {
+            return true
+        }
         return false
     }
 
@@ -552,7 +561,9 @@ public actor SSHNetworkService {
             self.pendingFailure = failure
             self.stopWakeMonitoring()
             // SessionManager  sheet reconnect PTY
-            if let handler = self.onAuthFailureHandler { handler(failure) }
+            if let handler = self.onAuthFailureHandler {
+                handler(failure)
+            }
         case let .hostKey(hostKeyMessage):
             Log.ssh.info("[SSH_FAILURE] type=hostKey backend=\(self.usesOpenSSHTransport ? "openssh" : "citadel", privacy: .public) msg=\(hostKeyMessage.prefix(80), privacy: .public)")
             Log.ssh.info("[RECOVERY_GATE] blocked=true reason=hostKey")
