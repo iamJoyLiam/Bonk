@@ -276,6 +276,11 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         #if os(macOS)
             OpenSSHBackend.cleanupOrphanedMuxes()
         #endif
+        // Snapshot open tabs for post-update restore (consumed only when
+        // the Sparkle delegate flagged this terminate as an update relaunch).
+        if let sm = sessionManager {
+            SessionRestore.snapshot(tabs: sm.tabs, activeTabID: sm.activeTabID)
+        }
     }
 
     func applicationShouldHandleReopen(_: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

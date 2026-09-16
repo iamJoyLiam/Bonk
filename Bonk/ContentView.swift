@@ -101,6 +101,8 @@ struct ContentView: View {
                 toolbarCoordinator.modelContext = modelContext
                 // Setup Quake terminal - reuse main container (AGENTS.md: never change storeName, single container)
                 setupQuakeTerminal(with: quakeController, sessionManager: sessionManager, i18n: i18n, modelContainer: modelContext.container)
+                // Post-update relaunch: reopen pre-update tabs (one-shot, no-op otherwise).
+                SessionRestore.restoreIfNeeded(sessionManager: sessionManager, context: modelContext)
             }
             .alert(i18n.t(.connectionError), isPresented: $sessionManager.showError) {
                 Button(i18n.t(.ok)) {}
