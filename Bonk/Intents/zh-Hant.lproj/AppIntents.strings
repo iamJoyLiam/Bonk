@@ -1,0 +1,6 @@
+/* Localized versions of AppIntents strings */
+"Connect to Host" = "連接到主機";
+"Open a terminal tab and connect to one of your saved hosts." = "開啟終端標籤頁並連線到已儲存的主機。";
+"Host" = "主機";
+"Connect Host" = "連接主機";
+"Connected to %@." = "已連線到 %@。";

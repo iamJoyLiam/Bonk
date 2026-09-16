@@ -284,4 +284,35 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         return true
     }
+
+    // MARK: - URL Handling (bonk://connect?host=<uuid>)
+
+    /// Entry point for the bonk:// URL scheme — used by ConnectHostIntent
+    /// (Siri / Spotlight / Shortcuts) and any future deep link. Additive:
+    /// unknown hosts/paths are ignored, existing flow is untouched.
+    func application(_: NSApplication, open urls: [URL]) {
+        for url in urls {
+            handleIncomingURL(url)
+        }
+    }
+
+    private func handleIncomingURL(_ url: URL) {
+        guard url.scheme == "bonk",
+              url.host == "connect",
+              let idString = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+              .queryItems?.first(where: { $0.name == "host" })?.value,
+              let id = UUID(uuidString: idString) else { return }
+
+        Task { @MainActor [weak self] in
+            guard let self, let sessionManager = self.sessionManager else { return }
+            // Prefer the UI's context; fall back to a fresh one (e.g. cold
+            // launch straight into a connect URL before any view appears).
+            let context = sessionManager.modelContext ?? ModelContext(BonkApp.sharedModelContainer)
+            let descriptor = FetchDescriptor<HostItem>(predicate: #Predicate { $0.id == id })
+            guard let host = try? context.fetch(descriptor).first else { return }
+            NSApp.activate(ignoringOtherApps: true)
+            self.mainWindow?.makeKeyAndOrderFront(nil)
+            sessionManager.openHost(host)
+        }
+    }
 }

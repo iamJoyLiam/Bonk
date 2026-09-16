@@ -1,0 +1,6 @@
+/* Localized versions of AppIntents strings */
+"Connect to Host" = "连接到主机";
+"Open a terminal tab and connect to one of your saved hosts." = "打开终端标签页并连接到已保存的主机。";
+"Host" = "主机";
+"Connect Host" = "连接主机";
+"Connected to %@." = "已连接到 %@。";

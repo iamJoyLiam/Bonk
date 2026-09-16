@@ -12,6 +12,17 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>JoyLiam.Bonk</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>bonk</string>
+			</array>
+		</dict>
+	</array>
 	<key>SUFeedURL</key>
 	<string>https://raw.githubusercontent.com/iamJoyLiam/Bonk/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
