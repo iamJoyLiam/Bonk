@@ -58,7 +58,7 @@ import SwiftUI
                     } else {
                         connectingView
                     }
-                case .reconnecting(let attempt, let max):
+                case let .reconnecting(attempt, max):
                     reconnectingView(attempt: attempt, max: max)
                 }
             }
@@ -88,7 +88,9 @@ import SwiftUI
                 return
             }
             let cached = TerminalViewCache.shared.retrieve(activeTab.id)
-            if let coord = cached?.coordinator as? ContainerTerminalCoordinator { coord.hostItem = activeTab.hostItem }
+            if let coord = cached?.coordinator as? ContainerTerminalCoordinator {
+                coord.hostItem = activeTab.hostItem
+            }
             if cached?.outputStream == nil {
                 Log.ui.info("[TerminalContainer] connectOutputStreamIfNeeded: creating output stream for tab \(activeTab.id.uuidString.prefix(8))")
                 let result = ptySession.makeOutputStream(host: activeTab.hostItem)
@@ -97,7 +99,9 @@ import SwiftUI
                     onBytesProcessed: result.onBytesProcessed,
                     to: activeTab.id
                 )
-                if let coord = cached?.coordinator as? ContainerTerminalCoordinator { coord.hostItem = activeTab.hostItem }
+                if let coord = cached?.coordinator as? ContainerTerminalCoordinator {
+                    coord.hostItem = activeTab.hostItem
+                }
             } else if let coordinator = cached?.coordinator as? ContainerTerminalCoordinator,
                       coordinator.feedTask == nil,
                       let stream = cached?.outputStream,
@@ -177,6 +181,8 @@ import SwiftUI
             context.coordinator.lastTabID = activeTabID
 
             if let oldID = oldTabID, let oldCached = TerminalViewCache.shared.retrieve(oldID) {
+                // 切走即清残留选区：残留选区是跨终端污染的另一半病根。
+                oldCached.view.selectNone()
                 oldCached.view.removeFromSuperview()
                 if let oldCoord = oldCached.coordinator as? ContainerTerminalCoordinator {
                     oldCoord.removeCopyOnSelectMonitor()
@@ -330,7 +336,9 @@ import SwiftUI
         nonisolated(unsafe) var hostItem: HostItem?
         /// Access engine only on MainActor; creates lazily.
         @MainActor func getOrCreateEngine() -> TerminalEngine {
-            if let existingEngine = terminalEngine { return existingEngine }
+            if let existingEngine = terminalEngine {
+                return existingEngine
+            }
             let newEngine = TerminalEngine(displaySource: AppKitDisplaySource.shared)
             newEngine.onResize = { [weak self] cols, rows in self?.onResize?(cols, rows) }
             terminalEngine = newEngine
@@ -409,16 +417,22 @@ import SwiftUI
         // MARK: - Copy on Select
 
         func installCopyOnSelectMonitor() {
-            guard copyOnSelect else { return }
+            guard copyOnSelect, mouseUpMonitor == nil else { return }
             mouseUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { [weak self] event in
                 guard let self, let terminal = terminalView else { return event }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    if terminal.selectionActive {
-                        if let selectedText = terminal.getSelection(), !selectedText.isEmpty {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(selectedText, forType: .string)
-                            NotificationCenter.default.post(name: .showCopyMessage, object: nil)
-                        }
+                // 只处理落点在自己 bounds 内的松开：分屏多监听器/重复安装时互不干扰。
+                // AppKit 坐标：locationInWindow + from:nil 即窗口坐标，可直接 convert。
+                guard let win = terminal.window, win == event.window else { return event }
+                let loc = terminal.convert(event.locationInWindow, from: nil)
+                guard terminal.bounds.contains(loc) else { return event }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                    // 监听已拆除（切走/关闭/设置关闭）则不再写剪贴板，堵 0.1s 竞态。
+                    guard let self, self.mouseUpMonitor != nil else { return }
+                    guard let terminal = self.terminalView, terminal.selectionActive else { return }
+                    if let selectedText = terminal.getSelection(), !selectedText.isEmpty {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(selectedText, forType: .string)
+                        NotificationCenter.default.post(name: .showCopyMessage, object: nil)
                     }
                 }
                 return event

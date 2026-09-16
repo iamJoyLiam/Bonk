@@ -248,6 +248,8 @@ import SwiftUI
             context.coordinator.lastPaneID = paneID
 
             if let oldID = oldPaneID, let oldCached = TerminalViewCache.shared.retrieve(oldID) {
+                // 同单页桥：切走即清残留选区，防止旧文本被后续点击重新写剪贴板。
+                oldCached.view.selectNone()
                 oldCached.view.removeFromSuperview()
             }
 
