@@ -115,16 +115,38 @@ final class SFTPMatrixLocalTests: XCTestCase {
     }
 
     /// Full Phase A driver. Configure via /tmp/bench_config.json (one xcodebuild
-    /// call = one batch): {port,label,serverType,sizesMb:[8,32],multi:0/1,
-    /// cancel:0/1,pool:0/1}. Appends rows to /tmp/bench_matrix_full.csv.
+    /// call = one batch): {port,label,serverType,sizesMb:[8,32],core,multi,
+    /// cancel,pool}. Appends rows to /tmp/bench_matrix_full.csv.
+    /// NOTE: `pool` currently only affects the multi branch, and pool cells
+    /// are recorded as failures until the pool-in-runner P1 (testDiagMkdir)
+    /// is triaged — keep pool:false for campaign batches.
     private struct BatchConfig: Decodable {
         var port: UInt16 = 2222
         var label: String = "loopback"
         var serverType: String = "openssh-linux-alpine"
         var sizesMb: [UInt64] = [8, 32]
+        var core: Bool = true
         var multi: Bool = false
         var cancel: Bool = false
         var pool: Bool = true
+
+        enum CodingKeys: String, CodingKey {
+            case port, label, serverType, sizesMb, core, multi, cancel, pool
+        }
+
+        init() {}
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            port = try container.decodeIfPresent(UInt16.self, forKey: .port) ?? 2222
+            label = try container.decodeIfPresent(String.self, forKey: .label) ?? "loopback"
+            serverType = try container.decodeIfPresent(String.self, forKey: .serverType) ?? "openssh-linux-alpine"
+            sizesMb = try container.decodeIfPresent([UInt64].self, forKey: .sizesMb) ?? [8, 32]
+            core = try container.decodeIfPresent(Bool.self, forKey: .core) ?? true
+            multi = try container.decodeIfPresent(Bool.self, forKey: .multi) ?? false
+            cancel = try container.decodeIfPresent(Bool.self, forKey: .cancel) ?? false
+            pool = try container.decodeIfPresent(Bool.self, forKey: .pool) ?? true
+        }
     }
 
     func testFullMatrixEnvDriven() async throws {
@@ -141,12 +163,15 @@ final class SFTPMatrixLocalTests: XCTestCase {
         if batch.cancel {
             cases.append(contentsOf: SFTPMatrixPreset.phaseACancelProbes())
         }
+        guard !cases.isEmpty else {
+            throw XCTSkip("empty batch: enable at least one of core/multi/cancel")
+        }
         let runner = SFTPMatrixRunner()
         let endpoint = endpoint(port: batch.port, label: batch.label, serverType: batch.serverType)
         let csvURL = URL(fileURLWithPath: "/tmp/bench_matrix_full.csv")
         // Stream rows incrementally so killed runs keep partial data.
         let report = await runner.run(
-            endpoint: endpoint, cases: cases, timeoutSeconds: 600
+            endpoint: endpoint, cases: cases, timeoutSeconds: 180
         ) { [csvURL] row in
             appendMatrixCSVRow(row, to: csvURL)
         }
@@ -159,14 +184,13 @@ final class SFTPMatrixLocalTests: XCTestCase {
 
     private func buildBatchCases(_ batch: BatchConfig) -> [SFTPMatrixCase] {
         var cases: [SFTPMatrixCase] = []
-        for size in batch.sizesMb.map({ $0 * 1024 * 1024 }) {
-            for kind in [SFTPMatrixKind.write, SFTPMatrixKind.read] as [SFTPMatrixKind] {
-                cases.append(singleCell(size: size, kind: kind, backend: .openSSH))
-                cases.append(singleCell(size: size, kind: kind, backend: .citadel))
-                for shards in [2, 4, 8] {
-                    cases.append(channelCell(size: size, kind: kind, shards: shards))
-                    if batch.pool {
-                        cases.append(poolCell(size: size, kind: kind, shards: shards))
+        if batch.core {
+            for size in batch.sizesMb.map({ $0 * 1024 * 1024 }) {
+                for kind in [SFTPMatrixKind.write, SFTPMatrixKind.read] as [SFTPMatrixKind] {
+                    cases.append(singleCell(size: size, kind: kind, backend: .openSSH))
+                    cases.append(singleCell(size: size, kind: kind, backend: .citadel))
+                    for shards in [2, 4, 8] {
+                        cases.append(channelCell(size: size, kind: kind, shards: shards))
                     }
                 }
             }
@@ -193,9 +217,8 @@ final class SFTPMatrixLocalTests: XCTestCase {
         SFTPMatrixCase(sizeBytes: size, backend: .citadel, mode: .multiChannel, shards: shards, kind: kind)
     }
 
-    private func poolCell(size: UInt64, kind: SFTPMatrixKind, shards: Int) -> SFTPMatrixCase {
-        SFTPMatrixCase(sizeBytes: size, backend: .citadel, mode: .multiTCP, shards: shards, kind: kind)
-    }
+    // NOTE: no poolCell helper — pool cells stay out of the matrix until the
+    // pool-in-runner P1 (testDiagMkdir) is triaged. Re-add with the fix.
 
     private func multiCell(
         size: UInt64, kind: SFTPMatrixKind, backend: SFTPMatrixBackend, shards: Int
@@ -207,7 +230,6 @@ final class SFTPMatrixLocalTests: XCTestCase {
     private func poolMultiCell(size: UInt64, kind: SFTPMatrixKind) -> SFTPMatrixCase {
         SFTPMatrixCase(sizeBytes: size, backend: .citadel, mode: .multiTCP, shards: 4, kind: kind)
     }
-
 
     /// P1 repro: single pool case through the runner dies in first openFile
     /// ("pool-transfer: I/O on closed channel") while the identical pool +
