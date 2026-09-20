@@ -26,6 +26,9 @@
 import Foundation
 import Security
 import os.log
+#if canImport(Citadel)
+    import Citadel
+#endif
 
 // MARK: - Case Model
 
@@ -242,23 +245,28 @@ struct SFTPMatrixReport: Sendable {
     ]
 
     func csv() -> String {
-        var out = Self.csvColumns.joined(separator: ",") + "\n"
-        for row in rows {
-            let values: [String] = [
-                row.endpoint, row.serverType, num(row.rttMs), row.kind, row.backend,
-                row.mode, String(row.shards), String(row.sizeBytes), String(row.fileCount),
-                num(row.chunkSize), num(row.pipelineDepth),
-                num(row.tcpConnections), num(row.channelsUsed),
-                num(row.connectMs), num(row.sftpOpenMs), num(row.poolBuildMs),
-                num(row.firstByteMs), num(row.totalMs), String(row.payloadBytes),
-                num(row.effectiveMBps), num(row.avgMBps), num(row.peakMBps),
-                num(row.progressIntervalP50Ms), num(row.progressIntervalP95Ms),
-                num(row.cancelLatencyMs), row.succeeded ? "1" : "0",
-                str(row.error), str(row.skippedReason), str(row.observedRejection),
-            ]
-            out += values.joined(separator: ",") + "\n"
-        }
-        return out
+        Self.csvHeader + "\n" + rows.map { Self.csvRow($0) }.joined(separator: "\n") + "\n"
+    }
+
+    static var csvHeader: String {
+        csvColumns.joined(separator: ",")
+    }
+
+    /// Single-row encoding for incremental streaming (killed runs keep data).
+    static func csvRow(_ row: SFTPMatrixRow) -> String {
+        let values: [String] = [
+            row.endpoint, row.serverType, num(row.rttMs), row.kind, row.backend,
+            row.mode, String(row.shards), String(row.sizeBytes), String(row.fileCount),
+            num(row.chunkSize), num(row.pipelineDepth),
+            num(row.tcpConnections), num(row.channelsUsed),
+            num(row.connectMs), num(row.sftpOpenMs), num(row.poolBuildMs),
+            num(row.firstByteMs), num(row.totalMs), String(row.payloadBytes),
+            num(row.effectiveMBps), num(row.avgMBps), num(row.peakMBps),
+            num(row.progressIntervalP50Ms), num(row.progressIntervalP95Ms),
+            num(row.cancelLatencyMs), row.succeeded ? "1" : "0",
+            str(row.error), str(row.skippedReason), str(row.observedRejection),
+        ]
+        return values.joined(separator: ",")
     }
 
     func json() throws -> String {
@@ -347,14 +355,12 @@ final class SFTPBenchRecorder: @unchecked Sendable {
             var windowStart = first.0
             var windowProgress = first.1
             var best: Double = 0
-            for sample in samples.dropFirst() {
-                if sample.0.timeIntervalSince(windowStart) >= window {
-                    let windowSpan = sample.0.timeIntervalSince(windowStart)
-                    let windowRate = Double(totalBytes) * max(0, sample.1 - windowProgress) / windowSpan / (1024 * 1024)
-                    best = max(best, windowRate)
-                    windowStart = sample.0
-                    windowProgress = sample.1
-                }
+            for sample in samples.dropFirst() where sample.0.timeIntervalSince(windowStart) >= window {
+                let windowSpan = sample.0.timeIntervalSince(windowStart)
+                let windowRate = Double(totalBytes) * max(0, sample.1 - windowProgress) / windowSpan / (1024 * 1024)
+                best = max(best, windowRate)
+                windowStart = sample.0
+                windowProgress = sample.1
             }
             let effective = totalMs > 0 ? Double(totalBytes) / (totalMs / 1000) / (1024 * 1024) : 0
             peak = totalMs < 200 ? effective : max(best, effective)
@@ -386,7 +392,8 @@ actor SFTPMatrixRunner {
     func run(
         endpoint: SFTPMatrixEndpoint,
         cases: [SFTPMatrixCase],
-        timeoutSeconds: Int = 1200
+        timeoutSeconds: Int = 1200,
+        onRow: ((SFTPMatrixRow) -> Void)? = nil
     ) async -> SFTPMatrixReport {
         var rows: [SFTPMatrixRow] = []
         let rtt = await measureRTT(endpoint: endpoint)
@@ -403,6 +410,7 @@ actor SFTPMatrixRunner {
             )
             }
             rows.append(row)
+            onRow?(row)
         }
         return SFTPMatrixReport(endpoint: endpoint.label, serverType: endpoint.serverType, date: Date(), rows: rows)
     }
@@ -482,6 +490,12 @@ actor SFTPMatrixRunner {
     }
 
     // MARK: - Write / Read
+
+    /// Sendable box for the untyped raw client shared across a case's files.
+    /// Written once before the TaskGroup starts, read-only inside it.
+    final class RawBox: @unchecked Sendable {
+        var value: Any?
+    }
 
     /// Shared per-case context; keeps runner methods within the parameter budget.
     struct RunContext: Sendable {
@@ -565,6 +579,44 @@ actor SFTPMatrixRunner {
         }
         let recorder = SFTPBenchRecorder()
         let total = perFile * UInt64(count)
+        // One shared client/pool for all files in the case: per-file pools
+        // would multiply connections (8 files × 8 handles hits MaxStartups).
+        // Shared handles that disconnect under concurrency are themselves data.
+        let sharedRawBox = RawBox()
+        let sharedPool: [PooledSFTPHandle]?
+        var sharedOpenMs: Double?
+        var sharedPoolMs: Double?
+        if matrixCase.backend == .citadel, matrixCase.mode == .multiTCP {
+            guard let makePool = ctx.endpoint.makePool else {
+                var failed = row
+                failed.succeeded = false
+                failed.skippedReason = "multiTCP needs makePool"
+                return failed
+            }
+            let startTime = Date()
+            sharedPool = try await withThrowingTimeout(of: .seconds(60)) {
+                try await makePool(matrixCase.shards)
+            }
+            sharedPoolMs = Date().timeIntervalSince(startTime) * 1000
+        } else if matrixCase.backend == .citadel {
+            guard let makeRaw = ctx.endpoint.makeCitadelSFTP else {
+                var failed = row
+                failed.succeeded = false
+                failed.skippedReason = "citadel mode needs makeCitadelSFTP"
+                return failed
+            }
+            let startTime = Date()
+            sharedRawBox.value = try await makeRaw()
+            sharedOpenMs = Date().timeIntervalSince(startTime) * 1000
+            sharedPool = nil
+        } else {
+            sharedPool = nil
+        }
+        defer {
+            if let pool = sharedPool {
+                Task { for handle in pool { await handle.close() } }
+            }
+        }
         do {
             if isWrite {
                 try await withThrowingTaskGroup(of: Void.self) { group in
@@ -573,7 +625,8 @@ actor SFTPMatrixRunner {
                             let local = try self.payloadFile(size: perFile, scratch: ctx.endpoint.localScratchDir)
                             _ = try await self.singleUpload(
                                 recorder: recorder, endpoint: ctx.endpoint, session: ctx.session,
-                                matrixCase: matrixCase, local: local, remote: "\(ctx.remoteDir)/f\(fileIndex).bin"
+                                matrixCase: matrixCase, local: local, remote: "\(ctx.remoteDir)/f\(fileIndex).bin",
+                                prebuiltRaw: sharedRawBox.value, prebuiltPool: sharedPool
                             )
                         }
                     }
@@ -589,7 +642,8 @@ actor SFTPMatrixRunner {
                             try? FileManager.default.removeItem(at: dest)
                             _ = try await self.singleDownload(
                                 recorder: recorder, endpoint: ctx.endpoint, session: ctx.session,
-                                matrixCase: matrixCase, local: dest, remote: "\(ctx.remoteDir)/f\(fileIndex).bin"
+                                matrixCase: matrixCase, local: dest, remote: "\(ctx.remoteDir)/f\(fileIndex).bin",
+                                prebuiltRaw: sharedRawBox.value, prebuiltPool: sharedPool
                             )
                             try? FileManager.default.removeItem(at: dest)
                         }
@@ -597,9 +651,13 @@ actor SFTPMatrixRunner {
                     try await group.waitForAll()
                 }
             }
+            row.sftpOpenMs = sharedOpenMs
+            row.poolBuildMs = sharedPoolMs
             fillFromRecorder(recorder: recorder, row: &row, payload: total)
             row.succeeded = true
         } catch {
+            row.sftpOpenMs = sharedOpenMs
+            row.poolBuildMs = sharedPoolMs
             row.succeeded = false
             row.error = String(describing: error)
             row.observedRejection = rejectionHint(error)
@@ -636,36 +694,37 @@ actor SFTPMatrixRunner {
         defer { Task { await service.disconnect() } }
         let remote = "\(remoteDir)/cancel.bin"
         // Race: upload stream vs canceller. No task group (its inout group
-        // cannot be referenced from child closures).
+        // cannot be referenced from child closures). Wait for the transfer
+        // entry to appear, +200ms, then cancel: fixed sleeps lose to fast
+        // loopback links where the whole upload beats a 400ms timer.
         let uploadTask = Task<Void, Error> {
             for try await _ in await service.upload(local, to: remote) {}
         }
-        try await Task.sleep(for: .milliseconds(400))
-        var found = false
-        for _ in 0..<100 {
-            let id: UUID? = await MainActor.run {
+        var targetID: UUID?
+        for _ in 0..<200 {
+            targetID = await MainActor.run {
                 service.transfers.first(where: { !$0.isComplete && !$0.isCancelled })?.id
             }
-            if let id {
-                found = true
-                let tCancel = Date()
-                await MainActor.run { service.cancelTransfer(id) }
-                do {
-                    try await uploadTask.value
-                    row.succeeded = false
-                    row.error = "completed before cancel landed"
-                } catch {
-                    row.cancelLatencyMs = Date().timeIntervalSince(tCancel) * 1000
-                    row.succeeded = true
-                }
-                break
-            }
+            if targetID != nil { break }
             try await Task.sleep(for: .milliseconds(50))
         }
-        if !found {
+        guard let targetID else {
             row.succeeded = false
             row.error = "no active transfer to cancel"
             uploadTask.cancel()
+            row.payloadBytes = matrixCase.sizeBytes
+            return row
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        let cancelStart = Date()
+        await MainActor.run { service.cancelTransfer(targetID) }
+        do {
+            try await uploadTask.value
+            row.succeeded = false
+            row.error = "completed before cancel landed"
+        } catch {
+            row.cancelLatencyMs = Date().timeIntervalSince(cancelStart) * 1000
+            row.succeeded = true
         }
         row.payloadBytes = matrixCase.sizeBytes
         return row
@@ -675,13 +734,18 @@ actor SFTPMatrixRunner {
 
     /// Engine/channel dispatch shared by single and multi-file cases.
     /// nonisolated so TaskGroup bodies can call it; all collaborators are Sendable.
+    /// prebuiltRaw/prebuiltPool let multi-file cases share one client/pool
+    /// across files (per-file pools would multiply connections: 8 files × 8
+    /// handles = 64 concurrent auths into MaxStartups throttling).
     private nonisolated func singleUpload(
         recorder: SFTPBenchRecorder,
         endpoint: SFTPMatrixEndpoint,
         session: any SSHSession,
         matrixCase: SFTPMatrixCase,
         local: URL,
-        remote: String
+        remote: String,
+        prebuiltRaw: Any? = nil,
+        prebuiltPool: [PooledSFTPHandle]? = nil
     ) async throws -> (openMs: Double?, poolMs: Double?) {
         let overrides = SFTPTestOverrides(
             shards: matrixCase.shards,
@@ -699,12 +763,18 @@ actor SFTPMatrixRunner {
             try await channel.upload(local, to: remote, operationID: UUID(), onProgress: { recorder.record($0) })
             await channel.close()
         case (.citadel, .singleStream), (.citadel, .multiChannel):
-            guard let makeRaw = endpoint.makeCitadelSFTP else {
-                throw SFTPServiceError.operationFailed("citadel mode needs makeCitadelSFTP")
+            let raw: Any
+            if let prebuiltRaw {
+                raw = prebuiltRaw
+            } else {
+                guard let makeRaw = endpoint.makeCitadelSFTP else {
+                    throw SFTPServiceError.operationFailed("citadel mode needs makeCitadelSFTP")
+                }
+                let tOpen = Date()
+                raw = try await makeRaw()
+                openMs = Date().timeIntervalSince(tOpen) * 1000
             }
-            let tOpen = Date()
-            let raw = try await makeRaw()
-            openMs = Date().timeIntervalSince(tOpen) * 1000
+            defer { if prebuiltRaw == nil { closeRawClient(raw) } }
             try await SFTPParallelTransferEngine.parallelUploadMultiChannel(
                 sftp: raw, remotePath: remote, localURL: local, totalBytes: total,
                 isCancelled: { false },
@@ -712,19 +782,34 @@ actor SFTPMatrixRunner {
                 overrides: overrides
             )
         case (.citadel, .multiTCP):
-            guard let makePool = endpoint.makePool else {
-                throw SFTPServiceError.operationFailed("multiTCP needs makePool")
+            let pool: [PooledSFTPHandle]
+            if let prebuiltPool {
+                pool = prebuiltPool
+            } else {
+                guard let makePool = endpoint.makePool else {
+                    throw SFTPServiceError.operationFailed("multiTCP needs makePool")
+                }
+                let tOpen = Date()
+                do {
+                    pool = try await withThrowingTimeout(of: .seconds(60)) {
+                        try await makePool(matrixCase.shards)
+                    }
+                } catch {
+                    throw SFTPServiceError.operationFailed("pool-build: \(error)")
+                }
+                poolMs = Date().timeIntervalSince(tOpen) * 1000
+                defer { let handles = pool; Task { for handle in handles { await handle.close() } } }
             }
-            let tOpen = Date()
-            let pool = try await makePool(matrixCase.shards)
-            poolMs = Date().timeIntervalSince(tOpen) * 1000
-            defer { let handles = pool; Task { for handle in handles { await handle.close() } } }
-            try await SFTPParallelTransferEngine.parallelUploadMultiTCP(
-                handles: pool, remotePath: remote, localURL: local, totalBytes: total,
-                isCancelled: { false },
-                onProgress: { recorder.record($0) },
-                overrides: overrides
-            )
+            do {
+                try await SFTPParallelTransferEngine.parallelUploadMultiTCP(
+                    handles: pool, remotePath: remote, localURL: local, totalBytes: total,
+                    isCancelled: { false },
+                    onProgress: { recorder.record($0) },
+                    overrides: overrides
+                )
+            } catch {
+                throw SFTPServiceError.operationFailed("pool-transfer: \(error)")
+            }
         case (.openSSH, _):
             throw SFTPServiceError.operationFailed("openSSH supports singleStream only")
         }
@@ -737,7 +822,9 @@ actor SFTPMatrixRunner {
         session: any SSHSession,
         matrixCase: SFTPMatrixCase,
         local: URL,
-        remote: String
+        remote: String,
+        prebuiltRaw: Any? = nil,
+        prebuiltPool: [PooledSFTPHandle]? = nil
     ) async throws -> (openMs: Double?, poolMs: Double?) {
         let overrides = SFTPTestOverrides(
             shards: matrixCase.shards,
@@ -777,12 +864,18 @@ actor SFTPMatrixRunner {
             try await channel.download(remote, to: local, operationID: UUID(), onProgress: { recorder.record($0) })
             await channel.close()
         case (.citadel, .singleStream), (.citadel, .multiChannel):
-            guard let makeRaw = endpoint.makeCitadelSFTP else {
-                throw SFTPServiceError.operationFailed("citadel mode needs makeCitadelSFTP")
+            let raw: Any
+            if let prebuiltRaw {
+                raw = prebuiltRaw
+            } else {
+                guard let makeRaw = endpoint.makeCitadelSFTP else {
+                    throw SFTPServiceError.operationFailed("citadel mode needs makeCitadelSFTP")
+                }
+                let tOpen = Date()
+                raw = try await makeRaw()
+                openMs = Date().timeIntervalSince(tOpen) * 1000
             }
-            let tOpen = Date()
-            let raw = try await makeRaw()
-            openMs = Date().timeIntervalSince(tOpen) * 1000
+            defer { if prebuiltRaw == nil { closeRawClient(raw) } }
             try await SFTPParallelTransferEngine.parallelDownloadMultiChannel(
                 sftp: raw, remotePath: remote, localURL: local, totalBytes: total,
                 isCancelled: { false },
@@ -790,23 +883,48 @@ actor SFTPMatrixRunner {
                 overrides: overrides
             )
         case (.citadel, .multiTCP):
-            guard let makePool = endpoint.makePool else {
-                throw SFTPServiceError.operationFailed("multiTCP needs makePool")
+            let pool: [PooledSFTPHandle]
+            if let prebuiltPool {
+                pool = prebuiltPool
+            } else {
+                guard let makePool = endpoint.makePool else {
+                    throw SFTPServiceError.operationFailed("multiTCP needs makePool")
+                }
+                let tOpen = Date()
+                do {
+                    pool = try await withThrowingTimeout(of: .seconds(60)) {
+                        try await makePool(matrixCase.shards)
+                    }
+                } catch {
+                    throw SFTPServiceError.operationFailed("pool-build: \(error)")
+                }
+                poolMs = Date().timeIntervalSince(tOpen) * 1000
+                defer { let handles = pool; Task { for handle in handles { await handle.close() } } }
             }
-            let tOpen = Date()
-            let pool = try await makePool(matrixCase.shards)
-            poolMs = Date().timeIntervalSince(tOpen) * 1000
-            defer { let handles = pool; Task { for handle in handles { await handle.close() } } }
-            try await SFTPParallelTransferEngine.parallelDownloadMultiTCP(
-                handles: pool, remotePath: remote, localURL: local, totalBytes: total,
-                isCancelled: { false },
-                onProgress: { recorder.record($0) },
-                overrides: overrides
-            )
+            do {
+                try await SFTPParallelTransferEngine.parallelDownloadMultiTCP(
+                    handles: pool, remotePath: remote, localURL: local, totalBytes: total,
+                    isCancelled: { false },
+                    onProgress: { recorder.record($0) },
+                    overrides: overrides
+                )
+            } catch {
+                throw SFTPServiceError.operationFailed("pool-transfer: \(error)")
+            }
         case (.openSSH, _):
             throw SFTPServiceError.operationFailed("openSSH supports singleStream only")
         }
         return (openMs, poolMs)
+    }
+
+    /// Close a harness-created raw Citadel client. Prebuilt ones stay caller-owned.
+    private nonisolated func closeRawClient(_ raw: Any) {
+        #if canImport(Citadel)
+            if let client = raw as? SFTPClient {
+                let captured = client
+                Task { try? await captured.close() }
+            }
+        #endif
     }
 
     // MARK: - Row helpers
