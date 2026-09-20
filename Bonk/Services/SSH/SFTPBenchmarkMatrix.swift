@@ -393,7 +393,7 @@ actor SFTPMatrixRunner {
         endpoint: SFTPMatrixEndpoint,
         cases: [SFTPMatrixCase],
         timeoutSeconds: Int = 1200,
-        onRow: ((SFTPMatrixRow) -> Void)? = nil
+        onRow: (@Sendable (SFTPMatrixRow) -> Void)? = nil
     ) async -> SFTPMatrixReport {
         var rows: [SFTPMatrixRow] = []
         let rtt = await measureRTT(endpoint: endpoint)

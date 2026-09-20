@@ -24,6 +24,21 @@ private actor AcceptAllHostKeyStore: SSHHostKeyStore {
     }
 }
 
+/// File-scoped CSV append: captures nothing, safe for @Sendable callbacks.
+func appendMatrixCSVRow(_ row: SFTPMatrixRow, to csvURL: URL) {
+    let line = SFTPMatrixReport.csvRow(row) + "\n"
+    if FileManager.default.fileExists(atPath: csvURL.path),
+       let handle = try? FileHandle(forWritingTo: csvURL)
+    {
+        try? handle.seekToEnd()
+        handle.write(Data(line.utf8))
+        try? handle.close()
+    } else {
+        let header = SFTPMatrixReport.csvHeader + "\n" + line
+        try? header.write(to: csvURL, atomically: true, encoding: .utf8)
+    }
+}
+
 final class SFTPMatrixLocalTests: XCTestCase {
     private static let password = "benchpass"
     private static let store = AcceptAllHostKeyStore()
@@ -133,7 +148,7 @@ final class SFTPMatrixLocalTests: XCTestCase {
         let report = await runner.run(
             endpoint: endpoint, cases: cases, timeoutSeconds: 600
         ) { [csvURL] row in
-            appendRow(row, to: csvURL)
+            appendMatrixCSVRow(row, to: csvURL)
         }
         print("MATRIX-BATCH label=\(batch.label) cases=\(cases.count) rows=\(report.rows.count)")
         print(report.markdown())
@@ -193,19 +208,6 @@ final class SFTPMatrixLocalTests: XCTestCase {
         SFTPMatrixCase(sizeBytes: size, backend: .citadel, mode: .multiTCP, shards: 4, kind: kind)
     }
 
-    private func appendRow(_ row: SFTPMatrixRow, to csvURL: URL) {
-        let line = SFTPMatrixReport.csvRow(row) + "\n"
-        if FileManager.default.fileExists(atPath: csvURL.path),
-           let handle = try? FileHandle(forWritingTo: csvURL)
-        {
-            try? handle.seekToEnd()
-            handle.write(Data(line.utf8))
-            try? handle.close()
-        } else {
-            let header = SFTPMatrixReport.csvHeader + "\n" + line
-            try? header.write(to: csvURL, atomically: true, encoding: .utf8)
-        }
-    }
 
     /// P1 repro: single pool case through the runner dies in first openFile
     /// ("pool-transfer: I/O on closed channel") while the identical pool +
