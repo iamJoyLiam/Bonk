@@ -17,7 +17,8 @@ struct SFTPWindowView: View {
     @State private var localPath: String = "/"
     @State private var localFiles: [LocalFileEntry] = []
     @State private var selectedRemote: SFTPFileEntry?
-    @State private var localSelection: Set<UUID> = []
+    @State private var localSelection: Set<String> = []
+    @State private var pendingDoubleClickUpload: LocalFileEntry?
     @State private var isEditingLocal = false
     @State private var editingLocal = ""
     @FocusState private var isLocalFocused: Bool
@@ -48,10 +49,11 @@ struct SFTPWindowView: View {
                     .frame(minWidth: AppStyle.sftpPaneMinWidth)
                 }
 
-                // Bottom: Transfer progress
-                if let sftp = tab.session?.sftpService, !sftp.transfers.isEmpty {
-                    Divider()
-                    transferPanel(sftp: sftp)
+                // Bottom: Transfer progress — isolated in its own view so the
+                // ~20Hz progress ticks only invalidate the small panel,
+                // never the file panes above.
+                if let sftp = tab.session?.sftpService {
+                    SFTPTransferSection(sftp: sftp)
                 }
                 // Zmodem — only when enabled in Settings
                 if preferences.isZmodemEnabled ?? false {
@@ -108,6 +110,28 @@ struct SFTPWindowView: View {
             Button(i18n.t(.cancel), role: .cancel) {
                 pendingUploadURL = nil
                 showOverwriteAlert = false
+            }
+        }
+        .alert(
+            pendingDoubleClickUpload?.name ?? "",
+            isPresented: Binding(
+                get: { pendingDoubleClickUpload != nil },
+                set: { if !$0 { pendingDoubleClickUpload = nil } }
+            )
+        ) {
+            Button(i18n.t(.upload)) {
+                if let file = pendingDoubleClickUpload {
+                    pendingDoubleClickUpload = nil
+                    uploadLocalFile(file)
+                }
+            }
+            Button(i18n.t(.cancel), role: .cancel) {
+                pendingDoubleClickUpload = nil
+            }
+        } message: {
+            if let remote = sessionManager.activeTab?.session?.sftpService?.currentPath {
+                Text(remote)
+                    .font(.system(size: AppStyle.fontSmall).monospaced())
             }
         }
         .frame(minWidth: 800, minHeight: AppStyle.settingsWindowHeight)
@@ -182,133 +206,169 @@ struct SFTPWindowView: View {
 
             // File list — uses LocalFileRow matching SFTPFileRow, supports Shift multi-select
             List(localFiles, id: \.id, selection: $localSelection) { file in
-                LocalFileRow(file: file)
-                    .environment(i18n)
-                    .tag(file.id)
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 2) {
-                        if file.isDirectory {
+                LocalFileRow(file: file) {
+                    guard file.isDirectory else { return }
+                    localPath = file.path
+                    loadLocalFiles()
+                }
+                .environment(i18n)
+                .tag(file.id)
+                .contextMenu {
+                    if !file.isDirectory {
+                        Button { uploadLocalFile(file) } label: {
+                            Label(i18n.t(.upload), systemImage: "arrow.up.doc")
+                        }
+                    }
+                    if file.isDirectory {
+                        Button {
                             localPath = file.path
                             loadLocalFiles()
-                        }
-                    }
-                    .contextMenu {
-                        if !file.isDirectory {
-                            Button { uploadLocalFile(file) } label: {
-                                Label(i18n.t(.upload), systemImage: "arrow.up.doc")
-                            }
-                        }
-                        if file.isDirectory {
-                            Button {
-                                localPath = file.path
-                                loadLocalFiles()
-                            } label: {
-                                Label(i18n.t(.open), systemImage: "folder")
-                            }
-                        }
-                        Divider()
-                        Button {
-                            NSWorkspace.shared.selectFile(file.path, inFileViewerRootedAtPath: localPath)
                         } label: {
-                            Label(i18n.t(.showInFinder), systemImage: "finder")
+                            Label(i18n.t(.open), systemImage: "folder")
                         }
                     }
+                    Divider()
+                    Button {
+                        NSWorkspace.shared.selectFile(file.path, inFileViewerRootedAtPath: localPath)
+                    } label: {
+                        Label(i18n.t(.showInFinder), systemImage: "finder")
+                    }
+                }
             }
             .listStyle(.plain)
             .animation(nil, value: localFiles)
+            .onChange(of: localFiles.map(\.id)) { _, newIDs in
+                localSelection.formIntersection(newIDs)
+            }
+            // AppKit-native double-click: single clicks stay with the table
+            // (instant selection, no gestures on rows); double-clicks arrive
+            // here with the clicked row index. List order matches localFiles order.
+            .background(
+                TableDoubleClickHost { row in
+                    guard localFiles.indices.contains(row) else { return }
+                    let file = localFiles[row]
+                    if file.isDirectory {
+                        localPath = file.path
+                        loadLocalFiles()
+                    } else {
+                        pendingDoubleClickUpload = file
+                    }
+                }
+            )
+            .onKeyPress(.return) {
+                guard localSelection.count == 1,
+                      let id = localSelection.first,
+                      let file = localFiles.first(where: { $0.id == id }),
+                      file.isDirectory
+                else { return .ignored }
+                localPath = file.path
+                loadLocalFiles()
+                return .handled
+            }
         }
     }
 
     // MARK: - Transfer Panel
 
-    private func transferPanel(sftp: SFTPService) -> some View {
-        VStack(spacing: 4) {
-            ForEach(sftp.transfers) { transfer in
-                HStack(spacing: 8) {
-                    let iconName = transfer.isCancelled
-                        ? "xmark.circle.fill"
-                        : (transfer.isComplete ? "checkmark.circle.fill" : "arrow.down.circle")
-                    Image(systemName: iconName)
-                        .font(.system(size: AppStyle.fontBody))
-                        .foregroundStyle(
-                            transfer.isCancelled ? .orange : (transfer.isComplete ? .green : .blue)
-                        )
+    /// Transfer progress section, isolated from the file panes: SFTPWindowView
+    /// never reads sftp.transfers, so progress ticks only invalidate this
+    /// small view instead of rebuilding both file lists.
+    struct SFTPTransferSection: View {
+        @Environment(I18n.self) var i18n
+        var sftp: SFTPService
 
-                    Text(transfer.filename)
-                        .font(.system(size: AppStyle.fontSmall))
-                        .lineLimit(1)
+        var body: some View {
+            if !sftp.transfers.isEmpty {
+                Divider()
+                VStack(spacing: 4) {
+                    ForEach(sftp.transfers) { transfer in
+                        HStack(spacing: 8) {
+                            let iconName = transfer.isCancelled
+                                ? "xmark.circle.fill"
+                                : (transfer.isComplete ? "checkmark.circle.fill" : "arrow.down.circle")
+                            Image(systemName: iconName)
+                                .font(.system(size: AppStyle.fontBody))
+                                .foregroundStyle(
+                                    transfer.isCancelled ? .orange : (transfer.isComplete ? .green : .blue)
+                                )
 
-                    if transfer.isActive {
-                        if let progress = transfer.progress {
-                            ProgressView(value: progress)
-                                .progressViewStyle(.linear)
-                                // Elegant: 1:1 model + 60 FPS display + 0.5s interpolation for 10Gbps bursts
-                                .animation(.easeOut(duration: 0.5), value: progress)
-                                .transaction { transaction in transaction.animation = .easeOut(duration: 0.5) }
-                        } else {
-                            // Unknown size: indeterminate + bytes (never fake %)
-                            ProgressView()
-                                .progressViewStyle(.linear)
-                        }
-                    }
+                            Text(transfer.filename)
+                                .font(.system(size: AppStyle.fontSmall))
+                                .lineLimit(1)
 
-                    // Bytes label — for known shows "500 MB / 600 MB" style via progress, for unknown just MB
-                    if transfer.isActive || transfer.isComplete {
-                        let bytesText: String = {
-                            let megabytes = Double(transfer.transferredBytes) / (1024*1024)
-                            if let total = transfer.totalBytes, total > 0 {
-                                let totalMB = Double(total) / (1024*1024)
-                                if totalMB >= 1024 { return String(format: "%.1f/%.1f GB", megabytes/1024, totalMB/1024) }
-                                return String(format: "%.1f/%.1f MB", megabytes, totalMB)
-                            } else {
-                                if megabytes >= 1024 { return String(format: "%.1f GB", megabytes/1024) }
-                                return String(format: "%.1f MB", megabytes)
+                            if transfer.isActive {
+                                if let progress = transfer.progress {
+                                    ProgressView(value: progress)
+                                        .progressViewStyle(.linear)
+                                        // Elegant: 1:1 model + 60 FPS display + 0.5s interpolation for 10Gbps bursts
+                                        .animation(.easeOut(duration: 0.5), value: progress)
+                                        .transaction { transaction in transaction.animation = .easeOut(duration: 0.5) }
+                                } else {
+                                    // Unknown size: indeterminate + bytes (never fake %)
+                                    ProgressView()
+                                        .progressViewStyle(.linear)
+                                }
                             }
-                        }()
-                        Text(bytesText)
-                            .font(.system(size: AppStyle.fontCaption).monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
 
-                    Spacer()
+                            // Bytes label — for known shows "500 MB / 600 MB" style via progress, for unknown just MB
+                            if transfer.isActive || transfer.isComplete {
+                                let bytesText: String = {
+                                    let megabytes = Double(transfer.transferredBytes) / (1024*1024)
+                                    if let total = transfer.totalBytes, total > 0 {
+                                        let totalMB = Double(total) / (1024*1024)
+                                        if totalMB >= 1024 { return String(format: "%.1f/%.1f GB", megabytes/1024, totalMB/1024) }
+                                        return String(format: "%.1f/%.1f MB", megabytes, totalMB)
+                                    } else {
+                                        if megabytes >= 1024 { return String(format: "%.1f GB", megabytes/1024) }
+                                        return String(format: "%.1f MB", megabytes)
+                                    }
+                                }()
+                                Text(bytesText)
+                                    .font(.system(size: AppStyle.fontCaption).monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
 
-                    if let error = transfer.error {
-                        Text(error)
-                            .font(.system(size: AppStyle.fontCaption))
-                            .foregroundStyle(.red)
-                    }
+                            Spacer()
 
-                    // Cancel button for active transfers
-                    if transfer.isActive {
-                        Button {
-                            sftp.cancelTransfer(transfer.id)
-                        } label: {
-                            Image(systemName: "xmark.circle")
-                                .font(.system(size: AppStyle.fontBody))
-                                .foregroundStyle(.secondary)
+                            if let error = transfer.error {
+                                Text(error)
+                                    .font(.system(size: AppStyle.fontCaption))
+                                    .foregroundStyle(.red)
+                            }
+
+                            // Cancel button for active transfers
+                            if transfer.isActive {
+                                Button {
+                                    sftp.cancelTransfer(transfer.id)
+                                } label: {
+                                    Image(systemName: "xmark.circle")
+                                        .font(.system(size: AppStyle.fontBody))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+
+                            // Remove button for completed/failed transfers
+                            if transfer.isComplete || transfer.error != nil {
+                                Button {
+                                    sftp.removeTransfer(transfer.id)
+                                } label: {
+                                    Image(systemName: "xmark.circle")
+                                        .font(.system(size: AppStyle.fontBody))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
-                        .buttonStyle(.plain)
-                    }
-
-                    // Remove button for completed/failed transfers
-                    if transfer.isComplete || transfer.error != nil {
-                        Button {
-                            sftp.removeTransfer(transfer.id)
-                        } label: {
-                            Image(systemName: "xmark.circle")
-                                .font(.system(size: AppStyle.fontBody))
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
                     }
                 }
+                .padding(.horizontal, AppStyle.spacingL)
+                .padding(.vertical, AppStyle.spacingM)
+                .frame(maxWidth: .infinity)
+                .background(Color(nsColor: .controlBackgroundColor))
             }
         }
-        .padding(.horizontal, AppStyle.spacingL)
-        .padding(.vertical, AppStyle.spacingM)
-        .frame(maxWidth: .infinity)
-        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     // MARK: - Helpers
@@ -325,7 +385,7 @@ struct SFTPWindowView: View {
                     let isDir = attrs[.type] as? FileAttributeType == .typeDirectory
                     let size = attrs[.size] as? UInt64 ?? 0
                     let mtime = attrs[.modificationDate] as? Date
-                    return LocalFileEntry(name: name, path: fullPath, isDirectory: isDir, size: size, modifiedAt: mtime)
+                    return LocalFileEntry(id: fullPath, name: name, path: fullPath, isDirectory: isDir, size: size, modifiedAt: mtime)
                 }
                 return files.sorted { lhs, rhs in
                     if lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory }

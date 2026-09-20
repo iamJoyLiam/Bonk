@@ -10,7 +10,9 @@ import SwiftUI
 // MARK: - Local File Entry
 
 struct LocalFileEntry: Identifiable, Hashable {
-    let id = UUID()
+    /// Stable identity: the full path. A regenerated UUID per load made
+    /// every refresh look like all-new rows (full List rebuild + lost selection).
+    let id: String
     let name: String
     let path: String
     let isDirectory: Bool
@@ -23,6 +25,13 @@ struct LocalFileEntry: Identifiable, Hashable {
 struct LocalFileRow: View {
     @Environment(I18n.self) var i18n
     let file: LocalFileEntry
+    /// Open action for directories (hover chevron + Return key + context menu).
+    /// Double-click is intentionally not a SwiftUI gesture here:
+    /// TapGesture(count: 2) forces the framework to wait out the system
+    /// double-click interval before delivering single clicks, which delays
+    /// List selection highlight on the tapped area.
+    var onOpen: (() -> Void)?
+    @State private var isHover = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -62,8 +71,20 @@ struct LocalFileRow: View {
             }
 
             Spacer()
+
+            // Trailing open affordance for directories: mounted on hover only,
+            // so resting layout is unchanged and it never covers click targets.
+            if file.isDirectory, isHover {
+                Button { onOpen?() } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: AppStyle.fontSmall, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.vertical, AppStyle.spacingXXS)
+        .onHover { isHover = $0 }
     }
 
     private var icon: String {

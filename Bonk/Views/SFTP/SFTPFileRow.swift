@@ -8,6 +8,13 @@ import SwiftUI
 /// A single file/directory row in the SFTP browser.
 struct SFTPFileRow: View {
     let entry: SFTPFileEntry
+    /// Open action for directories (hover chevron + Return key + context menu).
+    /// Double-click is intentionally not a SwiftUI gesture here:
+    /// TapGesture(count: 2) forces the framework to wait out the system
+    /// double-click interval before delivering single clicks, which delays
+    /// List selection highlight on the tapped area.
+    var onOpen: (() -> Void)?
+    @State private var isHover = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -42,8 +49,20 @@ struct SFTPFileRow: View {
             }
 
             Spacer()
+
+            // Trailing open affordance for directories: mounted on hover only,
+            // so resting layout is unchanged and it never covers click targets.
+            if entry.isDirectory, isHover {
+                Button { onOpen?() } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: AppStyle.fontSmall, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.vertical, AppStyle.spacingXXS)
+        .onHover { isHover = $0 }
     }
 
     private var icon: String {

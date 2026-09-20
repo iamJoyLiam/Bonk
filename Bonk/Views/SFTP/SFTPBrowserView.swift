@@ -322,17 +322,15 @@ struct SFTPBrowserView: View {
     // swiftlint:disable:next function_body_length
     private func fileList(_ service: SFTPService) -> some View {
         List(service.entries, id: \.id, selection: $selection) { entry in
-            SFTPFileRow(entry: entry)
-                .tag(entry.id)
-                .onTapGesture(count: 2) {
-                    if entry.isDirectory {
-                        Task {
-                            do { try await service.enterDirectory(entry) } catch {
-                                service.errorMessage = error.localizedDescription
-                            }
-                        }
+            SFTPFileRow(entry: entry) {
+                guard entry.isDirectory else { return }
+                Task {
+                    do { try await service.enterDirectory(entry) } catch {
+                        service.errorMessage = error.localizedDescription
                     }
                 }
+            }
+                .tag(entry.id)
                 .contextMenu {
                     if entry.isDirectory {
                         Button {
@@ -346,22 +344,7 @@ struct SFTPBrowserView: View {
                         }
                     }
                     Button {
-                        #if os(macOS)
-                            let panel = NSSavePanel()
-                            panel.nameFieldStringValue = entry.name
-                            panel.isExtensionHidden = false
-                            panel.canCreateDirectories = true
-                            if panel.runModal() == .OK, let url = panel.url {
-                                Task {
-                                    do {
-                                        try await service.download(entry, to: url)
-                                        onDownloadCompleted?()
-                                    } catch {
-                                        service.errorMessage = error.localizedDescription
-                                    }
-                                }
-                            }
-                        #endif
+                        download(entry, via: service)
                     } label: {
                         Label(i18n.t(.download), systemImage: "arrow.down.circle")
                     }
@@ -379,6 +362,40 @@ struct SFTPBrowserView: View {
         }
         .listStyle(.plain)
         .animation(nil, value: service.entries.count)
+        .onChange(of: service.entries.map(\.id)) { _, newIDs in
+            selection.formIntersection(newIDs)
+        }
+        // AppKit-native double-click: single clicks stay with the table
+        // (instant selection, no gestures on rows); double-clicks arrive here
+        // with the clicked row index. List order matches entries order.
+        .background(
+            TableDoubleClickHost { row in
+                guard service.entries.indices.contains(row) else { return }
+                let entry = service.entries[row]
+                if entry.isDirectory {
+                    Task {
+                        do { try await service.enterDirectory(entry) } catch {
+                            service.errorMessage = error.localizedDescription
+                        }
+                    }
+                } else {
+                    download(entry, via: service)
+                }
+            }
+        )
+        .onKeyPress(.return) {
+            guard selection.count == 1,
+                  let id = selection.first,
+                  let entry = service.entries.first(where: { $0.id == id }),
+                  entry.isDirectory
+            else { return .ignored }
+            Task {
+                do { try await service.enterDirectory(entry) } catch {
+                    service.errorMessage = error.localizedDescription
+                }
+            }
+            return .handled
+        }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             for provider in providers {
                 provider.loadItem(forTypeIdentifier: "public.file-url") { data, _ in
@@ -402,6 +419,26 @@ struct SFTPBrowserView: View {
     }
 
     // MARK: - Actions
+
+    /// Save-panel download flow, shared by the context menu and double-click.
+    private func download(_ entry: SFTPFileEntry, via service: SFTPService) {
+        #if os(macOS)
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = entry.name
+            panel.isExtensionHidden = false
+            panel.canCreateDirectories = true
+            if panel.runModal() == .OK, let url = panel.url {
+                Task {
+                    do {
+                        try await service.download(entry, to: url)
+                        onDownloadCompleted?()
+                    } catch {
+                        service.errorMessage = error.localizedDescription
+                    }
+                }
+            }
+        #endif
+    }
 
     /// Refresh the current SFTP directory after a shell command ends: 600ms
     /// debounce + silent background refresh (showLoading:false, no spinner).
