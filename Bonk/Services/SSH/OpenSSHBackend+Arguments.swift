@@ -39,7 +39,6 @@
             }
             args += [
                 "-o", "StrictHostKeyChecking=accept-new",
-                "-o", "StrictHostKeyChecking=accept-new",
                 "-o", "UserKnownHostsFile=\(knownHostsPath)",
                 "-o", "GlobalKnownHostsFile=/dev/null",
                 "-o", "NumberOfPasswordPrompts=1",
