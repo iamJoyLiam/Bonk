@@ -22,8 +22,11 @@
         }
 
         func sftpArguments(attemptID: String) -> [String] {
+            // -B must stay under sftp-server's 256 KiB message cap (with
+            // protocol overhead); 262144 gets the transfer killed with
+            // "Outbound message too long". 64K matches the Citadel chunk size.
             var args = commonOpenSSHArguments(
-                additionalOptions: ["-B", "262144", "-R", "256"],
+                additionalOptions: ["-B", "65536", "-R", "64"],
                 attemptID: attemptID
             )
             args += ["-P", String(config.port), "\(config.username)@\(config.host)"]

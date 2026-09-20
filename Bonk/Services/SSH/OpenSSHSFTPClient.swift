@@ -81,7 +81,7 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
         // Atomic: put to .bonk.part, verify, then rename
         let tempRemotePath = remotePath + ".bonk.part"
         try? await remove(at: tempRemotePath, isDirectory: false)
-        let command = "put -profile \(quote(localURL.path)) \(quote(tempRemotePath))"
+        let command = "put -p \(quote(localURL.path)) \(quote(tempRemotePath))"
         do {
             _ = try await run(
                 [command],
@@ -127,7 +127,7 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
            let entry = entries.first(where: { $0.name == name }) {
             expectedBytes = entry.size
         }
-        let command = "get -profile \(quote(remotePath)) \(quote(tempURL.path))"
+        let command = "get -p \(quote(remotePath)) \(quote(tempURL.path))"
         do {
             _ = try await run(
                 [command],
