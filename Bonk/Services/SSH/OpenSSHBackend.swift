@@ -280,6 +280,19 @@ final class OpenSSHBackend: @unchecked Sendable {
         do {
             var output = ""
             var streamIterator = rawStream.makeAsyncIterator()
+            // Wait for the initial `sftp>` prompt before writing anything:
+            // commands sent while sftp is still connecting (cold
+            // ControlMaster, DNS, MFA) are silently lost. Bounded so a hung
+            // child fails fast instead of hanging forever.
+            var readyBuffer = ""
+            let readyDeadline = Date().addingTimeInterval(120)
+            while !Self.sftpPromptAppeared(in: readyBuffer) {
+                if Date() > readyDeadline {
+                    throw SSHServiceError.connectionFailed("OpenSSH SFTP session not ready.")
+                }
+                guard let chunk = await streamIterator.next() else { break }
+                readyBuffer.append(chunk); output.append(chunk)
+            }
             for command in commands {
                 try process.write(Data((command + "\n").utf8))
                 var chunkBuffer = ""
@@ -315,7 +328,7 @@ final class OpenSSHBackend: @unchecked Sendable {
     }
 
     private static func sftpOutputContainsError(_ text: String) -> Bool {
-        let patterns = ["couldn't", "permission denied", "denied", "no such file", "not found", "failure", "lost connection", "connection closed", "is a directory", "can't open", "unable to"]
+        let patterns = ["couldn't", "permission denied", "denied", "no such file", "not found", "failure", "lost connection", "connection closed", "is a directory", "can't open", "unable to", "invalid flag", "unknown command", "bad path"]
         let lower = text.lowercased()
         return patterns.contains { lower.contains($0) }
     }
