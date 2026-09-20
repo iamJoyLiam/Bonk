@@ -11,23 +11,23 @@ import AppKit
 /// Lightweight non-interactive view that draws the inline completion
 /// suggestion after the terminal cursor.
 final class InlineGhostOverlay: NSView {
-    /// Suggestion text. Setting it re-measures and redraws.
+    /// Suggestion text. Setting it re-measures and redraws (only when changed).
     var text: String = "" {
-        didSet { needsDisplay = true }
+        didSet { if text != oldValue { needsDisplay = true } }
     }
 
     var font: NSFont = .monospacedSystemFont(ofSize: 12, weight: .regular) {
-        didSet { needsDisplay = true }
+        didSet { if font != oldValue { needsDisplay = true } }
     }
 
     var textColor: NSColor = NSColor.textColor.withAlphaComponent(0.48) {
-        didSet { needsDisplay = true }
+        didSet { if textColor != oldValue { needsDisplay = true } }
     }
 
     /// True while the model is thinking but nothing is suggested yet —
     /// draws a subtle pending indicator so the user knows a hint is coming.
     var waiting: Bool = false {
-        didSet { needsDisplay = true }
+        didSet { if waiting != oldValue { needsDisplay = true } }
     }
 
     override var isFlipped: Bool {

@@ -58,7 +58,7 @@ import SwiftTerm
             pipeline.onCandidatesChanged = { [weak self] count, engagement in
                 MainActor.assumeIsolated {
                     guard let self else { return }
-                    let enabled = UserDefaults.standard.object(forKey: "ai_inline_candidate_popup") as? Bool ?? true
+                    let enabled = AIInlineSettings.current.candidatePopupEnabled
                     guard enabled, count > 1 else {
                         self.hideCandidateList()
                         return
@@ -127,6 +127,9 @@ import SwiftTerm
         var ghostOverlay: InlineGhostOverlay?
         /// Warp-style candidate popup above the cursor (↑/↓ navigation).
         var candidateListOverlay: InlineCandidateListOverlay?
+        /// Pending ghost text flushed on the 16ms presentation clock (single
+        /// clock: LLM streams many deltas per frame, overlay commits once).
+        var pendingGhostText: String?
         // Ghost updates coalesced to display tick — LLM streams many deltas per frame.
         nonisolated(unsafe) var ghostCoalesceTask: Task<Void, Never>?
         private nonisolated(unsafe) var resignObserver: NSObjectProtocol?
@@ -240,7 +243,7 @@ import SwiftTerm
                 let search = TerminalSearchState.isActive
                 let sug = inlinePipeline?.suggestion != nil
                 let count = inlinePipeline?.ranked.count ?? 0
-                let popup = UserDefaults.standard.object(forKey: "ai_inline_candidate_popup") as? Bool ?? true
+                let popup = AIInlineSettings.current.candidatePopupEnabled
                 let eng = inlinePipeline?.engagement ?? .passive
                 let next = focused && !ShortcutManager.isRecording
                     ? matchesAction(.inlineNextCandidate, keyCode: keyCode, modifiers: modifiers) : false
@@ -376,8 +379,9 @@ import SwiftTerm
         private func requestCompletion() {
             // Single Intelligence entry: CommandContextSnapshot → InlinePipeline
             guard let pipeline = inlinePipeline, let snapshotProvider = commandSnapshotProvider else { return }
-            // Keep isEnabled gate (legacy check via UserDefaults, now via pipeline's provider will also check, but keep early gate)
-            guard UserDefaults.standard.bool(forKey: "ai_enabled"), UserDefaults.standard.bool(forKey: "ai_inline_suggestions") else { return }
+            // Early gate via in-memory snapshot (no UserDefaults I/O on the key path)
+            let aiSettings = AIInlineSettings.current
+            guard aiSettings.aiEnabled, aiSettings.inlineSuggestionsEnabled else { return }
             guard !terminal.isCurrentBufferAlternate else { return }
             let (cursorX, cursorY) = terminal.getCursorLocation()
             let yDisp = terminal.getTopVisibleRow()

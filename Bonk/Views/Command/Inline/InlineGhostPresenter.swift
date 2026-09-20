@@ -38,7 +38,7 @@ extension NativeTerminalView {
 
     @MainActor
     func showCandidateList(items: [InlineCandidateDisplayItem], selectedIndex: Int?) {
-        let enabled = UserDefaults.standard.object(forKey: "ai_inline_candidate_popup") as? Bool ?? true
+        let enabled = AIInlineSettings.current.candidatePopupEnabled
         guard enabled else {
             hideCandidateList()
             return
@@ -83,11 +83,13 @@ extension NativeTerminalView {
             hideGhost(reason: "empty")
             return
         }
+        // Commit on the presentation clock: streaming deltas only stage here,
+        // the scheduled flush applies text + position once per frame so the
+        // overlay never re-measures mid-frame (visible jitter source).
+        pendingGhostText = text
         let overlay = ensureGhostOverlay()
-        overlay.font = font
+        if overlay.font != font { overlay.font = font }
         overlay.waiting = false
-        if overlay.text == text { return }
-        overlay.text = text
         overlay.isHidden = false
         scheduleGhostPositionCoalesced()
     }
@@ -95,6 +97,7 @@ extension NativeTerminalView {
     @MainActor
     func hideGhost(reason: String) {
         Self.inlineLogger.debug("hideGhost reason=\(reason, privacy: .public)")
+        pendingGhostText = nil
         cancelGhostCoalesceIfNeeded()
         ghostOverlay?.isHidden = true
         ghostOverlay?.text = ""
@@ -108,8 +111,9 @@ extension NativeTerminalView {
     @MainActor
     func showWaiting() {
         guard window?.firstResponder === self else { return }
+        pendingGhostText = nil
         let overlay = ensureGhostOverlay()
-        overlay.font = font
+        if overlay.font != font { overlay.font = font }
         overlay.text = ""
         overlay.waiting = true
         overlay.isHidden = false
@@ -123,6 +127,13 @@ extension NativeTerminalView {
         ghostCoalesceTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: Self.ghostCoalesceInterval)
             self?.ghostCoalesceTask = nil
+            // Flush staged text before measuring position (same frame).
+            if let pending = self?.pendingGhostText {
+                self?.pendingGhostText = nil
+                if self?.ghostOverlay?.text != pending {
+                    self?.ghostOverlay?.text = pending ?? ""
+                }
+            }
             self?.positionGhostOverlay()
         }
     }
@@ -162,12 +173,14 @@ extension NativeTerminalView {
         // grows inside it while streaming, so the overlay never re-measures
         // per delta (which caused visible jitter).
         let width = available
-        overlay.frame = NSRect(
+        let frame = NSRect(
             x: originX,
             y: bounds.height - CGFloat(cursorY + 1) * cell.height,
             width: width,
             height: cell.height
         )
+        // Same-frame guard: setting an identical frame still invalidates layout.
+        if overlay.frame != frame { overlay.frame = frame }
 
         positionCandidateListOverlay()
     }
