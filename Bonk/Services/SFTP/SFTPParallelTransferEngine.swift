@@ -59,6 +59,16 @@ enum SFTPParallelStrategy {
     }
 }
 
+/// Fixed test parameters for benchmarks (SFTPBenchmarkMatrix, Phase A).
+/// Every field is optional; nil falls back to the production strategy above,
+/// so production call sites (which never pass overrides) behave identically.
+/// Never set outside benchmark code.
+struct SFTPTestOverrides: Sendable {
+    var shards: Int?
+    var pipelinePerShard: Int?
+    var chunkSize: Int?
+}
+
 // MARK: - Progress Merger (lock-free)
 
 private final class ProgressMerger: @unchecked Sendable {
@@ -113,13 +123,14 @@ enum SFTPParallelTransferEngine {
         remoteFile: SendableSFTPFile,
         totalBytes: UInt64,
         isCancelled: @Sendable @escaping () async -> Bool,
-        onProgress: @Sendable @escaping (Double) -> Void
+        onProgress: @Sendable @escaping (Double) -> Void,
+        overrides: SFTPTestOverrides? = nil
     ) async throws {
         guard totalBytes > 0 else {
             onProgress(1.0)
             return
         }
-        let shards = SFTPParallelStrategy.shardCount(for: totalBytes)
+        let shards = overrides?.shards ?? SFTPParallelStrategy.shardCount(for: totalBytes)
         guard shards > 1 else {
             // fallback ，
             throw SFTPServiceError.operationFailed("parallelUpload called with single shard")
@@ -140,7 +151,8 @@ enum SFTPParallelTransferEngine {
                         range: start..<end,
                         shards: shards,
                         merger: merger,
-                        isCancelled: isCancelled
+                        isCancelled: isCancelled,
+                        overrides: overrides
                     )
                 }
             }
@@ -156,9 +168,12 @@ enum SFTPParallelTransferEngine {
         range: Range<UInt64>,
         shards: Int,
         merger: ProgressMerger,
-        isCancelled: @Sendable () async -> Bool
+        isCancelled: @Sendable () async -> Bool,
+        overrides: SFTPTestOverrides? = nil
     ) async throws {
-        let pipeline = SFTPParallelStrategy.pipelinePerShard(shards: shards, totalBytes: range.upperBound - range.lowerBound + 1)
+        let rangeBytes = range.upperBound - range.lowerBound + 1
+        let pipeline = overrides?.pipelinePerShard
+            ?? SFTPParallelStrategy.pipelinePerShard(shards: shards, totalBytes: rangeBytes)
         // P0 DispatchIO：Per shard fd, zero-copy
         let reader = try SFTPDispatchReader(url: localURL)
         defer { reader.close() }
@@ -174,7 +189,8 @@ enum SFTPParallelTransferEngine {
                 // Fill pipeline — adaptive small chunks
                 while pending < pipeline && offset < range.upperBound {
                     let remaining = range.upperBound - offset
-                    let adaptiveChunk = SFTPParallelStrategy.chunkSize(for: range.upperBound - range.lowerBound)
+                    let adaptiveChunk = overrides?.chunkSize
+                        ?? SFTPParallelStrategy.chunkSize(for: range.upperBound - range.lowerBound)
                     let length = Int(min(UInt64(adaptiveChunk), remaining))
                     let buffer = try reader.readByteBuffer(offset: offset, length: length)
                     guard buffer.readableBytes > 0 else { break }
@@ -207,13 +223,14 @@ enum SFTPParallelTransferEngine {
         localURL: URL,
         totalBytes: UInt64,
         isCancelled: @Sendable @escaping () async -> Bool,
-        onProgress: @Sendable @escaping (Double) -> Void
+        onProgress: @Sendable @escaping (Double) -> Void,
+        overrides: SFTPTestOverrides? = nil
     ) async throws {
         guard totalBytes > 0 else {
             onProgress(1.0)
             return
         }
-        let shards = SFTPParallelStrategy.shardCount(for: totalBytes)
+        let shards = overrides?.shards ?? SFTPParallelStrategy.shardCount(for: totalBytes)
         guard shards > 1 else {
             throw SFTPServiceError.operationFailed("parallelDownload called with single shard")
         }
@@ -240,7 +257,8 @@ enum SFTPParallelTransferEngine {
                         range: start..<end,
                         shards: shards,
                         merger: merger,
-                        isCancelled: isCancelled
+                        isCancelled: isCancelled,
+                        overrides: overrides
                     )
                 }
             }
@@ -257,11 +275,15 @@ enum SFTPParallelTransferEngine {
         range: Range<UInt64>,
         shards: Int,
         merger: ProgressMerger,
-        isCancelled: @Sendable () async -> Bool
+        isCancelled: @Sendable () async -> Bool,
+        overrides: SFTPTestOverrides? = nil
     ) async throws {
         // downloadShard range \(range.lowerBound)-\(range.upperBound) shards=\(shards) — verbose
-        let pipeline = SFTPParallelStrategy.pipelinePerShard(shards: shards, totalBytes: range.upperBound - range.lowerBound)
-        let chunkSize: UInt32 = UInt32(SFTPParallelStrategy.chunkSize(for: range.upperBound - range.lowerBound))
+        let pipeline = overrides?.pipelinePerShard
+            ?? SFTPParallelStrategy.pipelinePerShard(shards: shards, totalBytes: range.upperBound - range.lowerBound)
+        let chunkSize: UInt32 = UInt32(
+            overrides?.chunkSize ?? SFTPParallelStrategy.chunkSize(for: range.upperBound - range.lowerBound)
+        )
 
         // Per shard pwrite no seek race
         let fileDescriptor = Darwin.open(localURL.path, O_RDWR)
@@ -388,14 +410,15 @@ enum SFTPParallelTransferEngine {
         localURL: URL,
         totalBytes: UInt64,
         isCancelled: @Sendable @escaping () async -> Bool,
-        onProgress: @Sendable @escaping (Double) -> Void
+        onProgress: @Sendable @escaping (Double) -> Void,
+        overrides: SFTPTestOverrides? = nil
     ) async throws {
         #if canImport(Citadel)
         guard let client = sftp as? SFTPClient else {
             // Fallback single
             throw SFTPServiceError.operationFailed("SFTPClient unavailable for multi-channel")
         }
-        let shards = SFTPParallelStrategy.shardCount(for: totalBytes)
+        let shards = overrides?.shards ?? SFTPParallelStrategy.shardCount(for: totalBytes)
         let shardSize = (totalBytes + UInt64(shards) - 1) / UInt64(shards)
         var files: [SendableSFTPFile] = []
         // Open sequentially
@@ -424,7 +447,8 @@ enum SFTPParallelTransferEngine {
                         range: start..<end,
                         shards: shards,
                         merger: merger,
-                        isCancelled: isCancelled
+                        isCancelled: isCancelled,
+                        overrides: overrides
                     )
                 }
             }
@@ -446,13 +470,14 @@ enum SFTPParallelTransferEngine {
         localURL: URL,
         totalBytes: UInt64,
         isCancelled: @Sendable @escaping () async -> Bool,
-        onProgress: @Sendable @escaping (Double) -> Void
+        onProgress: @Sendable @escaping (Double) -> Void,
+        overrides: SFTPTestOverrides? = nil
     ) async throws {
         #if canImport(Citadel)
         guard let client = sftp as? SFTPClient else {
             throw SFTPServiceError.operationFailed("SFTPClient unavailable for multi-channel")
         }
-        let shards = SFTPParallelStrategy.shardCount(for: totalBytes)
+        let shards = overrides?.shards ?? SFTPParallelStrategy.shardCount(for: totalBytes)
         let shardSize = (totalBytes + UInt64(shards) - 1) / UInt64(shards)
         var files: [SendableSFTPFile] = []
         for _ in 0..<shards {
@@ -483,7 +508,8 @@ enum SFTPParallelTransferEngine {
                         range: start..<end,
                         shards: shards,
                         merger: merger,
-                        isCancelled: isCancelled
+                        isCancelled: isCancelled,
+                        overrides: overrides
                     )
                 }
             }
@@ -506,7 +532,8 @@ enum SFTPParallelTransferEngine {
         localURL: URL,
         totalBytes: UInt64,
         isCancelled: @Sendable @escaping () async -> Bool,
-        onProgress: @Sendable @escaping (Double) -> Void
+        onProgress: @Sendable @escaping (Double) -> Void,
+        overrides: SFTPTestOverrides? = nil
     ) async throws {
         let shards = handles.count
         let shardSize = (totalBytes + UInt64(shards) - 1) / UInt64(shards)
@@ -537,7 +564,8 @@ enum SFTPParallelTransferEngine {
                         range: start..<end,
                         shards: shards,
                         merger: merger,
-                        isCancelled: isCancelled
+                        isCancelled: isCancelled,
+                        overrides: overrides
                     )
                 }
             }
@@ -554,7 +582,8 @@ enum SFTPParallelTransferEngine {
         localURL: URL,
         totalBytes: UInt64,
         isCancelled: @Sendable @escaping () async -> Bool,
-        onProgress: @Sendable @escaping (Double) -> Void
+        onProgress: @Sendable @escaping (Double) -> Void,
+        overrides: SFTPTestOverrides? = nil
     ) async throws {
         let shards = handles.count
         let shardSize = (totalBytes + UInt64(shards) - 1) / UInt64(shards)
@@ -586,7 +615,8 @@ enum SFTPParallelTransferEngine {
                         range: start..<end,
                         shards: shards,
                         merger: merger,
-                        isCancelled: isCancelled
+                        isCancelled: isCancelled,
+                        overrides: overrides
                     )
                 }
             }
