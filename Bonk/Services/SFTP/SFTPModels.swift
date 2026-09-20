@@ -50,8 +50,8 @@ final class SFTPProgressThrottler: @unchecked Sendable {
     static let shared = SFTPProgressThrottler()
     private let lock = NSLock()
     private var last: [UUID: (date: Date, progress: Double)] = [:]
-    private let interval: TimeInterval = 0.0 // 1:1 — no throttling, display interpolates
-    private let delta: Double = 0.0
+    private let interval: TimeInterval = 0.05 // 50ms ≈ 20 FPS
+    private let delta: Double = 0.01 // minimum 1% progress movement
     func shouldEmit(id: UUID, progress: Double) -> Bool {
         if progress >= 1.0 {
             lock.lock(); last[id] = (Date(), progress); lock.unlock()
@@ -59,7 +59,10 @@ final class SFTPProgressThrottler: @unchecked Sendable {
         }
         let now = Date()
         lock.lock(); defer { lock.unlock() }
-        if let prev = last[id], now.timeIntervalSince(prev.date) < interval { return false }
+        if let prev = last[id] {
+            if now.timeIntervalSince(prev.date) < interval { return false }
+            if progress - prev.progress < delta { return false }
+        }
         last[id] = (now, progress)
         return true
     }
