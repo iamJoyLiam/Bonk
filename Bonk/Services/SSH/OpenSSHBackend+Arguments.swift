@@ -5,6 +5,17 @@
     // MARK: - SSH argument construction (extracted)
 
     extension OpenSSHBackend {
+        /// Quote an `-o` value for ssh_config parsing. List-type options
+        /// (notably UserKnownHostsFile) split on unquoted whitespace, so an
+        /// unquoted "…/Application Support/…" path silently becomes two paths.
+        /// No-op when quoting is unneeded.
+        private func sshConfigQuote(_ value: String) -> String {
+            guard value.contains(where: { $0.isWhitespace || $0 == "\"" || $0 == "\\" }) else { return value }
+            let escaped = value
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+            return "\"\(escaped)\""
+        }
         func sshArguments(
             pty: Bool,
             command: String?,
@@ -42,7 +53,7 @@
             }
             args += [
                 "-o", "StrictHostKeyChecking=accept-new",
-                "-o", "UserKnownHostsFile=\(knownHostsPath)",
+                "-o", "UserKnownHostsFile=\(sshConfigQuote(knownHostsPath))",
                 "-o", "GlobalKnownHostsFile=/dev/null",
                 "-o", "NumberOfPasswordPrompts=1",
                 "-o", "ConnectTimeout=10",
@@ -122,7 +133,7 @@
             guard let jumpHost = config.jumpHost else { return nil }
             var args = [
                 "/usr/bin/ssh", "-o", "ControlMaster=no", "-o", "ControlPath=none",
-                "-o", "StrictHostKeyChecking=accept-new", "-o", "UserKnownHostsFile=\(knownHostsPath)",
+                "-o", "StrictHostKeyChecking=accept-new", "-o", "UserKnownHostsFile=\(sshConfigQuote(knownHostsPath))",
                 "-o", "GlobalKnownHostsFile=/dev/null", "-o", "NumberOfPasswordPrompts=1",
                 "-o", "ConnectTimeout=10", "-p", String(jumpHost.port),
             ]

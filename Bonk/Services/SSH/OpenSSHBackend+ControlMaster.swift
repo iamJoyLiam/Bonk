@@ -1,5 +1,6 @@
 #if os(macOS)
     import Foundation
+    import os
 
     // MARK: - ControlMaster & known_hosts (extracted)
 
@@ -31,6 +32,24 @@
             if !FileManager.default.fileExists(atPath: path) {
                 FileManager.default.createFile(atPath: path, contents: nil)
                 _ = chmod(path, mode_t(0o600))
+            }
+            // One-time repair: UserKnownHostsFile is a whitespace-separated
+            // list, so an unquoted "…/Application Support/…" path made ssh
+            // save keys to a bogus file at the first space boundary
+            // ("…/Library/Application"). Migrate it back to preserve TOFU
+            // continuity instead of silently re-accepting every host.
+            let firstToken = path.split(separator: " ").first.map(String.init) ?? path
+            if firstToken != path,
+               FileManager.default.fileExists(atPath: firstToken),
+               let stray = try? String(contentsOfFile: firstToken, encoding: .utf8),
+               !stray.isEmpty,
+               let handle = try? FileHandle(forWritingTo: URL(fileURLWithPath: path))
+            {
+                try? handle.seekToEnd()
+                handle.write(Data(("\n" + stray).utf8))
+                try? handle.close()
+                try? FileManager.default.removeItem(atPath: firstToken)
+                Log.ssh.info("Migrated stray known_hosts content into \(path)")
             }
             return path
         }
