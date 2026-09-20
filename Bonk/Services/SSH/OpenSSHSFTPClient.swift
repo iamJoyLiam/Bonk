@@ -272,10 +272,11 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
 
         let rawName = String(fields[8])
         let baseName = rawName.components(separatedBy: " -> ").first ?? rawName
-        // OpenSSH sftp-server octal-escapes non-ASCII filename bytes in the
-        // longname it returns e.g. \344\270\213 for . Decode them back
-        // into UTF-8 or the listing shows raw escape codes.
-        let name = unescapeOctal(baseName)
+        // Some servers return the full path in the filename field (e.g.
+        // Alpine's sftp-server answers `ls -l /tmp/d` with `/tmp/d/f`);
+        // most return the basename. lastPathComponent is a no-op for the
+        // latter and fixes matching for the former.
+        let name = (unescapeOctal(baseName) as NSString).lastPathComponent
         guard !name.isEmpty, name != ".", name != ".." else { return nil }
 
         let isDirectory = mode.first == "d"
@@ -352,11 +353,24 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
         return String(bytes: bytes, encoding: .utf8) ?? name
     }
 
+    /// Escape a path for the sftp command parser with backslashes.
+    /// Double-quote wrapping does NOT work: the sftp client passes quotes
+    /// through verbatim (verified: `ls -l "/tmp/x"` fails with
+    /// `Can't ls: "/root/"/tmp/x"" not found`, while `ls -l /tmp/my\ dir`
+    /// lists correctly). Backslash escapes are unescaped client-side, so
+    /// they are portable across server implementations.
     private func quote(_ value: String) -> String {
-        let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        return "\"\(escaped)\""
+        let special: Set<Character> = [
+            "\\", "\"", "'", " ", "\t",
+            "*", "?", "[", "]", "#", ";", "!", "$", "`", "&", "|", "<", ">", "(", ")",
+        ]
+        var out = ""
+        out.reserveCapacity(value.count)
+        for char in value {
+            if special.contains(char) { out.append("\\") }
+            out.append(char)
+        }
+        return out
     }
 
     private func normalizedPath(_ path: String) -> String {
