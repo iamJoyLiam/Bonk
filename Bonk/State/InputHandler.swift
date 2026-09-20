@@ -60,50 +60,87 @@ final class InputHandler {
                 let trimmed = inputBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty {
                     let hostKey = tab.hostItem.id.uuidString
-                    // Record to global history with host scope.
-                    GlobalCommandHistory.shared.commandStarted(
-                        trimmed, hostKey: hostKey
-                    )
-                    GlobalCommandHistory.shared.commandFinished(exitCode: 0)
-                    // Also record to per-session history for backward compatibility
+                    // Atomic record: avoids double-appendWithDedup race on rapid repeat
+                    GlobalCommandHistory.shared.record(trimmed, hostKey: hostKey)
+                    // Also keep per-session history for backward compatibility
                     tab.session?.commandHistory.commandStarted(trimmed)
                     tab.session?.commandHistory.commandFinished(exitCode: 0)
                 }
                 tab.session?.inputBuffer = ""
             }
         } else {
-            // Accumulate typed characters (filter escape sequences)
+            // Accumulate typed characters, handling escape sequences and bracketed paste
             var byteIndex = bytes.startIndex
             while byteIndex < bytes.endIndex {
                 let byte = bytes[byteIndex]
                 if byte == 27 {
-                    // ESC — skip entire escape sequence (e.g., \x1b[A for arrow keys)
-                    // Skip ESC byte
+                    // ESC — advance past the ESC byte itself
                     byteIndex = bytes.index(after: byteIndex)
-                    // Skip following bytes until we find a letter (final byte of CSI sequence)
+
+                    // Detect bracketed paste start: ESC [ 2 0 0 ~  (bytes 91 50 48 48 126)
+                    let afterESC = bytes[byteIndex...]
+                    let pasteStart: [UInt8] = [91, 50, 48, 48, 126] // [200~
+                    let pasteEnd: [UInt8] = [27, 91, 50, 48, 49, 126] // ESC[201~
+                    if Array(afterESC.prefix(5)) == pasteStart {
+                        // Skip the [200~ marker
+                        byteIndex = bytes.index(byteIndex,
+                            offsetBy: 5, limitedBy: bytes.endIndex) ?? bytes.endIndex
+                        // Accumulate pasted content until ESC[201~
+                        var pastedContent = ""
+                        while byteIndex < bytes.endIndex {
+                            // Check for paste-end marker
+                            if Array(bytes[byteIndex...].prefix(6)) == pasteEnd {
+                                byteIndex = bytes.index(byteIndex,
+                                    offsetBy: 6, limitedBy: bytes.endIndex) ?? bytes.endIndex
+                                break
+                            }
+                            let pb = bytes[byteIndex]
+                            byteIndex = bytes.index(after: byteIndex)
+                            if pb == 13 || pb == 10 {
+                                // newline inside paste — stop accumulation; Enter will trigger save
+                                break
+                            } else if pb >= 32, pb != 127 {
+                                pastedContent.append(Character(UnicodeScalar(pb)))
+                            }
+                        }
+                        if !pastedContent.isEmpty {
+                            tab.session?.inputBuffer = (tab.session?.inputBuffer ?? "") + pastedContent
+                        }
+                        continue
+                    }
+
+                    // Regular CSI/OSC escape sequence — skip to final byte.
+                    // Navigation sequences (up=A/65, down=B/66) indicate shell history recall
+                    // which changes the visible line in ways we can't track; clear the buffer
+                    // so we don't record stale/mixed content.
+                    var finalByte: UInt8 = 0
                     while byteIndex < bytes.endIndex {
                         let next = bytes[byteIndex]
                         byteIndex = bytes.index(after: byteIndex)
-                        // If it's a letter (A-Z, a-z), it's the final byte of the sequence
                         if (next >= 65 && next <= 90) || (next >= 97 && next <= 122) {
+                            finalByte = next
                             break
                         }
                     }
-        } else if byte == 127 || byte == 8 {
-            // Backspace/Delete — remove last char
-            tab.session?.inputBuffer = String(tab.session?.inputBuffer.dropLast() ?? "")
-            // Any partial multi-byte sequence is now invalidated
-            utf8Parsers[tab.id] = nil
-            byteIndex = bytes.index(after: byteIndex)
-        } else if byte >= 32 {
-            // Printable character — decode incrementally to keep UTF-8 sequences intact
-            var parser = utf8Parsers[tab.id] ?? UTF8Accumulator()
-            let (scalar, isComplete) = parser.feed(byte)
-            utf8Parsers[tab.id] = parser
-            if isComplete, let scalar {
-                tab.session?.inputBuffer = (tab.session?.inputBuffer ?? "") + String(scalar)
-            }
-            byteIndex = bytes.index(after: byteIndex)
+                    // A=up, B=down, H=home, F=end — shell history / line-start navigation
+                    if finalByte == 65 || finalByte == 66 || finalByte == 72 || finalByte == 70 {
+                        tab.session?.inputBuffer = ""
+                        utf8Parsers[tab.id] = nil
+                    }
+                } else if byte == 127 || byte == 8 {
+                    // Backspace/Delete — remove last char
+                    tab.session?.inputBuffer = String(tab.session?.inputBuffer.dropLast() ?? "")
+                    utf8Parsers[tab.id] = nil
+                    byteIndex = bytes.index(after: byteIndex)
+                } else if byte >= 32 {
+                    // Printable character — decode incrementally to keep UTF-8 sequences intact
+                    var parser = utf8Parsers[tab.id] ?? UTF8Accumulator()
+                    let (scalar, isComplete) = parser.feed(byte)
+                    utf8Parsers[tab.id] = parser
+                    if isComplete, let scalar {
+                        tab.session?.inputBuffer = (tab.session?.inputBuffer ?? "") + String(scalar)
+                    }
+                    byteIndex = bytes.index(after: byteIndex)
                 } else {
                     // Other control characters — skip
                     byteIndex = bytes.index(after: byteIndex)

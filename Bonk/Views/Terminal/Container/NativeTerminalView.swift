@@ -231,29 +231,24 @@ import SwiftTerm
             let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
             let characters = event.characters
 
-            let isFocused = MainActor.assumeIsolated { window?.firstResponder === self }
-            guard isFocused else { return event }
-
-            let shortcut = !ShortcutManager.isRecording ? MainActor.assumeIsolated({
-                shortcutNotification(for: keyCode, modifiers: modifiers)
-            }) : nil
-
-            let isSearchActive = MainActor.assumeIsolated { TerminalSearchState.isActive }
-
-            let (hasSuggestion, candidateCount, popupEnabled, engagement) = MainActor.assumeIsolated {
-                let sug = self.inlinePipeline?.suggestion != nil
-                let count = self.inlinePipeline?.ranked.count ?? 0
-                let enabled = UserDefaults.standard.object(forKey: "ai_inline_candidate_popup") as? Bool ?? true
-                let eng = self.inlinePipeline?.engagement ?? .passive
-                return (sug, count, enabled, eng)
+            // Batch all MainActor state reads into one assumeIsolated call (was 5 separate).
+            // addLocalMonitorForEvents always fires on the main thread, so this is always safe.
+            let (isFocused, shortcut, isSearchActive, hasSuggestion, candidateCount, popupEnabled, engagement, isNextCandidate, isPrevCandidate) = MainActor.assumeIsolated {
+                let focused = window?.firstResponder === self
+                let sc: Notification.Name? = focused && !ShortcutManager.isRecording
+                    ? shortcutNotification(for: keyCode, modifiers: modifiers) : nil
+                let search = TerminalSearchState.isActive
+                let sug = inlinePipeline?.suggestion != nil
+                let count = inlinePipeline?.ranked.count ?? 0
+                let popup = UserDefaults.standard.object(forKey: "ai_inline_candidate_popup") as? Bool ?? true
+                let eng = inlinePipeline?.engagement ?? .passive
+                let next = focused && !ShortcutManager.isRecording
+                    ? matchesAction(.inlineNextCandidate, keyCode: keyCode, modifiers: modifiers) : false
+                let prev = focused && !ShortcutManager.isRecording
+                    ? matchesAction(.inlinePreviousCandidate, keyCode: keyCode, modifiers: modifiers) : false
+                return (focused, sc, search, sug, count, popup, eng, next, prev)
             }
-
-            let (isNextCandidate, isPrevCandidate) = !ShortcutManager.isRecording ? MainActor.assumeIsolated({
-                (
-                    self.matchesAction(.inlineNextCandidate, keyCode: keyCode, modifiers: modifiers),
-                    self.matchesAction(.inlinePreviousCandidate, keyCode: keyCode, modifiers: modifiers)
-                )
-            }) : (false, false)
+            guard isFocused else { return event }
 
             let decision = InlineKeyboardRouter.route(
                 keyCode: keyCode,
@@ -291,9 +286,7 @@ import SwiftTerm
                 MainActor.assumeIsolated { self.inlinePipeline?.moveSelection(delta) }
                 return nil
             case .engageSelection(let initialIndex):
-                MainActor.assumeIsolated {
-                    self.inlinePipeline?.selectIndex(initialIndex)
-                }
+                MainActor.assumeIsolated { self.inlinePipeline?.selectIndex(initialIndex) }
                 return nil
             case .passthroughAndCancelSuggestion(let reason):
                 MainActor.assumeIsolated {

@@ -61,6 +61,7 @@ final class GlobalCommandHistory {
 
     private init() {
         load()
+        observeShellCommands()
     }
 
     // MARK: - Public API
@@ -85,6 +86,22 @@ final class GlobalCommandHistory {
             appendWithDedup(cmd)
         }
         currentCommand = nil
+    }
+
+    /// Record a completed command atomically.
+    /// Equivalent to commandStarted + commandFinished but avoids a double
+    /// appendWithDedup that could race during rapid repeated commands.
+    func record(_ command: String, hostKey: String? = nil) {
+        // Finish any previously open command (same as commandStarted does)
+        if var current = currentCommand {
+            current.endTime = Date()
+            appendWithDedup(current)
+        }
+        currentCommand = nil
+        var record = CommandRecord(command: command, hostKey: hostKey)
+        record.endTime = Date()
+        record.exitCode = 0
+        appendWithDedup(record)
     }
 
     /// Clear all history.
@@ -115,6 +132,32 @@ final class GlobalCommandHistory {
             commands = Array(commands.suffix(maxHistory))
         }
         save()
+    }
+
+    // MARK: - Shell Integration
+
+    /// Listen to OSC 133;D completion events from ShellIntegration
+    /// to update the most recent command's real exit code.
+    private func observeShellCommands() {
+        NotificationCenter.default.addObserver(
+            forName: .shellCommandDidEnd,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let self,
+                  let command = note.userInfo?["command"] as? ShellCommandRange,
+                  let exitCode = note.userInfo?["exitCode"] as? Int else { return }
+            MainActor.assumeIsolated {
+                // Update the most recent matching record's exit code with the real shell value.
+                if let idx = self.commands.indices.last(where: {
+                    self.commands[$0].command.trimmingCharacters(in: .whitespacesAndNewlines) ==
+                    command.command.trimmingCharacters(in: .whitespacesAndNewlines)
+                }) {
+                    self.commands[idx].exitCode = exitCode
+                    self.save()
+                }
+            }
+        }
     }
 
     // MARK: - Persistence

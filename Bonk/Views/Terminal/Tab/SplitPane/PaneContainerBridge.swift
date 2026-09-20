@@ -32,12 +32,14 @@ import SwiftUI
         let onTitleChange: (@Sendable (String) -> Void)?
         let onReconnect: (() -> Void)?
 
+        /// Intelligence-owned snapshot provider — one instance per pane, holds KnownWords/history cache.
+        @State private var contextProvider = WorkspaceContextProvider()
+
         /// Intelligence-owned snapshot provider (single source of truth)
         private var commandSnapshot: @MainActor () -> CommandContextSnapshot {
-            { [weak tab] in
+            { [weak tab, contextProvider] in
                 guard let tab else { return CommandContextSnapshot(inputBuffer: "") }
-                let provider = WorkspaceContextProvider()
-                return provider.snapshot(for: tab)
+                return contextProvider.snapshot(for: tab)
             }
         }
 
