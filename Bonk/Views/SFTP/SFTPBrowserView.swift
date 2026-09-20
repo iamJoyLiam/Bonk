@@ -23,6 +23,7 @@ struct SFTPBrowserView: View {
     @State private var editingPath = ""
     @FocusState private var isPathFocused: Bool
     @State private var toast: String?
+    @State private var autoRefreshTask: Task<Void, Never>?
 
     private var sftpService: SFTPService? {
         tab.session?.sftpService
@@ -134,6 +135,13 @@ struct SFTPBrowserView: View {
             if tab.session?.sshService != nil, tab.session?.sftpService == nil {
                 await connectSFTP()
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .shellCommandDidEnd)) { _ in
+            scheduleAutoRefresh()
+        }
+        .onDisappear {
+            autoRefreshTask?.cancel()
+            autoRefreshTask = nil
         }
         .alert(i18n.t(.delete), isPresented: deleteEntryAlertBinding) {
             Button(i18n.t(.delete), role: .destructive) {
@@ -394,6 +402,22 @@ struct SFTPBrowserView: View {
     }
 
     // MARK: - Actions
+
+    /// Refresh the current SFTP directory after a shell command ends: 600ms
+    /// debounce + silent background refresh (showLoading:false, no spinner).
+    /// Skipped while a manual load is in flight; listDirectory's sequence
+    /// guard keeps stale results from overwriting a newer navigation.
+    /// Note: the notification carries no cwd, so only the current SFTP
+    /// directory is refreshed for now (OSC 7/133 cwd tracking later).
+    private func scheduleAutoRefresh() {
+        guard let service = sftpService, !service.isLoading else { return }
+        autoRefreshTask?.cancel()
+        autoRefreshTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled, !service.isLoading else { return }
+            try? await service.listDirectory(showLoading: false)
+        }
+    }
 
     private func connectSFTP() async {
         guard let session = tab.session, session.sshService != nil else {
