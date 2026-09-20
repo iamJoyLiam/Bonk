@@ -12,6 +12,9 @@
 //    is deferred; progress-callback intervals are reported instead.
 //  - Auth time is folded into connect_time (splitting it needs backend
 //    hooks); cancel latency is covered by the dedicated cancelProbe kind.
+//  - OpenSSH connects lazily (ControlMaster spins up on first use), so its
+//    connect_ms reads near zero and the real setup cost lands in
+//    first_byte_ms/total_ms. Compare first_byte + total, not connect alone.
 //
 //  Usage (Debug, needs live hosts + disk space):
 //    let runner = SFTPMatrixRunner()
@@ -333,17 +336,28 @@ final class SFTPBenchRecorder: @unchecked Sendable {
         {
             let span = last.0.timeIntervalSince(first.0)
             if span > 0 { avg = Double(totalBytes) / span / (1024 * 1024) }
-            var rates: [Double] = []
             var intervals: [Double] = []
             for sampleIndex in 1..<samples.count {
                 let deltaT = samples[sampleIndex].0.timeIntervalSince(samples[sampleIndex - 1].0)
                 intervals.append(deltaT * 1000)
-                if deltaT >= 0.005 {
-                    let deltaProgress = samples[sampleIndex].1 - samples[sampleIndex - 1].1
-                    if deltaProgress > 0 { rates.append(Double(totalBytes) * deltaProgress / deltaT / (1024 * 1024)) }
+            }
+            // Peak over 100ms windows; sub-200ms runs report the effective rate
+            // instead (per-callback instant rates are noise on fast links).
+            let window: TimeInterval = 0.1
+            var windowStart = first.0
+            var windowProgress = first.1
+            var best: Double = 0
+            for sample in samples.dropFirst() {
+                if sample.0.timeIntervalSince(windowStart) >= window {
+                    let windowSpan = sample.0.timeIntervalSince(windowStart)
+                    let windowRate = Double(totalBytes) * max(0, sample.1 - windowProgress) / windowSpan / (1024 * 1024)
+                    best = max(best, windowRate)
+                    windowStart = sample.0
+                    windowProgress = sample.1
                 }
             }
-            peak = rates.max()
+            let effective = totalMs > 0 ? Double(totalBytes) / (totalMs / 1000) / (1024 * 1024) : 0
+            peak = totalMs < 200 ? effective : max(best, effective)
             p50 = percentile(intervals, 0.5)
             p95 = percentile(intervals, 0.95)
         }
@@ -732,14 +746,28 @@ actor SFTPMatrixRunner {
         )
         var openMs: Double?
         var poolMs: Double?
-        // Size via a throwaway stat: list parent and match.
+        // Size via a throwaway stat: list parent and match. Short-lived sftp
+        // processes occasionally fail back-to-back; retry briefly.
         let parent = (remote as NSString).deletingLastPathComponent
         let name = (remote as NSString).lastPathComponent
         let probe = try await session.openSFTP()
-        let entries = try await probe.listDirectory(at: parent.isEmpty ? "." : parent)
+        var total: UInt64?
+        var lastStatError: Error?
+        for _ in 0..<3 {
+            do {
+                let entries = try await probe.listDirectory(at: parent.isEmpty ? "." : parent)
+                if let size = entries.first(where: { $0.name == name })?.size {
+                    total = size
+                    break
+                }
+            } catch {
+                lastStatError = error
+            }
+            try await Task.sleep(for: .milliseconds(200))
+        }
         await probe.close()
-        guard let total = entries.first(where: { $0.name == name })?.size else {
-            throw SFTPServiceError.operationFailed("cannot stat remote fixture: \(remote)")
+        guard let total else {
+            throw lastStatError ?? SFTPServiceError.operationFailed("cannot stat remote fixture: \(remote)")
         }
         switch (matrixCase.backend, matrixCase.mode) {
         case (.openSSH, .singleStream):
