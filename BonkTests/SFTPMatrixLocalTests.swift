@@ -273,17 +273,20 @@ final class SFTPMatrixLocalTests: XCTestCase {
         }
     }
 
-    /// Commit-1: planner decision runs inside the real adapter chain
+    /// Planner decision runs inside the real adapter chain
     /// (upload/download through CitadelSFTPAdapter). Execution unchanged.
+    /// A stub provider stands in for the session cache: proves a measured
+    /// RTT reaches the decision (see [PLANNER] in unified log).
     func testAdapterPlannerDecisionPath() async throws {
         try XCTSkipUnless(tcpOpen(port: 2222), "bench-linux absent")
         let cfg = config(port: 2222)
         let client = try await Self.nativeClient(config: cfg)
         let sftp = try await client.openSFTP()
-        let adapter = CitadelSFTPAdapter(sftp: sftp)
+        struct StubRTT: SFTPRTTProvider { func currentRTTMs() -> Double? { 30 } }
+        let adapter = CitadelSFTPAdapter(sftp: sftp, rttProvider: StubRTT())
         let scratch = URL(fileURLWithPath: "/tmp/bench_scratch_2222", isDirectory: true)
         let local = scratch.appendingPathComponent("payload_8388608.bin")
-        let remote = "/tmp/bench/planner_smoke.bin"
+        let remote = "/tmp/bench/planner_smoke_\(Int(Date().timeIntervalSince1970)).bin"
         let dest = scratch.appendingPathComponent("planner_smoke_dl.bin")
         try? FileManager.default.removeItem(at: dest)
         let progress: @Sendable (Double) -> Void = { _ in }
@@ -292,6 +295,28 @@ final class SFTPMatrixLocalTests: XCTestCase {
         let got = (try FileManager.default.attributesOfItem(atPath: dest.path)[.size] as? UInt64) ?? 0
         XCTAssertEqual(got, 8 * 1024 * 1024)
         try? FileManager.default.removeItem(at: dest)
+        // 512MB through the same chain: decision must read accelerated.
+        let big = scratch.appendingPathComponent("payload_536870912.bin")
+        let bigRemote = "/tmp/bench/planner_smoke_512_\(Int(Date().timeIntervalSince1970)).bin"
+        try await adapter.upload(big, to: bigRemote, operationID: UUID(), onProgress: progress)
+        try? await sftp.close()
+        try? await client.close()
+    }
+
+    /// Fallback chain: pool unreachable -> multiChannel still succeeds
+    /// (production adapter path, no pool ever blocks a transfer).
+    func testAdapterPoolFallback() async throws {
+        try XCTSkipUnless(tcpOpen(port: 2222), "bench-linux absent")
+        let cfg = config(port: 2222)
+        let client = try await Self.nativeClient(config: cfg)
+        let sftp = try await client.openSFTP()
+        let badCfg = SSHConnectionConfig(host: "127.0.0.1", port: 22999, username: "root", authMethod: .password(Self.password))
+        let adapter = CitadelSFTPAdapter(sftp: sftp, pooledConfig: badCfg, pooledStore: Self.store)
+        let scratch = URL(fileURLWithPath: "/tmp/bench_scratch_2222", isDirectory: true)
+        let local = scratch.appendingPathComponent("payload_134217728.bin")
+        let remote = "/tmp/bench/fallback_\(Int(Date().timeIntervalSince1970)).bin"
+        let progress: @Sendable (Double) -> Void = { _ in }
+        try await adapter.upload(local, to: remote, operationID: UUID(), onProgress: progress)
         try? await sftp.close()
         try? await client.close()
     }
