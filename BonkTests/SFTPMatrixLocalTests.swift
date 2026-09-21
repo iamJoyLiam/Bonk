@@ -234,7 +234,57 @@ final class SFTPMatrixLocalTests: XCTestCase {
     /// P1 repro: single pool case through the runner dies in first openFile
     /// ("pool-transfer: I/O on closed channel") while the identical pool +
     /// transfer succeeds standalone. See ⑦ notes before enabling pool cells.
-    func testDiagMkdir() async throws {
+    /// Read-overlap microbench: proves concurrent reads on one Citadel handle
+    /// overlap (CONC4 < SEQ4) instead of serializing. Guard for the download
+    /// path: if a change makes CONC4 regress toward SEQ4, pipelining broke.
+    /// Writes results to /tmp/diagpool.txt; informational only (no asserts).
+    func testDiagReadOverlap() async throws {
+        try XCTSkipUnless(tcpOpen(port: 2222), "bench-linux absent")
+        let cfg = config(port: 2222)
+        var log = ""
+        do {
+            let scratch = URL(fileURLWithPath: "/tmp/bench_scratch_2222", isDirectory: true)
+            let local = scratch.appendingPathComponent("payload_33554432.bin")
+            // Seed remote fixture via OpenSSH channel (known-good path).
+            let setupBackend = try OpenSSHBackend(config: cfg)
+            let setupChannel = try await CompatibilitySSHSession(
+                backend: setupBackend, endpoint: SSHEndpoint(host: "127.0.0.1", port: 2222)
+            ).openSFTP()
+            try await setupChannel.upload(local, to: "/tmp/seqtest.bin", operationID: UUID(), onProgress: { _ in })
+            await setupChannel.close()
+            let client = try await Self.nativeClient(config: cfg)
+            let sftp = try await client.openSFTP()
+            let file = try await sftp.openFile(filePath: "/tmp/seqtest.bin", flags: [.read])
+            let remoteFile = SendableSFTPFile(file)
+            // Sequential baseline: 4 x 64K reads back-to-back.
+            var start = Date()
+            for off in [0, 65536, 131072, 196608] as [UInt64] {
+                _ = try await SFTPTransferEngine.readChunk(remoteFile, offset: off, length: 65536)
+            }
+            log += "SEQ4-MS=\(Date().timeIntervalSince(start) * 1000)\n"
+            // Concurrent: 4 x 64K reads racing on one handle.
+            start = Date()
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                for off in [0, 65536, 131072, 196608] as [UInt64] {
+                    group.addTask {
+                        _ = try await SFTPTransferEngine.readChunk(remoteFile, offset: off, length: 65536)
+                    }
+                }
+                try await group.waitForAll()
+            }
+            log += "CONC4-MS=\(Date().timeIntervalSince(start) * 1000)\n"
+            try? await file.close()
+            try await client.close()
+        } catch {
+            log += "DIAG-THREW:\(error)\n"
+        }
+        try log.write(to: URL(fileURLWithPath: "/tmp/diagpool.txt"), atomically: true, encoding: .utf8)
+    }
+
+    /// P1 repro: single pool case through the runner dies in first openFile
+    /// ("pool-transfer: I/O on closed channel") while the identical pool +
+    /// transfer succeeds standalone. Keep until the pool stability P1 lands.
+    func testDiagPoolRunnerRepro() async throws {
         try XCTSkipUnless(tcpOpen(port: 2222), "bench-linux absent")
         let cfg = config(port: 2222)
         let store = Self.store
