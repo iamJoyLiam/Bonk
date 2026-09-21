@@ -755,6 +755,11 @@ actor SFTPMatrixRunner {
         var openMs: Double?
         var poolMs: Double?
         let total = (try FileManager.default.attributesOfItem(atPath: local.path)[.size] as? UInt64) ?? 0
+        // Pool handles built below must outlive the transfer: a defer inside
+        // the acquisition branch would fire at branch exit (before use) and
+        // race the engine. Keep ownership at function scope instead.
+        var ownedPool: [PooledSFTPHandle]?
+        defer { if let handles = ownedPool { Task { for handle in handles { await handle.close() } } } }
         switch (matrixCase.backend, matrixCase.mode) {
         case (.openSSH, .singleStream):
             let tOpen = Date()
@@ -798,7 +803,7 @@ actor SFTPMatrixRunner {
                     throw SFTPServiceError.operationFailed("pool-build: \(error)")
                 }
                 poolMs = Date().timeIntervalSince(tOpen) * 1000
-                defer { let handles = pool; Task { for handle in handles { await handle.close() } } }
+                ownedPool = pool
             }
             do {
                 try await SFTPParallelTransferEngine.parallelUploadMultiTCP(
@@ -833,6 +838,11 @@ actor SFTPMatrixRunner {
         )
         var openMs: Double?
         var poolMs: Double?
+        // Pool handles built below must outlive the transfer: a defer inside
+        // the acquisition branch would fire at branch exit (before use) and
+        // race the engine. Keep ownership at function scope instead.
+        var ownedPool: [PooledSFTPHandle]?
+        defer { if let handles = ownedPool { Task { for handle in handles { await handle.close() } } } }
         // Size via a throwaway stat: list parent and match. Short-lived sftp
         // processes occasionally fail back-to-back; retry briefly.
         let parent = (remote as NSString).deletingLastPathComponent
@@ -899,7 +909,7 @@ actor SFTPMatrixRunner {
                     throw SFTPServiceError.operationFailed("pool-build: \(error)")
                 }
                 poolMs = Date().timeIntervalSince(tOpen) * 1000
-                defer { let handles = pool; Task { for handle in handles { await handle.close() } } }
+                ownedPool = pool
             }
             do {
                 try await SFTPParallelTransferEngine.parallelDownloadMultiTCP(

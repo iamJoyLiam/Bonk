@@ -548,10 +548,12 @@ enum SFTPParallelTransferEngine {
         // handle ， truncate
         var files: [SendableSFTPFile] = []
         for (idx, handle) in handles.enumerated() {
+            Log.sftp.debug("[POOL] upload open start pool=\(handle.poolID.uuidString.prefix(8)) idx=\(idx)")
             let file = try await handle.sftpClient.openFile(
                 filePath: remotePath,
                 flags: idx == 0 ? [.write, .create, .truncate] : [.write, .create]
             )
+            Log.sftp.debug("[POOL] upload open done pool=\(handle.poolID.uuidString.prefix(8)) idx=\(idx)")
             files.append(SendableSFTPFile(file))
         }
         defer {
@@ -597,7 +599,9 @@ enum SFTPParallelTransferEngine {
         let shardSize = (totalBytes + UInt64(shards) - 1) / UInt64(shards)
         var files: [SendableSFTPFile] = []
         for handle in handles {
+            Log.sftp.debug("[POOL] download open start pool=\(handle.poolID.uuidString.prefix(8)) idx=\(handle.index)")
             let file = try await handle.sftpClient.openFile(filePath: remotePath, flags: [.read])
+            Log.sftp.debug("[POOL] download open done pool=\(handle.poolID.uuidString.prefix(8)) idx=\(handle.index)")
             files.append(SendableSFTPFile(file))
         }
         defer {

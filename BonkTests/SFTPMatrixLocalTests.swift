@@ -118,9 +118,8 @@ final class SFTPMatrixLocalTests: XCTestCase {
     /// Full Phase A driver. Configure via /tmp/bench_config.json (one xcodebuild
     /// call = one batch): {port,label,serverType,sizesMb:[8,32],core,multi,
     /// cancel,pool}. Appends rows to /tmp/bench_matrix_full.csv.
-    /// NOTE: `pool` currently only affects the multi branch, and pool cells
-    /// are recorded as failures until the pool-in-runner P1 (testDiagMkdir)
-    /// is triaged — keep pool:false for campaign batches.
+    /// NOTE: pool cells run via the `pool` flag (fixed: pool handles are now
+    /// owned at function scope so the close-defer fires after the transfer).
     private struct BatchConfig: Decodable {
         var port: UInt16 = 2222
         var label: String = "loopback"
@@ -218,8 +217,7 @@ final class SFTPMatrixLocalTests: XCTestCase {
         SFTPMatrixCase(sizeBytes: size, backend: .citadel, mode: .multiChannel, shards: shards, kind: kind)
     }
 
-    // NOTE: no poolCell helper — pool cells stay out of the matrix until the
-    // pool-in-runner P1 (testDiagMkdir) is triaged. Re-add with the fix.
+    // Pool cells ride the multi branch via poolMultiCell (batch.pool flag).
 
     private func multiCell(
         size: UInt64, kind: SFTPMatrixKind, backend: SFTPMatrixBackend, shards: Int
@@ -232,73 +230,17 @@ final class SFTPMatrixLocalTests: XCTestCase {
         SFTPMatrixCase(sizeBytes: size, backend: .citadel, mode: .multiTCP, shards: 4, kind: kind)
     }
 
-    /// P1 repro: single pool case through the runner dies in first openFile
-    /// ("pool-transfer: I/O on closed channel") while the identical pool +
-    /// transfer succeeds standalone. See ⑦ notes before enabling pool cells.
-    /// P1 EXIT CRITERIA (all required before production auto-acceleration):
-    /// 1. Full lifecycle clean in runner AND standalone (connect/handshake/
-    ///    auth/channel-open/subsystem/transfer/close, no early close).
-    /// 2. mc2/mc4/mc8 stable across CONSECUTIVE rounds, not one lucky run.
-    /// 3. No leaks after completion (connections, SSH/SFTP channels, tasks).
-    /// 4. Record effectiveMBps + success/failure rate, never peak alone.
-    /// Fast-but-flaky mc8 stays behind the experimental switch.
-    /// Read-overlap microbench: proves concurrent reads on one Citadel handle
-    /// overlap (CONC4 < SEQ4) instead of serializing. Guard for the download
-    /// path: if a change makes CONC4 regress toward SEQ4, pipelining broke.
-    /// Writes results to /tmp/diagpool.txt; informational only (no asserts).
-    func testDiagReadOverlap() async throws {
-        try XCTSkipUnless(tcpOpen(port: 2222), "bench-linux absent")
-        let cfg = config(port: 2222)
-        var log = ""
-        do {
-            let scratch = URL(fileURLWithPath: "/tmp/bench_scratch_2222", isDirectory: true)
-            let local = scratch.appendingPathComponent("payload_33554432.bin")
-            // Seed remote fixture via OpenSSH channel (known-good path).
-            let setupBackend = try OpenSSHBackend(config: cfg)
-            let setupChannel = try await CompatibilitySSHSession(
-                backend: setupBackend, endpoint: SSHEndpoint(host: "127.0.0.1", port: 2222)
-            ).openSFTP()
-            try await setupChannel.upload(local, to: "/tmp/seqtest.bin", operationID: UUID(), onProgress: { _ in })
-            await setupChannel.close()
-            let client = try await Self.nativeClient(config: cfg)
-            let sftp = try await client.openSFTP()
-            let file = try await sftp.openFile(filePath: "/tmp/seqtest.bin", flags: [.read])
-            let remoteFile = SendableSFTPFile(file)
-            // Sequential baseline: 4 x 64K reads back-to-back.
-            var start = Date()
-            for off in [0, 65536, 131072, 196608] as [UInt64] {
-                _ = try await SFTPTransferEngine.readChunk(remoteFile, offset: off, length: 65536)
-            }
-            log += "SEQ4-MS=\(Date().timeIntervalSince(start) * 1000)\n"
-            // Concurrent: 4 x 64K reads racing on one handle.
-            start = Date()
-            try await withThrowingTaskGroup(of: Void.self) { group in
-                for off in [0, 65536, 131072, 196608] as [UInt64] {
-                    group.addTask {
-                        _ = try await SFTPTransferEngine.readChunk(remoteFile, offset: off, length: 65536)
-                    }
-                }
-                try await group.waitForAll()
-            }
-            log += "CONC4-MS=\(Date().timeIntervalSince(start) * 1000)\n"
-            try? await file.close()
-            try await client.close()
-        } catch {
-            log += "DIAG-THREW:\(error)\n"
-        }
-        try log.write(to: URL(fileURLWithPath: "/tmp/diagpool.txt"), atomically: true, encoding: .utf8)
-    }
-
-    /// P1 repro: single pool case through the runner dies in first openFile
-    /// ("pool-transfer: I/O on closed channel") while the identical pool +
-    /// transfer succeeds standalone. Keep until the pool stability P1 lands.
-    func testDiagPoolRunnerRepro() async throws {
+    /// Regression: pool-owned handles must survive until the transfer ends.
+    /// Root cause was a defer inside the acquisition branch firing at branch
+    /// exit (before use), racing the engine and closing the pool mid-flight
+    /// ('pool-transfer: Output closed' / 'I/O on closed channel').
+    func testPoolViaRunnerSucceeds() async throws {
         try XCTSkipUnless(tcpOpen(port: 2222), "bench-linux absent")
         let cfg = config(port: 2222)
         let store = Self.store
         let scratch = URL(fileURLWithPath: "/tmp/bench_scratch_2222", isDirectory: true)
         let endpoint = SFTPMatrixEndpoint(
-            label: "poolrepro", serverType: "openssh-linux-alpine",
+            label: "poolregression", serverType: "openssh-linux-alpine",
             remoteBasePath: "/tmp/bench", localScratchDir: scratch,
             makeSession: { backend in
                 let endpoint = SSHEndpoint(host: "127.0.0.1", port: 2222)
@@ -322,13 +264,13 @@ final class SFTPMatrixLocalTests: XCTestCase {
         let eightMB: UInt64 = 8 * 1024 * 1024
         let cases: [SFTPMatrixCase] = [
             SFTPMatrixCase(sizeBytes: eightMB, backend: .citadel, mode: .multiTCP, shards: 2, kind: .write),
+            SFTPMatrixCase(sizeBytes: eightMB, backend: .citadel, mode: .multiTCP, shards: 2, kind: .read),
         ]
         let report = await SFTPMatrixRunner().run(endpoint: endpoint, cases: cases, timeoutSeconds: 300)
-        var log = ""
+        XCTAssertEqual(report.rows.count, 2)
         for row in report.rows {
-            log += "\(row.kind)/\(row.backend)/\(row.mode)/\(row.shards) ok=\(row.succeeded) err=\(row.error ?? "-")\n"
+            XCTAssertTrue(row.succeeded, "pool via runner failed: \(row.error ?? "-")")
         }
-        try log.write(to: URL(fileURLWithPath: "/tmp/diagpool.txt"), atomically: true, encoding: .utf8)
     }
 
     func testLocalMatrixSmoke() async throws {

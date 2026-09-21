@@ -16,15 +16,21 @@ import os.log
 
 // MARK: - Pooled SFTP Handle
 
-/// Holds client + SFTP
+/// Holds client + SFTP. Carries pool identity for lifecycle tracing
+/// (poolID shared per pool, index per handle). See P1 exit criteria.
 final class PooledSFTPHandle: @unchecked Sendable {
     let sshClient: SSHClient
     let sftpClient: SFTPClient
-    init(sshClient: SSHClient, sftpClient: SFTPClient) {
+    let poolID: UUID
+    let index: Int
+    init(sshClient: SSHClient, sftpClient: SFTPClient, poolID: UUID = UUID(), index: Int = 0) {
         self.sshClient = sshClient
         self.sftpClient = sftpClient
+        self.poolID = poolID
+        self.index = index
     }
     func close() async {
+        Log.sftp.debug("[POOL] close pool=\(self.poolID.uuidString.prefix(8)) idx=\(self.index)")
         try? await sftpClient.close()
         try? await sshClient.close()
     }
@@ -40,12 +46,14 @@ enum SFTPMultiTCPPool {
         hostKeyStore: any SSHHostKeyStore,
         count: Int
     ) async throws -> [PooledSFTPHandle] {
+        let poolID = UUID()
+        Log.sftp.info("[POOL] build start pool=\(poolID.uuidString.prefix(8)) count=\(count) host=\(config.host)")
         // Adaptive: if request 8 but server MaxSessions=6, halve to 2
         var attemptCount = max(1, count)
         var lastError: Error?
         while attemptCount >= 1 {
             do {
-                let pool = try await makePoolInternal(config: config, hostKeyStore: hostKeyStore, count: attemptCount)
+                let pool = try await makePoolInternal(config: config, hostKeyStore: hostKeyStore, count: attemptCount, poolID: poolID)
                 if attemptCount < count {
                     Log.sftp.warning("[POOL] MaxSessions probe: requested \(count) failed, succeeded with \(attemptCount) host=\(config.host)")
                 }
@@ -72,7 +80,8 @@ enum SFTPMultiTCPPool {
     private static func makePoolInternal(
         config: SSHConnectionConfig,
         hostKeyStore: any SSHHostKeyStore,
-        count: Int
+        count: Int,
+        poolID: UUID
     ) async throws -> [PooledSFTPHandle] {
         var handles: [PooledSFTPHandle] = []
         handles.reserveCapacity(count)
@@ -83,10 +92,11 @@ enum SFTPMultiTCPPool {
             let batchEnd = min(index + maxConcurrent, count)
             let batchCount = batchEnd - index
             do {
+                let baseIndex = index
                 try await withThrowingTaskGroup(of: PooledSFTPHandle.self) { group in
-                    for _ in 0..<batchCount {
+                    for offset in 0..<batchCount {
                         group.addTask {
-                            let pair = try await makeOne(config: config, hostKeyStore: hostKeyStore)
+                            let pair = try await makeOne(config: config, hostKeyStore: hostKeyStore, poolID: poolID, index: baseIndex + offset)
                             return pair
                         }
                     }
@@ -115,10 +125,17 @@ enum SFTPMultiTCPPool {
         return keywords.contains { msg.contains($0) }
     }
 
-    private static func makeOne(config: SSHConnectionConfig, hostKeyStore: any SSHHostKeyStore) async throws -> PooledSFTPHandle {
+    private static func makeOne(
+        config: SSHConnectionConfig,
+        hostKeyStore: any SSHHostKeyStore,
+        poolID: UUID,
+        index: Int
+    ) async throws -> PooledSFTPHandle {
+        let tag = "\(poolID.uuidString.prefix(8)):\(index)"
+        Log.sftp.debug("[POOL] handle connect start \(tag)")
         let sshClient = try await makeNativeClient(config: config, hostKeyStore: hostKeyStore)
         let sftpClient = try await sshClient.openSFTP()
-        return PooledSFTPHandle(sshClient: sshClient, sftpClient: sftpClient)
+        return PooledSFTPHandle(sshClient: sshClient, sftpClient: sftpClient, poolID: poolID, index: index)
     }
 
     // Replicate TOFU
