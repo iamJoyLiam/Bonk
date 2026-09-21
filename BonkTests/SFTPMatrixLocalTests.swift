@@ -321,6 +321,35 @@ final class SFTPMatrixLocalTests: XCTestCase {
         try? await client.close()
     }
 
+    /// Hard gate before PoolFactory: real SSH connect -> real SFTP
+    /// connect -> real RTT probe -> session cache -> planner. No os.log
+    /// dependency: every step below is an asserted state transition.
+    func testSessionRTTLiveFire() async throws {
+        try XCTSkipUnless(tcpOpen(port: 2222), "bench-linux absent")
+        let cfg = config(port: 2222)
+        let ssh = SSHNetworkService(hostKeyStore: Self.store)
+        try await ssh.connect(config: cfg)
+        let service = await MainActor.run { SFTPService() }
+        try await service.connect(using: ssh)
+        // Cache filled by a real probe (not nil, positive).
+        let rtt = await MainActor.run { service.sessionRTT.currentRTTMs() }
+        guard let rtt else {
+            XCTFail("RTT cache empty after live connect"); return
+        }
+        XCTAssertGreaterThan(rtt, 0)
+        // The cached value feeds the planner: loopback RTT is low, so a
+        // 2GB read must resolve to accelerated (campaign anchor).
+        let profile = SFTPTransferPlanner.profile(
+            sizeBytes: 2 * 1024 * 1024 * 1024, rttMs: rtt, operation: .read
+        )
+        XCTAssertEqual(profile, .accelerated)
+        // Second read reuses the snapshot (probe ran once at connect).
+        let again = await MainActor.run { service.sessionRTT.currentRTTMs() }
+        XCTAssertEqual(again, rtt)
+        await service.disconnect()
+        await ssh.disconnect()
+    }
+
     func testLocalMatrixSmoke() async throws {
         try XCTSkipUnless(
             tcpOpen(port: 2222),
