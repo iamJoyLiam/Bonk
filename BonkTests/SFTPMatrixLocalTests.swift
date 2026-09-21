@@ -496,6 +496,35 @@ final class SFTPMatrixLocalTests: XCTestCase {
         try? await client.close()
     }
 
+    /// Correctness: re-uploading an existing destination must replace
+    /// it (no half-finished state, repeatable). Covers verifyAndRenameRemote.
+    func testReuploadExistingDestination() async throws {
+        try XCTSkipUnless(tcpOpen(port: 2222), "bench-linux absent")
+        let cfg = config(port: 2222)
+        let client = try await Self.nativeClient(config: cfg)
+        let sftp = try await client.openSFTP()
+        let adapter = CitadelSFTPAdapter(sftp: sftp)
+        let scratch = URL(fileURLWithPath: "/tmp/bench_scratch_2222", isDirectory: true)
+        let local = scratch.appendingPathComponent("payload_8388608.bin")
+        let remote = "/tmp/bench/reupload_\(Int(Date().timeIntervalSince1970)).bin"
+        let progress: @Sendable (Double) -> Void = { _ in }
+        // First upload creates the destination.
+        try await adapter.upload(local, to: remote, operationID: UUID(), onProgress: progress)
+        // Second identical upload must replace, not fail.
+        try await adapter.upload(local, to: remote, operationID: UUID(), onProgress: progress)
+        // Third upload: repeat stability.
+        try await adapter.upload(local, to: remote, operationID: UUID(), onProgress: progress)
+        // Content intact.
+        let dest = scratch.appendingPathComponent("reupload_dl.bin")
+        try? FileManager.default.removeItem(at: dest)
+        try await adapter.download(remote, to: dest, operationID: UUID(), onProgress: progress)
+        let got = (try FileManager.default.attributesOfItem(atPath: dest.path)[.size] as? UInt64) ?? 0
+        XCTAssertEqual(got, 8 * 1024 * 1024)
+        try? FileManager.default.removeItem(at: dest)
+        try? await sftp.close()
+        try? await client.close()
+    }
+
     func testLocalMatrixSmoke() async throws {
         try XCTSkipUnless(
             tcpOpen(port: 2222),

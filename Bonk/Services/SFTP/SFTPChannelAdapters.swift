@@ -176,6 +176,10 @@ final class CitadelSFTPAdapter: SFTPChannel {
                 throw SFTPServiceError.operationFailed("Upload incomplete: expected \(expectedBytes) got \(got)")
             }
         }
+        // Replace semantics (mirrors verifyAndMove): servers ignore the
+        // v5 rename-overwrite flag on v3 channels, so remove-then-rename.
+        // The verified temp source is never destroyed by a rename failure.
+        try? await sftp.remove(at: finalPath)
         try await sftp.rename(at: tempPath, to: finalPath, flags: 0)
     }
 
