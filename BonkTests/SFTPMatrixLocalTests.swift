@@ -364,8 +364,9 @@ final class SFTPMatrixLocalTests: XCTestCase {
     }
 
     /// Service-level fallback gate: a poisoned TOFU fingerprint kills
-    /// Citadel only (hostKeyMismatch); citadelExperimental must still
-    /// connect via OpenSSH and transfer, with no Citadel error surfacing.
+    /// Citadel only (hostKeyMismatch); the default automatic backend
+    /// (Citadel-first) must still connect via OpenSSH and transfer,
+    /// with no Citadel error surfacing.
     /// The shared store is restored before return (real fp captured first
     /// with a throwaway store, so order with other tests does not matter).
     func testServiceCitadelToOpenSSHallback() async throws {
@@ -393,7 +394,9 @@ final class SFTPMatrixLocalTests: XCTestCase {
             let ssh = SSHNetworkService(hostKeyStore: Self.store)
             try await ssh.connect(config: cfg)
             let service = await MainActor.run { SFTPService() }
-            await MainActor.run { service.preferredBackend = .citadelExperimental }
+            // Default automatic backend is Citadel-first: poison forces the
+            // OpenSSH fallback leg.
+            await MainActor.run { service.preferredBackend = .automatic }
             try await service.connect(using: ssh)
             // Fallback served by OpenSSH: no Citadel error surfaces.
             let errMessage = await MainActor.run { service.errorMessage }

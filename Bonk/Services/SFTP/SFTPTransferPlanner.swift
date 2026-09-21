@@ -48,9 +48,11 @@ final class SFTPSessionRTTCache: SFTPRTTProvider, @unchecked Sendable {
     }
 }
 
-/// Worker profile for one transfer. Names the profile, not the engine:
-/// compatibility rides the current (OpenSSH) channel with zero pool
-/// overhead; balanced/accelerated build Citadel mc2/mc4 pools.
+/// Worker profile for one transfer. Names the profile, not the engine.
+/// All profiles run on Citadel (preferred engine): compatibility is
+/// Citadel single-stream with zero pool overhead; balanced/accelerated
+/// build Citadel mc2/mc4 pools. OpenSSH is not a profile — it is the
+/// compatibility fallback engine below Citadel.
 enum SFTPTransferProfile: String, Sendable, Equatable {
     case compatibility
     case balanced

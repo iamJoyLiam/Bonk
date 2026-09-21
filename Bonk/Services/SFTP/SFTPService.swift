@@ -28,8 +28,8 @@ final class SFTPService {
     #endif
     private var vnextChannel: (any SFTPChannel)?
     /// Backend routing preference (synced from settings; automatic default).
-    /// automatic = OpenSSH first, Citadel fallback. openSSH never touches
-    /// Citadel; citadelExperimental skips OpenSSH with OpenSSH fallback.
+    /// Citadel-first: automatic and citadelExperimental try Citadel, then
+    /// fall back to OpenSSH. openSSH forces OpenSSH only (no Citadel).
     var preferredBackend: SFTPBackend = .automatic
     /// Session RTT snapshot for the planner (Commit-2). Reset on every
     /// fresh connection, probed once after connect, reused by all
@@ -88,7 +88,8 @@ final class SFTPService {
         defer { isLoading = false }
 
         #if os(macOS)
-            if preferredBackend != .citadelExperimental,
+            // Forced OpenSSH only: Citadel is never attempted here.
+            if preferredBackend == .openSSH,
                let client = try await sshService.openOpenSSHSFTPClient()
             {
                 do {
@@ -140,12 +141,13 @@ final class SFTPService {
             }
         } catch {
             #if os(macOS)
-                // Experimental Citadel failed: fall back to OpenSSH rather
+                // Citadel-first failed: fall back to OpenSSH rather
                 // than stranding the user without file access.
-                if preferredBackend == .citadelExperimental,
+                // Covers automatic (default) and citadelExperimental.
+                if preferredBackend != .openSSH,
                    let fallback = try? await sshService.openOpenSSHSFTPClient()
                 {
-                    Log.sftp.warning("Citadel experimental SFTP failed, falling back to OpenSSH")
+                    Log.sftp.warning("Citadel SFTP failed, falling back to OpenSSH")
                     do {
                         let path = try await fallback.realPath()
                         openSSHSFTPClient = fallback
