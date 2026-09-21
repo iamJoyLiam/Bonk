@@ -274,12 +274,44 @@ struct SFTPWindowView: View {
 
     // MARK: - Transfer Panel
 
+    /// Render-driven speed readout: resamples only when transferred bytes
+    /// change, so unrelated re-renders never pollute the EMA. Finished or
+    /// cancelled transfers drop their sample and show no speed.
+    private final class TransferSpeedTracker {
+        private struct Sample { var bytes: UInt64; var at: Date; var ema: Double }
+        private var samples: [UUID: Sample] = [:]
+        func text(for transfer: SFTPTransfer) -> String? {
+            guard transfer.isActive else { samples.removeValue(forKey: transfer.id); return nil }
+            let now = Date()
+            guard var sample = samples[transfer.id] else {
+                samples[transfer.id] = Sample(bytes: transfer.transferredBytes, at: now, ema: 0)
+                return nil
+            }
+            guard transfer.transferredBytes > sample.bytes else { return Self.format(sample.ema) }
+            let dt = now.timeIntervalSince(sample.at)
+            guard dt > 0 else { return Self.format(sample.ema) }
+            let instant = Double(transfer.transferredBytes - sample.bytes) / dt
+            sample.ema = sample.ema <= 0 ? instant : sample.ema * 0.6 + instant * 0.4
+            sample.bytes = transfer.transferredBytes
+            sample.at = now
+            samples[transfer.id] = sample
+            return Self.format(sample.ema)
+        }
+        private static func format(_ bytesPerSecond: Double) -> String? {
+            guard bytesPerSecond > 0 else { return nil }
+            let mbps = bytesPerSecond / (1024 * 1024)
+            if mbps >= 1024 { return String(format: "%.1f GB/s", mbps / 1024) }
+            return String(format: "%.1f MB/s", mbps)
+        }
+    }
+
     /// Transfer progress section, isolated from the file panes: SFTPWindowView
     /// never reads sftp.transfers, so progress ticks only invalidate this
     /// small view instead of rebuilding both file lists.
     struct SFTPTransferSection: View {
         @Environment(I18n.self) var i18n
         var sftp: SFTPService
+        @State private var speeds = TransferSpeedTracker()
 
         var body: some View {
             if !sftp.transfers.isEmpty {
@@ -327,7 +359,7 @@ struct SFTPWindowView: View {
                                         return String(format: "%.1f MB", megabytes)
                                     }
                                 }()
-                                Text(bytesText)
+                                Text(bytesText + (speeds.text(for: transfer).map { " · \($0)" } ?? ""))
                                     .font(.system(size: AppStyle.fontCaption).monospacedDigit())
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
