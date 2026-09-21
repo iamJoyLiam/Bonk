@@ -140,6 +140,10 @@ struct SFTPWindowView: View {
                 ?? (NSHomeDirectory() as NSString).appendingPathComponent("Downloads")
             localPath = defaultPath
             loadLocalFiles()
+            syncSFTPBackendPreference()
+        }
+        .onChange(of: preferences.sftpEngine) { _, _ in
+            syncSFTPBackendPreference()
         }
     }
 
@@ -372,6 +376,13 @@ struct SFTPWindowView: View {
     }
 
     // MARK: - Helpers
+
+    /// Sync the settings SFTP engine choice onto the active session so the
+    /// next connect (or reconnect) routes accordingly. Existing connections
+    /// are untouched until they reconnect.
+    private func syncSFTPBackendPreference() {
+        sessionManager.activeTab?.session?.preferredSFTPBackend = SFTPBackend.resolve(preferences.sftpEngine)
+    }
 
     private func loadLocalFiles() {
         let path = localPath

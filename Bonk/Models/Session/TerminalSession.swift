@@ -16,6 +16,9 @@ final class TerminalSession {
         }
     }
     var sftpService: SFTPService?
+    /// SFTP backend preference synced from settings by the owning view.
+    /// Transient (never persisted); defaults to automatic.
+    var preferredSFTPBackend: SFTPBackend = .automatic
     private var sftpConnectionTask: Task<SFTPService, Error>?
     var vnextSession: (any SSHSession)?
     var sftpErrorMessage: String?
@@ -146,23 +149,44 @@ final class TerminalSession {
         }
 
         // VNext T5 — prefer unified session if available (single-connection multiplex)
+        // Explicit backend choices only ride VNext when the session type matches.
         if let vnextSession {
-            sftpErrorMessage = nil
-            let task = Task { @MainActor in
-                let service = SFTPService()
-                try await service.connect(using: vnextSession)
-                return service
+            let useVNext: Bool
+            switch preferredSFTPBackend {
+            case .automatic:
+                useVNext = true
+            case .openSSH:
+                #if os(macOS)
+                    useVNext = vnextSession is CompatibilitySSHSession
+                #else
+                    useVNext = false
+                #endif
+            case .citadelExperimental:
+                #if os(macOS)
+                    useVNext = !(vnextSession is CompatibilitySSHSession)
+                #else
+                    useVNext = true
+                #endif
             }
-            sftpConnectionTask = task
-            defer { sftpConnectionTask = nil }
-            do {
-                let service = try await task.value
-                sftpService = service
+            if useVNext {
                 sftpErrorMessage = nil
-                return service
-            } catch {
-                sftpErrorMessage = error.localizedDescription
-                return nil
+                let task = Task { @MainActor in
+                    let service = SFTPService()
+                    service.preferredBackend = preferredSFTPBackend
+                    try await service.connect(using: vnextSession)
+                    return service
+                }
+                sftpConnectionTask = task
+                defer { sftpConnectionTask = nil }
+                do {
+                    let service = try await task.value
+                    sftpService = service
+                    sftpErrorMessage = nil
+                    return service
+                } catch {
+                    sftpErrorMessage = error.localizedDescription
+                    return nil
+                }
             }
         }
 
@@ -171,6 +195,7 @@ final class TerminalSession {
         sftpErrorMessage = nil
         let task = Task { @MainActor in
             let service = SFTPService()
+            service.preferredBackend = preferredSFTPBackend
             try await service.connect(using: sshService)
             return service
         }

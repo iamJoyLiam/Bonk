@@ -5,6 +5,20 @@
 
 import Foundation
 
+/// SFTP backend preference (UserPreferences.sftpEngine raw value).
+/// automatic = OpenSSH first, Citadel fallback (current behavior).
+/// citadelExperimental skips OpenSSH even when available; openSSH skips Citadel.
+enum SFTPBackend: String, Sendable, CaseIterable {
+    case automatic
+    case openSSH
+    case citadelExperimental
+
+    static func resolve(_ raw: String?) -> SFTPBackend {
+        guard let raw, let backend = SFTPBackend(rawValue: raw) else { return .automatic }
+        return backend
+    }
+}
+
 /// Represents a remote file or directory from SFTP listing.
 public struct SFTPFileEntry: Identifiable, Sendable, Equatable {
     public let id: String // path-based identity for stable SwiftUI diffing

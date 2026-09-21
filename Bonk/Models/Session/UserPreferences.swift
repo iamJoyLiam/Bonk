@@ -39,6 +39,8 @@ final class UserPreferences {
     /// SFTP — optional for backward compatibility
     var sftpOverwriteAlways: Bool?
     var sftpDefaultLocalPath: String?
+    /// SFTP engine preference, raw value of SFTPBackend (nil = automatic).
+    var sftpEngine: String?
     /// Auto-reconnection settings (optional for backward compatibility)
     var autoReconnect: Bool?
     var maxReconnectAttempts: Int?
@@ -75,6 +77,7 @@ final class UserPreferences {
         checkForUpdates: Bool = true,
         sftpOverwriteAlways: Bool? = nil,
         sftpDefaultLocalPath: String? = nil,
+        sftpEngine: String? = nil,
         autoReconnect: Bool? = true,
         maxReconnectAttempts: Int? = 5,
         reconnectBaseDelay: Double? = 1.0,
@@ -103,6 +106,7 @@ final class UserPreferences {
         self.checkForUpdates = checkForUpdates
         self.sftpOverwriteAlways = sftpOverwriteAlways
         self.sftpDefaultLocalPath = sftpDefaultLocalPath
+        self.sftpEngine = sftpEngine
         self.autoReconnect = autoReconnect
         self.maxReconnectAttempts = maxReconnectAttempts
         self.reconnectBaseDelay = reconnectBaseDelay

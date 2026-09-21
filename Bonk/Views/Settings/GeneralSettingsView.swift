@@ -57,6 +57,16 @@ struct GeneralSettingsView: View {
                         }
                     }
                 }
+
+                Picker(i18n.t(.sftpEngine), selection: Binding(
+                    get: { SFTPBackend.resolve(preferences.sftpEngine) },
+                    set: { preferences.sftpEngine = $0 == .automatic ? nil : $0.rawValue }
+                )) {
+                    Text(i18n.t(.sftpEngineAutomatic)).tag(SFTPBackend.automatic)
+                    Text(i18n.t(.sftpEngineOpenSSH)).tag(SFTPBackend.openSSH)
+                    Text(i18n.t(.sftpEngineCitadel)).tag(SFTPBackend.citadelExperimental)
+                }
+                Text(i18n.t(.sftpEngineDesc)).font(.caption).foregroundStyle(.secondary)
             }
 
             Section(i18n.t(.sshKeys)) {

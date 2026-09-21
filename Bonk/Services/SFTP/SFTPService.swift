@@ -27,6 +27,10 @@ final class SFTPService {
         private var openSSHSFTPClient: OpenSSHSFTPClient?
     #endif
     private var vnextChannel: (any SFTPChannel)?
+    /// Backend routing preference (synced from settings; automatic default).
+    /// automatic = OpenSSH first, Citadel fallback. openSSH never touches
+    /// Citadel; citadelExperimental skips OpenSSH with OpenSSH fallback.
+    var preferredBackend: SFTPBackend = .automatic
     /// Monotonic counter for listDirectory: a stale result (background
     /// refresh finishing after the user navigated) must not overwrite the
     /// newer listing.
@@ -72,7 +76,9 @@ final class SFTPService {
         defer { isLoading = false }
 
         #if os(macOS)
-            if let client = try await sshService.openOpenSSHSFTPClient() {
+            if preferredBackend != .citadelExperimental,
+               let client = try await sshService.openOpenSSHSFTPClient()
+            {
                 do {
                     let path = try await client.realPath()
                     openSSHSFTPClient = client
@@ -90,22 +96,52 @@ final class SFTPService {
                     throw error
                 }
             }
+            if preferredBackend == .openSSH {
+                throw SFTPServiceError.operationFailed("OpenSSH SFTP is unavailable for this connection.")
+            }
         #endif
 
-        let client = try await sshService.openSFTPClient()
         do {
-            let path = try await client.getRealPath(atPath: ".")
-            sftpClient = client
-            channel = CitadelSFTPAdapter(sftp: client)
-            vnextChannel = channel
-            currentPath = path
-            Log.sftp.info("SFTP connected, initial path: \(self.currentPath)")
-            try await listDirectory()
+            let client = try await sshService.openSFTPClient()
+            do {
+                let path = try await client.getRealPath(atPath: ".")
+                sftpClient = client
+                channel = CitadelSFTPAdapter(sftp: client)
+                vnextChannel = channel
+                currentPath = path
+                Log.sftp.info("SFTP connected, initial path: \(self.currentPath)")
+                try await listDirectory()
+            } catch {
+                try? await client.close()
+                sftpClient = nil
+                channel = nil
+                vnextChannel = nil
+                throw error
+            }
         } catch {
-            try? await client.close()
-            sftpClient = nil
-            channel = nil
-            vnextChannel = nil
+            #if os(macOS)
+                // Experimental Citadel failed: fall back to OpenSSH rather
+                // than stranding the user without file access.
+                if preferredBackend == .citadelExperimental,
+                   let fallback = try? await sshService.openOpenSSHSFTPClient()
+                {
+                    Log.sftp.warning("Citadel experimental SFTP failed, falling back to OpenSSH")
+                    do {
+                        let path = try await fallback.realPath()
+                        openSSHSFTPClient = fallback
+                        channel = OpenSSHSFTPChannelAdapter(client: fallback)
+                        vnextChannel = channel
+                        currentPath = path
+                        try await listDirectory()
+                        return
+                    } catch {
+                        fallback.close()
+                        openSSHSFTPClient = nil
+                        channel = nil
+                        vnextChannel = nil
+                    }
+                }
+            #endif
             throw error
         }
     }
