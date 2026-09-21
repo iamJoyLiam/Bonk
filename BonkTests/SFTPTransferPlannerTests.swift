@@ -125,6 +125,12 @@ final class SFTPTransferPlannerTests: XCTestCase {
         XCTAssertNil(cache.currentRTTMs())
     }
 
+    func testPoolShardsMapping() {
+        XCTAssertNil(SFTPTransferProfile.compatibility.poolShards)
+        XCTAssertEqual(SFTPTransferProfile.balanced.poolShards, 2)
+        XCTAssertEqual(SFTPTransferProfile.accelerated.poolShards, 4)
+    }
+
     func testEvidenceAnchors() {
         // Campaign anchors that must never regress:
         // - 128MB read rtt30: mc2 122 vs mc4 118 -> no pooling.

@@ -28,12 +28,14 @@ final class CitadelSFTPAdapter: SFTPChannel {
     private let pooledConfig: SSHConnectionConfig?
     private let pooledStore: (any SSHHostKeyStore)?
     private let rttProvider: (any SFTPRTTProvider)?
+    private let poolFactory: (any SFTPPoolFactory)?
 
-    init(sftp: SFTPClient, pooledConfig: SSHConnectionConfig? = nil, pooledStore: (any SSHHostKeyStore)? = nil, rttProvider: (any SFTPRTTProvider)? = nil) {
+    init(sftp: SFTPClient, pooledConfig: SSHConnectionConfig? = nil, pooledStore: (any SSHHostKeyStore)? = nil, rttProvider: (any SFTPRTTProvider)? = nil, poolFactory: (any SFTPPoolFactory)? = nil) {
         self.sftp = sftp
         self.pooledConfig = pooledConfig
         self.pooledStore = pooledStore
         self.rttProvider = rttProvider
+        self.poolFactory = poolFactory
     }
 
     func realPath() async throws -> String {
@@ -75,8 +77,9 @@ final class CitadelSFTPAdapter: SFTPChannel {
     func upload(_ localURL: URL, to remotePath: String, operationID: UUID, onProgress: @escaping @Sendable (Double) -> Void) async throws {
         let attrs = try FileManager.default.attributesOfItem(atPath: localURL.path)
         let total = (attrs[.size] as? UInt64) ?? 0
-        // Planner decides, execution unchanged. RTT comes from the
-        // session cache when measured, nil otherwise (nil-fallback branch).
+        // Planner decides the profile; the branches below execute it.
+        // RTT comes from the session cache when measured, nil otherwise
+        // (nil-fallback branch).
         let rttMs = rttProvider?.currentRTTMs()
         let decision = SFTPTransferPlanner.profile(sizeBytes: total, rttMs: rttMs, operation: .write)
         Log.sftp.info("[PLANNER] upload size=\(total) rtt=\(rttMs.map { String(format: "%.1f", $0) } ?? "nil") decision=\(decision.rawValue)")
@@ -84,25 +87,36 @@ final class CitadelSFTPAdapter: SFTPChannel {
         let tempRemotePath = remotePath + ".bonk.part"
         try? await sftp.remove(at: tempRemotePath)
         do {
-            if SFTPParallelStrategy.shouldUseParallel(totalBytes: total) {
-                if let cfg = pooledConfig, let store = pooledStore {
-                    let shards = SFTPParallelStrategy.shardCount(for: total)
-                    Log.sftp.info("[POOL] try N×TCP upload total=\(total) shards=\(shards)")
-                    do {
-                        let pool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
-                        defer { let profile = pool; Task { [profile] in for handle in profile { await handle.close() } } }
-                        try await SFTPParallelTransferEngine.parallelUploadMultiTCP(
-                            handles: pool, remotePath: tempRemotePath, localURL: localURL,
-                            totalBytes: total, isCancelled: { false }, onProgress: onProgress
-                        )
-                        try await verifyAndRenameRemote(tempPath: tempRemotePath, finalPath: remotePath, expectedBytes: total, sftp: sftp)
-                        if total == 0 { onProgress(1.0) }
-                        return
-                    } catch {
-                        Log.sftp.warning("[POOL] N×TCP upload failed, fallback: \(error)")
-                        try? await sftp.remove(at: tempRemotePath)
+            // Commit-3: planner decision drives pool execution. Factory first,
+            // legacy direct config second (harness/tests). Failure falls
+            // through to the multiChannel/single chain below (unchanged).
+            if let shards = decision.poolShards, total > 0 {
+                Log.sftp.info("[POOL] planner \(decision.rawValue) N×TCP upload total=\(total) shards=\(shards)")
+                do {
+                    let pool: [PooledSFTPHandle]
+                    if let factory = poolFactory, let cfg = pooledConfig, let store = pooledStore {
+                        pool = try await factory.makePool(configuration: SFTPPoolConfiguration(
+                            connectionConfig: cfg, hostKeyStore: store, shards: shards
+                        ))
+                    } else if let cfg = pooledConfig, let store = pooledStore {
+                        pool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
+                    } else {
+                        throw SFTPServiceError.operationFailed("no pool source for \(decision.rawValue)")
                     }
+                    defer { let profile = pool; Task { [profile] in for handle in profile { await handle.close() } } }
+                    try await SFTPParallelTransferEngine.parallelUploadMultiTCP(
+                        handles: pool, remotePath: tempRemotePath, localURL: localURL,
+                        totalBytes: total, isCancelled: { false }, onProgress: onProgress
+                    )
+                    try await verifyAndRenameRemote(tempPath: tempRemotePath, finalPath: remotePath, expectedBytes: total, sftp: sftp)
+                    if total == 0 { onProgress(1.0) }
+                    return
+                } catch {
+                    Log.sftp.warning("[POOL] N×TCP upload failed, fallback: \(error)")
+                    try? await sftp.remove(at: tempRemotePath)
                 }
+            }
+            if SFTPParallelStrategy.shouldUseParallel(totalBytes: total) {
                 Log.sftp.info("[P2] Citadel upload multi-channel total=\(total)")
                 do {
                     try await SFTPParallelTransferEngine.parallelUploadMultiChannel(
@@ -210,25 +224,34 @@ final class CitadelSFTPAdapter: SFTPChannel {
         let tempURL = URL(fileURLWithPath: localURL.path + ".bonk.part")
         try? FileManager.default.removeItem(at: tempURL)
         do {
-            if total > 0, SFTPParallelStrategy.shouldUseParallel(totalBytes: total) {
-                if let cfg = pooledConfig, let store = pooledStore {
-                    let shards = SFTPParallelStrategy.shardCount(for: total)
-                    Log.sftp.info("[POOL] try N×TCP download total=\(total) shards=\(shards)")
-                    do {
-                        let pool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
-                        defer { let profile = pool; Task { [profile] in for handle in profile { await handle.close() } } }
-                        try await SFTPParallelTransferEngine.parallelDownloadMultiTCP(
-                            handles: pool, remotePath: remotePath, localURL: tempURL,
-                            totalBytes: total, isCancelled: { false }, onProgress: onProgress
-                        )
-                        try await verifyAndMove(tempURL: tempURL, finalURL: localURL, expectedBytes: total)
-                        if total == 0 { onProgress(1.0) }
-                        return
-                    } catch {
-                        Log.sftp.warning("[POOL] N×TCP download failed, fallback: \(error)")
-                        try? FileManager.default.removeItem(at: tempURL)
+            // Commit-3: planner decision drives pool execution (mirrors upload).
+            if let shards = decision.poolShards, total > 0 {
+                Log.sftp.info("[POOL] planner \(decision.rawValue) N×TCP download total=\(total) shards=\(shards)")
+                do {
+                    let pool: [PooledSFTPHandle]
+                    if let factory = poolFactory, let cfg = pooledConfig, let store = pooledStore {
+                        pool = try await factory.makePool(configuration: SFTPPoolConfiguration(
+                            connectionConfig: cfg, hostKeyStore: store, shards: shards
+                        ))
+                    } else if let cfg = pooledConfig, let store = pooledStore {
+                        pool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
+                    } else {
+                        throw SFTPServiceError.operationFailed("no pool source for \(decision.rawValue)")
                     }
+                    defer { let profile = pool; Task { [profile] in for handle in profile { await handle.close() } } }
+                    try await SFTPParallelTransferEngine.parallelDownloadMultiTCP(
+                        handles: pool, remotePath: remotePath, localURL: tempURL,
+                        totalBytes: total, isCancelled: { false }, onProgress: onProgress
+                    )
+                    try await verifyAndMove(tempURL: tempURL, finalURL: localURL, expectedBytes: total)
+                    if total == 0 { onProgress(1.0) }
+                    return
+                } catch {
+                    Log.sftp.warning("[POOL] N×TCP download failed, fallback: \(error)")
+                    try? FileManager.default.removeItem(at: tempURL)
                 }
+            }
+            if total > 0, SFTPParallelStrategy.shouldUseParallel(totalBytes: total) {
                 Log.sftp.info("[P2] Citadel download multi-channel total=\(total)")
                 do {
                     try await SFTPParallelTransferEngine.parallelDownloadMultiChannel(

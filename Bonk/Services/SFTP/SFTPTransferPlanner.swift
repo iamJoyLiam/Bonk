@@ -55,6 +55,16 @@ enum SFTPTransferProfile: String, Sendable, Equatable {
     case compatibility
     case balanced
     case accelerated
+
+    /// Fixed planner-to-factory mapping (Commit-3). mc8 stays stress-only
+    /// and never appears here. nil means single-stream, no pool.
+    var poolShards: Int? {
+        switch self {
+        case .compatibility: return nil
+        case .balanced: return 2
+        case .accelerated: return 4
+        }
+    }
 }
 
 /// Transfer direction. Reads and writes scale differently with RTT

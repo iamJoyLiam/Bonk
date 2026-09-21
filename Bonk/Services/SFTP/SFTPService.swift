@@ -64,7 +64,13 @@ final class SFTPService {
             }
         #endif
         if let sftpClient, sftpClient.isActive {
-            channel = CitadelSFTPAdapter(sftp: sftpClient, rttProvider: sessionRTT)
+            channel = CitadelSFTPAdapter(
+                sftp: sftpClient,
+                pooledConfig: await sshService.config,
+                pooledStore: sshService.hostKeyStore,
+                rttProvider: sessionRTT,
+                poolFactory: DefaultSFTPPoolFactory()
+            )
             if entries.isEmpty { try await listDirectory() }
             return
         }
@@ -113,7 +119,13 @@ final class SFTPService {
             do {
                 let path = try await client.getRealPath(atPath: ".")
                 sftpClient = client
-                channel = CitadelSFTPAdapter(sftp: client, rttProvider: sessionRTT)
+                channel = CitadelSFTPAdapter(
+                sftp: client,
+                pooledConfig: await sshService.config,
+                pooledStore: sshService.hostKeyStore,
+                rttProvider: sessionRTT,
+                poolFactory: DefaultSFTPPoolFactory()
+            )
                 vnextChannel = channel
                 currentPath = path
                 Log.sftp.info("SFTP connected, initial path: \(self.currentPath)")

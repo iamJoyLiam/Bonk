@@ -24,6 +24,17 @@ private actor AcceptAllHostKeyStore: SSHHostKeyStore {
     }
 }
 
+/// Commit-3: recording pool factory for execution assertions.
+/// Wraps the real factory; records shard counts per profile.
+private actor RecordingPoolFactory: SFTPPoolFactory {
+    private(set) var shardsUsed: [Int] = []
+    private let real = DefaultSFTPPoolFactory()
+    func makePool(configuration: SFTPPoolConfiguration) async throws -> [PooledSFTPHandle] {
+        shardsUsed.append(configuration.shards)
+        return try await real.makePool(configuration: configuration)
+    }
+}
+
 /// File-scoped CSV append: captures nothing, safe for @Sendable callbacks.
 func appendMatrixCSVRow(_ row: SFTPMatrixRow, to csvURL: URL) {
     let line = SFTPMatrixReport.csvRow(row) + "\n"
@@ -313,7 +324,9 @@ final class SFTPMatrixLocalTests: XCTestCase {
         let badCfg = SSHConnectionConfig(host: "127.0.0.1", port: 22999, username: "root", authMethod: .password(Self.password))
         let adapter = CitadelSFTPAdapter(sftp: sftp, pooledConfig: badCfg, pooledStore: Self.store)
         let scratch = URL(fileURLWithPath: "/tmp/bench_scratch_2222", isDirectory: true)
-        let local = scratch.appendingPathComponent("payload_134217728.bin")
+        // 512MB forces the pool branch (mid-band high-RTT -> accelerated);
+        // the bad port fails fast, proving pool -> multiChannel fallback.
+        let local = scratch.appendingPathComponent("payload_536870912.bin")
         let remote = "/tmp/bench/fallback_\(Int(Date().timeIntervalSince1970)).bin"
         let progress: @Sendable (Double) -> Void = { _ in }
         try await adapter.upload(local, to: remote, operationID: UUID(), onProgress: progress)
@@ -348,6 +361,84 @@ final class SFTPMatrixLocalTests: XCTestCase {
         XCTAssertEqual(again, rtt)
         await service.disconnect()
         await ssh.disconnect()
+    }
+
+    /// Commit-3 gate: planner decisions really execute mc2/mc4 pools
+    /// in production (adapter + injected factory). A recording factory
+    /// wraps the real one and asserts the shard counts per profile.
+    func testPlannerDrivenPoolExecution() async throws {
+        try XCTSkipUnless(tcpOpen(port: 2222), "bench-linux absent")
+        let cfg = config(port: 2222)
+        let client = try await Self.nativeClient(config: cfg)
+        let sftp = try await client.openSFTP()
+        struct LowRTT: SFTPRTTProvider { func currentRTTMs() -> Double? { 0 } }
+        struct HighRTT: SFTPRTTProvider { func currentRTTMs() -> Double? { 30 } }
+        let scratch = URL(fileURLWithPath: "/tmp/bench_scratch_2222", isDirectory: true)
+        let progress: @Sendable (Double) -> Void = { _ in }
+        let ts = Int(Date().timeIntervalSince1970)
+        func payload(_ bytes: UInt64) -> URL {
+            scratch.appendingPathComponent("payload_\(bytes).bin")
+        }
+        // 1. compatibility: 8MB never touches the factory.
+        do {
+            let spy = RecordingPoolFactory()
+            let adapter = CitadelSFTPAdapter(sftp: sftp, pooledConfig: cfg, pooledStore: Self.store, rttProvider: HighRTT(), poolFactory: spy)
+            try await adapter.upload(payload(8 * 1024 * 1024), to: "/tmp/bench/exec8_\(ts).bin", operationID: UUID(), onProgress: progress)
+            let used0 = await spy.shardsUsed
+            XCTAssertTrue(used0.isEmpty)
+        }
+        // 2. balanced write 512MB low-RTT -> mc2.
+        do {
+            let spy = RecordingPoolFactory()
+            let adapter = CitadelSFTPAdapter(sftp: sftp, pooledConfig: cfg, pooledStore: Self.store, rttProvider: LowRTT(), poolFactory: spy)
+            try await adapter.upload(payload(512 * 1024 * 1024), to: "/tmp/bench/execw512_\(ts).bin", operationID: UUID(), onProgress: progress)
+            let used = await spy.shardsUsed
+            XCTAssertEqual(used, [2])
+        }
+        // 3. accelerated write 512MB high-RTT -> mc4.
+        do {
+            let spy = RecordingPoolFactory()
+            let adapter = CitadelSFTPAdapter(sftp: sftp, pooledConfig: cfg, pooledStore: Self.store, rttProvider: HighRTT(), poolFactory: spy)
+            try await adapter.upload(payload(512 * 1024 * 1024), to: "/tmp/bench/execw512h_\(ts).bin", operationID: UUID(), onProgress: progress)
+            let used = await spy.shardsUsed
+            XCTAssertEqual(used, [4])
+        }
+        // 4. balanced write 2GB low-RTT -> mc2.
+        do {
+            let spy = RecordingPoolFactory()
+            let adapter = CitadelSFTPAdapter(sftp: sftp, pooledConfig: cfg, pooledStore: Self.store, rttProvider: LowRTT(), poolFactory: spy)
+            try await adapter.upload(payload(2 * 1024 * 1024 * 1024), to: "/tmp/bench/execw2g_\(ts).bin", operationID: UUID(), onProgress: progress)
+            let used = await spy.shardsUsed
+            XCTAssertEqual(used, [2])
+        }
+        // 5. accelerated read 2GB: fixture upload + download, both mc4.
+        do {
+            let spy = RecordingPoolFactory()
+            let adapter = CitadelSFTPAdapter(sftp: sftp, pooledConfig: cfg, pooledStore: Self.store, rttProvider: HighRTT(), poolFactory: spy)
+            let remote = "/tmp/bench/execr2g_\(ts).bin"
+            try await adapter.upload(payload(2 * 1024 * 1024 * 1024), to: remote, operationID: UUID(), onProgress: progress)
+            let dest = scratch.appendingPathComponent("execr2g_dl_\(ts).bin")
+            try? FileManager.default.removeItem(at: dest)
+            try await adapter.download(remote, to: dest, operationID: UUID(), onProgress: progress)
+            let used = await spy.shardsUsed
+            XCTAssertEqual(used, [4, 4])
+            try? FileManager.default.removeItem(at: dest)
+        }
+        // 6. balanced read 512MB low-RTT: fixture + download, both mc2.
+        do {
+            let spy = RecordingPoolFactory()
+            let adapter = CitadelSFTPAdapter(sftp: sftp, pooledConfig: cfg, pooledStore: Self.store, rttProvider: LowRTT(), poolFactory: spy)
+            let remote = "/tmp/bench/execr512_\(ts).bin"
+            try await adapter.upload(payload(512 * 1024 * 1024), to: remote, operationID: UUID(), onProgress: progress)
+            let dest = scratch.appendingPathComponent("execr512_dl_\(ts).bin")
+            try? FileManager.default.removeItem(at: dest)
+            try await adapter.download(remote, to: dest, operationID: UUID(), onProgress: progress)
+            let used = await spy.shardsUsed
+            XCTAssertEqual(used, [2, 2])
+            try? FileManager.default.removeItem(at: dest)
+        }
+        try? await sftp.close()
+        try? await client.close()
     }
 
     func testLocalMatrixSmoke() async throws {
