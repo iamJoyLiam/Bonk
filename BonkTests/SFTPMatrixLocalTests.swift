@@ -140,9 +140,12 @@ final class SFTPMatrixLocalTests: XCTestCase {
         var multi: Bool = false
         var cancel: Bool = false
         var pool: Bool = true
+        var poolMc2: Bool = false
+        var poolMc4: Bool = false
+        var poolMc8: Bool = false
 
         enum CodingKeys: String, CodingKey {
-            case port, label, serverType, sizesMb, core, multi, cancel, pool
+            case port, label, serverType, sizesMb, core, multi, cancel, pool, poolMc2, poolMc4, poolMc8
         }
 
         init() {}
@@ -157,6 +160,9 @@ final class SFTPMatrixLocalTests: XCTestCase {
             multi = try container.decodeIfPresent(Bool.self, forKey: .multi) ?? false
             cancel = try container.decodeIfPresent(Bool.self, forKey: .cancel) ?? false
             pool = try container.decodeIfPresent(Bool.self, forKey: .pool) ?? true
+            poolMc2 = try container.decodeIfPresent(Bool.self, forKey: .poolMc2) ?? false
+            poolMc4 = try container.decodeIfPresent(Bool.self, forKey: .poolMc4) ?? false
+            poolMc8 = try container.decodeIfPresent(Bool.self, forKey: .poolMc8) ?? false
         }
     }
 
@@ -202,6 +208,19 @@ final class SFTPMatrixLocalTests: XCTestCase {
                     cases.append(singleCell(size: size, kind: kind, backend: .citadel))
                     for shards in [2, 4, 8] {
                         cases.append(channelCell(size: size, kind: kind, shards: shards))
+                    }
+                }
+            }
+        }
+        for shards in [2, 4, 8] as [Int] {
+            // Single-file multiTCP write+read: poolMc* flags select shards.
+            let enabled = (shards == 2 && batch.poolMc2) || (shards == 4 && batch.poolMc4) || (shards == 8 && batch.poolMc8)
+            if enabled {
+                for size in batch.sizesMb.map({ $0 * 1024 * 1024 }) {
+                    for kind in [SFTPMatrixKind.write, SFTPMatrixKind.read] as [SFTPMatrixKind] {
+                        cases.append(SFTPMatrixCase(
+                            sizeBytes: size, backend: .citadel, mode: .multiTCP, shards: shards, kind: kind
+                        ))
                     }
                 }
             }
