@@ -273,6 +273,29 @@ final class SFTPMatrixLocalTests: XCTestCase {
         }
     }
 
+    /// Commit-1: planner decision runs inside the real adapter chain
+    /// (upload/download through CitadelSFTPAdapter). Execution unchanged.
+    func testAdapterPlannerDecisionPath() async throws {
+        try XCTSkipUnless(tcpOpen(port: 2222), "bench-linux absent")
+        let cfg = config(port: 2222)
+        let client = try await Self.nativeClient(config: cfg)
+        let sftp = try await client.openSFTP()
+        let adapter = CitadelSFTPAdapter(sftp: sftp)
+        let scratch = URL(fileURLWithPath: "/tmp/bench_scratch_2222", isDirectory: true)
+        let local = scratch.appendingPathComponent("payload_8388608.bin")
+        let remote = "/tmp/bench/planner_smoke.bin"
+        let dest = scratch.appendingPathComponent("planner_smoke_dl.bin")
+        try? FileManager.default.removeItem(at: dest)
+        let progress: @Sendable (Double) -> Void = { _ in }
+        try await adapter.upload(local, to: remote, operationID: UUID(), onProgress: progress)
+        try await adapter.download(remote, to: dest, operationID: UUID(), onProgress: progress)
+        let got = (try FileManager.default.attributesOfItem(atPath: dest.path)[.size] as? UInt64) ?? 0
+        XCTAssertEqual(got, 8 * 1024 * 1024)
+        try? FileManager.default.removeItem(at: dest)
+        try? await sftp.close()
+        try? await client.close()
+    }
+
     func testLocalMatrixSmoke() async throws {
         try XCTSkipUnless(
             tcpOpen(port: 2222),
