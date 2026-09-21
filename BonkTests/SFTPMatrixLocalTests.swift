@@ -56,7 +56,8 @@ final class SFTPMatrixLocalTests: XCTestCase {
             authenticationMethod: .passwordBased(username: config.username, password: password),
             hostKeyValidator: .custom(HostKeyValidator { _ in }),
             reconnect: .never,
-            algorithms: .all
+            algorithms: .all,
+            protocolOptions: [.maximumPacketSize(SFTPChannelTuning.windowBytes)]
         )
     }
 

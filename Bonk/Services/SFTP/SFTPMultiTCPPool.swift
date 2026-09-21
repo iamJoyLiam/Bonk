@@ -139,7 +139,8 @@ enum SFTPMultiTCPPool {
             authenticationMethod: citadelAuth,
             hostKeyValidator: .custom(validator),
             reconnect: .never,
-            algorithms: .all
+            algorithms: .all,
+            protocolOptions: [.maximumPacketSize(SFTPChannelTuning.windowBytes)]
         )
         // HostKey TOFU
         if let fingerprint = fingerprintBox.withLockedValue({ $0 }) {

@@ -69,6 +69,14 @@ struct SFTPTestOverrides: Sendable {
     var chunkSize: Int?
 }
 
+/// SSH channel tuning for Citadel connections. The channel receive window
+/// caps download throughput at ~window/RTT per connection (NIOSSH default
+/// 128KB → ~2MB/s at 30ms RTT, measured). 8MB covers high-RTT links;
+/// passed via SSHProtocolOption (available since Citadel 0.10.0).
+enum SFTPChannelTuning {
+    static let windowBytes = 8 * 1024 * 1024
+}
+
 // MARK: - Progress Merger (lock-free)
 
 private final class ProgressMerger: @unchecked Sendable {
