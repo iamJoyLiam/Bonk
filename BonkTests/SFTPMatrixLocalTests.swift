@@ -235,6 +235,13 @@ final class SFTPMatrixLocalTests: XCTestCase {
     /// P1 repro: single pool case through the runner dies in first openFile
     /// ("pool-transfer: I/O on closed channel") while the identical pool +
     /// transfer succeeds standalone. See ⑦ notes before enabling pool cells.
+    /// P1 EXIT CRITERIA (all required before production auto-acceleration):
+    /// 1. Full lifecycle clean in runner AND standalone (connect/handshake/
+    ///    auth/channel-open/subsystem/transfer/close, no early close).
+    /// 2. mc2/mc4/mc8 stable across CONSECUTIVE rounds, not one lucky run.
+    /// 3. No leaks after completion (connections, SSH/SFTP channels, tasks).
+    /// 4. Record effectiveMBps + success/failure rate, never peak alone.
+    /// Fast-but-flaky mc8 stays behind the experimental switch.
     /// Read-overlap microbench: proves concurrent reads on one Citadel handle
     /// overlap (CONC4 < SEQ4) instead of serializing. Guard for the download
     /// path: if a change makes CONC4 regress toward SEQ4, pipelining broke.
