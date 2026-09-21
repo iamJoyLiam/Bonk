@@ -363,6 +363,61 @@ final class SFTPMatrixLocalTests: XCTestCase {
         await ssh.disconnect()
     }
 
+    /// Service-level fallback gate: a poisoned TOFU fingerprint kills
+    /// Citadel only (hostKeyMismatch); citadelExperimental must still
+    /// connect via OpenSSH and transfer, with no Citadel error surfacing.
+    /// The shared store is restored before return (real fp captured first
+    /// with a throwaway store, so order with other tests does not matter).
+    func testServiceCitadelToOpenSSHallback() async throws {
+        try XCTSkipUnless(tcpOpen(port: 2222), "bench-linux absent")
+        let cfg = config(port: 2222)
+        let probeStore = AcceptAllHostKeyStore()
+        let probePool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: probeStore, count: 1)
+        for handle in probePool { await handle.close() }
+        guard let realFP = await probeStore.knownFingerprint(for: "127.0.0.1", port: 2222) else {
+            XCTFail("no fingerprint captured"); return
+        }
+        await Self.store.saveFingerprint(
+            SSHHostFingerprint(hash: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+            for: "127.0.0.1", port: 2222
+        )
+        do {
+            // Negative control: Citadel is really dead under poison.
+            do {
+                let dead = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: Self.store, count: 1)
+                for handle in dead { await handle.close() }
+                XCTFail("Citadel unexpectedly survived poison")
+            } catch {
+                // Expected: hostKeyMismatch. Fallback must cover this.
+            }
+            let ssh = SSHNetworkService(hostKeyStore: Self.store)
+            try await ssh.connect(config: cfg)
+            let service = await MainActor.run { SFTPService() }
+            await MainActor.run { service.preferredBackend = .citadelExperimental }
+            try await service.connect(using: ssh)
+            // Fallback served by OpenSSH: no Citadel error surfaces.
+            let errMessage = await MainActor.run { service.errorMessage }
+            XCTAssertNil(errMessage)
+            // Real transfer through the fallback channel.
+            let scratch = URL(fileURLWithPath: "/tmp/bench_scratch_2222", isDirectory: true)
+            let local = scratch.appendingPathComponent("payload_8388608.bin")
+            let remote = "/tmp/bench/fbfallback_\(Int(Date().timeIntervalSince1970)).bin"
+            for try await _ in await MainActor.run { service.upload(local, to: remote) } {}
+            let dest = scratch.appendingPathComponent("fbfallback_dl.bin")
+            try? FileManager.default.removeItem(at: dest)
+            try await service.download(SFTPFileEntry(id: remote, name: "fbfallback.bin", path: remote, isDirectory: false, size: 8 * 1024 * 1024, permissions: 0o644, modifiedAt: nil, longname: ""), to: dest)
+            let got = (try FileManager.default.attributesOfItem(atPath: dest.path)[.size] as? UInt64) ?? 0
+            XCTAssertEqual(got, 8 * 1024 * 1024)
+            try? FileManager.default.removeItem(at: dest)
+            await service.disconnect()
+            await ssh.disconnect()
+        } catch {
+            await Self.store.saveFingerprint(realFP, for: "127.0.0.1", port: 2222)
+            throw error
+        }
+        await Self.store.saveFingerprint(realFP, for: "127.0.0.1", port: 2222)
+    }
+
     /// Commit-3 gate: planner decisions really execute mc2/mc4 pools
     /// in production (adapter + injected factory). A recording factory
     /// wraps the real one and asserts the shard counts per profile.
