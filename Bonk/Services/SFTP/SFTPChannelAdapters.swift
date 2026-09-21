@@ -27,11 +27,13 @@ final class CitadelSFTPAdapter: SFTPChannel {
     private let sftp: SFTPClient
     private let pooledConfig: SSHConnectionConfig?
     private let pooledStore: (any SSHHostKeyStore)?
+    private let rttProvider: (any SFTPRTTProvider)?
 
-    init(sftp: SFTPClient, pooledConfig: SSHConnectionConfig? = nil, pooledStore: (any SSHHostKeyStore)? = nil) {
+    init(sftp: SFTPClient, pooledConfig: SSHConnectionConfig? = nil, pooledStore: (any SSHHostKeyStore)? = nil, rttProvider: (any SFTPRTTProvider)? = nil) {
         self.sftp = sftp
         self.pooledConfig = pooledConfig
         self.pooledStore = pooledStore
+        self.rttProvider = rttProvider
     }
 
     func realPath() async throws -> String {
@@ -73,9 +75,11 @@ final class CitadelSFTPAdapter: SFTPChannel {
     func upload(_ localURL: URL, to remotePath: String, operationID: UUID, onProgress: @escaping @Sendable (Double) -> Void) async throws {
         let attrs = try FileManager.default.attributesOfItem(atPath: localURL.path)
         let total = (attrs[.size] as? UInt64) ?? 0
-        // Commit-1: planner decides, execution unchanged (rttMs follows in Commit-2).
-        let decision = SFTPTransferPlanner.profile(sizeBytes: total, rttMs: nil, operation: .write)
-        Log.sftp.info("[PLANNER] upload size=\(total) rtt=nil decision=\(decision.rawValue)")
+        // Planner decides, execution unchanged. RTT comes from the
+        // session cache when measured, nil otherwise (nil-fallback branch).
+        let rttMs = rttProvider?.currentRTTMs()
+        let decision = SFTPTransferPlanner.profile(sizeBytes: total, rttMs: rttMs, operation: .write)
+        Log.sftp.info("[PLANNER] upload size=\(total) rtt=\(rttMs.map { String(format: "%.1f", $0) } ?? "nil") decision=\(decision.rawValue)")
         // Atomic: upload to .bonk.part, verify, then rename
         let tempRemotePath = remotePath + ".bonk.part"
         try? await sftp.remove(at: tempRemotePath)
@@ -198,9 +202,9 @@ final class CitadelSFTPAdapter: SFTPChannel {
     func download(_ remotePath: String, to localURL: URL, operationID: UUID, onProgress: @escaping @Sendable (Double) -> Void) async throws {
         let attrs = try? await sftp.getAttributes(at: remotePath)
         let total = attrs?.size ?? 0
-        // Commit-1: planner decides, execution unchanged (rttMs follows in Commit-2).
-        let decision = SFTPTransferPlanner.profile(sizeBytes: total, rttMs: nil, operation: .read)
-        Log.sftp.info("[PLANNER] download size=\(total) rtt=nil decision=\(decision.rawValue)")
+        let rttMs = rttProvider?.currentRTTMs()
+        let decision = SFTPTransferPlanner.profile(sizeBytes: total, rttMs: rttMs, operation: .read)
+        Log.sftp.info("[PLANNER] download size=\(total) rtt=\(rttMs.map { String(format: "%.1f", $0) } ?? "nil") decision=\(decision.rawValue)")
         Log.sftp.debug("[ADAPTER] download \(remotePath, privacy: .public) total=\(total)")
         // Atomic: temp file -> verify -> move
         let tempURL = URL(fileURLWithPath: localURL.path + ".bonk.part")

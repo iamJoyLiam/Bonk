@@ -57,6 +57,74 @@ final class SFTPTransferPlannerTests: XCTestCase {
         }
     }
 
+    // MARK: - Commit-2: RTTProvider + session cache
+
+    private struct StubProvider: SFTPRTTProvider {
+        let rtt: Double?
+        func currentRTTMs() -> Double? { rtt }
+    }
+
+    private final class ProbeCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _count = 0
+        var count: Int { lock.lock(); defer { lock.unlock() }; return _count }
+        func increment() { lock.lock(); _count += 1; lock.unlock() }
+    }
+
+    func testProviderValueReachesPlanner() {
+        // 2GB write: provider 30ms -> accelerated (campaign 73->138).
+        let provider: any SFTPRTTProvider = StubProvider(rtt: 30)
+        XCTAssertEqual(
+            SFTPTransferPlanner.profile(
+                sizeBytes: 2 * Self.gb, rttMs: provider.currentRTTMs(), operation: .write
+            ),
+            .accelerated
+        )
+    }
+
+    func testNilProviderFallsBack() {
+        // No provider -> nil RTT -> existing nil-fallback branch.
+        let provider: (any SFTPRTTProvider)? = nil
+        XCTAssertEqual(
+            SFTPTransferPlanner.profile(
+                sizeBytes: 128 * Self.mb, rttMs: provider?.currentRTTMs(), operation: .read
+            ),
+            .compatibility
+        )
+    }
+
+    func testCacheProbesOnce() async {
+        let cache = SFTPSessionRTTCache()
+        let counter = ProbeCounter()
+        // Repeated refreshes share one probe result (single call site is
+        // connect; the guard makes any repeat free).
+        for _ in 0..<4 {
+            await cache.refreshIfNeeded {
+                counter.increment()
+                return 30.0
+            }
+        }
+        XCTAssertEqual(counter.count, 1)
+        XCTAssertEqual(cache.currentRTTMs(), 30)
+        // Later refreshes never re-probe.
+        let before = counter.count
+        await cache.refreshIfNeeded { 99.0 }
+        XCTAssertEqual(counter.count, before)
+        XCTAssertEqual(cache.currentRTTMs(), 30)
+    }
+
+    func testProbeFailureLeavesNilWithoutBlocking() async {
+        let cache = SFTPSessionRTTCache()
+        // Probe failure is data, not an error: returns normally, stays nil.
+        await cache.refreshIfNeeded { nil as Double? }
+        XCTAssertNil(cache.currentRTTMs())
+        // A later successful probe still fills the cache.
+        await cache.refreshIfNeeded { 12.0 }
+        XCTAssertEqual(cache.currentRTTMs(), 12)
+        cache.reset()
+        XCTAssertNil(cache.currentRTTMs())
+    }
+
     func testEvidenceAnchors() {
         // Campaign anchors that must never regress:
         // - 128MB read rtt30: mc2 122 vs mc4 118 -> no pooling.

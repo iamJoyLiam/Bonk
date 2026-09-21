@@ -31,6 +31,11 @@ final class SFTPService {
     /// automatic = OpenSSH first, Citadel fallback. openSSH never touches
     /// Citadel; citadelExperimental skips OpenSSH with OpenSSH fallback.
     var preferredBackend: SFTPBackend = .automatic
+    /// Session RTT snapshot for the planner (Commit-2). Reset on every
+    /// fresh connection, probed once after connect, reused by all
+    /// transfers in the session. Stays nil when unmeasured or when the
+    /// probe fails — never blocks SFTP.
+    var sessionRTT = SFTPSessionRTTCache()
     /// Monotonic counter for listDirectory: a stale result (background
     /// refresh finishing after the user navigated) must not overwrite the
     /// newer listing.
@@ -59,12 +64,13 @@ final class SFTPService {
             }
         #endif
         if let sftpClient, sftpClient.isActive {
-            channel = CitadelSFTPAdapter(sftp: sftpClient)
+            channel = CitadelSFTPAdapter(sftp: sftpClient, rttProvider: sessionRTT)
             if entries.isEmpty { try await listDirectory() }
             return
         }
         channel = nil
         sftpClient = nil
+        sessionRTT.reset()
         #if os(macOS)
             openSSHSFTPClient = nil
         #endif
@@ -87,6 +93,7 @@ final class SFTPService {
                     currentPath = path
                     Log.sftp.info("OpenSSH SFTP connected, initial path: \(self.currentPath)")
                     try await listDirectory()
+                    await refreshSessionRTT()
                     return
                 } catch {
                     client.close()
@@ -106,11 +113,12 @@ final class SFTPService {
             do {
                 let path = try await client.getRealPath(atPath: ".")
                 sftpClient = client
-                channel = CitadelSFTPAdapter(sftp: client)
+                channel = CitadelSFTPAdapter(sftp: client, rttProvider: sessionRTT)
                 vnextChannel = channel
                 currentPath = path
                 Log.sftp.info("SFTP connected, initial path: \(self.currentPath)")
                 try await listDirectory()
+                await refreshSessionRTT()
             } catch {
                 try? await client.close()
                 sftpClient = nil
@@ -133,6 +141,7 @@ final class SFTPService {
                         vnextChannel = channel
                         currentPath = path
                         try await listDirectory()
+                        await refreshSessionRTT()
                         return
                     } catch {
                         fallback.close()
@@ -143,6 +152,23 @@ final class SFTPService {
                 }
             #endif
             throw error
+        }
+    }
+
+    /// Commit-2: probe session RTT once per fresh connection for the
+    /// planner. Never throws and never blocks SFTP: probe failure leaves
+    /// the cache empty (planner nil-fallback branch).
+    private func refreshSessionRTT() async {
+        guard let channel else { return }
+        await sessionRTT.refreshIfNeeded { [channel] in
+            var samples: [Double] = []
+            for _ in 0..<3 {
+                let start = Date()
+                guard (try? await channel.realPath()) != nil else { continue }
+                samples.append(Date().timeIntervalSince(start) * 1000)
+            }
+            guard !samples.isEmpty else { return nil }
+            return samples.reduce(0, +) / Double(samples.count)
         }
     }
 
@@ -159,6 +185,7 @@ final class SFTPService {
         }
         vnextChannel = nil
         channel = nil
+        sessionRTT.reset()
         Log.sftp.info("Opening SFTP via VNext session...")
         isLoading = true
         errorMessage = nil
@@ -170,6 +197,7 @@ final class SFTPService {
         currentPath = path
         Log.sftp.info("VNext SFTP connected, initial path: \(self.currentPath)")
         try await listDirectory()
+        await refreshSessionRTT()
     }
 
     /// List files in the current directory.

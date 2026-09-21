@@ -13,6 +13,40 @@
 //
 
 import Foundation
+import NIOConcurrencyHelpers
+
+/// Planner input: session round-trip time in milliseconds, if measured.
+/// The planner never probes; production caches one measurement per fresh
+/// connection (Commit-2) and reuses it for the session lifetime.
+protocol SFTPRTTProvider: Sendable {
+    func currentRTTMs() -> Double?
+}
+
+/// One-shot session RTT snapshot. Probed once per fresh connection, read
+/// synchronously after that — repeated reads never re-probe.
+final class SFTPSessionRTTCache: SFTPRTTProvider, @unchecked Sendable {
+    private let box = NIOLockedValueBox<Double?>(nil)
+
+    func currentRTTMs() -> Double? {
+        box.withLockedValue { $0 }
+    }
+
+    /// Clears the snapshot (fresh connection establishes a new session).
+    func reset() {
+        box.withLockedValue { $0 = nil }
+    }
+
+    /// Runs probe at most once (no-op once a value is cached). Never throws
+    /// and never blocks SFTP: probe failure or a nil result leaves the
+    /// cache empty, and the planner falls back to its nil-RTT branch.
+    func refreshIfNeeded(probe: @Sendable () async -> Double?) async {
+        if currentRTTMs() != nil { return }
+        let measured = await probe()
+        box.withLockedValue { current in
+            if current == nil { current = measured }
+        }
+    }
+}
 
 /// Worker profile for one transfer. Names the profile, not the engine:
 /// compatibility rides the current (OpenSSH) channel with zero pool
