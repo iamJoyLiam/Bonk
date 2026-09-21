@@ -6,6 +6,36 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.4.2</title>
+            <pubDate>Mon, 21 Sep 2026 22:22:41 +0800</pubDate>
+            <sparkle:version>20264002</sparkle:version>
+            <sparkle:shortVersionString>2026.4.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Changes
+
+- SFTP now prefers the native Citadel engine with adaptive transfer profiles (single / mc2 / mc4 selected by file size, direction, and measured RTT), falling back to OpenSSH automatically.
+- Large transfers run over parallel connections with verified atomic upload and live speed readout in the transfer panel.
+- Faster reconnection after network changes; re-uploading an existing file now replaces it instead of failing.
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.4.2/Bonk-2026.4.2-arm64.dmg"
+                length="24394598"
+                type="application/octet-stream"
+                sparkle:edSignature="90rP/AmU5bl9qu8KEiLNhGkmNujUEWYHaMu2g/T1aS6eraagnBCUMFeEu64VTvuWHHClj6Wvvp5lIGU0y7dKBg=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.4.2/Bonk-2026.4.2-x86_64.dmg"
+                length="25328791"
+                type="application/octet-stream"
+                sparkle:edSignature="CtSju/oJ/FKoNkHm92gRkzXj/Z7mT98mItFmkKPdJCFAoADkkJGsch6+d5wwDjChR9nsGnKgUDP9tVd2vpl+Aw=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.4.1</title>
             <pubDate>Wed, 16 Sep 2026 15:42:00 +0800</pubDate>
             <sparkle:version>20264001</sparkle:version>
