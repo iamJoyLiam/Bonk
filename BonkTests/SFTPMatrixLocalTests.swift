@@ -528,6 +528,31 @@ final class SFTPMatrixLocalTests: XCTestCase {
         try? await client.close()
     }
 
+    /// Forced OpenSSH path: preferredBackend=.openSSH connects via CLI
+    /// only (Citadel never attempted) and transfers.
+    func testForcedOpenSSHPath() async throws {
+        try XCTSkipUnless(tcpOpen(port: 2222), "bench-linux absent")
+        let cfg = config(port: 2222)
+        let ssh = SSHNetworkService(hostKeyStore: Self.store)
+        try await ssh.connect(config: cfg)
+        let service = await MainActor.run { SFTPService() }
+        await MainActor.run { service.preferredBackend = .openSSH }
+        try await service.connect(using: ssh)
+        let scratch = URL(fileURLWithPath: "/tmp/bench_scratch_2222", isDirectory: true)
+        let local = scratch.appendingPathComponent("payload_8388608.bin")
+        let remote = "/tmp/bench/forced_openssh_\(Int(Date().timeIntervalSince1970)).bin"
+        for try await _ in await MainActor.run { service.upload(local, to: remote) } {}
+        let dest = scratch.appendingPathComponent("forced_openssh_dl.bin")
+        try? FileManager.default.removeItem(at: dest)
+        // Forced OpenSSH serves the transfer: download back what we uploaded.
+        try await service.download(SFTPFileEntry(id: remote, name: "forced.bin", path: remote, isDirectory: false, size: 8 * 1024 * 1024, permissions: 0o644, modifiedAt: nil, longname: ""), to: dest)
+        let got = (try FileManager.default.attributesOfItem(atPath: dest.path)[.size] as? UInt64) ?? 0
+        XCTAssertEqual(got, 8 * 1024 * 1024)
+        await service.disconnect()
+        await ssh.disconnect()
+        try? FileManager.default.removeItem(at: dest)
+    }
+
     func testLocalMatrixSmoke() async throws {
         try XCTSkipUnless(
             tcpOpen(port: 2222),
