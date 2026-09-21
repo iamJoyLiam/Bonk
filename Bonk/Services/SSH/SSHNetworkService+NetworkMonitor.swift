@@ -43,6 +43,20 @@ extension SSHNetworkService {
         isWaitingForNetwork = false
     }
 
+    /// Network-recovery only: the old transport was already probed dead.
+    /// Close it now so the server frees the session slot before the first
+    /// reconnect attempt, instead of racing it under make-before-break
+    /// (stale server-side sessions are what turn attempt 1 into backoff).
+    /// Best-effort and non-throwing; never touches PTY/session state, which
+    /// the reconnect pipeline rebuilds on success.
+    func closeStaleTransport() async {
+        if usesOpenSSHTransport {
+            openSSHBackend?.close()
+        } else {
+            try? await client?.close()
+        }
+    }
+
     /// Handle network connectivity changes - funnel through supervisor per P0.
     /// Fix 3: only on unsatisfied->satisfied transition + per-session health gate
     private func handleNetworkChange(_ path: NWPath) async {
@@ -67,13 +81,19 @@ extension SSHNetworkService {
             Log.ssh.info("[RECOVERY_GATE] blocked=true reason=\(typedFailure.typeString, privacy: .public) handleNetworkChange suppressed")
             return
         }
-        // Per-session health check: if transport/PTY still alive, ignore (Fix 3)
+        // Per-session health check: if transport/PTY still alive, ignore (Fix 3).
+        // The alive branch returns WITHOUT closing anything: a live transport
+        // must never be killed by a network event (flapping/jitter safety).
         let alive = await probeLiveness()
         if alive {
             Log.ssh.info("[NETWORK] ignore networkChanged - probe alive, session healthy")
             return
         }
-        Log.ssh.info("[NETWORK] Network restored but probe failed, requesting recovery...")
-        await supervisor.requestRecovery(reason: .networkChanged)
+        // Network recovery with a confirmed-dead old transport: release it
+        // now (frees the server-side session slot for attempt 1) and enter
+        // the pipeline with the probe result — no second probe burns 5s.
+        Log.ssh.info("[NETWORK] old transport probed dead, closing stale transport before recovery...")
+        await closeStaleTransport()
+        await supervisor.requestRecovery(reason: .networkChanged, preProbed: .dead)
     }
 }

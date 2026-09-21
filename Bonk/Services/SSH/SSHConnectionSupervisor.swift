@@ -37,6 +37,14 @@ public enum RecoveryReason: Sendable, Equatable, CustomStringConvertible {
     }
 }
 
+/// Result of a liveness probe completed before entering the pipeline.
+/// Passed as recovery context so the supervisor never probes twice for
+/// the same event: the network layer already proved dead/alive.
+enum RecoveryProbeResult: Sendable {
+    case alive
+    case dead
+}
+
 /// Recovery state machine - replaces isHandlingDisconnect Bool.
 public enum RecoveryState: Sendable, Equatable, CustomStringConvertible {
     case idle
@@ -120,7 +128,10 @@ actor SSHConnectionSupervisor {
     /// Idempotent recovery entry - all triggers funnel here.
     /// Concurrent calls while probing/reconnecting/backoff are ignored (1 pipeline),
     /// except userRequested which preempts for immediate retry.
-    func requestRecovery(reason: RecoveryReason) {
+    /// - Parameter preProbed: liveness already proven by the caller (network layer).
+    ///   `.dead` skips the in-pipeline probe and reconnects immediately;
+    ///   `.alive` resolves to ready without reconnecting. nil probes as before.
+    func requestRecovery(reason: RecoveryReason, preProbed: RecoveryProbeResult? = nil) {
         // Manual reconnect should preempt any ongoing backoff/probing (fixes 202 requiring close tab)
         if reason == .userRequested, state != .idle {
             Log.ssh.info("[RECOVERY] preempt host=\(self.hostIdentifier, privacy: .public) reason=\(String(describing: reason), privacy: .public) state=\(String(describing: self.state), privacy: .public) engine=\(self.engineName, privacy: .public)")
@@ -150,21 +161,34 @@ actor SSHConnectionSupervisor {
         state = .probing
         currentTask = Task { [weak self] in
             guard let self else { return }
-            await self.runProbePipeline(reason: reason)
+            await self.runProbePipeline(reason: reason, preProbed: preProbed)
         }
     }
 
-    private func runProbePipeline(reason: RecoveryReason) async {
+    private func runProbePipeline(reason: RecoveryReason, preProbed: RecoveryProbeResult?) async {
         // Phase: probing
         Log.ssh.info("[RECOVERY] probing host=\(self.hostIdentifier, privacy: .public) reason=\(String(describing: reason), privacy: .public)")
 
         // keepAliveTimeout already proved death with 3 consecutive active
         // round-trips — the passive probe cannot see half-open TCP, so it must
         // not veto this trigger. Skip straight to reconnect.
+        //
+        // preProbed carries the caller-side verdict for the same reason:
+        // the network layer already ran its liveness probe for this event,
+        // so running a second one only burns its timeout budget.
         let alive: Bool
         if reason == .keepAliveTimeout {
             Log.ssh.warning("[RECOVERY] keepalive confirmed dead — skipping passive probe")
             alive = false
+        } else if let preProbed {
+            switch preProbed {
+            case .dead:
+                Log.ssh.info("[RECOVERY] pre-probed dead — skipping duplicate probe")
+                alive = false
+            case .alive:
+                Log.ssh.info("[RECOVERY] pre-probed alive — resolving ready")
+                alive = true
+            }
         } else {
             alive = await performProbe()
         }
