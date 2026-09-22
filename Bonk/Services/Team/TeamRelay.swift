@@ -140,13 +140,13 @@ final class TeamRelay: ObservableObject {
         } catch {
             logger.error("Failed to start host listener: \(error.localizedDescription)")
             resetHostState()
-            lastError = "无法启动团队服务：\(error.localizedDescription)"
+            lastError = String(format: L.t(.tmServiceStartFailed), error.localizedDescription)
         }
     }
 
     func stopHosting() {
         // Best-effort notify paired guests before teardown
-        let disconnectNotice = TeamMessage.notice(payload: "主持人已结束共享")
+        let disconnectNotice = TeamMessage.notice(payload: L.t(.tmHostEndedShare))
         for (peerID, connection) in hostedConnections where isPaired(peerID) {
             sendMessage(disconnectNotice, to: connection)
         }
@@ -236,7 +236,7 @@ final class TeamRelay: ObservableObject {
                     self.logger.error("Guest failed: \(error.localizedDescription)")
                     self.finishGuestConnection(
                         generation: generation,
-                        error: "连接失败：\(error.localizedDescription)"
+                        error: String(format: L.t(.aiConnectFailed), error.localizedDescription)
                     )
                 case .cancelled:
                     self.finishGuestConnection(generation: generation, error: nil)
@@ -281,11 +281,11 @@ final class TeamRelay: ObservableObject {
                 peerDisconnectedNotice = error
             }
         } else if !hasPaired, isConnected {
-            peerDisconnectedNotice = "主持人已断开连接"
-            lastError = "PIN 不正确或主机已断开"
+            peerDisconnectedNotice = L.t(.tmHostDisconnected)
+            lastError = L.t(.tmPinOrGone)
         } else if hasPaired, isConnected {
             // Host disconnected after successful pairing — notify guest explicitly
-            peerDisconnectedNotice = "主持人已断开连接"
+            peerDisconnectedNotice = L.t(.tmHostDisconnected)
         }
         cancelGuestResources()
         isConnected = false
@@ -307,7 +307,7 @@ final class TeamRelay: ObservableObject {
                   self.isConnected,
                   !self.hasPaired
             else { return }
-            self.finishGuestConnection(generation: generation, error: "团队配对超时")
+            self.finishGuestConnection(generation: generation, error: L.t(.tmTeamPairTimeout))
         }
     }
 
@@ -322,7 +322,7 @@ final class TeamRelay: ObservableObject {
                 else { return }
 
                 if Date().timeIntervalSince(self.guestLastActivity) > Self.heartbeatTimeout {
-                    self.finishGuestConnection(generation: generation, error: "主持端连接超时")
+                    self.finishGuestConnection(generation: generation, error: L.t(.tmHostConnectTimeout))
                     return
                 }
                 self.sendToGuest(.heartbeat)

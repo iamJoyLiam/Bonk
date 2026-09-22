@@ -93,10 +93,10 @@ struct TeamGuestSheet: View {
                 if relay.isConnected {
                     Section {
                         HStack {
-                            Label("已连接", systemImage: "checkmark.circle.fill")
+                            Label(i18n.t(.connected), systemImage: "checkmark.circle.fill")
                                 .foregroundStyle(.green)
                             Spacer()
-                            Button("打开实时终端") {
+                            Button(i18n.t(.tmOpenLiveTerminal)) {
                                 workspace.isTeamWindowOpen = true
                             }
                             .buttonStyle(.borderedProminent)
@@ -164,7 +164,7 @@ struct TeamGuestSheet: View {
         } message: {
             Text(relay.lastError ?? "")
         }
-        .alert("输入 PIN", isPresented: $showPinPrompt) {
+        .alert(i18n.t(.tmEnterPin), isPresented: $showPinPrompt) {
             SecureField("PIN", text: $pinInput)
                 .textContentType(.oneTimeCode)
             Button(i18n.t(.joinSession).replacingOccurrences(of: "…", with: "").replacingOccurrences(of: "...", with: "")) {
@@ -174,9 +174,9 @@ struct TeamGuestSheet: View {
             Button(i18n.t(.cancel), role: .cancel) { pinInput = "" }
         } message: {
             if let host = selectedHost {
-                Text("连接到 \(host.displayName) 需要输入主持端显示的 6 位 PIN")
+                Text(i18n.tr(.tmPinForHost, args: host.displayName))
             } else {
-                Text("请输入主持端显示的 6 位 PIN")
+                Text(i18n.t(.tmPinGeneric))
             }
         }
     }

@@ -20,7 +20,7 @@ extension TeamRelay {
                 Task { @MainActor in
                     self.finishGuestConnection(
                         generation: generation,
-                        error: self.hasPaired ? nil : "连接被拒绝，请检查 IP/Port/PIN"
+                        error: self.hasPaired ? nil : L.t(.tmConnRejected)
                     )
                 }
                 return
@@ -47,7 +47,7 @@ extension TeamRelay {
             }
         } catch {
             logger.warning("Guest rejected malformed team frame")
-            finishGuestConnection(generation: guestConnectionGeneration, error: "主机发送了无效数据")
+            finishGuestConnection(generation: guestConnectionGeneration, error: L.t(.tmInvalidData))
         }
     }
 
@@ -75,7 +75,7 @@ extension TeamRelay {
             if previousSessionID != snapshot.sharedSessionID {
                 resetGuestOutput()
                 if snapshot.sharedSessionID == nil && previousSessionID != nil {
-                    sharedSessionLostNotice = "主持人已关闭共享终端"
+                    sharedSessionLostNotice = L.t(.tmShareEndedDefault)
                 }
             }
 
@@ -97,7 +97,7 @@ extension TeamRelay {
         case let .controlRevoke(peerID):
             if driverPeerID == peerID {
                 driverPeerID = hostPeerID
-                controlRevokedNotice = "主持人已收回控制权，需重新请求授权"
+                controlRevokedNotice = L.t(.controlRevokedDefault)
             }
 
         case let .shareHosts(hosts):

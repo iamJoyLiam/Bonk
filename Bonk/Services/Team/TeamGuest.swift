@@ -95,7 +95,7 @@ final class TeamGuest: ObservableObject {
         pairingTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(TeamConstants.connectionTimeoutSeconds))
             guard let self, !Task.isCancelled, self.generation == generation, self.isConnected else { return }
-            self.lastError = "配对超时"
+            self.lastError = L.t(.tmPairTimeout)
             self.disconnect()
         }
     }

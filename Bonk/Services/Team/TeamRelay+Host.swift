@@ -47,7 +47,7 @@ extension TeamRelay {
                   self.hostedConnections[peerConnectionID] != nil,
                   !self.isPaired(peerConnectionID)
             else { return }
-            self.rejectHostConnection(peerConnectionID, reason: "配对超时")
+            self.rejectHostConnection(peerConnectionID, reason: L.t(.tmPairTimeout))
         }
     }
 
@@ -86,7 +86,7 @@ extension TeamRelay {
         }
 
         let peerName = connectedPeers[index].displayName
-        peerDisconnectedNotice = "访客 \(peerName) 已断开"
+        peerDisconnectedNotice = String(format: L.t(.tmGuestLeft), peerName)
         connectedPeers.remove(at: index)
         if pendingControlRequest?.peerID == peerConnectionID {
             pendingControlRequest = nil
@@ -176,17 +176,17 @@ extension TeamRelay {
         case let .pairingChallenge(pin, peer):
             guard !isPaired(peerConnectionID) else { return }
             guard connectedPeers.count < TeamConstants.maxGuestCount else {
-                rejectHostConnection(peerConnectionID, reason: "主持端已达到访客上限")
+                rejectHostConnection(peerConnectionID, reason: L.t(.tmGuestLimit))
                 return
             }
             guard allowPairingAttempt() else {
-                rejectHostConnection(peerConnectionID, reason: "配对尝试过多，请稍后再试")
+                rejectHostConnection(peerConnectionID, reason: L.t(.tmTooManyAttempts))
                 return
             }
             guard pin == pairingPin else {
                 recordPairingFailure()
                 logger.warning("Host pairing PIN mismatch")
-                rejectHostConnection(peerConnectionID, reason: "PIN 不正确")
+                rejectHostConnection(peerConnectionID, reason: L.t(.tmWrongPin))
                 return
             }
 
@@ -207,7 +207,7 @@ extension TeamRelay {
                let connection = hostedConnections[peerConnectionID]
             {
                 sendMessage(
-                    .notice(payload: "主持端当前没有可共享的终端，请先打开或连接一个终端。\n"),
+                    .notice(payload: L.t(.tmNoSharedTerminalNotice) + "\n"),
                     to: connection
                 )
             }

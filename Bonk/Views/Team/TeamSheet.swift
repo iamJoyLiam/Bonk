@@ -142,7 +142,7 @@ struct TeamSheet: View {
                 Text(i18n.tr(.controlRequestMessage, args: req.displayName))
             }
         }
-        .alert("输入 PIN", isPresented: $showPinPrompt) {
+        .alert(i18n.t(.tmEnterPin), isPresented: $showPinPrompt) {
             SecureField("PIN", text: $pinInput)
                 .textContentType(.oneTimeCode)
             Button(i18n.t(.joinSession).replacingOccurrences(of: "…", with: "").replacingOccurrences(of: "...", with: "")) {
@@ -152,9 +152,9 @@ struct TeamSheet: View {
             Button(i18n.t(.cancel), role: .cancel) { pinInput = "" }
         } message: {
             if let host = selectedHost {
-                Text("连接到 \(host.displayName) 需要输入主持端显示的 6 位 PIN")
+                Text(i18n.tr(.tmPinForHost, args: host.displayName))
             } else {
-                Text("请输入主持端显示的 6 位 PIN")
+                Text(i18n.t(.tmPinGeneric))
             }
         }
     }
@@ -193,7 +193,7 @@ struct TeamSheet: View {
                     Text(i18n.t(.teamMaxGuests))
                     Spacer()
                     Stepper(value: $maxGuests, in: 1...8) {
-                        Text("\(maxGuests) 人")
+                        Text(i18n.tr(.tmPeople, args: maxGuests))
                     }
                     .frame(width: 140)
                     .onChange(of: maxGuests) { _, newValue in
@@ -205,7 +205,7 @@ struct TeamSheet: View {
             }
             if BonkAppDelegate.shared?.sessionManager?.activeTab == nil {
                 Section {
-                    Label("主持端尚未打开终端，访客将看不到内容。请先新建或连接一个主机标签。", systemImage: "exclamationmark.triangle.fill")
+                    Label(i18n.t(.tmNoTerminalWarning), systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
@@ -231,7 +231,7 @@ struct TeamSheet: View {
                     Spacer()
                     Button {
                         guard BonkAppDelegate.shared?.sessionManager?.activeTab != nil else {
-                            relay.lastError = "请先打开一个终端再开启主持"
+                            relay.lastError = i18n.t(.tmOpenTerminalFirst)
                             return
                         }
                         let effectiveName = hostDisplayName.trimmingCharacters(in: .whitespaces).isEmpty ? savedDisplayName : hostDisplayName
@@ -351,11 +351,11 @@ struct TeamSheet: View {
         if relay.isConnected {
             Section {
                 HStack {
-                    Label("已连接", systemImage: "checkmark.circle.fill")
+                    Label(i18n.t(.connected), systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                         .font(.callout)
                     Spacer()
-                    Button("打开实时终端") {
+                    Button(i18n.t(.tmOpenLiveTerminal)) {
                         workspace.isTeamWindowOpen = true
                     }
                     .buttonStyle(.borderedProminent)

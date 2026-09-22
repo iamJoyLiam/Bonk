@@ -23,7 +23,7 @@ struct TeamGuestTerminalView: View {
                     .foregroundStyle(relay.isConnected ? .green : .secondary)
                 Spacer()
                 if showControlRequested {
-                    Text("已发送请求…").font(.caption2).foregroundStyle(.secondary)
+                    Text(i18n.t(.tmRequestSent)).font(.caption2).foregroundStyle(.secondary)
                 }
                 Button(i18n.t(.requestControl)) {
                     let saved = UserDefaults.standard.string(forKey: "team_display_name")
@@ -41,8 +41,8 @@ struct TeamGuestTerminalView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .disabled(!relay.isConnected || relay.sharedSessionID == nil || (relay.driverPeerID != nil && relay.driverPeerID != relay.hostPeerID))
-                .help(relay.sharedSessionID == nil ? "主持端暂无可共享的终端" : "")
-                Text((relay.driverPeerID == nil || relay.driverPeerID == relay.hostPeerID) ? "未授权" : i18n.t(.driver))
+                .help(relay.sharedSessionID == nil ? i18n.t(.tmNoSharedTerminal) : "")
+                Text((relay.driverPeerID == nil || relay.driverPeerID == relay.hostPeerID) ? i18n.t(.tmUnauthorized) : i18n.t(.driver))
                     .font(.caption)
                     .foregroundStyle((relay.driverPeerID == nil || relay.driverPeerID == relay.hostPeerID) ? Color.red : Color.green)
                     .padding(.horizontal, AppStyle.spacingS)

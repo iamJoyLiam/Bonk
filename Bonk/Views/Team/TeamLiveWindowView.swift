@@ -24,7 +24,7 @@ struct TeamLiveWindowView: View {
                 ContentUnavailableView(
                     i18n.t(.disconnected),
                     systemImage: "antenna.radiowaves.left.and.right.slash",
-                    description: Text("未连接到主持端。请先通过 “团队” 加入会话，连接成功后实时终端将在此窗口显示。")
+                    description: Text(i18n.t(.tmNotConnectedDesc))
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -41,24 +41,24 @@ struct TeamLiveWindowView: View {
             }
         }
         .alert(
-            "控制权已收回",
+            i18n.t(.controlRevokedTitle),
             isPresented: Binding(
                 get: { relay.controlRevokedNotice != nil },
                 set: { if !$0 { relay.controlRevokedNotice = nil } }
             )
         ) {
-            Button("知道了") { relay.controlRevokedNotice = nil }
+            Button(i18n.t(.gotIt)) { relay.controlRevokedNotice = nil }
         } message: {
-            Text(relay.controlRevokedNotice ?? "主持人已收回控制权")
+            Text(relay.controlRevokedNotice ?? i18n.t(.controlRevokedDefault))
         }
         .alert(
-            "连接已断开",
+            i18n.t(.peerDisconnectedTitle),
             isPresented: Binding(
                 get: { relay.peerDisconnectedNotice != nil },
                 set: { if !$0 { relay.peerDisconnectedNotice = nil } }
             )
         ) {
-            Button("知道了") { relay.peerDisconnectedNotice = nil }
+            Button(i18n.t(.gotIt)) { relay.peerDisconnectedNotice = nil }
         } message: {
             Text(relay.peerDisconnectedNotice ?? "")
         }
@@ -77,33 +77,37 @@ struct TeamLiveWindowView: View {
             Text(relay.lastError ?? "")
         }
         .alert(
-            "共享已结束",
+            i18n.t(.tmShareEnded),
             isPresented: Binding(
                 get: { relay.sharedSessionLostNotice != nil },
                 set: { if !$0 { relay.sharedSessionLostNotice = nil } }
             )
         ) {
-            Button("知道了") { relay.sharedSessionLostNotice = nil }
+            Button(i18n.t(.gotIt)) { relay.sharedSessionLostNotice = nil }
         } message: {
-            Text(relay.sharedSessionLostNotice ?? "主持人已关闭共享终端")
+            Text(relay.sharedSessionLostNotice ?? i18n.t(.tmShareEndedDefault))
         }
         .alert(
-            "收到共享主机",
+            i18n.t(.shareHostsTitle),
             isPresented: Binding(
                 get: { relay.pendingShareHosts != nil },
                 set: { if !$0 { relay.pendingShareHosts = nil } }
             )
         ) {
-            Button("合并") {
+            Button(i18n.t(.merge)) {
                 if let hosts = relay.pendingShareHosts {
                     Task { await importSharedHosts(hosts) }
                     relay.pendingShareHosts = nil
                 }
             }
-            Button("取消", role: .cancel) { relay.pendingShareHosts = nil }
+            Button(i18n.t(.cancel), role: .cancel) { relay.pendingShareHosts = nil }
         } message: {
             if let hosts = relay.pendingShareHosts {
-                Text("主持人分享了 \(hosts.count) 台主机：\(hosts.map(\.name).joined(separator: "、"))，是否合并到本地？")
+                Text(String(
+                    format: i18n.t(.shareHostsMessage),
+                    hosts.count,
+                    hosts.map(\.name).joined(separator: i18n.lang.hasPrefix("zh") ? "、" : ", ")
+                ))
             }
         }
     }

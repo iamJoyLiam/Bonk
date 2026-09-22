@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct TeamShareHostsSheet: View {
+    @Environment(I18n.self) private var i18n
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query private var allHosts: [HostItem]
@@ -12,9 +13,9 @@ struct TeamShareHostsSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("选择要分享的主机") {
+                Section(i18n.t(.tmSelectHosts)) {
                     if allHosts.isEmpty {
-                        Text("暂无已保存主机")
+                        Text(i18n.t(.tmNoSavedHosts))
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(allHosts) { hostItem in
@@ -34,15 +35,15 @@ struct TeamShareHostsSheet: View {
                         }
                     }
                 }
-                Section("选项") {
-                    Toggle("包含密码/私钥", isOn: $includeSecrets)
-                    Text("包含敏感信息时请确认接收方为可信好友。SecureEnclave 凭证不支持导出。")
+                Section(i18n.t(.tmOptions)) {
+                    Toggle(i18n.t(.exportIncludeSecrets), isOn: $includeSecrets)
+                    Text(i18n.t(.tmShareWarning))
                         .font(.caption2).foregroundStyle(.secondary)
                 }
                 Section {
                     HStack {
                         Spacer()
-                        Button("分享给访客") {
+                        Button(i18n.t(.tmShareToGuests)) {
                             share()
                         }
                         .buttonStyle(.borderedProminent)
@@ -53,9 +54,9 @@ struct TeamShareHostsSheet: View {
                 }
             }
             .formStyle(.grouped)
-            .navigationTitle("分享主机")
+            .navigationTitle(i18n.t(.tmShareHosts))
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button(i18n.t(.cancel)) { dismiss() } }
             }
         }
         .frame(minWidth: 480, minHeight: 400)

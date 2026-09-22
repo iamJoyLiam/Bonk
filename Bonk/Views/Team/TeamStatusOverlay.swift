@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Transparent status overlay for Team terminal — shows network, typing, participant count at top-right.
 struct TeamStatusOverlay: View {
+    @Environment(I18n.self) private var i18n
     @ObservedObject var relay: TeamRelay
 
     private var isActive: Bool {
@@ -12,7 +13,7 @@ struct TeamStatusOverlay: View {
         // Host counts as 1 + guests
         let total = relay.connectedPeers.count + 1
         let max = TeamConstants.maxGuestCount + 1
-        return "\(total)/\(max)人"
+        return String(format: i18n.t(.tmPeopleCount), total, max)
     }
 
     private var networkColor: Color {
@@ -55,7 +56,7 @@ struct TeamStatusOverlay: View {
                     HStack(spacing: 4) {
                         Circle().fill(Color.green).frame(width: 6, height: 6)
                             .shadow(color: .green.opacity(0.5), radius: 2)
-                        Text("\(typingName) 正在输入…")
+                        Text(String(format: i18n.t(.tmTyping), typingName))
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
