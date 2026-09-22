@@ -39,11 +39,11 @@ struct SettingsView: View {
                 .tag("ai")
 
             ExportHostsView()
-                .tabItem { Label("导出", systemImage: "square.and.arrow.up") }
+                .tabItem { Label(i18n.t(.exportHosts), systemImage: "square.and.arrow.up") }
                 .tag("export")
 
             LogPatternSettingsView()
-                .tabItem { Label("日志着色", systemImage: "paintbrush.pointed") }
+                .tabItem { Label(i18n.t(.logColors), systemImage: "paintbrush.pointed") }
                 .tag("log")
         }
         .frame(width: AppStyle.settingsWindowWidth, height: 500)
@@ -58,7 +58,13 @@ struct SettingsView: View {
     private func updateWindowTitle() {
         #if os(macOS)
             DispatchQueue.main.async {
-                NSApplication.shared.keyWindow?.title = i18n.t(LKey(rawValue: selectedTab) ?? .settings)
+                let key: LKey
+                switch selectedTab {
+                case "export": key = .exportHosts
+                case "log": key = .logColors
+                default: key = LKey(rawValue: selectedTab) ?? .settings
+                }
+                NSApplication.shared.keyWindow?.title = i18n.t(key)
             }
         #endif
     }

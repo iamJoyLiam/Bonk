@@ -65,8 +65,17 @@ enum LogColor {
 
     // MARK: - Presets
 
-    // / 6  + 1
     static let palette: [String] = ["#FF3B30", "#FF9500", "#FFCC02", "#34C759", "#007AFF", "#AF52DE"]
+
+    /// Display title for a preset row. Titles double as stable match IDs, so only
+    /// the two non-English ones are localized — at the display site, never in data.
+    static func displayTitle(_ title: String) -> String {
+        switch title {
+        case "自定义": L.t(.logPresetCustom)
+        case "时间戳": L.t(.logPresetTimestamp)
+        default: title
+        }
+    }
 
     static let presetRows: [(title: String, pattern: String, ansi: String, testLine: String)] = [
         ("Emerg",      "(?<![A-Za-z0-9_\\-])(?:EMERG(?:ENCY)?|PANIC)(?![A-Za-z0-9_\\-])", "1;41;97", "2026-08-27 10:00:00 EMERG panic 192.168.1.1"),

@@ -58,15 +58,15 @@ enum AITerminalMirror {
             let omitted = total - shown.count
 
             let meta = durationText.isEmpty
-                ? "\(total) 行输出"
-                : "\(durationText) · \(total) 行输出"
+                ? String(format: L.t(.mirrorLinesOutput), total)
+                : "\(durationText) · \(String(format: L.t(.mirrorLinesOutput), total))"
             lines.append("\u{1B}[90m\(icon) \(meta)\u{1B}[0m")
 
             for line in shown {
                 lines.append("\u{1B}[36m  │\u{1B}[0m \(line)")
             }
             if omitted > 0 {
-                lines.append("\u{1B}[90m  ⋯ 还有 \(omitted) 行输出被省略\u{1B}[0m")
+                lines.append("\u{1B}[90m  ⋯ \(String(format: L.t(.mirrorLinesOmitted), omitted))\u{1B}[0m")
             }
         } else {
             let meta = durationText.isEmpty ? "no output" : "\(durationText) · no output"
@@ -127,11 +127,11 @@ enum AITerminalMirror {
 
     private static func footerWord(for status: AgentMessage.CommandStatus) -> String {
         switch status {
-        case .running: "运行中"
-        case .success: "完成"
-        case .failed: "失败"
-        case .blocked: "已阻止"
-        case .skipped: "已跳过"
+        case .running: L.t(.mirrorRunning)
+        case .success: L.t(.mirrorSuccess)
+        case .failed: L.t(.mirrorFailed)
+        case .blocked: L.t(.mirrorBlocked)
+        case .skipped: L.t(.mirrorSkipped)
         }
     }
 

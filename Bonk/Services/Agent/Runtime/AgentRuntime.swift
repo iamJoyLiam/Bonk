@@ -181,7 +181,7 @@ final class AgentRuntime: @unchecked Sendable {
         }
 
         // Loop reached max iterations: ask for final synthesis
-        emit(.assistantText("已达到最大执行轮次，正在总结最终结论..."))
+        emit(.assistantText(L.t(.agMaxRoundsReached)))
         messages.append(.user("All terminal inspection commands have been completed. Please provide your final conclusion and answer the original request: '\(input)'. Do not call any tools."))
         if let finalTurn = try? await modelGateway.chat(messages: messages, tools: []) {
             let answer = finalTurn.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -324,7 +324,7 @@ final class AgentRuntime: @unchecked Sendable {
             }
             emit(.permissionResolved(id: callId, approved: approved))
             if !approved {
-                emit(.executionInterrupted(reason: "用户取消了命令执行。"))
+                emit(.executionInterrupted(reason: L.t(.agExecutionCancelled)))
                 emit(.completed)
                 return .denied
             }

@@ -118,16 +118,16 @@ struct AddHostSheet: View {
                         case .privateKey:
                             PEMEditorField(text: $formViewModel.privateKeyPEM, detectedType: detectedPrivateKeyType.map { i18n.tr(.detectedKeyType, args: $0) }, hint: i18n.t(.pastePemKey))
                             if let detectedType = detectedPrivateKeyType, detectedType.contains("sk-") {
-                                Label("检测到 Security Key (sk-)，需触摸 YubiKey", systemImage: "key.viewfinder").font(.caption).foregroundStyle(.orange)
+                                Label(i18n.t(.sbSkDetected), systemImage: "key.viewfinder").font(.caption).foregroundStyle(.orange)
                             }
                             Toggle(isOn: Binding(
                                 get: { formViewModel.selectedCredential?.isSecurityKey ?? false },
                                 set: { formViewModel.selectedCredential?.isSecurityKey = $0 }
                             )) {
                                 Label("FIDO2 / YubiKey (sk-)", systemImage: "key.viewfinder")
-                            }.help("Security Key 需触摸确认")
+                            }.help(i18n.t(.sbSkHelp))
                             if let cred = formViewModel.selectedCredential, cred.isSecurityKey {
-                                Text("将使用 SecurityKeyProvider，需按 YubiKey").font(.caption).foregroundStyle(.orange)
+                                Text(i18n.t(.sbSkProvider)).font(.caption).foregroundStyle(.orange)
                             }
                         case .certificate:
                             HStack {
@@ -206,9 +206,9 @@ struct AddHostSheet: View {
                     }
                 }
 
-                Section("日志着色") {
-                    Picker("着色配置", selection: $formViewModel.selectedLogProfile) {
-                        Text("跟随默认").tag(LogProfile?.none)
+                Section(i18n.t(.sbLogSection)) {
+                    Picker(i18n.t(.sbLogProfile), selection: $formViewModel.selectedLogProfile) {
+                        Text(i18n.t(.sbFollowDefault)).tag(LogProfile?.none)
                         ForEach(logProfiles, id: \.self) { profile in Text(profile.name).tag(LogProfile?.some(profile)) }
                     }
                 }

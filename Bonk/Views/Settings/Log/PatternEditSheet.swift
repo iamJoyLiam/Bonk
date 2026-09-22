@@ -11,6 +11,7 @@ enum PatternMode {
 
 struct PatternEditSheet: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(I18n.self) var i18n
     @Environment(\.modelContext) private var ctx
     var mode: PatternMode
     var profile: LogProfile?
@@ -24,22 +25,22 @@ struct PatternEditSheet: View {
     @State private var testLine = "2026-08-27 10:00:00 ERROR 192.168.1.1 hello world"
 
     var isEdit: Bool { if case .edit = mode { return true }; return false }
-    var title: String { isEdit ? "编辑正则" : "添加正则" }
+    private func sheetTitle() -> String { isEdit ? i18n.t(.logEditPattern) : i18n.t(.logAddPattern) }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(title).font(.system(size: AppStyle.fontMedium, weight: .semibold))
+                Text(sheetTitle()).font(.system(size: AppStyle.fontMedium, weight: .semibold))
                 Spacer()
-                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(isEdit ? "保存" : "添加") { save() }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(name.isEmpty || pattern.isEmpty)
+                Button(i18n.t(.cancel)) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(isEdit ? i18n.t(.save) : i18n.t(.add)) { save() }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(name.isEmpty || pattern.isEmpty)
             }.padding()
             Divider()
             Form {
-                Section("基础") {
-                    TextField("名称", text: $name).font(.system(size: AppStyle.fontBody))
-                    Picker("预设", selection: $preset) {
-                        ForEach(LogColor.presetRows, id: \.title) { profile in Text(profile.title).tag(profile.title) }
+                Section(i18n.t(.logBasic)) {
+                    TextField(i18n.t(.logNamePlaceholder), text: $name).font(.system(size: AppStyle.fontBody))
+                    Picker(i18n.t(.logPreset), selection: $preset) {
+                        ForEach(LogColor.presetRows, id: \.title) { profile in Text(LogColor.displayTitle(profile.title)).tag(profile.title) }
                     }.onChange(of: preset) { _, value in
                         if let matchedPreset = LogColor.presetRows.first(where: { $0.title == value }) {
                             if !matchedPreset.pattern.isEmpty { pattern = matchedPreset.pattern }
@@ -47,10 +48,10 @@ struct PatternEditSheet: View {
                             if !isEdit, !matchedPreset.ansi.isEmpty { picked = LogColor.color(for: matchedPreset.ansi); hex = (picked.hexString ?? "#FF3B30").uppercased() }
                         }
                     }
-                    TextField("正则表达式", text: $pattern).font(.system(size: AppStyle.fontSmall, design: .monospaced))
+                    TextField(i18n.t(.logRegex), text: $pattern).font(.system(size: AppStyle.fontSmall, design: .monospaced))
                     if let displayError = error { Text(displayError).foregroundStyle(.red).font(.system(size: AppStyle.fontCaption)) }
                 }
-                Section("颜色") {
+                Section(i18n.t(.logColorSection)) {
                     let defaults = LogColor.palette
                     let isCustom = !defaults.contains(where: { $0.uppercased() == hex.uppercased() })
                     HStack(spacing: AppStyle.spacingS) {
@@ -68,24 +69,24 @@ struct PatternEditSheet: View {
                                     let newHex = (newColor.hexString ?? hex).uppercased()
                                     if isCustom || !defaults.contains(where: { $0.uppercased() == newHex.uppercased() }) { hex = newHex }
                                 }
-                        }.help("自定义取色")
+                        }.help(i18n.t(.logCustomColor))
                         TextField("", text: $hex).font(.system(size: AppStyle.fontSmall, design: .monospaced)).frame(width: 86, alignment: .leading).lineLimit(1).textFieldStyle(.plain)
                             .onChange(of: hex) { _, newHex in if newHex.hasPrefix("#") && newHex.count == 7 { picked = Color(hex: newHex) } }
                     }
                 }
-                Section("实时预览") {
+                Section(i18n.t(.logLivePreview)) {
                     if pattern.isEmpty {
-                        Text("请输入正则").font(.system(size: AppStyle.fontCaption)).foregroundStyle(.secondary)
+                        Text(i18n.t(.logEnterPattern)).font(.system(size: AppStyle.fontCaption)).foregroundStyle(.secondary)
                     } else if (try? NSRegularExpression(pattern: pattern)) == nil {
-                        Label("正则非法", systemImage: "xmark.octagon.fill").font(.system(size: AppStyle.fontCaption)).foregroundStyle(.red)
+                        Label(i18n.t(.logInvalidRegex), systemImage: "xmark.octagon.fill").font(.system(size: AppStyle.fontCaption)).foregroundStyle(.red)
                     } else {
                         let matchResult = (try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]))?.matches(in: testLine, range: NSRange(testLine.startIndex..., in: testLine))
                         SingleLineHighlightField(text: $testLine, pattern: pattern, color: picked).frame(height: 22)
                         HStack {
-                            Label((matchResult?.isEmpty ?? true) ? "无匹配" : "\(matchResult!.count) 处匹配", systemImage: (matchResult?.isEmpty ?? true) ? "exclamationmark.triangle" : "checkmark.circle.fill")
+                            Label((matchResult?.isEmpty ?? true) ? i18n.t(.logNoMatch) : i18n.tr(.logMatchCount, args: matchResult!.count), systemImage: (matchResult?.isEmpty ?? true) ? "exclamationmark.triangle" : "checkmark.circle.fill")
                                 .font(.system(size: AppStyle.fontSmall, weight: .medium)).foregroundStyle((matchResult?.isEmpty ?? true) ? .orange : .green)
                             Spacer()
-                            Text("优先级 \(priority)").font(.system(size: AppStyle.fontCaption)).foregroundStyle(.secondary)
+                            Text(i18n.tr(.logPriority, args: priority)).font(.system(size: AppStyle.fontCaption)).foregroundStyle(.secondary)
                             Stepper("", value: $priority, in: 1...100).labelsHidden().controlSize(.small)
                         }
                     }
@@ -122,7 +123,7 @@ struct PatternEditSheet: View {
             Task { @MainActor in LogProfileStore.shared.refreshSnapshot() }
             dismiss()
         } else {
-            if LogProfileStore.shared.addRow(to: profile!, name: name, pattern: pattern, ansiCode: ansi, priority: priority) { dismiss() } else { error = "正则非法或保存失败" }
+            if LogProfileStore.shared.addRow(to: profile!, name: name, pattern: pattern, ansiCode: ansi, priority: priority) { dismiss() } else { error = i18n.t(.logSaveError) }
         }
     }
 }

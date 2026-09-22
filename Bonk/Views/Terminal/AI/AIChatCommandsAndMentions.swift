@@ -15,11 +15,11 @@ enum AISlashCommand: String, CaseIterable, Identifiable {
 
     var description: String {
         switch self {
-        case .clear: "清空当前会话记录"
-        case .fix: "诊断并修复上一个失败的终端命令"
-        case .explain: "解释终端最新输出或错误信息"
-        case .compact: "总结并压缩对话上下文"
-        case .help: "查看可用指令与使用技巧"
+        case .clear: L.t(.slashClearDesc)
+        case .fix: L.t(.slashFixDesc)
+        case .explain: L.t(.slashExplainDesc)
+        case .compact: L.t(.slashCompactDesc)
+        case .help: L.t(.slashHelpDesc)
         }
     }
 
@@ -50,10 +50,10 @@ enum AIContextMention: String, CaseIterable, Identifiable {
 
     var description: String {
         switch self {
-        case .terminal: "当前终端屏幕输出（最近输出）"
-        case .history: "最近执行的终端命令历史"
-        case .host: "当前连接的主机信息与状态"
-        case .selection: "终端当前选中的文本"
+        case .terminal: L.t(.mentionTerminalDesc)
+        case .history: L.t(.mentionHistoryDesc)
+        case .host: L.t(.mentionHostDesc)
+        case .selection: L.t(.mentionSelectionDesc)
         }
     }
 
@@ -70,6 +70,7 @@ enum AIContextMention: String, CaseIterable, Identifiable {
 // MARK: - Autocomplete Popup View
 
 struct SlashAndMentionPopup: View {
+    @Environment(I18n.self) var i18n
     let slashMatches: [AISlashCommand]
     let mentionMatches: [AIContextMention]
     var selectedIndex: Int = 0
@@ -79,7 +80,7 @@ struct SlashAndMentionPopup: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             if !slashMatches.isEmpty {
-                Text("快捷指令 (Slash Commands)")
+                Text(i18n.t(.slashHeader))
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .padding(.horizontal, 8)
@@ -125,7 +126,7 @@ struct SlashAndMentionPopup: View {
                     Divider().padding(.vertical, 2)
                 }
 
-                Text("上下文引用 (Context Mentions)")
+                Text(i18n.t(.mentionHeader))
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .padding(.horizontal, 8)
@@ -168,7 +169,7 @@ struct SlashAndMentionPopup: View {
 
             Divider().opacity(0.4)
             HStack(spacing: 8) {
-                Text("⇥ / ↵ 选定   ↑↓ 选择   Esc 关闭")
+                Text(i18n.t(.popupHint))
                     .font(.system(size: 9.5))
                     .foregroundStyle(.tertiary)
                 Spacer()
@@ -249,7 +250,7 @@ enum ContextMentionResolver {
         let intent = UserIntent.parse(rawInput: text, defaultExecutionRequested: false)
         if intent.prompt.isEmpty && !intent.contextReferences.isEmpty {
             let mentionNames = intent.contextReferences.map(\.rawValue).joined(separator: ", ")
-            let instruction = "请分析并总结上述附加的 \(mentionNames) 上下文。请指出关键信息、执行状态或潜在问题，并提示我可进行的相关操作。"
+            let instruction = String(format: I18n.shared.t(.aiMentionSummary), mentionNames)
             return instruction + "\n\n" + attachments.joined(separator: "\n\n")
         }
         return result + "\n\n" + attachments.joined(separator: "\n\n")

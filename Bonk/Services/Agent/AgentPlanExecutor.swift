@@ -86,7 +86,7 @@ extension AgentEngine {
             if !text.isEmpty {
                 appendAgentMessage(.assistant, content: text, conversation: conversation, context: context)
             } else {
-                appendAgentMessage(.system, content: "未发现需要关注的异常信息。", conversation: conversation, context: context)
+                appendAgentMessage(.system, content: L.t(.agNoAnomalies), conversation: conversation, context: context)
             }
         } catch {
             appendAgentMessage(.system, content: "AI error: \(error.localizedDescription)", conversation: conversation, context: context)
@@ -227,7 +227,7 @@ extension AgentEngine {
                 let riskLevel: PendingCommand.RiskLevel = step.riskLevel == .dangerous ? .dangerous : .moderate
                 let confirmed = await requestConfirmation(command: step.command, riskLevel: riskLevel)
                 guard confirmed else {
-                    appendAgentMessage(.system, content: "用户取消了命令执行，计划已停止。",
+                    appendAgentMessage(.system, content: L.t(.agPlanStopped),
                                        conversation: conversation, context: context)
                     results.append(StepResult(step: step, output: "Cancelled by user", success: false, duration: 0))
                     break

@@ -53,6 +53,7 @@ extension AIChatSidebarView {
         case .host(let hostID):
             guard let host = hosts.first(where: { $0.id == hostID }) else { return }
             if connectionService.connectedHostID == hostID {
+                let failedTemplate = i18n.t(.aiConnectFailed)
                 Task {
                     do {
                         let ssh = try await connectionService.service(for: host)
@@ -60,7 +61,7 @@ extension AIChatSidebarView {
                     } catch {
                         engine.agentMessages = [AgentMessage(
                             role: .system,
-                            content: "连接失败: \(error.localizedDescription)"
+                            content: String(format: failedTemplate, error.localizedDescription)
                         )]
                     }
                 }

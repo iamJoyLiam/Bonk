@@ -365,7 +365,7 @@ struct AIChatSidebarView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("切换模式：\(selectedMode == .agent ? i18n.t(.aiModeAgent) : i18n.t(.aiModeAsk))")
+        .help(String(format: i18n.t(.aiSwitchMode), selectedMode == .agent ? i18n.t(.aiModeAgent) : i18n.t(.aiModeAsk)))
         .popover(isPresented: $showModeMenu, arrowEdge: .top) {
             VStack(alignment: .leading, spacing: 2) {
                 Button {
@@ -435,7 +435,7 @@ struct AIChatSidebarView: View {
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .help("执行权限：\(currentAccessMode.localizedName)")
+        .help(String(format: i18n.t(.aiAccessModeHelp), currentAccessMode.localizedName))
         .popover(isPresented: $showAccessModePopover, arrowEdge: .top) {
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(AgentMessage.AccessMode.allCases) { mode in
@@ -502,7 +502,7 @@ struct AIChatSidebarView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!canSend)
-                .help("发送 (↵)")
+                .help(i18n.t(.aiSendHelp))
             }
         }
     }

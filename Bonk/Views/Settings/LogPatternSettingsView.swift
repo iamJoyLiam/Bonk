@@ -5,6 +5,7 @@ import AppKit
 // MARK: - Main
 
 struct LogPatternSettingsView: View {
+    @Environment(I18n.self) var i18n
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \LogProfile.createdAt) private var profiles: [LogProfile]
     @State private var selectedID: UUID?
@@ -28,7 +29,7 @@ struct LogPatternSettingsView: View {
                     Text(profile.name).font(.system(size: AppStyle.fontBody)).lineLimit(1)
                     Spacer()
                     if profile.isDefault {
-                        Text("默认").font(.system(size: AppStyle.fontCaption)).foregroundStyle(.secondary)
+                        Text(i18n.t(.logDefaultBadge)).font(.system(size: AppStyle.fontCaption)).foregroundStyle(.secondary)
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(Color.secondary.opacity(0.12)).cornerRadius(4)
                     }
@@ -48,9 +49,12 @@ struct LogPatternSettingsView: View {
                     rulesList(profile)
                 }
             } else {
-                ContentUnavailableView("无配置", systemImage: "paintbrush", description: Text("新建一个日志着色配置"))
+                ContentUnavailableView(i18n.t(.logEmptyTitle), systemImage: "paintbrush", description: Text(i18n.t(.logEmptyDesc)))
             }
         }
+        // Gap between the tab menu and the split content: without it the
+        // vertical divider runs into the tab bar and reads as one cut.
+        .padding(.top, AppStyle.spacingM)
         .sheet(isPresented: $showAdd) { PatternEditSheet(mode: .add, profile: selected) }
         .sheet(item: $editingRow) { row in PatternEditSheet(mode: .edit(row), profile: selected) }
         .onAppear {
@@ -65,7 +69,7 @@ struct LogPatternSettingsView: View {
         HStack(spacing: AppStyle.spacingM) {
             VStack(alignment: .leading, spacing: 2) {
                 if editingName {
-                    TextField("名称", text: $draftName, onCommit: {
+                    TextField(i18n.t(.logNamePlaceholder), text: $draftName, onCommit: {
                         profile.name = draftName; try? modelContext.save()
                         Task { @MainActor in LogProfileStore.shared.refreshSnapshot() }
                         editingName = false
@@ -74,33 +78,33 @@ struct LogPatternSettingsView: View {
                 } else {
                     HStack(spacing: 6) {
                         Text(profile.name).font(.system(size: AppStyle.fontMedium, weight: .semibold))
-                        Button { draftName = profile.name; editingName = true } label: { Image(systemName: "pencil").font(.system(size: 11)) }.buttonStyle(.plain).help("重命名")
+                        Button { draftName = profile.name; editingName = true } label: { Image(systemName: "pencil").font(.system(size: 11)) }.buttonStyle(.plain).help(i18n.t(.logRename))
                     }
                 }
-                Text("\(profile.patterns.count) 条规则 · \(profile.patterns.filter { $0.enabled }.count) 启用")
+                Text(i18n.tr(.logRulesCount, args: profile.patterns.count, profile.patterns.filter { $0.enabled }.count))
                     .font(.system(size: AppStyle.fontCaption)).foregroundStyle(.secondary)
             }
             Spacer()
-            Button("新建配置") {
-                if let newProfile = LogProfileStore.shared.create(name: "配置 \(profiles.count + 1)") { selectedID = newProfile.id }
+            Button(i18n.t(.logNewProfile)) {
+                if let newProfile = LogProfileStore.shared.create(name: i18n.tr(.logNewProfileName, args: profiles.count + 1)) { selectedID = newProfile.id }
             }.controlSize(.small)
             if !profile.isDefault {
-                Button("删除", role: .destructive) { showDeleteProfile = true }.controlSize(.small).buttonStyle(.bordered)
+                Button(i18n.t(.delete), role: .destructive) { showDeleteProfile = true }.controlSize(.small).buttonStyle(.bordered)
             }
         }.padding(AppStyle.spacingM)
-        .confirmationDialog("删除配置 \(profile.name)？", isPresented: $showDeleteProfile, titleVisibility: .visible) {
-            Button("删除", role: .destructive) {
+        .confirmationDialog(i18n.tr(.logDeleteProfileTitle, args: profile.name), isPresented: $showDeleteProfile, titleVisibility: .visible) {
+            Button(i18n.t(.delete), role: .destructive) {
                 modelContext.delete(profile); try? modelContext.save()
                 selectedID = profiles.first { $0.id != profile.id }?.id
                 Task { @MainActor in LogProfileStore.shared.refreshSnapshot() }
             }
-            Button("取消", role: .cancel) {}
-        } message: { Text("配置内 \(profile.patterns.count) 条规则将一并删除，不可恢复") }
+            Button(i18n.t(.cancel), role: .cancel) {}
+        } message: { Text(i18n.tr(.logDeleteProfileMsg, args: profile.patterns.count)) }
     }
 
     private func previewSection(_ profile: LogProfile) -> some View {
         VStack(alignment: .leading, spacing: AppStyle.spacingS) {
-            Label("实时预览", systemImage: "eye").font(.system(size: AppStyle.fontSmall, weight: .medium)).foregroundStyle(.secondary)
+            Label(i18n.t(.logLivePreview), systemImage: "eye").font(.system(size: AppStyle.fontSmall, weight: .medium)).foregroundStyle(.secondary)
             LogPreviewView(profile: profile)
                 .padding(AppStyle.spacingS)
                 .background(Color(nsColor: .textBackgroundColor))
@@ -111,9 +115,9 @@ struct LogPatternSettingsView: View {
 
     private var rulesHeader: some View {
         HStack {
-            Text("规则").font(.system(size: AppStyle.fontSmall, weight: .semibold))
+            Text(i18n.t(.logRules)).font(.system(size: AppStyle.fontSmall, weight: .semibold))
             Spacer()
-            Button { showAdd = true } label: { Label("添加正则", systemImage: "plus") }.controlSize(.small).buttonStyle(.borderedProminent)
+            Button { showAdd = true } label: { Label(i18n.t(.logAddPattern), systemImage: "plus") }.controlSize(.small).buttonStyle(.borderedProminent)
         }.padding(.horizontal, AppStyle.spacingM).padding(.vertical, AppStyle.spacingS)
     }
 
@@ -124,15 +128,15 @@ struct LogPatternSettingsView: View {
                     .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
             }
         }.listStyle(.plain)
-        .confirmationDialog("删除正则", isPresented: $showDeleteRow, titleVisibility: .visible) {
+        .confirmationDialog(i18n.t(.logDeletePatternTitle), isPresented: $showDeleteRow, titleVisibility: .visible) {
             if let row = rowToDelete {
-                Button("删除 \(row.name)", role: .destructive) {
+                Button(i18n.tr(.logDeletePatternButton, args: row.name), role: .destructive) {
                     modelContext.delete(row); try? modelContext.save()
                     Task { @MainActor in LogProfileStore.shared.refreshSnapshot() }
                 }
-                Button("取消", role: .cancel) {}
+                Button(i18n.t(.cancel), role: .cancel) {}
             }
-        } message: { Text("正则删除后不可恢复") }
+        } message: { Text(i18n.t(.logDeletePatternMsg)) }
     }
 }
 

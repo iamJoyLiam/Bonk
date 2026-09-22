@@ -4,6 +4,7 @@ import SwiftData
 // MARK: - Row
 
 struct PatternRowView: View {
+    @Environment(I18n.self) var i18n
     @Bindable var row: LogPatternRow
     var onEdit: () -> Void
     var onDelete: () -> Void
@@ -21,8 +22,8 @@ struct PatternRowView: View {
                 row.enabled = new; try? ctx.save()
                 Task { @MainActor in LogProfileStore.shared.refreshSnapshot() }
             })).labelsHidden().toggleStyle(.switch).controlSize(.mini)
-            Button(action: onEdit) { Image(systemName: "pencil") }.buttonStyle(.plain).help("编辑")
-            Button(role: .destructive, action: onDelete) { Image(systemName: "trash") }.buttonStyle(.plain).help("删除")
+            Button(action: onEdit) { Image(systemName: "pencil") }.buttonStyle(.plain).help(i18n.t(.edit))
+            Button(role: .destructive, action: onDelete) { Image(systemName: "trash") }.buttonStyle(.plain).help(i18n.t(.delete))
         }.padding(.vertical, 4)
     }
 }

@@ -35,7 +35,7 @@ final class TerminationGuard {
             consecutiveDuplicates += 1
             if consecutiveDuplicates >= Self.maxConsecutiveDuplicates {
                 return .terminateLoop(
-                    reason: "检测到重复执行相同操作（'\(toolName)'）且无新输出，已自动终止工具循环以防陷入死循环。"
+                    reason: String(format: L.t(.agLoopDuplicate), toolName)
                 )
             }
             return .warnDuplicate(toolName: toolName)
@@ -45,7 +45,7 @@ final class TerminationGuard {
         let matchingCount = fingerprints.filter { $0.toolName == toolName && $0.arguments == arguments }.count
         if matchingCount >= 2 {
             return .terminateLoop(
-                reason: "操作 '\(toolName)' 已重复执行多次无新进展，终止工具循环以输出已有结果。"
+                reason: String(format: L.t(.agLoopStalled), toolName)
             )
         }
 

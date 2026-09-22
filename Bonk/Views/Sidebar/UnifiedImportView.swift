@@ -74,7 +74,7 @@ struct UnifiedImportView: View {
             Button(i18n.t(.chooseFile)) { promptForFile() }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
-            Text("自动识别 SSH Config / Tabby / iTerm2 / Electerm / WindTerm / CSV")
+            Text(i18n.t(.sbImportHint))
                 .font(.caption2).foregroundStyle(.tertiary)
         }.frame(maxWidth: .infinity, maxHeight: .infinity).padding()
     }
@@ -262,7 +262,7 @@ struct UnifiedImportView: View {
                 return
             } catch {}
         }
-        importError = "无法识别文件格式，请选择 SSH Config / Tabby / iTerm2 / Electerm / WindTerm / CSV"
+        importError = i18n.t(.sbImportError)
     }
 
     private func performImport() {

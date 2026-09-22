@@ -68,25 +68,25 @@ struct AgentMessage: Identifiable {
     }
 
     enum AccessMode: String, CaseIterable, Identifiable, Sendable {
-        case fullAccess = "fullAccess"  // 完全访问：自动执行常规命令
-        case supervised = "supervised"  // 逐步确认：中危修改命令需确认
-        case readOnly = "readOnly"      // 只读模式：只允许只读检查
+        case fullAccess = "fullAccess"  // Full access: routine commands run autonomously
+        case supervised = "supervised"  // Supervised: medium-risk modifications need confirmation
+        case readOnly = "readOnly"      // Read-only: inspection commands only
 
         var id: String { rawValue }
 
         var localizedName: String {
             switch self {
-            case .fullAccess: "完全访问"
-            case .supervised: "逐步确认"
-            case .readOnly: "只读模式"
+            case .fullAccess: L.t(.accessFull)
+            case .supervised: L.t(.accessSupervised)
+            case .readOnly: L.t(.accessReadonly)
             }
         }
 
         var shortName: String {
             switch self {
-            case .fullAccess: "完全访问"
-            case .supervised: "逐步确认"
-            case .readOnly: "只读"
+            case .fullAccess: L.t(.accessFullShort)
+            case .supervised: L.t(.accessSupervisedShort)
+            case .readOnly: L.t(.accessReadonlyShort)
             }
         }
 

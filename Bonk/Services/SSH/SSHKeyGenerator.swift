@@ -24,11 +24,11 @@ enum SSHKeyType: String, CaseIterable, Sendable {
 
     var description: String {
         switch self {
-        case .ed25519: "推荐：最快、最安全"
-        case .rsa2048: "兼容性好，广泛支持"
-        case .rsa4096: "高安全性 RSA"
-        case .ecdsaP256: "椭圆曲线，平衡性能与安全"
-        case .ecdsaP384: "更高安全性的椭圆曲线"
+        case .ed25519: L.t(.sshEd25519Desc)
+        case .rsa2048: L.t(.sshRsa2048Desc)
+        case .rsa4096: L.t(.sshRsa4096Desc)
+        case .ecdsaP256: L.t(.sshEcdsaP256Desc)
+        case .ecdsaP384: L.t(.sshEcdsaP384Desc)
         }
     }
 }

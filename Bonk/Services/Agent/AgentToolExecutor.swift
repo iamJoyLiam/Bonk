@@ -212,7 +212,7 @@ extension AgentEngine {
             case .proceed:
                 break
             case .warnDuplicate(let toolName):
-                nextMessages.append(.system("提示：你刚刚重复调用了 '\(toolName)' 并得到了相同输出。如果已有足够信息，请停止调用工具并直接给出最终结论。"))
+                nextMessages.append(.system(String(format: L.t(.agRepeatHint), toolName)))
             case .terminateLoop(let reason):
                 appendAgentMessage(.system, content: reason, conversation: toolContext.conversation, context: toolContext.context)
                 return (nextMessages, true)
@@ -290,7 +290,7 @@ extension AgentEngine {
             if let last = agentMessages.last, last.role == .commandOutput, last.command == command, last.status == .running {
                 agentMessages.removeLast()
             }
-            let message = "已处于只读模式（Read-Only），已阻止修改命令：\(command)"
+            let message = String(format: L.t(.agReadonlyBlocked), command)
             appendAgentMessage(
                 .commandOutput, content: message, command: command,
                 status: .blocked,

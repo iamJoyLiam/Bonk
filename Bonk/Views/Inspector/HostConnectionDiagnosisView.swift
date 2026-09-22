@@ -112,7 +112,7 @@ struct HostConnectionDiagnosisView: View {
                     Text("· last \(dateString(last))")
                 }
                 if profile.isPolicyReason {
-                    Text("· policy永不过期")
+                    Text("· \(i18n.t(.inspPolicyNoExpire))")
                 }
             }
             .font(.system(size: AppStyle.fontCaption, design: .monospaced))

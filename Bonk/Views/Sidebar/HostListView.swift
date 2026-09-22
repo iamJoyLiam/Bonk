@@ -459,7 +459,7 @@ struct HostListView: View {
     }
 
     private func badgeHelp(for profile: SSHBackendProfile) -> String {
-        let backend = profile.backendRaw == SSHBackendType.native.rawValue ? "Native (SwiftNIO)" : "兼容 (OpenSSH)"
-        return "\(backend) · \(profile.reasonRaw) · \(profile.isValid ? "有效" : "已过期")"
+        let backend = profile.backendRaw == SSHBackendType.native.rawValue ? "Native (SwiftNIO)" : i18n.t(.sbBackendCompat)
+        return "\(backend) · \(profile.reasonRaw) · \(profile.isValid ? i18n.t(.sshProfileValid) : i18n.t(.sshProfileExpired))"
     }
 }

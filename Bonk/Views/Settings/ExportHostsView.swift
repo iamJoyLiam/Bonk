@@ -3,6 +3,7 @@ import SwiftData
 import UniformTypeIdentifiers
 
 struct ExportHostsView: View {
+    @Environment(I18n.self) var i18n
     @Environment(\.modelContext) private var modelContext
     @Query private var allHosts: [HostItem]
     @State private var includeSecrets = false
@@ -12,18 +13,18 @@ struct ExportHostsView: View {
 
     var body: some View {
         Form {
-            Section("导出主机配置") {
-                Text("将已保存的主机导出为 JSON 文件，可分享给他人导入。SecureEnclave 凭证不支持导出。")
+            Section(i18n.t(.exportHostsTitle)) {
+                Text(i18n.t(.exportHostsDesc))
                     .font(.caption).foregroundStyle(.secondary)
-                Toggle("包含密码/私钥", isOn: $includeSecrets)
-                Button("导出到文件…") {
+                Toggle(i18n.t(.exportIncludeSecrets), isOn: $includeSecrets)
+                Button(i18n.t(.exportToFile)) {
                     prepareExport()
                     showExporter = true
                 }
                 .disabled(allHosts.isEmpty)
             }
-            Section("导入") {
-                Button("一键导入…") { showImport = true }
+            Section(i18n.t(.importSection)) {
+                Button(i18n.t(.quickImport)) { showImport = true }
                     .buttonStyle(.borderedProminent)
             }
         }

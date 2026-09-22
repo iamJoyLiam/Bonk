@@ -100,7 +100,7 @@ extension AIProviderDetailSheet {
             throw NSError(
                 domain: "Bonk.AI",
                 code: 0,
-                userInfo: [NSLocalizedDescriptionKey: "无效的端点地址：\(draft.endpoint)"]
+                userInfo: [NSLocalizedDescriptionKey: i18n.tr(.aiInvalidEndpoint, args: draft.endpoint)]
             )
         }
         var request = URLRequest(url: url)
@@ -151,7 +151,7 @@ extension AIProviderDetailSheet {
                 domain: "Bonk.AI",
                 code: http.statusCode,
                 userInfo: [
-                    NSLocalizedDescriptionKey: "auth failed（HTTP \(http.statusCode)）：检查 API Key（litellm 需填 master_key）",
+                    NSLocalizedDescriptionKey: i18n.tr(.aiAuthFailed, args: http.statusCode),
                 ]
             )
         }
@@ -166,7 +166,7 @@ extension AIProviderDetailSheet {
             domain: "Bonk.AI",
             code: http.statusCode,
             userInfo: [
-                NSLocalizedDescriptionKey: "连接测试失败（HTTP \(http.statusCode)）：\(String(errorBody.prefix(300)))",
+                NSLocalizedDescriptionKey: i18n.tr(.aiConnectionFailed, args: http.statusCode, String(errorBody.prefix(300))),
             ]
         )
     }
