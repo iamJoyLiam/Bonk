@@ -28,11 +28,16 @@ final class AgentRuntime: @unchecked Sendable {
     /// Engine consulted for confirmation folding (Phase 2). Nil disables
     /// the gate entirely: every confirm shows the dialog (Phase 1 behavior).
     let foldEngine: (any DecisionEngine)?
+    /// Engine consulted for semantic progress judgment (Phase 3, Tier 2).
+    /// Nil disables Tier 2: only the guard and Tier-1 observation run,
+    /// which never break the loop on their own.
+    let progressEngine: (any DecisionEngine)?
 
     private let pendingApprovals = OSAllocatedUnfairLock<[String: CheckedContinuation<Bool, Never>]>(uncheckedState: [:])
     private let activeTask = OSAllocatedUnfairLock<Task<Void, Never>?>(uncheckedState: nil)
     private let ownedState = OSAllocatedUnfairLock(uncheckedState: AgentState())
     private let budget: OSAllocatedUnfairLock<AgentBudgetController>
+    private let progressEvaluator = OSAllocatedUnfairLock(uncheckedState: ProgressEvaluator())
     private static let budgetLog = Logger(subsystem: "com.bonk", category: "AgentBudget")
 
     init(
@@ -44,7 +49,8 @@ final class AgentRuntime: @unchecked Sendable {
         transcriptStore: AgentTranscriptStore = AgentTranscriptStore(),
         maxIterations: Int = 25,
         decisionMemory: AgentDecisionMemory? = nil,
-        foldEngine: (any DecisionEngine)? = nil
+        foldEngine: (any DecisionEngine)? = nil,
+        progressEngine: (any DecisionEngine)? = nil
     ) {
         self.contextProvider = contextProvider
         self.modelGateway = modelGateway
@@ -55,6 +61,7 @@ final class AgentRuntime: @unchecked Sendable {
         self.maxIterations = maxIterations
         self.decisionMemory = decisionMemory
         self.foldEngine = foldEngine
+        self.progressEngine = progressEngine
         self.budget = OSAllocatedUnfairLock(uncheckedState: AgentBudgetController(maxIterations: maxIterations))
     }
 
@@ -208,6 +215,7 @@ final class AgentRuntime: @unchecked Sendable {
                 switch await runToolCall(
                     toolCall,
                     iteration: iteration,
+                    goal: input,
                     messages: &messages,
                     terminationGuard: terminationGuard,
                     consecutiveFailures: &consecutiveToolFailures,
@@ -261,6 +269,7 @@ final class AgentRuntime: @unchecked Sendable {
     private func runToolCall(
         _ toolCall: LLMToolCall,
         iteration: Int,
+        goal: String,
         messages: inout [LLMMessage],
         terminationGuard: TerminationGuard,
         consecutiveFailures: inout Int,
@@ -321,6 +330,7 @@ final class AgentRuntime: @unchecked Sendable {
         emit(.toolCompleted(id: callId, exitCode: exitCode, duration: duration))
 
         // Phase 1: populate owned state (never read back for decisions yet).
+        let stepKey = Self.stateKey(tool: toolCall.name, arguments: authorized.args)
         let toolSnap = budget.withLock { lock -> (iterations: Int, toolCalls: Int, decisionCalls: Int, wallClockMs: Double) in
             lock.recordToolCall()
             return lock.snapshot
@@ -328,7 +338,7 @@ final class AgentRuntime: @unchecked Sendable {
         ownedState.withLock {
             $0.appendStep(AgentStepState(
                 tool: toolCall.name,
-                normalizedKey: Self.stateKey(tool: toolCall.name, arguments: authorized.args),
+                normalizedKey: stepKey,
                 exitCode: exitCode,
                 outputSummary: String(guardedOutput.prefix(200))
             ))
@@ -341,11 +351,14 @@ final class AgentRuntime: @unchecked Sendable {
             name: toolCall.name,
             rawArgs: toolCall.argumentsJSON,
             output: guardedOutput,
-            callId: callId
+            callId: callId,
+            normalizedKey: stepKey
         )
         return await evaluateStep(
             call,
             exitCode: exitCode,
+            goal: goal,
+            iteration: iteration,
             failures: &consecutiveFailures,
             terminationGuard: terminationGuard,
             messages: &messages,
@@ -550,13 +563,19 @@ final class AgentRuntime: @unchecked Sendable {
         let rawArgs: String
         let output: String
         let callId: String
+        let normalizedKey: String
     }
 
     /// Applies the consecutive-failure hard stop and the repetition guard.
     /// Returns whether the loop should continue or break to final synthesis.
+    /// Phase 3: after a non-terminal guard outcome, the semantic progress
+    /// evaluator may additionally break the loop on stalled progress. The
+    /// guard stays authoritative for exact repeats and failures.
     private func evaluateStep(
         _ call: ExecutedCall,
         exitCode: Int32,
+        goal: String,
+        iteration: Int,
         failures: inout Int,
         terminationGuard: TerminationGuard,
         messages: inout [LLMMessage],
@@ -598,6 +617,63 @@ final class AgentRuntime: @unchecked Sendable {
             messages.append(LLMMessage(role: .tool, content: content, toolCallID: call.callId))
             return .breakLoop
         }
+        // Phase 3: non-terminal guard outcome — consult semantic progress.
+        if await considerProgressBreak(
+            call, exitCode: exitCode, goal: goal, iteration: iteration,
+            messages: &messages, continuation: continuation
+        ) {
+            return .breakLoop
+        }
         return .next
+    }
+
+    /// Phase 3 semantic progress check. Tier 1 runs for every non-terminal
+    /// step; Tier 2 (engine score) runs only inside the suspicious window.
+    /// Returns true when the loop should break on stalled progress.
+    /// Nil engine, engine errors, and healthy scores all continue —
+    /// this path never fails open into a break.
+    private func considerProgressBreak(
+        _ call: ExecutedCall,
+        exitCode: Int32,
+        goal: String,
+        iteration: Int,
+        messages: inout [LLMMessage],
+        continuation: AsyncStream<AgentEvent>.Continuation
+    ) async -> Bool {
+        func emit(_ event: AgentEvent) {
+            transcriptStore.append(event)
+            continuation.yield(event)
+        }
+        guard let engine = progressEngine else { return false }
+        let assessment = progressEvaluator.withLock {
+            $0.observe(
+                callId: call.callId, tool: call.name, actionKey: call.normalizedKey,
+                exitCode: exitCode, output: call.output, goal: goal, iteration: iteration
+            )
+        }
+        guard case let .needsJudgment(option, context) = assessment else { return false }
+        traceAgent(kind: .decisionRequested, engine: engine.engineName, task: "agentExecute", result: "progress-score")
+        do {
+            let start = Date()
+            let judged = try await engine.score(option: option, context: context)
+            let latencyMs = Date().timeIntervalSince(start) * 1000
+            let decisionWarnings = budget.withLock { $0.recordDecisionCall() }
+            for warning in decisionWarnings {
+                traceBudgetWarning(warning)
+            }
+            let verdict = progressEvaluator.withLock { $0.recordJudgment(score: judged.score) }
+            guard case let .breakLoop(reason) = verdict else {
+                traceAgent(kind: .decisionResolved, engine: engine.engineName, task: "agentExecute", latencyMs: latencyMs, result: "progress-continue")
+                return false
+            }
+            traceAgent(kind: .decisionResolved, engine: engine.engineName, task: "agentExecute", latencyMs: latencyMs, result: "progress-break")
+            emit(.error("Agent loop stopped: \(reason)"))
+            let content = call.output + "\n\n[Warning: No meaningful progress detected. \(reason)]"
+            messages.append(LLMMessage(role: .tool, content: content, toolCallID: call.callId))
+            return true
+        } catch {
+            traceAgent(kind: .decisionFallback, engine: engine.engineName, task: "agentExecute", success: false, result: "score-error")
+            return false
+        }
     }
 }
