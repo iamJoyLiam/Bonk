@@ -23,6 +23,6 @@ extension AIProviderNetworking {
                 calls.append(LLMToolCall(id: id, name: name, argumentsJSON: argsString))
             }
         }
-        return LLMResponse(text: content ?? "", toolCalls: calls)
+        return LLMResponse(text: content ?? "", toolCalls: calls, usage: .chatCompletions(from: json))
     }
 }

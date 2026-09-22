@@ -30,7 +30,7 @@ struct LLMProviderModelGateway: AgentModelGateway {
         let toolCalls = turn.toolCalls.map {
             LLMToolCall(id: $0.id, name: $0.name, argumentsJSON: $0.argumentsJSON)
         }
-        return LLMResponse(text: turn.text, toolCalls: toolCalls)
+        return LLMResponse(text: turn.text, toolCalls: toolCalls, usage: turn.usage)
     }
 
     func stream(messages: [LLMMessage]) -> AsyncThrowingStream<LLMStreamEvent, Error> {

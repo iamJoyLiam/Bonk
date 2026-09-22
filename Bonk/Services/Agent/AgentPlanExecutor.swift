@@ -202,7 +202,8 @@ extension AgentEngine {
         sshService: SSHNetworkService,
         hybridSession: TerminalSession? = nil,
         conversation: AIConversationRecord?,
-        context: ModelContext?
+        context: ModelContext?,
+        foldEngine: any DecisionEngine = DecisionEngineFactory.makeEffective()
     ) async -> ExecutionReport {
         let hybridExec: (@Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> String)? = if let session = hybridSession {
             { @Sendable command, registerHandle async throws -> String in
@@ -242,7 +243,7 @@ extension AgentEngine {
             if !step.isAutoExecutable {
                 let riskLevel: PendingCommand.RiskLevel = step.riskLevel == .dangerous ? .dangerous : .moderate
                 let confirmed: Bool
-                if await tryFoldPlanStep(step: step, index: index) {
+                if await tryFoldPlanStep(step: step, index: index, engine: foldEngine) {
                     confirmed = true
                 } else {
                     confirmed = await requestConfirmation(command: step.command, riskLevel: riskLevel)
@@ -300,7 +301,8 @@ extension AgentEngine {
                     command: command,
                     consecutiveFailures: consecutiveFailures,
                     remainingSteps: remaining,
-                    stepIndex: index
+                    stepIndex: index,
+                    engine: foldEngine
                 )
                 if !shouldContinue {
                     appendAgentMessage(.system, content: String(format: L.t(.agPlanAborted), consecutiveFailures),

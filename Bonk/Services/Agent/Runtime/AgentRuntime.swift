@@ -168,7 +168,7 @@ final class AgentRuntime: @unchecked Sendable {
             // Phase 1: budget counting + warnings (trace only, never enforced).
             // Counters mirror into the owned state so any exit path leaves
             // fresh numbers behind.
-            let (iterationWarnings, budgetSnap) = budget.withLock { lock -> ([BudgetWarning], (iterations: Int, toolCalls: Int, decisionCalls: Int, wallClockMs: Double)) in
+            let (iterationWarnings, budgetSnap) = budget.withLock { lock -> ([BudgetWarning], (iterations: Int, toolCalls: Int, decisionCalls: Int, wallClockMs: Double, inputTokens: Int, outputTokens: Int)) in
                 let warnings = lock.recordIteration()
                 return (warnings, lock.snapshot)
             }
@@ -178,6 +178,10 @@ final class AgentRuntime: @unchecked Sendable {
             }
             for warning in iterationWarnings {
                 traceBudgetWarning(warning)
+            }
+            // Phase 5: hard budget halt. Enforcement only adds stops.
+            if haltIfBudgetExceeded(continuation: continuation) {
+                return
             }
 
             let response: LLMResponse
@@ -191,6 +195,27 @@ final class AgentRuntime: @unchecked Sendable {
                 }
                 return
             }
+
+            // Phase 5: accumulate REPORTED usage (nil stays unknown, never
+            // zero-filled), mirror into state, then enforce before spending
+            // more. A single response can itself blow the budget.
+            let usageWarnings = budget.withLock { $0.recordUsage(response.usage) }
+            let usageSnap = budget.withLock { $0.snapshot }
+            ownedState.withLock {
+                $0.budget.inputTokens = usageSnap.inputTokens
+                $0.budget.outputTokens = usageSnap.outputTokens
+            }
+            for warning in usageWarnings {
+                traceBudgetWarning(warning)
+            }
+            if haltIfBudgetExceeded(continuation: continuation) {
+                return
+            }
+
+            // Phase 5: compact stale history before it grows further.
+            // Operates on messages only; AgentState is preserved, never
+            // re-derived from the transcript.
+            await maybeCompact(messages: &messages, lastUsage: response.usage)
 
             // Yield assistant text if present
             if !response.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -331,7 +356,7 @@ final class AgentRuntime: @unchecked Sendable {
 
         // Phase 1: populate owned state (never read back for decisions yet).
         let stepKey = Self.stateKey(tool: toolCall.name, arguments: authorized.args)
-        let toolSnap = budget.withLock { lock -> (iterations: Int, toolCalls: Int, decisionCalls: Int, wallClockMs: Double) in
+        let toolSnap = budget.withLock { lock -> (iterations: Int, toolCalls: Int, decisionCalls: Int, wallClockMs: Double, inputTokens: Int, outputTokens: Int) in
             lock.recordToolCall()
             return lock.snapshot
         }
@@ -386,13 +411,111 @@ final class AgentRuntime: @unchecked Sendable {
         case let .iterationsHigh(used, max): result = "iterations-\(used)/\(max)"
         case let .wallClockHigh(elapsedMs, maxMs): result = "wallclock-\(Int(elapsedMs))/\(Int(maxMs))ms"
         case let .decisionCallsHigh(used, max): result = "decision-calls-\(used)/\(max)"
+        case let .inputTokensHigh(used, max): result = "input-tokens-\(used)/\(max)"
+        case let .outputTokensHigh(used, max): result = "output-tokens-\(used)/\(max)"
         }
         Self.budgetLog.warning("\(result, privacy: .public)")
-        Task {
-            await DecisionTraceRecorder.shared.recordAgentEvent(AgentTraceEvent(
-                kind: .budgetWarning, engine: "budget", task: "agentExecute", result: result
-            ))
+        traceAgent(kind: .budgetWarning, engine: "budget", task: "agentExecute", result: result)
+    }
+
+    /// Phase 5 hard halt. Emits, traces, and stops the run WITHOUT final
+    /// synthesis (synthesis itself spends tokens). Only ever adds stops.
+    /// Returns true when the run must halt now.
+    private func haltIfBudgetExceeded(
+        continuation: AsyncStream<AgentEvent>.Continuation
+    ) -> Bool {
+        func emit(_ event: AgentEvent) {
+            transcriptStore.append(event)
+            continuation.yield(event)
         }
+        guard let reason = budget.withLock({ $0.exceededReason() }) else { return false }
+        emit(.error("Agent budget exceeded (\(reason.rawValue)). Stopping to bound cost and latency."))
+        traceAgent(kind: .budgetExceeded, engine: "budget", task: "agentExecute", result: reason.rawValue)
+        return true
+    }
+
+    // Driving-task-only compaction count. Mutated exclusively by the task
+    // running executeLoop (Runtime is @unchecked Sendable; this follows the
+    // same single-driver discipline as the loop itself).
+    private var compactionsPerformed = 0
+    private static let maxCompactionsPerRun = 5
+    /// Input-token level that triggers compaction. Heuristic pending
+    /// per-model calibration; compared against reported usage first,
+    /// labeled estimates only when the provider reports nothing.
+    private static let compactAtInputTokens = 60_000
+    private static let staleToolOutputKeepChars = 200
+    private static let compactionMarker = "[…compacted]"
+
+    /// Phase 5 context compaction. Two steps, both provider-safe:
+    /// 1. Shrink stale tool outputs in place (message structure never
+    ///    changes, so no orphaned tool references can occur). Idempotent.
+    /// 2. If still over budget AND a user-role boundary exists, summarize
+    ///    the middle into one user message. The suffix always starts at a
+    ///    user message, so kept tool messages keep their assistant turn.
+    /// AgentState is preserved throughout, never re-derived. Summary
+    /// failures skip silently — compaction never loses history.
+    private func maybeCompact(messages: inout [LLMMessage], lastUsage: TokenUsage?) async {
+        if messages.count > 7 {
+            var shrunk = 0
+            for index in 1 ..< (messages.count - 6) {
+                guard messages[index].role == .tool else { continue }
+                let content = messages[index].content
+                guard !content.hasSuffix(Self.compactionMarker),
+                      content.count > Self.staleToolOutputKeepChars
+                else { continue }
+                messages[index] = LLMMessage(
+                    role: .tool,
+                    content: String(content.prefix(Self.staleToolOutputKeepChars)) + Self.compactionMarker,
+                    toolCallID: messages[index].toolCallID
+                )
+                shrunk += 1
+            }
+            if shrunk > 0 {
+                traceAgent(kind: .compactionPerformed, engine: "runtime", task: "agentExecute", result: "shrink-\(shrunk)")
+            }
+        }
+
+        let overBudget: Bool
+        if let input = lastUsage?.inputTokens {
+            overBudget = input >= Self.compactAtInputTokens
+        } else {
+            // Estimate is a hint only — never budget truth (see TokenEstimator).
+            overBudget = TokenEstimator.estimatedInputTokens(for: messages) >= Self.compactAtInputTokens
+        }
+        guard overBudget, compactionsPerformed < Self.maxCompactionsPerRun else { return }
+        // Cut at the most recent assistant or user message past the input.
+        // Tool pairs are always adjacent (assistant-with-calls immediately
+        // followed by its tool messages), so starting the suffix at an
+        // assistant or user boundary can never orphan a kept tool message
+        // from its assistant turn.
+        let boundaryIndices = messages.indices.filter {
+            $0 > 1 && (messages[$0].role == .assistant || messages[$0].role == .user)
+        }
+        guard let cut = boundaryIndices.max(),
+              cut < messages.count - 1
+        else { return }
+
+        var transcript = messages[1 ..< cut]
+            .map { "\($0.role): \($0.content.prefix(500))" }
+            .joined(separator: "\n")
+        if transcript.count > 20_000 {
+            transcript = String(transcript.prefix(20_000))
+        }
+        let summaryRequest = [
+            LLMMessage.system("Summarize this agent working history into a compact brief for continued execution. Preserve: original goal, completed steps with outcomes, failures and error patterns, current hypotheses. Omit raw command outputs. Keep under 300 words."),
+            LLMMessage.user(transcript),
+        ]
+        guard let summary = try? await modelGateway.chat(messages: summaryRequest, tools: []) else { return }
+        let text = summary.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let summaryWarnings = budget.withLock { $0.recordUsage(summary.usage) }
+        for warning in summaryWarnings {
+            traceBudgetWarning(warning)
+        }
+        let before = messages.count
+        messages = [messages[0], LLMMessage.user("Earlier context (compacted):\n" + text)] + Array(messages[cut...])
+        compactionsPerformed += 1
+        traceAgent(kind: .compactionPerformed, engine: "runtime", task: "agentExecute", result: "summary-\(before)->\(messages.count)")
     }
 
     /// A tool call that passed the permission gate and registry lookup.

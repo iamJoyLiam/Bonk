@@ -17,6 +17,8 @@ enum AgentTraceKind: String, Sendable {
     case routerSelected = "router.selected"
     case routerFallback = "router.fallback"
     case confirmationFoldable = "confirmation.foldable"
+    case budgetExceeded = "budget.exceeded"
+    case compactionPerformed = "compaction.performed"
 }
 
 /// One agent lifecycle event. `result` is a short machine-readable outcome

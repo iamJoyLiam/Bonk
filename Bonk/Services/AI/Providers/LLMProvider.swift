@@ -64,14 +64,60 @@ struct LLMToolCall: Equatable, Sendable {
     }
 }
 
+/// Normalized token usage from any provider. All fields optional: a nil
+/// struct (or nil field) means "provider did not report", never zero.
+/// Budget enforcement must only use reported values; estimates live in
+/// TokenEstimator and are explicitly labeled, never stored here.
+struct TokenUsage: Equatable, Sendable {
+    let inputTokens: Int?
+    let outputTokens: Int?
+    let totalTokens: Int?
+
+    init(inputTokens: Int? = nil, outputTokens: Int? = nil, totalTokens: Int? = nil) {
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.totalTokens = totalTokens
+    }
+
+    /// True when at least one field was reported.
+    var isReported: Bool {
+        inputTokens != nil || outputTokens != nil || totalTokens != nil
+    }
+
+    /// Chat Completions wire shape: {prompt_tokens, completion_tokens, total_tokens}.
+    static func chatCompletions(from json: [String: Any]) -> TokenUsage? {
+        guard let usage = json["usage"] as? [String: Any] else { return nil }
+        let parsed = TokenUsage(
+            inputTokens: usage["prompt_tokens"] as? Int,
+            outputTokens: usage["completion_tokens"] as? Int,
+            totalTokens: usage["total_tokens"] as? Int
+        )
+        return parsed.isReported ? parsed : nil
+    }
+
+    /// Responses API wire shape: {input_tokens, output_tokens, total_tokens}.
+    static func responsesAPI(from json: [String: Any]) -> TokenUsage? {
+        guard let usage = json["usage"] as? [String: Any] else { return nil }
+        let parsed = TokenUsage(
+            inputTokens: usage["input_tokens"] as? Int,
+            outputTokens: usage["output_tokens"] as? Int,
+            totalTokens: usage["total_tokens"] as? Int
+        )
+        return parsed.isReported ? parsed : nil
+    }
+}
+
 /// One model turn. `text` may be empty when the model only requested tools.
+/// `usage` carries reported token counts (nil = provider did not report).
 struct LLMResponse: Equatable, Sendable {
     let text: String
     let toolCalls: [LLMToolCall]
+    let usage: TokenUsage?
 
-    init(text: String, toolCalls: [LLMToolCall] = []) {
+    init(text: String, toolCalls: [LLMToolCall] = [], usage: TokenUsage? = nil) {
         self.text = text
         self.toolCalls = toolCalls
+        self.usage = usage
     }
 
     /// Keeps the old `AgentChatTurn` spelling for callers that treat an empty

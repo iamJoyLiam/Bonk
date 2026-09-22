@@ -253,7 +253,7 @@ final class OpenAIResponsesLLMProvider: LLMProvider, @unchecked Sendable {
                 ))
             }
         }
-        return LLMResponse(text: text, toolCalls: calls)
+        return LLMResponse(text: text, toolCalls: calls, usage: .responsesAPI(from: json))
     }
 
     private static func outputMessageText(from output: [[String: Any]]) -> String {
