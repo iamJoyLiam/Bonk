@@ -191,7 +191,7 @@ final class AgentRuntime: @unchecked Sendable {
                 if Task.isCancelled {
                     emit(.executionInterrupted(reason: "Execution cancelled by user."))
                 } else {
-                    emit(.error("Model communication failed: \(error.localizedDescription)"))
+                    emit(.error(code: .modelFailure, message: "Model communication failed: \(error.localizedDescription)"))
                 }
                 return
             }
@@ -214,8 +214,11 @@ final class AgentRuntime: @unchecked Sendable {
 
             // Phase 5: compact stale history before it grows further.
             // Operates on messages only; AgentState is preserved, never
-            // re-derived from the transcript.
-            await maybeCompact(messages: &messages, lastUsage: response.usage)
+            // re-derived from the transcript. The UI note below is a
+            // transcript fact only — events never enter LLM messages.
+            if await maybeCompact(messages: &messages, lastUsage: response.usage) {
+                emit(.contextCompacted)
+            }
 
             // Yield assistant text if present
             if !response.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -429,7 +432,7 @@ final class AgentRuntime: @unchecked Sendable {
             continuation.yield(event)
         }
         guard let reason = budget.withLock({ $0.exceededReason() }) else { return false }
-        emit(.error("Agent budget exceeded (\(reason.rawValue)). Stopping to bound cost and latency."))
+        emit(.error(code: .budgetExceeded, message: "Agent budget exceeded (\(reason.rawValue)). Stopping to bound cost and latency."))
         traceAgent(kind: .budgetExceeded, engine: "budget", task: "agentExecute", result: reason.rawValue)
         return true
     }
@@ -454,7 +457,8 @@ final class AgentRuntime: @unchecked Sendable {
     ///    user message, so kept tool messages keep their assistant turn.
     /// AgentState is preserved throughout, never re-derived. Summary
     /// failures skip silently — compaction never loses history.
-    private func maybeCompact(messages: inout [LLMMessage], lastUsage: TokenUsage?) async {
+    private func maybeCompact(messages: inout [LLMMessage], lastUsage: TokenUsage?) async -> Bool {
+        var compacted = false
         if messages.count > 7 {
             var shrunk = 0
             for index in 1 ..< (messages.count - 6) {
@@ -471,6 +475,7 @@ final class AgentRuntime: @unchecked Sendable {
                 shrunk += 1
             }
             if shrunk > 0 {
+                compacted = true
                 traceAgent(kind: .compactionPerformed, engine: "runtime", task: "agentExecute", result: "shrink-\(shrunk)")
             }
         }
@@ -482,7 +487,7 @@ final class AgentRuntime: @unchecked Sendable {
             // Estimate is a hint only — never budget truth (see TokenEstimator).
             overBudget = TokenEstimator.estimatedInputTokens(for: messages) >= Self.compactAtInputTokens
         }
-        guard overBudget, compactionsPerformed < Self.maxCompactionsPerRun else { return }
+        guard overBudget, compactionsPerformed < Self.maxCompactionsPerRun else { return compacted }
         // Cut at the most recent assistant or user message past the input.
         // Tool pairs are always adjacent (assistant-with-calls immediately
         // followed by its tool messages), so starting the suffix at an
@@ -493,7 +498,7 @@ final class AgentRuntime: @unchecked Sendable {
         }
         guard let cut = boundaryIndices.max(),
               cut < messages.count - 1
-        else { return }
+        else { return compacted }
 
         var transcript = messages[1 ..< cut]
             .map { "\($0.role): \($0.content.prefix(500))" }
@@ -505,9 +510,9 @@ final class AgentRuntime: @unchecked Sendable {
             LLMMessage.system("Summarize this agent working history into a compact brief for continued execution. Preserve: original goal, completed steps with outcomes, failures and error patterns, current hypotheses. Omit raw command outputs. Keep under 300 words."),
             LLMMessage.user(transcript),
         ]
-        guard let summary = try? await modelGateway.chat(messages: summaryRequest, tools: []) else { return }
+        guard let summary = try? await modelGateway.chat(messages: summaryRequest, tools: []) else { return compacted }
         let text = summary.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else { return compacted }
         let summaryWarnings = budget.withLock { $0.recordUsage(summary.usage) }
         for warning in summaryWarnings {
             traceBudgetWarning(warning)
@@ -516,6 +521,7 @@ final class AgentRuntime: @unchecked Sendable {
         messages = [messages[0], LLMMessage.user("Earlier context (compacted):\n" + text)] + Array(messages[cut...])
         compactionsPerformed += 1
         traceAgent(kind: .compactionPerformed, engine: "runtime", task: "agentExecute", result: "summary-\(before)->\(messages.count)")
+        return true
     }
 
     /// A tool call that passed the permission gate and registry lookup.
@@ -555,19 +561,30 @@ final class AgentRuntime: @unchecked Sendable {
         case .allowed:
             break
         case let .confirmRequired(level, description):
+            // Reason facts are read once and shared by the dialog and the
+            // fold attempt below. Recording happens once per evaluation.
+            let safetyLabel: String
+            if toolCall.name == "run_command", let cmd = argsDict["command"] {
+                safetyLabel = "L\(CommandSafety.classifyLevel(cmd).rawValue)"
+            } else {
+                safetyLabel = toolCall.name
+            }
+            let history = await decisionMemory?.facts(for: memoryKey)
+            if let memory = decisionMemory {
+                Task { await memory.recordEvaluation(key: memoryKey) }
+            }
+            let reason = ConfirmationReason.describe(safetyLevel: safetyLabel, history: history)
             // Phase 2 fold path: eligibility (deterministic) → gate (engine)
             // → fold skips the dialog. Any miss falls through to the dialog.
             if await tryFoldConfirmation(
                 toolCall: toolCall, args: argsDict, iteration: iteration,
-                callId: callId, permLevel: level, permDescription: description,
+                history: history,
+                callId: callId,
                 continuation: continuation
             ) {
                 break
             }
-            emit(.permissionRequested(id: callId, description: description, level: level))
-            if let memory = decisionMemory {
-                Task { await memory.recordEvaluation(key: memoryKey) }
-            }
+            emit(.permissionRequested(id: callId, description: description, level: level, reason: reason))
             let approved = await withCheckedContinuation { cont in
                 pendingApprovals.withLock { $0[callId] = cont }
             }
@@ -581,14 +598,14 @@ final class AgentRuntime: @unchecked Sendable {
                 return .denied
             }
         case let .blocked(reason):
-            emit(.error("Action blocked: \(reason)"))
+            emit(.error(code: .generic, message: "Action blocked: \(reason)"))
             let content = "Blocked by safety policy: \(reason)"
             messages.append(LLMMessage(role: .tool, content: content, toolCallID: callId))
             return .skipped
         }
         guard let tool = toolRegistry.tool(named: toolCall.name) else {
             let errMsg = "Tool not found in registry: \(toolCall.name)"
-            emit(.error(errMsg))
+            emit(.error(code: .generic, message: errMsg))
             let message = LLMMessage(role: .tool, content: errMsg, toolCallID: callId)
             messages.append(message)
             return .skipped
@@ -608,9 +625,8 @@ final class AgentRuntime: @unchecked Sendable {
         toolCall: LLMToolCall,
         args: [String: String],
         iteration: Int,
+        history: CommandDecisionFacts?,
         callId: String,
-        permLevel: PermissionLevel,
-        permDescription: String,
         continuation: AsyncStream<AgentEvent>.Continuation
     ) async -> Bool {
         func emit(_ event: AgentEvent) {
@@ -624,8 +640,6 @@ final class AgentRuntime: @unchecked Sendable {
         // L3/L4, unsafe effects, and unseen/denied commands keep the dialog.
         let safetyLevel = CommandSafety.classifyLevel(cmd)
         let profile = CommandEffectProfiler.profile(command: cmd)
-        let key = Self.stateKey(tool: toolCall.name, arguments: args)
-        let history = await decisionMemory?.facts(for: key)
         let eligibility = ConfirmationFoldEvaluator.check(
             tool: toolCall.name, level: safetyLevel, effect: profile, facts: history
         )
@@ -657,10 +671,13 @@ final class AgentRuntime: @unchecked Sendable {
             traceBudgetWarning(warning)
         }
         guard disposition == .foldConfirmation else { return false }
-        // Keep the transcript shape: folded approvals are visible as
-        // approved resolutions, exactly like a user tapping approve.
-        emit(.permissionRequested(id: callId, description: permDescription, level: permLevel))
-        emit(.permissionResolved(id: callId, approved: true))
+        // Folded (not allowed): the transcript records a fold fact with the
+        // deterministic level and deciding engine — visibly distinct from a
+        // manual approval, which stays on permissionRequested/Resolved.
+        emit(.permissionFolded(
+            id: callId, command: cmd,
+            level: "L\(safetyLevel.rawValue)", engine: engine.engineName
+        ))
         return true
     }
 
@@ -715,7 +732,7 @@ final class AgentRuntime: @unchecked Sendable {
             if failures >= Self.maxConsecutiveToolFailures {
                 let stopNote = "Tool execution failed \(failures) times in a row. "
                     + "Stopping to avoid an endless loop."
-                emit(.error(stopNote))
+                emit(.error(code: .generic, message: stopNote))
                 let content = "\(call.output)\n\n[\(stopNote)]"
                 messages.append(LLMMessage(role: .tool, content: content, toolCallID: call.callId))
                 return .breakLoop
@@ -735,7 +752,7 @@ final class AgentRuntime: @unchecked Sendable {
             let content = call.output + "\n\n[Warning: Duplicate tool execution without new findings.]"
             messages.append(LLMMessage(role: .tool, content: content, toolCallID: call.callId))
         case let .terminateLoop(reason):
-            emit(.error("Agent loop stopped: \(reason)"))
+            emit(.error(code: .generic, message: "Agent loop stopped: \(reason)"))
             let content = call.output + "\n\n[Warning: Repetitive tool calls detected. \(reason)]"
             messages.append(LLMMessage(role: .tool, content: content, toolCallID: call.callId))
             return .breakLoop
@@ -790,7 +807,7 @@ final class AgentRuntime: @unchecked Sendable {
                 return false
             }
             traceAgent(kind: .decisionResolved, engine: engine.engineName, task: "agentExecute", latencyMs: latencyMs, result: "progress-break")
-            emit(.error("Agent loop stopped: \(reason)"))
+            emit(.error(code: .progressStall, message: "Agent loop stopped: \(reason)"))
             let content = call.output + "\n\n[Warning: No meaningful progress detected. \(reason)]"
             messages.append(LLMMessage(role: .tool, content: content, toolCallID: call.callId))
             return true

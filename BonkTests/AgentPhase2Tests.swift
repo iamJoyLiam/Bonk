@@ -187,6 +187,20 @@ struct FoldGateTests {
     }
 }
 
+// MARK: - Confirmation reason (UI fact line)
+
+@Suite("Confirmation reason")
+struct ConfirmationReasonTests {
+    @Test("Reason combines level and history word")
+    func words() {
+        #expect(ConfirmationReason.describe(safetyLevel: "L2", history: nil).contains("L2"))
+        let approved = CommandDecisionFacts(occurrences: 2, allowCount: 2, denyCount: 0, previousDecision: .approved, lastDecisionAt: Date())
+        let denied = CommandDecisionFacts(occurrences: 1, allowCount: 0, denyCount: 1, previousDecision: .denied, lastDecisionAt: Date())
+        #expect(ConfirmationReason.describe(safetyLevel: "L2", history: approved) != ConfirmationReason.describe(safetyLevel: "L2", history: denied))
+        #expect(ConfirmationReason.describe(safetyLevel: "L2", history: denied) != ConfirmationReason.describe(safetyLevel: "L2", history: nil))
+    }
+}
+
 // MARK: - Runtime fold path (stub engines, serialized on the shared trace ring)
 
 @Suite("Fold runtime", .serialized)
@@ -212,7 +226,7 @@ struct FoldRuntimeTests {
     ) async -> [AgentEvent] {
         var collected: [AgentEvent] = []
         for await event in stream {
-            if case let .permissionRequested(id, _, _) = event {
+            if case let .permissionRequested(id, _, _, _) = event {
                 runtime.resolvePermission(id: id, approved: approved)
             }
             collected.append(event)
@@ -235,7 +249,26 @@ struct FoldRuntimeTests {
         })
     }
 
-    @Test("Fold skips the dialog but keeps the transcript shape")
+    private func hasFolded(_ events: [AgentEvent], id: String) -> Bool {
+        events.contains(where: {
+            if case let .permissionFolded(eventID, _, level, engine) = $0 {
+                return eventID == id && level == "L2" && engine == "stub-fold"
+            }
+            return false
+        })
+    }
+
+    private func hasAnyDialog(_ events: [AgentEvent]) -> Bool {
+        events.contains(where: {
+            switch $0 {
+            case .permissionRequested: return true
+            case .permissionResolved: return true
+            default: return false
+            }
+        })
+    }
+
+    @Test("Fold skips the dialog and records a fold fact, not an approval")
     func foldSkipsDialog() async {
         let (memory, _) = await approvedMemory(for: "mkdir /tmp/x")
         let runtime = AgentRuntime(
@@ -249,7 +282,8 @@ struct FoldRuntimeTests {
             collected.append(event)
             if case .completed = event { break }
         }
-        #expect(resolvedApproved(collected, id: "call-1"))
+        #expect(hasFolded(collected, id: "call-1"))
+        #expect(!hasAnyDialog(collected))
     }
 
     @Test("Folded approvals do not train future eligibility")

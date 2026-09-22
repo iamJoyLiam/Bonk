@@ -253,7 +253,7 @@ struct AgentRuntimeContractTests {
             var events: [AgentEvent] = []
             for await event in stream {
                 events.append(event)
-                if case let .permissionRequested(id, _, _) = event {
+                if case let .permissionRequested(id, _, _, _) = event {
                     runtime.resolvePermission(id: id, approved: false)
                 }
             }

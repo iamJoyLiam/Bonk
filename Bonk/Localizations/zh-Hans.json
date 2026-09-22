@@ -778,5 +778,16 @@
   "ssh_pty_advice_exhausted": "PTY 耗尽：已自动cleanup残留的 bonk-ssh 进程，请关闭部分标签页后重试，或重启 App。若频繁出现，检查是否有大量未关闭的 SSH 标签/分屏。",
   "ssh_pty_advice_retry": "请重试或重启 App，详情见 Show Details。",
   "ag_plan_blocked": "计划的所有命令均被安全策略阻止，无可执行内容。",
-  "ag_plan_aborted": "连续 %d 次失败，计划已中止。"
+  "ag_plan_aborted": "连续 %d 次失败，计划已中止。",
+  "fold_notice": "确认已折叠 · %@ · %@ · %@",
+  "confirm_reason": "%@ · %@",
+  "confirm_hist_first": "首次确认",
+  "confirm_hist_approved": "历史已批准",
+  "confirm_hist_denied": "曾被拒绝",
+  "run_steps": "步骤",
+  "run_tools": "工具",
+  "run_tokens": "上报 token",
+  "access_next_run": "修改将在下一次运行生效",
+  "access_current_run": "当前运行：%@",
+  "compaction_note": "上下文已压缩 · 当前任务状态已保留"
 }

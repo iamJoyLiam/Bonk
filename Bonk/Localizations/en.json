@@ -778,5 +778,16 @@
   "ssh_pty_advice_exhausted": "PTY exhausted: leftover bonk-ssh processes were cleaned up automatically. Close some tabs and retry, or restart the app. If this happens often, check for many unclosed SSH tabs/splits.",
   "ssh_pty_advice_retry": "Retry or restart the app; see Show Details for details.",
   "ag_plan_blocked": "All planned commands were blocked by the security policy; nothing to execute.",
-  "ag_plan_aborted": "Plan aborted after %d consecutive failures."
+  "ag_plan_aborted": "Plan aborted after %d consecutive failures.",
+  "fold_notice": "Confirmation folded · %@ · %@ · %@",
+  "confirm_reason": "%@ · %@",
+  "confirm_hist_first": "First confirmation",
+  "confirm_hist_approved": "Previously approved",
+  "confirm_hist_denied": "Previously denied",
+  "run_steps": "Steps",
+  "run_tools": "Tools",
+  "run_tokens": "Reported tokens",
+  "access_next_run": "Changes apply to the next run",
+  "access_current_run": "Current run: %@",
+  "compaction_note": "Context compacted · task state preserved"
 }

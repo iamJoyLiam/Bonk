@@ -34,6 +34,15 @@ final class AgentEngine {
     var activeRuntime: AgentRuntime?
     /// Cross-run per-command decision facts (Phase 1: record only).
     let decisionMemory = AgentDecisionMemory()
+    /// Last routed provider display name + routing source label, for the
+    /// run status line. Set by resolveAgentProvider (both routed and
+    /// fallback outcomes); never cleared so the last run stays visible.
+    var lastRoutedProviderName: String?
+    var lastRouteSource: String?
+    /// AccessMode snapshot for the active run. The policy is built from
+    /// this value at run start; mid-run changes apply to the next run.
+    /// Nil when no run is active.
+    var activeRunAccessMode: AgentMessage.AccessMode?
 
     private var currentTask: Task<Void, Never>?
 
@@ -107,9 +116,13 @@ final class AgentEngine {
                     kind: .routerFallback, engine: "router", task: taskLabel,
                     latencyMs: latencyMs, success: false, result: "fallback-missing-key"
                 ))
+                lastRoutedProviderName = provider.name
+                lastRouteSource = "default"
                 return resolveProvider()
             }
             activeProvider = provider
+            lastRoutedProviderName = provider.name
+            lastRouteSource = "\(routed.source)"
             await DecisionTraceRecorder.shared.recordAgentEvent(AgentTraceEvent(
                 kind: .routerSelected, engine: "router", task: taskLabel,
                 latencyMs: latencyMs, result: "\(routed.source)"
@@ -120,7 +133,10 @@ final class AgentEngine {
             kind: .routerFallback, engine: "router", task: taskLabel,
             latencyMs: latencyMs, success: false, result: "fallback-no-route"
         ))
-        return resolveProvider()
+        let legacy = resolveProvider()
+        lastRoutedProviderName = legacy?.0.name
+        lastRouteSource = "default"
+        return legacy
     }
 
     // MARK: - Unified Entry Point (snapshot-first)
@@ -380,12 +396,13 @@ final class AgentEngine {
         return messages
     }
 
-    func requestConfirmation(command: String, riskLevel: PendingCommand.RiskLevel) async -> Bool {
+    func requestConfirmation(command: String, riskLevel: PendingCommand.RiskLevel, reasonDetail: String = "") async -> Bool {
         await withCheckedContinuation { continuation in
             pendingConfirmation = PendingCommand(
                 command: command,
                 reason: riskLevel == .dangerous ? L.t(.dangerousCommand) : L.t(.moderate),
                 riskLevel: riskLevel,
+                reasonDetail: reasonDetail,
                 continuation: { [weak self] confirmed in
                     self?.pendingConfirmation = nil
                     continuation.resume(returning: confirmed)

@@ -835,6 +835,19 @@ enum LKey: String, CaseIterable {
     case agPlanBlocked = "ag_plan_blocked"
     case agPlanAborted = "ag_plan_aborted"
 
+    // Agent UI Tier A (fold/meters/reasons)
+    case foldNotice = "fold_notice"
+    case confirmReason = "confirm_reason"
+    case confirmHistFirst = "confirm_hist_first"
+    case confirmHistApproved = "confirm_hist_approved"
+    case confirmHistDenied = "confirm_hist_denied"
+    case runSteps = "run_steps"
+    case runTools = "run_tools"
+    case runTokens = "run_tokens"
+    case accessNextRun = "access_next_run"
+    case accessCurrentRun = "access_current_run"
+    case compactionNote = "compaction_note"
+
     // SSH keygen / transport
     case sshEd25519Desc = "ssh_ed25519_desc"
     case sshRsa2048Desc = "ssh_rsa2048_desc"

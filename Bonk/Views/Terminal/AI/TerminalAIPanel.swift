@@ -10,7 +10,7 @@ import SwiftData
 import SwiftUI
 
 /// Floating AI assistant panel over the terminal.
-/// - Input capsule with Ask/Edit modes.
+/// - Input capsule with Ask/Agent modes.
 /// - Streaming markdown response below.
 /// - Actions: copy / paste / run in terminal.
 struct TerminalAIPanel: View {

@@ -66,3 +66,23 @@ enum ConfirmationFoldEvaluator {
         }
     }
 }
+
+// MARK: - Confirmation reason (UI fact line)
+
+/// Localized one-line reason for a confirmation dialog, composed from
+/// deterministic facts only (safety label + stored history word).
+/// Displayed verbatim by the confirmation banner.
+enum ConfirmationReason {
+    static func describe(safetyLevel: String, history: CommandDecisionFacts?) -> String {
+        let word: String
+        switch history?.previousDecision {
+        case .approved:
+            word = L.t(.confirmHistApproved)
+        case .denied:
+            word = L.t(.confirmHistDenied)
+        case nil:
+            word = L.t(.confirmHistFirst)
+        }
+        return String(format: L.t(.confirmReason), safetyLevel, word)
+    }
+}

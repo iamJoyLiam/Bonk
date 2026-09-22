@@ -46,14 +46,18 @@ final class AgentTranscriptStore: @unchecked Sendable {
                 lines.append("[ToolOutput \(id)]: \(output)")
             case let .toolCompleted(id, exitCode, duration):
                 lines.append("[ToolCompleted \(id)]: code=\(exitCode) duration=\(String(format: "%.2fs", duration))")
-            case let .permissionRequested(id, desc, level):
-                lines.append("[Permission \(id)]: \(level) -> \(desc)")
+            case let .permissionRequested(id, desc, level, reason):
+                lines.append("[Permission \(id)]: \(level) -> \(desc) (\(reason))")
             case let .permissionResolved(id, approved):
                 lines.append("[PermissionResolved \(id)]: approved=\(approved)")
+            case let .permissionFolded(id, command, level, engine):
+                lines.append("[PermissionFolded \(id)]: \(command) [\(level), \(engine)]")
             case let .executionInterrupted(reason):
                 lines.append("[Interrupted]: \(reason)")
-            case let .error(err):
-                lines.append("[Error]: \(err)")
+            case let .error(code, err):
+                lines.append("[Error \(code.rawValue)]: \(err)")
+            case .contextCompacted:
+                lines.append("[Compaction]: history compacted, task state preserved")
             case .completed:
                 lines.append("[Completed]")
             }

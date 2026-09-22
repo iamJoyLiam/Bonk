@@ -60,10 +60,12 @@ extension AgentEngine {
         )
 
         self.activeRuntime = runtime
+        self.activeRunAccessMode = AgentEngine.accessMode
         defer {
             if self.activeRuntime === runtime {
                 self.activeRuntime = nil
             }
+            self.activeRunAccessMode = nil
         }
 
         let executor: @Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> (output: String, exitCode: Int32) = { command, registerHandle in
@@ -106,13 +108,26 @@ extension AgentEngine {
                 )
                 agentMessages.append(msg)
 
-            case let .permissionRequested(id, description, level):
+            case let .permissionRequested(id, description, level, reason):
                 let riskLevel: PendingCommand.RiskLevel = (level == .confirmRequired ? .moderate : .dangerous)
-                let confirmed = await requestConfirmation(command: description, riskLevel: riskLevel)
+                let confirmed = await requestConfirmation(command: description, riskLevel: riskLevel, reasonDetail: reason)
                 runtime.resolvePermission(id: id, approved: confirmed)
 
             case .permissionResolved:
                 pendingConfirmation = nil
+
+            case let .permissionFolded(_, _, level, engine):
+                // Fold fact, not an approval: the command ran under an
+                // existing .confirmRequired verdict. History word is
+                // implied (only previously-approved commands fold).
+                appendAgentMessage(
+                    .system,
+                    content: String(
+                        format: L.t(.foldNotice), level,
+                        L.t(.confirmHistApproved), engine
+                    ),
+                    conversation: conversation, context: context
+                )
 
             case let .toolOutput(_, output):
                 if let lastIndex = agentMessages.indices.last, agentMessages[lastIndex].role == .commandOutput {
@@ -128,8 +143,14 @@ extension AgentEngine {
             case let .executionInterrupted(reason):
                 appendAgentMessage(.system, content: reason, conversation: conversation, context: context)
 
-            case let .error(err):
-                appendAgentMessage(.system, content: err, conversation: conversation, context: context)
+            case let .error(_, message):
+                appendAgentMessage(.system, content: message, conversation: conversation, context: context)
+
+            case .contextCompacted:
+                // UI-only note: history was compacted, task state preserved.
+                // AgentMessage transcripts never feed the model, so this
+                // cannot pollute model context by construction.
+                appendAgentMessage(.system, content: L.t(.compactionNote), conversation: conversation, context: context)
 
             case .completed:
                 break

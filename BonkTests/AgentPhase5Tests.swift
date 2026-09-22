@@ -186,7 +186,7 @@ struct BudgetRuntimeTests {
 
     private func hasBudgetError(_ events: [AgentEvent]) -> Bool {
         events.contains(where: {
-            if case let .error(text) = $0 { return text.contains("budget exceeded") }
+            if case let .error(code, text) = $0 { return code == .budgetExceeded && text.contains("budget exceeded") }
             return false
         })
     }

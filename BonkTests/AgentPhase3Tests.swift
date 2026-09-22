@@ -191,7 +191,7 @@ struct ProgressRuntimeTests {
 
     private func hasProgressError(_ events: [AgentEvent]) -> Bool {
         events.contains(where: {
-            if case let .error(text) = $0 { return text.contains("progress") }
+            if case let .error(code, text) = $0 { return code == .progressStall && text.contains("progress") }
             return false
         })
     }

@@ -322,6 +322,11 @@ extension AIChatSidebarView {
                     RoundedRectangle(cornerRadius: AppStyle.cornerRadiusSmall, style: .continuous)
                         .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
                 )
+            if !pending.reasonDetail.isEmpty {
+                Text(pending.reasonDetail)
+                    .font(.system(size: AppStyle.fontCaption))
+                    .foregroundStyle(.tertiary)
+            }
 
             HStack(spacing: 8) {
                 Button {

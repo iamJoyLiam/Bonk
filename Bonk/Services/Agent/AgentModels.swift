@@ -131,7 +131,24 @@ struct PendingCommand: Identifiable {
     let command: String
     let reason: String
     let riskLevel: RiskLevel
+    /// Why this dialog appeared (e.g. "L2 · 首次确认"). Empty when unknown.
+    /// Displayed verbatim by the confirmation banner.
+    let reasonDetail: String
     let continuation: (Bool) -> Void
+
+    init(
+        command: String,
+        reason: String,
+        riskLevel: RiskLevel,
+        reasonDetail: String = "",
+        continuation: @escaping (Bool) -> Void
+    ) {
+        self.command = command
+        self.reason = reason
+        self.riskLevel = riskLevel
+        self.reasonDetail = reasonDetail
+        self.continuation = continuation
+    }
 
     enum RiskLevel {
         case moderate

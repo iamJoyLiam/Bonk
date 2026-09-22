@@ -246,9 +246,14 @@ extension AgentEngine {
                 if await tryFoldPlanStep(step: step, index: index, engine: foldEngine) {
                     confirmed = true
                 } else {
-                    confirmed = await requestConfirmation(command: step.command, riskLevel: riskLevel)
+                    let stepKey = CommandNormalizer.normalizedKey(step.command)
+                    let stepHistory = await decisionMemory.facts(for: stepKey)
+                    let reason = ConfirmationReason.describe(
+                        safetyLevel: "L\(step.riskLevel.level.rawValue)", history: stepHistory
+                    )
+                    confirmed = await requestConfirmation(command: step.command, riskLevel: riskLevel, reasonDetail: reason)
                     await decisionMemory.recordDecision(
-                        key: CommandNormalizer.normalizedKey(step.command),
+                        key: stepKey,
                         decision: confirmed ? .approved : .denied
                     )
                 }

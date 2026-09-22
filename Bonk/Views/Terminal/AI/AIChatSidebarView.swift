@@ -2,7 +2,7 @@ import SwiftData
 import SwiftUI
 
 /// Full conversation-style AI chat panel for the right sidebar.
-/// Supports Ask, Edit, and Agent modes.
+/// Supports Ask and Agent modes.
 struct AIChatSidebarView: View {
     @Environment(I18n.self) var i18n
     @Environment(\.modelContext) var modelContext
@@ -92,6 +92,9 @@ struct AIChatSidebarView: View {
                 }
                 if let pending = engine.pendingConfirmation {
                     agentConfirmationBanner(pending)
+                }
+                if selectedMode == .agent, engine.isProcessing {
+                    agentRunStatusLine
                 }
                 Divider()
                 bottomBar
@@ -225,6 +228,41 @@ struct AIChatSidebarView: View {
             }
             .onChange(of: engine.agentMessages.count) { _, _ in
                 withAnimation(AppStyle.animationFast) { proxy.scrollTo("agentBottom", anchor: .bottom) }
+            }
+        }
+    }
+
+    // MARK: - Agent Run Status (Tier A facts line)
+
+    /// One-line live facts for the active run: routed provider + source,
+    /// steps, tool calls, reported tokens ("—" when unreported). Refreshes
+    /// once per second while processing; hidden otherwise.
+    private var agentRunStatusLine: some View {
+        TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+            if let runtime = engine.activeRuntime {
+                let state = runtime.currentState
+                let totalTokens = (state.budget.inputTokens ?? 0) + (state.budget.outputTokens ?? 0)
+                let steps = state.progress.completedSteps + state.progress.failedSteps
+                HStack(spacing: 4) {
+                    if let provider = engine.lastRoutedProviderName {
+                        Text(provider)
+                        Text("·")
+                    }
+                    if let source = engine.lastRouteSource {
+                        Text(source)
+                        Text("·")
+                    }
+                    Text("\(i18n.t(.runSteps)) \(steps)")
+                    Text("·")
+                    Text("\(i18n.t(.runTools)) \(state.budget.toolCalls)")
+                    Text("·")
+                    Text("\(i18n.t(.runTokens)) \(totalTokens > 0 ? "\(totalTokens)" : "—")")
+                }
+                .font(.system(size: AppStyle.fontCaption))
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .padding(.horizontal, AppStyle.spacingL)
+                .padding(.vertical, 2)
             }
         }
     }
@@ -460,9 +498,21 @@ struct AIChatSidebarView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                Divider().padding(.vertical, 2)
+                if let runMode = engine.activeRunAccessMode {
+                    Text(String(format: i18n.t(.accessCurrentRun), runMode.localizedName))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 10)
+                } else {
+                    Text(i18n.t(.accessNextRun))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 10)
+                }
             }
             .padding(4)
-            .frame(width: 130)
+            .frame(width: 160)
         }
     }
 
