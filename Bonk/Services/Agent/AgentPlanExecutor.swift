@@ -222,10 +222,23 @@ extension AgentEngine {
                 continue
             }
 
-            // Confirmation for moderate/dangerous
+            // Confirmation for moderate/dangerous.
+            // Phase 2 fold path: same deterministic evaluator as the Runtime
+            // tool loop. Folded steps skip the dialog; everything else
+            // confirms exactly as before. Folded approvals never train
+            // future eligibility — only explicit verdicts are recorded.
             if !step.isAutoExecutable {
                 let riskLevel: PendingCommand.RiskLevel = step.riskLevel == .dangerous ? .dangerous : .moderate
-                let confirmed = await requestConfirmation(command: step.command, riskLevel: riskLevel)
+                let confirmed: Bool
+                if await tryFoldPlanStep(step: step, index: index) {
+                    confirmed = true
+                } else {
+                    confirmed = await requestConfirmation(command: step.command, riskLevel: riskLevel)
+                    await decisionMemory.recordDecision(
+                        key: CommandNormalizer.normalizedKey(step.command),
+                        decision: confirmed ? .approved : .denied
+                    )
+                }
                 guard confirmed else {
                     appendAgentMessage(.system, content: L.t(.agPlanStopped),
                                        conversation: conversation, context: context)
@@ -270,6 +283,52 @@ extension AgentEngine {
 
         let totalTime = Date().timeIntervalSince(startTime)
         return ExecutionReport(results: results, totalTime: totalTime)
+    }
+
+    // MARK: - Phase 2: plan-step confirmation folding
+
+    /// Attempts to fold one plan-step confirmation. Returns true when the
+    /// dialog was folded (engine said fold for an eligible step). Returns
+    /// false for every other outcome so the caller falls back to the
+    /// dialog. Never fails open. Shares the evaluator, gate, and trace
+    /// contract with the Runtime tool-loop fold path.
+    /// Attempts to fold one plan-step confirmation. `engine` defaults to the
+    /// configured effective engine; tests inject stubs. Returns true when
+    /// the dialog was folded. Never fails open.
+    func tryFoldPlanStep(
+        step: AgentPlan.Step,
+        index: Int,
+        engine: any DecisionEngine = DecisionEngineFactory.makeEffective()
+    ) async -> Bool {
+        let level = step.riskLevel.level
+        let profile = CommandEffectProfiler.profile(command: step.command)
+        let key = CommandNormalizer.normalizedKey(step.command)
+        await decisionMemory.recordEvaluation(key: key)
+        let history = await decisionMemory.facts(for: key)
+        let eligibility = ConfirmationFoldEvaluator.check(tool: "run_command", level: level, effect: profile, facts: history)
+        guard eligibility.eligible else { return false }
+
+        let tagList = profile.tags.map(\.rawValue).sorted().joined(separator: "+")
+        await DecisionTraceRecorder.shared.recordAgentEvent(AgentTraceEvent(
+            kind: .confirmationFoldable, engine: engine.engineName, task: "agentPlan",
+            result: "eligible-L\(level.rawValue)-\(tagList)-approved×\(history?.allowCount ?? 0)"
+        ))
+        let (disposition, _) = await ConfirmationFoldGate.evaluate(
+            engine: engine,
+            facts: FoldGateFacts(
+                tool: "run_command",
+                normalizedCommand: key,
+                safetyLevel: "L\(level.rawValue)",
+                accessMode: AgentEngine.accessMode.rawValue,
+                semanticTags: tagList,
+                previousUserDecision: "approved",
+                sameCommandOccurrences: history?.occurrences ?? 0,
+                iteration: index
+            ),
+            threshold: DecisionEngineConfig.load().decisionThreshold,
+            task: "agentPlan"
+        )
+        return disposition == .foldConfirmation
     }
 
     // MARK: - Phase 4: Execution Report

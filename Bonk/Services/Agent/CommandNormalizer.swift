@@ -48,11 +48,6 @@ enum SemanticTag: String, Sendable, CaseIterable {
 }
 
 enum SemanticTagger {
-    /// Tags eligible for Phase-2 confirmation folding on their own merit.
-    /// Conservative: read-only categories only. Phase 2 additionally requires
-    /// L0/L1 safety level plus explicit prior approval.
-    static let lowRiskTags: Set<SemanticTag> = [.filesystemRead, .gitRead]
-
     private static let chainOperators = ["&&", "||", ";", "|"]
 
     static func tag(command: String) -> Set<SemanticTag> {

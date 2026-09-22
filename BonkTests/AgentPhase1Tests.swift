@@ -104,11 +104,6 @@ struct SemanticTaggerTests {
         #expect(SemanticTagger.tag(command: "curl https://example.com").contains(.networkAccess))
     }
 
-    @Test("Low-risk set stays read-only")
-    func lowRisk() {
-        #expect(SemanticTagger.lowRiskTags == [.filesystemRead, .gitRead])
-    }
-
     @Test("Unknown verbs fall back to processExecute, never empty")
     func unknownNeverEmpty() {
         #expect(!SemanticTagger.tag(command: "frobnicate --all").isEmpty)

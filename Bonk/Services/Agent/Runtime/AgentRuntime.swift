@@ -25,6 +25,9 @@ final class AgentRuntime: @unchecked Sendable {
     /// Cross-run decision facts. Nil in tests/legacy paths — all recording
     /// sites skip silently when nil (zero behavior change).
     let decisionMemory: AgentDecisionMemory?
+    /// Engine consulted for confirmation folding (Phase 2). Nil disables
+    /// the gate entirely: every confirm shows the dialog (Phase 1 behavior).
+    let foldEngine: (any DecisionEngine)?
 
     private let pendingApprovals = OSAllocatedUnfairLock<[String: CheckedContinuation<Bool, Never>]>(uncheckedState: [:])
     private let activeTask = OSAllocatedUnfairLock<Task<Void, Never>?>(uncheckedState: nil)
@@ -40,7 +43,8 @@ final class AgentRuntime: @unchecked Sendable {
         executionManager: AgentExecutionManager = .shared,
         transcriptStore: AgentTranscriptStore = AgentTranscriptStore(),
         maxIterations: Int = 25,
-        decisionMemory: AgentDecisionMemory? = nil
+        decisionMemory: AgentDecisionMemory? = nil,
+        foldEngine: (any DecisionEngine)? = nil
     ) {
         self.contextProvider = contextProvider
         self.modelGateway = modelGateway
@@ -50,6 +54,7 @@ final class AgentRuntime: @unchecked Sendable {
         self.transcriptStore = transcriptStore
         self.maxIterations = maxIterations
         self.decisionMemory = decisionMemory
+        self.foldEngine = foldEngine
         self.budget = OSAllocatedUnfairLock(uncheckedState: AgentBudgetController(maxIterations: maxIterations))
     }
 
@@ -147,7 +152,7 @@ final class AgentRuntime: @unchecked Sendable {
         var consecutiveToolFailures = 0
 
         // 2. Iteration Loop
-        iterationLoop: for _ in 0 ..< maxIterations {
+        iterationLoop: for iteration in 0 ..< maxIterations {
             if Task.isCancelled {
                 emit(.executionInterrupted(reason: "Execution cancelled by user."))
                 return
@@ -202,6 +207,7 @@ final class AgentRuntime: @unchecked Sendable {
             for toolCall in response.toolCalls {
                 switch await runToolCall(
                     toolCall,
+                    iteration: iteration,
                     messages: &messages,
                     terminationGuard: terminationGuard,
                     consecutiveFailures: &consecutiveToolFailures,
@@ -254,6 +260,7 @@ final class AgentRuntime: @unchecked Sendable {
 
     private func runToolCall(
         _ toolCall: LLMToolCall,
+        iteration: Int,
         messages: inout [LLMMessage],
         terminationGuard: TerminationGuard,
         consecutiveFailures: inout Int,
@@ -274,7 +281,7 @@ final class AgentRuntime: @unchecked Sendable {
         emit(.toolCallStarted(id: callId, tool: toolCall.name, input: toolCall.argumentsJSON))
 
         let authorized: AuthorizedToolCall
-        switch await authorizeToolCall(toolCall, messages: &messages, continuation: continuation) {
+        switch await authorizeToolCall(toolCall, iteration: iteration, messages: &messages, continuation: continuation) {
         case let .authorized(toolCall):
             authorized = toolCall
         case .skipped:
@@ -389,8 +396,12 @@ final class AgentRuntime: @unchecked Sendable {
     }
 
     /// Runs the permission gate and registry lookup. Denials append a message and skip.
+    /// Phase 2: a confirmRequired verdict first passes deterministic fold
+    /// eligibility; only eligible commands meet the fold gate, and only a
+    /// fold verdict skips the dialog. Everything else is unchanged.
     private func authorizeToolCall(
         _ toolCall: LLMToolCall,
+        iteration: Int,
         messages: inout [LLMMessage],
         continuation: AsyncStream<AgentEvent>.Continuation
     ) async -> ToolAuthorization {
@@ -408,6 +419,15 @@ final class AgentRuntime: @unchecked Sendable {
         case .allowed:
             break
         case let .confirmRequired(level, description):
+            // Phase 2 fold path: eligibility (deterministic) → gate (engine)
+            // → fold skips the dialog. Any miss falls through to the dialog.
+            if await tryFoldConfirmation(
+                toolCall: toolCall, args: argsDict, iteration: iteration,
+                callId: callId, permLevel: level, permDescription: description,
+                continuation: continuation
+            ) {
+                break
+            }
             emit(.permissionRequested(id: callId, description: description, level: level))
             if let memory = decisionMemory {
                 Task { await memory.recordEvaluation(key: memoryKey) }
@@ -440,6 +460,90 @@ final class AgentRuntime: @unchecked Sendable {
         return .authorized(AuthorizedToolCall(tool: tool, args: argsDict))
     }
 
+    /// Phase 2 confirmation folding. Returns true when the dialog was
+    /// folded (auto-approved with full trace). Returns false for every
+    /// other outcome — including engine errors — so the caller always
+    /// falls back to the confirmation dialog. Never fails open.
+    ///
+    /// Folded approvals are deliberately NOT recorded in decision memory:
+    /// only explicit user verdicts train future eligibility, otherwise
+    /// folding would self-reinforce.
+    private func tryFoldConfirmation(
+        toolCall: LLMToolCall,
+        args: [String: String],
+        iteration: Int,
+        callId: String,
+        permLevel: PermissionLevel,
+        permDescription: String,
+        continuation: AsyncStream<AgentEvent>.Continuation
+    ) async -> Bool {
+        func emit(_ event: AgentEvent) {
+            transcriptStore.append(event)
+            continuation.yield(event)
+        }
+        guard let engine = foldEngine else { return false }
+        guard toolCall.name == "run_command", let cmd = args["command"] else { return false }
+        // Eligibility first (deterministic): only .confirmRequired verdicts
+        // with foldable effects and explicit prior approval meet the gate.
+        // L3/L4, unsafe effects, and unseen/denied commands keep the dialog.
+        let safetyLevel = CommandSafety.classifyLevel(cmd)
+        let profile = CommandEffectProfiler.profile(command: cmd)
+        let key = Self.stateKey(tool: toolCall.name, arguments: args)
+        let history = await decisionMemory?.facts(for: key)
+        let eligibility = ConfirmationFoldEvaluator.check(
+            tool: toolCall.name, level: safetyLevel, effect: profile, facts: history
+        )
+        guard eligibility.eligible else { return false }
+
+        let tagList = profile.tags.map(\.rawValue).sorted().joined(separator: "+")
+        traceAgent(
+            kind: .confirmationFoldable, engine: engine.engineName,
+            result: "eligible-L\(safetyLevel.rawValue)-\(tagList)-approved×\(history?.allowCount ?? 0)"
+        )
+        let accessMode = (permissionPolicy as? DefaultAgentPermissionPolicy)?.accessMode.rawValue ?? "unknown"
+        let (disposition, _) = await ConfirmationFoldGate.evaluate(
+            engine: engine,
+            facts: FoldGateFacts(
+                tool: toolCall.name,
+                normalizedCommand: CommandNormalizer.normalizedKey(cmd),
+                safetyLevel: "L\(safetyLevel.rawValue)",
+                accessMode: accessMode,
+                semanticTags: tagList,
+                previousUserDecision: "approved",
+                sameCommandOccurrences: history?.occurrences ?? 0,
+                iteration: iteration
+            ),
+            threshold: DecisionEngineConfig.load().decisionThreshold,
+            task: "agentExecute"
+        )
+        let decisionWarnings = budget.withLock { $0.recordDecisionCall() }
+        for warning in decisionWarnings {
+            traceBudgetWarning(warning)
+        }
+        guard disposition == .foldConfirmation else { return false }
+        // Keep the transcript shape: folded approvals are visible as
+        // approved resolutions, exactly like a user tapping approve.
+        emit(.permissionRequested(id: callId, description: permDescription, level: permLevel))
+        emit(.permissionResolved(id: callId, approved: true))
+        return true
+    }
+
+    /// Fire-and-forget agent trace. Never awaited on a hot path.
+    private func traceAgent(
+        kind: AgentTraceKind,
+        engine: String,
+        task: String = "agentExecute",
+        latencyMs: Double = 0,
+        success: Bool = true,
+        result: String = ""
+    ) {
+        Task {
+            await DecisionTraceRecorder.shared.recordAgentEvent(AgentTraceEvent(
+                kind: kind, engine: engine, task: task,
+                latencyMs: latencyMs, success: success, result: result
+            ))
+        }
+    }
     /// One executed tool call, ready for termination evaluation.
     private struct ExecutedCall {
         let name: String

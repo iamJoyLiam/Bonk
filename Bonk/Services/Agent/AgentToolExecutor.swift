@@ -54,7 +54,8 @@ extension AgentEngine {
             permissionPolicy: permissionPolicy,
             executionManager: executionManager,
             maxIterations: AgentEngine.maxAgentIterations,
-            decisionMemory: decisionMemory
+            decisionMemory: decisionMemory,
+            foldEngine: DecisionEngineFactory.makeEffective()
         )
 
         self.activeRuntime = runtime
