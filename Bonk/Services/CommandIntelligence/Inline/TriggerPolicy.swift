@@ -96,7 +96,7 @@ struct InlineTriggerPolicy: Sendable {
             return TriggerDecision(shouldRequestLLM: false, reason: .deterministicHighConfidence, debounceMs: 0, tier: .immediate)
         }
 
-        // 4. Natural language intent or shell comment (e.g. starts with "#" or contains CJK prompt like "# 列出镜像")
+        // 4. Natural language intent or shell comment (e.g. starts with "#" or contains a CJK prompt)
         if trimmed.hasPrefix("#") || isNaturalLanguageIntent(trimmed) {
             return TriggerDecision(shouldRequestLLM: true, reason: .naturalLanguageIntent, debounceMs: 150, tier: .naturalLanguage)
         }

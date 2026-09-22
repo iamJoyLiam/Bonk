@@ -181,7 +181,7 @@ import SwiftUI
             context.coordinator.lastTabID = activeTabID
 
             if let oldID = oldTabID, let oldCached = TerminalViewCache.shared.retrieve(oldID) {
-                // 切走即清残留选区：残留选区是跨终端污染的另一半病根。
+                // Clear stale selection on switch-away: leftover selections are the other half of cross-terminal pollution.
                 oldCached.view.selectNone()
                 oldCached.view.removeFromSuperview()
                 if let oldCoord = oldCached.coordinator as? ContainerTerminalCoordinator {
@@ -420,13 +420,13 @@ import SwiftUI
             guard copyOnSelect, mouseUpMonitor == nil else { return }
             mouseUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { [weak self] event in
                 guard let self, let terminal = terminalView else { return event }
-                // 只处理落点在自己 bounds 内的松开：分屏多监听器/重复安装时互不干扰。
-                // AppKit 坐标：locationInWindow + from:nil 即窗口坐标，可直接 convert。
+                // Only handle releases landing inside our own bounds: with split panes, duplicate monitors must not interfere.
+                // AppKit coordinates: locationInWindow + from:nil is already window coordinates, convertible directly.
                 guard let win = terminal.window, win == event.window else { return event }
                 let loc = terminal.convert(event.locationInWindow, from: nil)
                 guard terminal.bounds.contains(loc) else { return event }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                    // 监听已拆除（切走/关闭/设置关闭）则不再写剪贴板，堵 0.1s 竞态。
+                    // If the monitor is gone (switched away/closed/settings off), skip the clipboard write: closes the 0.1s race.
                     guard let self, self.mouseUpMonitor != nil else { return }
                     guard let terminal = self.terminalView, terminal.selectionActive else { return }
                     if let selectedText = terminal.getSelection(), !selectedText.isEmpty {
