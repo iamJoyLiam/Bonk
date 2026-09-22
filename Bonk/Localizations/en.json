@@ -789,5 +789,10 @@
   "run_tokens": "Reported tokens",
   "access_next_run": "Changes apply to the next run",
   "access_current_run": "Current run: %@",
-  "compaction_note": "Context compacted · task state preserved"
+  "compaction_note": "Context compacted · task state preserved",
+  "run_goal": "Goal",
+  "run_iterations": "Iterations",
+  "run_tokens_in": "Input tokens",
+  "run_tokens_out": "Output tokens",
+  "run_decisions": "Decision calls"
 }

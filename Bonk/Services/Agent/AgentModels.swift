@@ -10,6 +10,10 @@ struct AgentMessage: Identifiable {
     var thinking: String?
     var status: CommandStatus?
     var duration: TimeInterval?
+    /// Machine-readable error classification for system messages that
+    /// report failures. Nil for everything else. Drives Tier B error
+    /// visuals; the text stays the same.
+    var errorCode: AgentErrorCode?
     let timestamp: Date
 
     init(
@@ -20,6 +24,7 @@ struct AgentMessage: Identifiable {
         thinking: String? = nil,
         status: CommandStatus? = nil,
         duration: TimeInterval? = nil,
+        errorCode: AgentErrorCode? = nil,
         timestamp: Date = Date()
     ) {
         self.id = id
@@ -29,6 +34,7 @@ struct AgentMessage: Identifiable {
         self.thinking = thinking
         self.status = status
         self.duration = duration
+        self.errorCode = errorCode
         self.timestamp = timestamp
     }
 

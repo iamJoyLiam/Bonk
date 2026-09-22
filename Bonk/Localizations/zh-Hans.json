@@ -789,5 +789,10 @@
   "run_tokens": "上报 token",
   "access_next_run": "修改将在下一次运行生效",
   "access_current_run": "当前运行：%@",
-  "compaction_note": "上下文已压缩 · 当前任务状态已保留"
+  "compaction_note": "上下文已压缩 · 当前任务状态已保留",
+  "run_goal": "目标",
+  "run_iterations": "轮次",
+  "run_tokens_in": "输入 token",
+  "run_tokens_out": "输出 token",
+  "run_decisions": "决策调用"
 }

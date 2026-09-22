@@ -71,6 +71,11 @@ final class AgentRuntime: @unchecked Sendable {
         ownedState.withLock { $0 }
     }
 
+    /// Budget caps for UI display. Read-only snapshot, same lock discipline.
+    var budgetLimits: (maxIterations: Int, maxInputTokens: Int?, maxOutputTokens: Int?) {
+        budget.withLock { ($0.maxIterations, $0.maxInputTokens, $0.maxOutputTokens) }
+    }
+
     /// Resolves a pending user approval for a tool call.
     func resolvePermission(id: String, approved: Bool) {
         let continuation = pendingApprovals.withLock { $0.removeValue(forKey: id) }

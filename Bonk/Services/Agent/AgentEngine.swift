@@ -339,13 +339,14 @@ final class AgentEngine {
         command: String? = nil,
         status: AgentMessage.CommandStatus? = nil,
         duration: TimeInterval? = nil,
+        errorCode: AgentErrorCode? = nil,
         conversation: AIConversationRecord?,
         context: ModelContext?
     ) {
         agentMessages.append(AgentMessage(
             role: role, content: content,
             command: command, thinking: thinking,
-            status: status, duration: duration
+            status: status, duration: duration, errorCode: errorCode
         ))
 
         // Persist to SwiftData if conversation is available

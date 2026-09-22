@@ -143,8 +143,11 @@ extension AgentEngine {
             case let .executionInterrupted(reason):
                 appendAgentMessage(.system, content: reason, conversation: conversation, context: context)
 
-            case let .error(_, message):
-                appendAgentMessage(.system, content: message, conversation: conversation, context: context)
+            case let .error(code, message):
+                // errorCode is in-memory only (SwiftData records carry no
+                // code); reloaded history renders generic. Acceptable:
+                // typing serves the live run, audit lives in the trace.
+                appendAgentMessage(.system, content: message, errorCode: code, conversation: conversation, context: context)
 
             case .contextCompacted:
                 // UI-only note: history was compacted, task state preserved.

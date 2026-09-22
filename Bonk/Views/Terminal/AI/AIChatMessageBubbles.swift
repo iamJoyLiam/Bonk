@@ -205,13 +205,21 @@ extension AIChatSidebarView {
             if msg.content.hasPrefix("Running:") {
                 EmptyView()
             } else {
+                // Tier B error visuals: same layout, icon/color by code.
+                // Nil code (legacy/persisted messages) renders generic.
+                let (icon, color): (String, Color) = switch msg.errorCode {
+                case .progressStall: ("exclamationmark.triangle", .orange)
+                case .budgetExceeded: ("exclamationmark.octagon", .red)
+                case .modelFailure: ("xmark.circle", .red)
+                case .generic, nil: ("info.circle", .secondary)
+                }
                 HStack(spacing: 6) {
-                    Image(systemName: "info.circle")
+                    Image(systemName: icon)
                         .font(.system(size: AppStyle.fontSmall))
                     Text(msg.content)
                         .font(.system(size: AppStyle.fontBody))
                 }
-                .foregroundStyle(.secondary)
+                .foregroundStyle(color)
                 .padding(.horizontal, AppStyle.spacingL)
                 .padding(.vertical, AppStyle.spacingS)
                 .frame(maxWidth: .infinity, alignment: .leading)

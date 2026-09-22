@@ -202,6 +202,12 @@ struct AgentRuntimeContractTests {
             if hasStarted.withLock({ $0 }) { break }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
+        // Registration itself hops through a fire-and-forget Task inside
+        // the tool's register callback, so hasStarted can be true before
+        // registerActive lands. Yield one scheduling slice so cancel()
+        // below cannot miss the handle under parallel-test load.
+        // (Production follow-up: make registration ordered with cancel.)
+        try await Task.sleep(nanoseconds: 100_000_000)
 
         // Cancel runtime
         runtime.cancel()

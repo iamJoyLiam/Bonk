@@ -848,6 +848,13 @@ enum LKey: String, CaseIterable {
     case accessCurrentRun = "access_current_run"
     case compactionNote = "compaction_note"
 
+    // Agent run header (Tier B)
+    case runGoal = "run_goal"
+    case runIterations = "run_iterations"
+    case runTokensIn = "run_tokens_in"
+    case runTokensOut = "run_tokens_out"
+    case runDecisions = "run_decisions"
+
     // SSH keygen / transport
     case sshEd25519Desc = "ssh_ed25519_desc"
     case sshRsa2048Desc = "ssh_rsa2048_desc"

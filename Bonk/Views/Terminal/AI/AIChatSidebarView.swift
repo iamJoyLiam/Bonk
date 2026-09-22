@@ -94,7 +94,7 @@ struct AIChatSidebarView: View {
                     agentConfirmationBanner(pending)
                 }
                 if selectedMode == .agent, engine.isProcessing {
-                    agentRunStatusLine
+                    agentRunHeader
                 }
                 Divider()
                 bottomBar
@@ -232,35 +232,65 @@ struct AIChatSidebarView: View {
         }
     }
 
-    // MARK: - Agent Run Status (Tier A facts line)
+    // MARK: - Agent Run Header (Tier B collapsible)
 
-    /// One-line live facts for the active run: routed provider + source,
-    /// steps, tool calls, reported tokens ("—" when unreported). Refreshes
-    /// once per second while processing; hidden otherwise.
-    private var agentRunStatusLine: some View {
+    @State private var runHeaderExpanded = false
+
+    /// Collapsible live facts for the active run. Collapsed row carries
+    /// the Tier A facts line; expanding reveals goal, iterations, calls,
+    /// and reported token split. Refreshes once per second while
+    /// processing; hidden otherwise.
+    private var agentRunHeader: some View {
         TimelineView(.periodic(from: .now, by: 1.0)) { _ in
             if let runtime = engine.activeRuntime {
-                let state = runtime.currentState
-                let totalTokens = (state.budget.inputTokens ?? 0) + (state.budget.outputTokens ?? 0)
-                let steps = state.progress.completedSteps + state.progress.failedSteps
-                HStack(spacing: 4) {
-                    if let provider = engine.lastRoutedProviderName {
-                        Text(provider)
-                        Text("·")
+                let model = AgentRunHeaderModel.current(
+                    state: runtime.currentState,
+                    providerName: engine.lastRoutedProviderName,
+                    routeSource: engine.lastRouteSource,
+                    maxIterations: runtime.budgetLimits.maxIterations
+                )
+                VStack(alignment: .leading, spacing: 4) {
+                    Button {
+                        runHeaderExpanded.toggle()
+                    } label: {
+                        HStack(spacing: 4) {
+                            if let provider = model.providerName {
+                                Text(provider)
+                                Text("·")
+                            }
+                            if let source = model.routeSource {
+                                Text(source)
+                                Text("·")
+                            }
+                            Text("\(i18n.t(.runSteps)) \(model.steps)")
+                            Text("·")
+                            Text("\(i18n.t(.runTools)) \(model.toolCalls)")
+                            Text("·")
+                            Text("\(i18n.t(.runTokens)) \(model.tokenTotalText)")
+                            Spacer()
+                            Image(systemName: runHeaderExpanded ? "chevron.down" : "chevron.right")
+                        }
+                        .font(.system(size: AppStyle.fontCaption))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .contentShape(Rectangle())
                     }
-                    if let source = engine.lastRouteSource {
-                        Text(source)
-                        Text("·")
+                    .buttonStyle(.plain)
+                    if runHeaderExpanded {
+                        VStack(alignment: .leading, spacing: 2) {
+                            if let goal = model.goal, !goal.isEmpty {
+                                Text("\(i18n.t(.runGoal)): \(goal)")
+                                    .lineLimit(2)
+                            }
+                            Text("\(i18n.t(.runIterations)): \(model.steps) / \(model.maxIterations)")
+                            Text("\(i18n.t(.runDecisions)): \(model.decisionCalls)")
+                            Text("\(i18n.t(.runTokensIn)): \(AgentRunHeaderModel.tokensText(model.inputTokens))")
+                            Text("\(i18n.t(.runTokensOut)): \(AgentRunHeaderModel.tokensText(model.outputTokens))")
+                        }
+                        .font(.system(size: AppStyle.fontCaption))
+                        .foregroundStyle(.secondary)
                     }
-                    Text("\(i18n.t(.runSteps)) \(steps)")
-                    Text("·")
-                    Text("\(i18n.t(.runTools)) \(state.budget.toolCalls)")
-                    Text("·")
-                    Text("\(i18n.t(.runTokens)) \(totalTokens > 0 ? "\(totalTokens)" : "—")")
                 }
-                .font(.system(size: AppStyle.fontCaption))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
                 .padding(.horizontal, AppStyle.spacingL)
                 .padding(.vertical, 2)
             }
