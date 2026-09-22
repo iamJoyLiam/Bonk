@@ -776,5 +776,7 @@
   "ssh_ecdsa_p384_desc": "更高安全性的椭圆曲线",
   "ssh_pty_error": "Pseudo Terminal Setup Error ErrorCode: 7 Errno: %d (%@)。%@",
   "ssh_pty_advice_exhausted": "PTY 耗尽：已自动cleanup残留的 bonk-ssh 进程，请关闭部分标签页后重试，或重启 App。若频繁出现，检查是否有大量未关闭的 SSH 标签/分屏。",
-  "ssh_pty_advice_retry": "请重试或重启 App，详情见 Show Details。"
+  "ssh_pty_advice_retry": "请重试或重启 App，详情见 Show Details。",
+  "ag_plan_blocked": "计划的所有命令均被安全策略阻止，无可执行内容。",
+  "ag_plan_aborted": "连续 %d 次失败，计划已中止。"
 }

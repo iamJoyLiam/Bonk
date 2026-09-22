@@ -831,6 +831,10 @@ enum LKey: String, CaseIterable {
     case tmConnRejected = "tm_conn_rejected"
     case tmInvalidData = "tm_invalid_data"
 
+    // Legacy plan path (Decision Phase 4)
+    case agPlanBlocked = "ag_plan_blocked"
+    case agPlanAborted = "ag_plan_aborted"
+
     // SSH keygen / transport
     case sshEd25519Desc = "ssh_ed25519_desc"
     case sshRsa2048Desc = "ssh_rsa2048_desc"

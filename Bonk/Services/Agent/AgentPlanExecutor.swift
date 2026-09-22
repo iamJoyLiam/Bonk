@@ -110,6 +110,15 @@ extension AgentEngine {
         // If no steps (pure Q&A), just return
         if plan.steps.isEmpty { return }
 
+        // Phase 4 deterministic plan gate: an unexecutable plan (every
+        // step blocked) skips the approval UI — there is nothing the user
+        // could approve into existence. Reported, not silently dropped.
+        if plan.isUnexecutable {
+            appendAgentMessage(.system, content: L.t(.agPlanBlocked),
+                               conversation: conversation, context: context)
+            return
+        }
+
         // Phase 2: Wait for user approval
         let approved = await requestPlanApproval(plan: plan)
         guard approved else {
@@ -202,6 +211,9 @@ extension AgentEngine {
         } else { nil }
         var results: [StepResult] = []
         let startTime = Date()
+        // Consecutive step failures. Legacy had no failure brake at all —
+        // steps ran regardless. The Phase 4 gate below consults it.
+        var consecutiveFailures = 0
 
         for (index, step) in plan.steps.enumerated() {
             guard !Task.isCancelled else {
@@ -266,6 +278,7 @@ extension AgentEngine {
                 await AgentExecutionManager.shared.clearActive()
                 let truncated = String(output.prefix(4000))
                 let duration = Date().timeIntervalSince(stepStart)
+                consecutiveFailures = 0
                 appendAgentMessage(.commandOutput, content: truncated,
                                    conversation: conversation, context: context)
                 OperationLog.shared.record(command: step.command, output: truncated, success: true)
@@ -274,10 +287,26 @@ extension AgentEngine {
                 await AgentExecutionManager.shared.clearActive()
                 let errorMsg = Task.isCancelled ? "Command was cancelled by user." : "Failed: \(error.localizedDescription)"
                 let duration = Date().timeIntervalSince(stepStart)
+                consecutiveFailures += 1
                 appendAgentMessage(.system, content: errorMsg,
                                    conversation: conversation, context: context)
                 OperationLog.shared.record(command: step.command, output: errorMsg, success: false)
                 results.append(StepResult(step: step, output: errorMsg, success: false, duration: duration))
+                // Phase 4 post-failure gate: keep going or abort the plan.
+                // Errors preserve legacy behavior (continue) — the gate can
+                // only add aborts, never remove the old continue path.
+                let remaining = plan.steps.count - index - 1
+                let shouldContinue = await gatePlanContinue(
+                    command: command,
+                    consecutiveFailures: consecutiveFailures,
+                    remainingSteps: remaining,
+                    stepIndex: index
+                )
+                if !shouldContinue {
+                    appendAgentMessage(.system, content: String(format: L.t(.agPlanAborted), consecutiveFailures),
+                                       conversation: conversation, context: context)
+                    break
+                }
             }
         }
 
@@ -329,6 +358,59 @@ extension AgentEngine {
             task: "agentPlan"
         )
         return disposition == .foldConfirmation
+    }
+
+    // MARK: - Decision Phase 4: post-failure continue/abort gate
+
+    /// Asks whether the plan should continue after a step failure.
+    /// `engine` defaults to the configured effective engine; tests inject
+    /// stubs. First failures always continue without consulting the engine
+    /// (a single failure is not a pattern). Engine errors preserve legacy
+    /// behavior (continue) — the gate can only add aborts, and aborts only
+    /// ever follow consecutive failures. Never fails open into an abort.
+    func gatePlanContinue(
+        command: String,
+        consecutiveFailures: Int,
+        remainingSteps: Int,
+        stepIndex: Int,
+        threshold: Double = DecisionEngineConfig.load().decisionThreshold,
+        engine: any DecisionEngine = DecisionEngineFactory.makeEffective()
+    ) async -> Bool {
+        guard consecutiveFailures > 1 else { return true }
+        let task = "agentPlan"
+        await DecisionTraceRecorder.shared.recordAgentEvent(AgentTraceEvent(
+            kind: .decisionRequested, engine: engine.engineName, task: task, result: "continue-plan"
+        ))
+        let start = Date()
+        do {
+            let decision = try await engine.gate(
+                question: "continue-plan",
+                context: DecisionContext(
+                    localConfidence: 0.0,
+                    decisionThreshold: threshold,
+                    facts: [
+                        "normalizedCommand": CommandNormalizer.normalizedKey(command),
+                        "consecutiveFailures": "\(consecutiveFailures)",
+                        "remainingSteps": "\(remainingSteps)",
+                        "stepIndex": "\(stepIndex)",
+                    ]
+                )
+            )
+            let latencyMs = Date().timeIntervalSince(start) * 1000
+            let shouldContinue = decision.shouldProceed
+            await DecisionTraceRecorder.shared.recordAgentEvent(AgentTraceEvent(
+                kind: .decisionResolved, engine: engine.engineName, task: task,
+                latencyMs: latencyMs, result: shouldContinue ? "continue-plan" : "abort-plan"
+            ))
+            return shouldContinue
+        } catch {
+            let latencyMs = Date().timeIntervalSince(start) * 1000
+            await DecisionTraceRecorder.shared.recordAgentEvent(AgentTraceEvent(
+                kind: .decisionFallback, engine: engine.engineName, task: task,
+                latencyMs: latencyMs, success: false, result: "gate-error"
+            ))
+            return true
+        }
     }
 
     // MARK: - Phase 4: Execution Report

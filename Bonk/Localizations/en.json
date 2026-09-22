@@ -776,5 +776,7 @@
   "ssh_ecdsa_p384_desc": "Higher-security elliptic curve",
   "ssh_pty_error": "Pseudo Terminal Setup Error ErrorCode: 7 Errno: %d (%@). %@",
   "ssh_pty_advice_exhausted": "PTY exhausted: leftover bonk-ssh processes were cleaned up automatically. Close some tabs and retry, or restart the app. If this happens often, check for many unclosed SSH tabs/splits.",
-  "ssh_pty_advice_retry": "Retry or restart the app; see Show Details for details."
+  "ssh_pty_advice_retry": "Retry or restart the app; see Show Details for details.",
+  "ag_plan_blocked": "All planned commands were blocked by the security policy; nothing to execute.",
+  "ag_plan_aborted": "Plan aborted after %d consecutive failures."
 }

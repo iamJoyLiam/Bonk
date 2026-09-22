@@ -169,11 +169,25 @@ struct AgentPlan: Identifiable {
         var isAutoExecutable: Bool {
             riskLevel == .safe
         }
+
+        /// Deterministic effect profile, computed on demand from the
+        /// command text. Never supplied by the model — parse assigns
+        /// riskLevel via CommandSafety, effect derives the same way.
+        var effect: CommandEffectProfile {
+            CommandEffectProfiler.profile(command: command)
+        }
     }
 
     /// Steps that need user confirmation (moderate + dangerous).
     var pendingSteps: [Step] {
         steps.filter { !$0.isAutoExecutable && $0.riskLevel != .blocked }
+    }
+
+    /// True when the plan cannot execute anything: every step is blocked.
+    /// Callers skip the approval UI for such plans — there is nothing
+    /// the user could approve into existence.
+    var isUnexecutable: Bool {
+        !steps.isEmpty && steps.allSatisfy { $0.riskLevel == .blocked }
     }
 
     /// Steps that will auto-execute.
