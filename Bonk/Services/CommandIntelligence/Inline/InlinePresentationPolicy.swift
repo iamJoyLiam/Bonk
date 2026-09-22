@@ -9,6 +9,8 @@ import Foundation
 
 enum InlinePresentationAction: Sendable, Equatable {
     case show(suggestion: Suggestion, showPopup: Bool)
+    /// Ghost suppressed (cursor not anchor-safe); the popup may still show.
+    case popupOnly
     case hide
     case delay(ms: Int)
 }
@@ -17,13 +19,57 @@ struct InlinePresentationPolicy: Sendable {
     /// Minimum characters in input before allowing generative ghost to show alone without local confirmation.
     static let minGenerativeStandaloneChars = 3
 
+    /// A-switch matrix: ghost and popup are independently toggleable.
+    /// Both off hides everything; ghost off degrades .show to .popupOnly;
+    /// popup off strips the popup from .show (and .popupOnly becomes .hide).
+    /// Delay re-evaluates with the same flags, so it converges correctly.
     static func evaluate(
         ranked: [CommandCandidate],
         inputBuffer: String,
-        isTypingFast: Bool = false
+        isTypingFast: Bool = false,
+        cursor: CursorContext? = nil,
+        ghostEnabled: Bool = true,
+        popupEnabled: Bool = true
+    ) -> InlinePresentationAction {
+        let base = baseEvaluate(ranked: ranked, inputBuffer: inputBuffer, isTypingFast: isTypingFast, cursor: cursor)
+        switch (ghostEnabled, popupEnabled) {
+        case (false, false):
+            return .hide
+        case (false, true):
+            switch base {
+            case .hide, .delay:
+                return base
+            case .show, .popupOnly:
+                return ranked.count > 1 ? .popupOnly : .hide
+            }
+        case (true, false):
+            switch base {
+            case let .show(suggestion, _):
+                return .show(suggestion: suggestion, showPopup: false)
+            case .popupOnly:
+                return .hide
+            case .hide, .delay:
+                return base
+            }
+        case (true, true):
+            return base
+        }
+    }
+
+    private static func baseEvaluate(
+        ranked: [CommandCandidate],
+        inputBuffer: String,
+        isTypingFast: Bool = false,
+        cursor: CursorContext? = nil
     ) -> InlinePresentationAction {
         guard let top = ranked.first, !top.suggestion.text.isEmpty else {
             return .hide
+        }
+
+        // B-invariant: ghost renders only when the cursor is at line end.
+        // A known mid-line cursor suppresses ghost but keeps the popup.
+        if let cursor, cursor.isCursorKnown, !cursor.isAtLineEnd {
+            return ranked.count > 1 ? .popupOnly : .hide
         }
 
         let trimmed = inputBuffer.trimmingCharacters(in: .whitespacesAndNewlines)

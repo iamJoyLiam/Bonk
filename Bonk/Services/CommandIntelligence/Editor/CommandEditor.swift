@@ -92,6 +92,10 @@ enum CommandEditor {
               !typed.isEmpty else { return nil }
         var snap = base
         snap.inputBuffer = typed
+        // Callers gate on isCompletable (cursor at end of line), so the
+        // cursor offset is the buffer end. This populates the anchor that
+        // presentation and accept verify against.
+        snap.cursorOffset = typed.count
         return snap
     }
 }

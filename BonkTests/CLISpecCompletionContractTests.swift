@@ -124,9 +124,9 @@ struct CLISpecCompletionContractTests {
         #expect(pipeline.ranked.first?.1.fullText?.hasPrefix("docker ") == true)
     }
 
-    @Test("7. AI Reranker NEVER invents new commands outside the candidate pool")
-    func testAIRerankerNeverInventsNewCommands() async {
-        let reranker = AIReranker()
+    @Test("7. Command Decision Engine NEVER invents new commands outside the candidate pool")
+    func testCommandDecisionEngineNeverInventsNewCommands() async {
+        let reranker = CommandDecisionEngine()
         let originalPool = [
             CommandCandidate(
                 source: "cliSpec",

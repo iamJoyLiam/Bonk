@@ -319,3 +319,66 @@ struct InlineContextAndCandidateCacheTests {
         #expect(fullCommands.contains("docker ps"))
     }
 }
+
+@Suite("Ghost-Off Popup Navigation Tests")
+struct GhostOffNavigationTests {
+    private func base(
+        keyCode: UInt16,
+        modifiers: NSEvent.ModifierFlags = [],
+        characters: String? = nil,
+        hasSuggestion: Bool = false,
+        engagement: SuggestionEngagement = .passive,
+        candidateCount: Int = 3,
+        popupEnabled: Bool = true,
+        isNext: Bool = false,
+        isPrev: Bool = false
+    ) -> KeyRoutingDecision {
+        InlineKeyboardRouter.route(
+            keyCode: keyCode,
+            modifiers: modifiers,
+            characters: characters,
+            hasSuggestion: hasSuggestion,
+            engagement: engagement,
+            candidateCount: candidateCount,
+            isPopupEnabled: popupEnabled,
+            isSearchActive: false,
+            shortcutNotification: nil,
+            isNextCandidate: isNext,
+            isPreviousCandidate: isPrev
+        )
+    }
+
+    @Test("Ghost off: passive Cmd+Down still enters popup selection")
+    func testGhostOffCmdDownEntersSelection() {
+        #expect(base(keyCode: 125, isNext: true) == .moveSelection(delta: 1))
+    }
+
+    @Test("Ghost off: passive Cmd+Up still enters popup selection")
+    func testGhostOffCmdUpEntersSelection() {
+        #expect(base(keyCode: 126, isPrev: true) == .moveSelection(delta: -1))
+    }
+
+    @Test("Ghost off: passive Tab passes through instead of accepting invisible ghost")
+    func testGhostOffTabPassthrough() {
+        // No visible ghost: Tab goes to the shell (which may complete itself),
+        // never into an invisible suggestion.
+        let decision = base(keyCode: 48, characters: "\t")
+        #expect(decision != .accept)
+    }
+
+    @Test("Ghost off: Esc still dismisses the visible popup")
+    func testGhostOffEscRejects() {
+        #expect(base(keyCode: 53) == .reject)
+    }
+
+    @Test("Ghost off engaged: Tab accepts the selected candidate")
+    func testGhostOffEngagedTabAccepts() {
+        #expect(base(keyCode: 48, characters: "\t", hasSuggestion: true, engagement: .engaged(index: 1)) == .accept)
+    }
+
+    @Test("Popup disabled: nav stays idle even with candidates")
+    func testPopupDisabledNavIdle() {
+        let decision = base(keyCode: 125, popupEnabled: false, isNext: true)
+        #expect(decision == .consume(reason: "candidate-nav-idle"))
+    }
+}

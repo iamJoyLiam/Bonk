@@ -35,6 +35,12 @@ import SwiftTerm
             pipeline.onSuggestionChanged = { [weak self] sug in
                 MainActor.assumeIsolated {
                     guard let self else { return }
+                    // Ghost switch: never paint ghost text when disabled,
+                    // no matter which pipeline path produced it.
+                    guard AIInlineSettings.current.ghostSuggestionsEnabled else {
+                        self.hideGhost(reason: "ghost-off")
+                        return
+                    }
                     if let s = sug {
                         let textToDisplay: String
                         let (_, cursorY) = self.terminal.getCursorLocation()
@@ -199,6 +205,7 @@ import SwiftTerm
                     guard let self else { return }
                     let hasPipeline = (self.inlinePipeline?.isRequesting ?? false) || self.inlinePipeline?.suggestion != nil
                     guard hasPipeline else { return }
+                    guard AIInlineSettings.current.ghostSuggestionsEnabled else { return }
                     if self.window?.isKeyWindow == true, self.window?.firstResponder === self {
                         if let s = self.inlinePipeline?.suggestion {
                             self.showGhost(text: s.displayText)
@@ -241,10 +248,15 @@ import SwiftTerm
                 let sc: Notification.Name? = focused && !ShortcutManager.isRecording
                     ? shortcutNotification(for: keyCode, modifiers: modifiers) : nil
                 let search = TerminalSearchState.isActive
-                let sug = inlinePipeline?.suggestion != nil
-                let count = inlinePipeline?.ranked.count ?? 0
-                let popup = AIInlineSettings.current.candidatePopupEnabled
+                // Ghost switch: an invisible ghost must not be Tab-acceptable.
+                // Engaged popup selection still accepts with ghost off.
+                let settings = AIInlineSettings.current
                 let eng = inlinePipeline?.engagement ?? .passive
+                let ghostVisible = (inlinePipeline?.suggestion != nil) && settings.ghostSuggestionsEnabled
+                let rankedCount = inlinePipeline?.ranked.count ?? 0
+                let sug = ghostVisible || (eng.isEngaged && settings.candidatePopupEnabled && rankedCount > 0)
+                let count = inlinePipeline?.ranked.count ?? 0
+                let popup = settings.candidatePopupEnabled
                 let next = focused && !ShortcutManager.isRecording
                     ? matchesAction(.inlineNextCandidate, keyCode: keyCode, modifiers: modifiers) : false
                 let prev = focused && !ShortcutManager.isRecording
@@ -381,7 +393,12 @@ import SwiftTerm
             guard let pipeline = inlinePipeline, let snapshotProvider = commandSnapshotProvider else { return }
             // Early gate via in-memory snapshot (no UserDefaults I/O on the key path)
             let aiSettings = AIInlineSettings.current
-            guard aiSettings.aiEnabled, aiSettings.inlineSuggestionsEnabled else { return }
+            // The inline master switch is the only kill switch. AI features
+            // are required only by LLM paths downstream (each guards its own
+            // provider); the decision engine brings its own key/server and
+            // falls back to deterministic ordering when unconfigured.
+            guard aiSettings.inlineSuggestionsEnabled else { return }
+            guard aiSettings.ghostSuggestionsEnabled || aiSettings.candidatePopupEnabled else { return }
             guard !terminal.isCurrentBufferAlternate else { return }
             let (cursorX, cursorY) = terminal.getCursorLocation()
             let yDisp = terminal.getTopVisibleRow()
@@ -415,7 +432,20 @@ import SwiftTerm
         private nonisolated func acceptSuggestion() {
             MainActor.assumeIsolated {
                 guard let p = self.inlinePipeline, p.suggestion != nil else { return }
-                let text = p.accept()
+                // B-defense inputs: the live typed buffer and whether the
+                // cursor is still at end of line. A moved cursor or mid-line
+                // edit rejects the stale ghost before anything is inserted.
+                var currentTyped: String? = nil
+                var currentAtLineEnd = true
+                let (cursorX, acceptCursorY) = self.terminal.getCursorLocation()
+                if acceptCursorY >= 0, acceptCursorY < self.terminal.rows,
+                   let line = self.terminal.getLine(row: acceptCursorY),
+                   let provider = self.commandSnapshotProvider {
+                    let raw = line.translateToString(trimRight: true)
+                    currentTyped = CommandEditor.resolveTypedText(rawLine: raw, inputBuffer: provider().inputBuffer)
+                    currentAtLineEnd = cursorX >= raw.count - 3
+                }
+                let text = p.accept(currentTyped: currentTyped, currentAtLineEnd: currentAtLineEnd)
                 self.hideGhost(reason: "accept")
                 // Re-align against the current line before inserting: the
                 // suggestion may be stale (generated for an earlier typed

@@ -52,12 +52,18 @@ final class InlineSuggestionPipeline {
     private let ranker = InlineRanker()
     private let providerStore: AIProviderStore
     private let candidatePool: CandidatePool
-    private let reranker: AIReranker
+    private let reranker: CommandDecisionEngine
 
     private let knownWordsSource = KnownWordsCandidateSource()
     private let historySource = HistoryCandidateSource()
     private let vocabularySource = CommandVocabularySource()
     private let llmSource: LLMCandidateSource
+    /// Engine identity source (injectable for tests). Defaults to the
+    /// in-memory settings snapshot — never UserDefaults I/O on the key path.
+    /// Switching engines invalidates the shown ghost — a stale suggestion
+    /// from the previous engine must never survive the switch.
+    private let engineIDProvider: @Sendable () -> String
+    private var lastEngineID: String?
 
     /// Cap for the candidate popup — best-ranked entries survive.
     private static let maxCandidates = 5
@@ -66,17 +72,23 @@ final class InlineSuggestionPipeline {
     private var currentEffectiveKey: String?
     private var lastKeystrokeTime: Date?
     private var presentationTask: Task<Void, Never>?
+    /// Anchor of the currently shown suggestion: the typed buffer (and known
+    /// cursor offset) the suggestion was computed for. Accept verifies the
+    /// live editor state against it before inserting.
+    private(set) var suggestionAnchor: (typed: String, offset: Int?)?
 
     init(
         providerStore: AIProviderStore = .shared,
         cache: InlineSuggestionCache = InlineSuggestionCache(),
         candidatePool: CandidatePool = CandidatePool(),
-        reranker: AIReranker = .shared
+        reranker: CommandDecisionEngine = .shared,
+        engineIDProvider: @Sendable @escaping () -> String = { AIInlineSettings.current.decisionEngineID }
     ) {
         self.providerStore = providerStore
         self.cache = cache
         self.candidatePool = candidatePool
         self.reranker = reranker
+        self.engineIDProvider = engineIDProvider
         self.llmSource = LLMCandidateSource(providerStore: providerStore, cache: cache)
     }
 
@@ -91,13 +103,28 @@ final class InlineSuggestionPipeline {
         let interval = lastKeystrokeTime.map { now.timeIntervalSince($0) } ?? 1.0
         let isTypingFast = interval < 0.16
         lastKeystrokeTime = now
+        // Engine switch invalidates everything shown: cancel first so the
+        // previous engine's ghost/popup never survives the switch.
+        // Reads the in-memory settings snapshot — no UserDefaults I/O here.
+        let engineID = AIInlineSettings.current.decisionEngineID
+        if lastEngineID != engineID {
+            cancel()
+            lastEngineID = engineID
+        }
         let trimmedLeading = String(snapshot.inputBuffer.drop(while: { $0.isWhitespace || $0.isNewline }))
         let typed = trimmedLeading.trimmingCharacters(in: .newlines)
         guard !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             cancel()
             return
         }
+        // A-switches: skip all candidate work when neither surface is on.
+        let switches = AIInlineSettings.current
+        guard switches.ghostSuggestionsEnabled || switches.candidatePopupEnabled else {
+            cancel()
+            return
+        }
         let gen = generationController.bumpGeneration()
+        logger.debug("B-request: typed=\(typed) offset=\(snapshot.cursorOffset.map(String.init) ?? "nil")")
         // Tier 1: deterministic local candidates (knownWords/cache/history) —
         // instant, no debounce. Warp-style: local ghost appears immediately.
         performLocal(snapshot: snapshot, typed: typed, generation: gen, isTypingFast: isTypingFast)
@@ -144,6 +171,7 @@ final class InlineSuggestionPipeline {
         ranked = []
         rankedCandidates = []
         engagement = .passive
+        suggestionAnchor = nil
         onSuggestionChanged?(nil)
         onCandidatesChanged?(0, .passive)
         currentKey = nil
@@ -187,11 +215,38 @@ final class InlineSuggestionPipeline {
         }
     }
 
-    func accept() -> String {
+    func accept(currentTyped: String? = nil, currentAtLineEnd: Bool = true) -> String {
         guard let s = suggestion else { return "" }
+        // B-defense (passive ghost only): verify the live editor still holds
+        // the anchor — cursor moved or mid-line edits reject the stale ghost.
+        // Engaged popup selection is an explicit user choice and bypasses it.
+        if case .passive = engagement {
+            let typedNow = currentTyped ?? suggestionAnchor?.typed
+            let anchorDesc = suggestionAnchor?.typed ?? "nil"
+            guard let anchor = suggestionAnchor, let typedNow,
+                  CursorContext.anchorAllowsInsert(anchorBuffer: anchor.typed, currentBuffer: typedNow),
+                  currentAtLineEnd
+            else {
+                logger.debug("B-reject: anchor=\(anchorDesc) current=\(typedNow ?? "nil") eol=\(currentAtLineEnd)")
+                cancel()
+                return ""
+            }
+            logger.debug("B-accept: anchor=\(anchor.typed) current=\(typedNow) ghostLen=\(s.text.count)")
+        }
         if let key = currentKey { cache.markAccepted(for: key) }
         UserProfile.shared.recordAccept(suffix: s.text)
         let text = s.text
+        // Accept attribution for engine effectiveness stats (fire-and-forget).
+        // Links the outcome to the winning trace for calibration buckets.
+        let acceptedEngine = engineIDProvider()
+        let acceptedID: String? = {
+            if case let .engaged(index) = engagement,
+               rankedCandidates.indices.contains(index) {
+                return rankedCandidates[index].id
+            }
+            return rankedCandidates.first?.id
+        }()
+        Task { await DecisionTraceRecorder.shared.recordAccept(engine: acceptedEngine, selectedID: acceptedID) }
         cancel()
         return text
     }
@@ -231,7 +286,10 @@ final class InlineSuggestionPipeline {
             isRejected: isRejected
         )
 
-        setRankedCandidates(candidates, typed: typed, generation: generation, isTypingFast: isTypingFast)
+        setRankedCandidates(
+            candidates, typed: typed, cursor: snapshot.cursorContext,
+            generation: generation, isTypingFast: isTypingFast
+        )
 
         // Cache the top local candidate for parity with previous commit behavior.
         if let k = key, let first = ranked.first, !first.1.text.isEmpty {
@@ -265,11 +323,7 @@ final class InlineSuggestionPipeline {
         guard generationController.isCurrent(generation) else { return }
 
         let isNaturalLanguage = typed.hasPrefix("#") || InlineTriggerPolicy.isNaturalLanguageIntent(typed)
-
-        guard let (p, apiKey) = resolveProvider(snapshot: snapshot) else {
-            logger.debug("[InlinePipeline] performLLM skipped: no active or valid provider resolved")
-            return
-        }
+        let decisionConfig = DecisionEngineConfig.load()
 
         isRequesting = true
         onRequestingChanged?(true)
@@ -281,6 +335,10 @@ final class InlineSuggestionPipeline {
         }
 
         if isNaturalLanguage {
+            guard let (p, apiKey) = resolveProvider(snapshot: snapshot) else {
+                logger.debug("[InlinePipeline] natural-language channel skipped: no LLM provider resolved")
+                return
+            }
             // Mode B: Natural Language Intent Translation Channel
             let prompt = InlinePromptBuilder.buildNaturalLanguagePrompt(snapshot: snapshot, query: typed)
             let llm = LLMProviderFactory.provider(for: p, apiKey: apiKey, workload: .inlineCompletion)
@@ -303,7 +361,7 @@ final class InlineSuggestionPipeline {
                     authority: .generative,
                     suggestion: sug,
                     rawScore: 99.0,
-                    summary: "AI 翻译: \(sug.fullText ?? sug.displayText)"
+                    summary: String(format: L.t(.inlineSummaryTranslated), sug.fullText ?? sug.displayText)
                 )
 
                 let combined = CandidateRanker.balanceChannels(
@@ -311,24 +369,39 @@ final class InlineSuggestionPipeline {
                     totalLimit: Self.maxCandidates,
                     maxAICandidates: 1
                 )
-                setRankedCandidates(combined, typed: typed, generation: generation, isTypingFast: false)
+                setRankedCandidates(
+                    combined, typed: typed, cursor: snapshot.cursorContext,
+                    generation: generation, isTypingFast: false
+                )
             } catch {
                 logger.debug("[InlinePipeline] Natural language translation skipped or failed: \(error.localizedDescription)")
             }
         } else {
-            // Mode A: Standard CLI Channel - AI Reranking + Generative AI Completion
-            let prompt = InlinePromptBuilder.buildPrompt(snapshot: snapshot)
-            let llm = LLMProviderFactory.provider(for: p, apiKey: apiKey, workload: .inlineCompletion)
+            // Mode A: the configured engine orders the pool (no LLM provider
+            // needed; the deterministic fallback keeps local order when the
+            // engine is unconfigured). Generative AI completion still appends
+            // when an LLM provider exists.
+            let engine = DecisionEngineFactory.makeEffective(config: decisionConfig)
+            let recentOutput = snapshot.recentOutput.suffix(300).trimmingCharacters(in: .whitespacesAndNewlines)
+            let state = "Recent output: \(recentOutput)"
+            let providerPair = resolveProvider(snapshot: snapshot)
+            // Prompt building is MainActor-isolated; hoist it out of the
+            // nonisolated async-let below.
+            let generativeInputs: (AIProviderConfig, String, String)? = providerPair.map { (p, key) in
+                (p, key, InlinePromptBuilder.buildPrompt(snapshot: snapshot))
+            }
 
-            async let rerankedTask = reranker.rerank(
+            async let orderedTask = reranker.decideBest(
                 candidates: currentCandidates,
                 typed: typed,
-                snapshot: snapshot,
-                provider: p,
-                apiKey: apiKey
+                state: state,
+                engine: engine,
+                decisionThreshold: AIInlineSettings.current.decisionThreshold
             )
 
             async let generativeTask: CommandCandidate? = {
+                guard let (p, apiKey, prompt) = generativeInputs else { return nil }
+                let llm = LLMProviderFactory.provider(for: p, apiKey: apiKey, workload: .inlineCompletion)
                 do {
                     let response = try await llm.chat(
                         messages: [
@@ -347,18 +420,18 @@ final class InlineSuggestionPipeline {
                         authority: .generative,
                         suggestion: full,
                         rawScore: 70.0,
-                        summary: "AI 智能预测"
+                        summary: L.t(.inlineSummaryPredicted)
                     )
                 } catch {
                     return nil
                 }
             }()
 
-            let reranked = await rerankedTask
+            let ordered = await orderedTask ?? currentCandidates
             let aiCandidate = await generativeTask
 
             guard generationController.isCurrent(generation) else { return }
-            var combined = reranked
+            var combined = ordered
             if let aiCandidate {
                 let aiFull = (aiCandidate.suggestion.fullText ?? aiCandidate.suggestion.displayText).trimmingCharacters(in: .whitespaces)
                 if !combined.contains(where: { ($0.suggestion.fullText ?? $0.suggestion.displayText).trimmingCharacters(in: .whitespaces) == aiFull }) {
@@ -370,19 +443,26 @@ final class InlineSuggestionPipeline {
                 totalLimit: Self.maxCandidates,
                 maxAICandidates: 1
             )
-            setRankedCandidates(balanced, typed: typed, generation: generation, isTypingFast: false)
+            setRankedCandidates(
+                balanced, typed: typed, cursor: snapshot.cursorContext,
+                generation: generation, isTypingFast: false
+            )
         }
     }
 
     /// Replace the pipeline candidate list using ranked CommandCandidates and presentation policy.
-    private func setRankedCandidates(_ list: [CommandCandidate], typed: String, generation: UInt64, isTypingFast: Bool = false) {
+    private func setRankedCandidates(
+        _ list: [CommandCandidate], typed: String, cursor: CursorContext,
+        generation: UInt64, isTypingFast: Bool = false
+    ) {
         guard generationController.isCurrent(generation) else { return }
-        applyPresentation(list: list, typed: typed, isTypingFast: isTypingFast, generation: generation)
+        applyPresentation(list: list, typed: typed, cursor: cursor, isTypingFast: isTypingFast, generation: generation)
     }
 
     private func applyPresentation(
         list: [CommandCandidate],
         typed: String,
+        cursor: CursorContext,
         isTypingFast: Bool,
         generation: UInt64
     ) {
@@ -393,22 +473,40 @@ final class InlineSuggestionPipeline {
             maxAICandidates: 1
         )
         currentCandidates = balanced
+        let settings = AIInlineSettings.current
         let action = InlinePresentationPolicy.evaluate(
             ranked: balanced,
             inputBuffer: typed,
-            isTypingFast: isTypingFast
+            isTypingFast: isTypingFast,
+            cursor: cursor,
+            ghostEnabled: settings.ghostSuggestionsEnabled,
+            popupEnabled: settings.candidatePopupEnabled
         )
         switch action {
         case .show(let sug, let showPopup):
             ranked = Array(balanced.map { ($0.source, $0.suggestion) })
             rankedCandidates = balanced
             engagement = .passive
+            suggestionAnchor = (typed: typed, offset: cursor.offset)
+            let anchorOffset = cursor.offset.map(String.init) ?? "nil"
+            logger.debug("B-show: anchor=\(typed) offset=\(anchorOffset) ghostLen=\(sug.text.count) popup=\(showPopup)")
             onSuggestionChanged?(sug)
             onCandidatesChanged?(showPopup ? ranked.count : 0, .passive)
+        case .popupOnly:
+            ranked = Array(balanced.map { ($0.source, $0.suggestion) })
+            rankedCandidates = balanced
+            engagement = .passive
+            suggestionAnchor = (typed: typed, offset: cursor.offset)
+            let popupCount = ranked.count
+            let anchorOffset = cursor.offset.map(String.init) ?? "nil"
+            logger.debug("B-popupOnly: anchor=\(typed) offset=\(anchorOffset) count=\(popupCount)")
+            onSuggestionChanged?(nil)
+            onCandidatesChanged?(ranked.count, .passive)
         case .hide:
             ranked = []
             rankedCandidates = []
             engagement = .passive
+            suggestionAnchor = nil
             onSuggestionChanged?(nil)
             onCandidatesChanged?(0, .passive)
         case .delay(let ms):
@@ -416,7 +514,10 @@ final class InlineSuggestionPipeline {
             presentationTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64(ms) * 1_000_000)
                 guard let self, self.generationController.isCurrent(generation), !Task.isCancelled else { return }
-                self.applyPresentation(list: list, typed: typed, isTypingFast: false, generation: generation)
+                self.applyPresentation(
+                    list: list, typed: typed, cursor: cursor,
+                    isTypingFast: false, generation: generation
+                )
             }
         }
     }
@@ -443,7 +544,10 @@ final class InlineSuggestionPipeline {
             totalLimit: Self.maxCandidates,
             maxAICandidates: 1
         )
-        setRankedCandidates(balanced, typed: typed, generation: generation)
+        let unknownCursor = CursorContext.resolve(buffer: typed, cursorOffset: nil)
+        setRankedCandidates(
+            balanced, typed: typed, cursor: unknownCursor, generation: generation
+        )
 
         if let k = key, !sug.text.isEmpty { cache.store(suffix: sug.text, for: k) }
         if key == nil, !sug.text.isEmpty { cache.store(suffix: sug.text, for: effectiveKey) }

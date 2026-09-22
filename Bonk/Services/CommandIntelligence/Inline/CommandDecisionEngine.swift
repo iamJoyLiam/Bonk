@@ -1,22 +1,99 @@
 //
-//  AIReranker.swift
+//  CommandDecisionEngine.swift
 //  Bonk
 //
-//  P1 AI Reranking Engine.
-//  Enforces the contract: LLM NEVER creates candidates or invents CLI commands.
-//  LLM ONLY reranks/scores candidates already present in the Candidate Pool.
+//  Command-side decision engine (renamed from AIReranker, phase 1).
+//  Phase 1 composition: local deterministic ranking + the legacy LLM rerank
+//  path. JevDecisionEngine / LayaDecisionEngine plug in here in phase 2
+//  behind the DecisionEngine protocol — no caller changes.
+//
+//  Contract (unchanged): LLM NEVER creates candidates or invents CLI commands.
+//  It ONLY reranks/scores candidates already present in the Candidate Pool.
 //
 
 import Foundation
 import os
 
-/// AI Reranker that scores and re-orders a fixed Candidate Pool.
-final class AIReranker: Sendable {
-    static let shared = AIReranker()
+/// Command decision engine: scores and re-orders a fixed Candidate Pool.
+final class CommandDecisionEngine: Sendable {
+    static let shared = CommandDecisionEngine()
 
-    private let logger = Logger(subsystem: "com.bonk", category: "AIReranker")
+    private let logger = Logger(subsystem: "com.bonk", category: "CommandDecision")
 
     init() {}
+
+    /// Picks the best candidate via a DecisionEngine (local / Jev / Laya).
+    /// Returns the reordered pool with the winner first, or nil when the
+    /// engine abstains (no selection), is unsure (confidence < decisionThreshold),
+    /// or fails — in all those cases the caller keeps deterministic order.
+    /// The engine NEVER invents candidates: selection is by stable id over
+    /// the code-produced pool.
+    /// Every judgment leaves a DecisionTrace (latency, winner, confidence,
+    /// whether the order changed) — fire-and-forget, never on the hot path.
+    func decideBest(
+        candidates: [CommandCandidate],
+        typed: String,
+        state: String,
+        engine: any DecisionEngine,
+        decisionThreshold: Double,
+        recorder: DecisionTraceRecorder = .shared
+    ) async -> [CommandCandidate]? {
+        guard candidates.count > 1 else { return nil }
+        let pool = Array(candidates.prefix(5))
+        let options = pool.map {
+            DecisionOption(
+                id: $0.id,
+                label: $0.fullText ?? $0.displayText,
+                localScore: $0.rawScore,
+                isExactMatch: $0.isExactPrefixMatch
+            )
+        }
+        let topConfidence = min(1.0, max(0.0, (pool.map(\.rawScore).max() ?? 0) / 100))
+        let context = DecisionContext(
+            localConfidence: topConfidence,
+            decisionThreshold: decisionThreshold,
+            facts: [
+                "state": "User typed: \"\(typed)\"\n\(state)",
+                "question": "Which candidate best continues the user's typed command?",
+            ]
+        )
+        let start = ContinuousClock.now
+        do {
+            let decision = try await engine.choose(options: options, context: context)
+            let elapsed = ContinuousClock.now - start
+            let (seconds, attoseconds) = elapsed.components
+            let latencyMs = Double(seconds) * 1000 + Double(attoseconds) / 1_000_000_000_000_000
+            let changedOrder = decision.selectedID.map { $0 != pool.first?.id } ?? false
+            let trace = DecisionTrace(
+                engine: engine.engineName,
+                inputCount: options.count,
+                originalTopID: pool.first?.id,
+                selectedID: decision.selectedID,
+                confidence: decision.confidence,
+                confidenceSource: engine.choiceConfidenceSource,
+                latencyMs: latencyMs,
+                changedOrder: changedOrder
+            )
+            await recorder.record(trace)
+            #if DEBUG
+                print(
+                    "[D-decide] engine=\(trace.engine) winner=\(trace.selectedID ?? "none") " +
+                        "conf=\(trace.confidence) latMs=\(trace.latencyMs) changed=\(trace.changedOrder)"
+                )
+            #endif
+            guard let winner = decision.selectedID,
+                  decision.confidence >= decisionThreshold,
+                  let idx = pool.firstIndex(where: { $0.id == winner })
+            else { return nil }
+            var reordered = [pool[idx]]
+            reordered += pool.indices.filter { $0 != idx }.map { pool[$0] }
+            reordered += candidates.dropFirst(pool.count)
+            return reordered
+        } catch {
+            logger.debug("[CommandDecision] decideBest fell back to local order: \(error.localizedDescription)")
+            return nil
+        }
+    }
 
     /// Reranks existing candidates using LLM guidance, falling back to local order on timeout or failure.
     func rerank(
@@ -103,7 +180,7 @@ final class AIReranker: Sendable {
 
             return reranked
         } catch {
-            logger.debug("[AIReranker] Reranking skipped or timed out: \(error.localizedDescription)")
+            logger.debug("[CommandDecision] Reranking skipped or timed out: \(error.localizedDescription)")
             return candidates
         }
     }

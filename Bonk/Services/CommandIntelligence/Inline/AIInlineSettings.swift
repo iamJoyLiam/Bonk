@@ -18,8 +18,16 @@ struct AISettingsSnapshot: Sendable {
     let aiEnabled: Bool
     /// Defaults to false, matching bool(forKey:) with no key set.
     let inlineSuggestionsEnabled: Bool
+    /// Ghost hint toggle. Defaults to true.
+    let ghostSuggestionsEnabled: Bool
     /// Defaults to true, matching object(forKey:) as? Bool ?? true.
     let candidatePopupEnabled: Bool
+    /// Selected decision engine id ("jev" default). The engine-only path
+    /// runs with AI features turned off; an unconfigured engine falls back
+    /// to deterministic ordering.
+    let decisionEngineID: String
+    /// Suggestion confidence threshold for model judgments. Defaults to 0.75.
+    let decisionThreshold: Double
 }
 
 /// Hot-path settings cache: resident singleton, reads are in-memory,
@@ -59,10 +67,14 @@ final class AIInlineSettings: @unchecked Sendable {
 
     private static func read() -> AISettingsSnapshot {
         let defaults = UserDefaults.standard
+        let threshold = defaults.object(forKey: "decision.gate.threshold") as? Double ?? 0.75
         return AISettingsSnapshot(
             aiEnabled: defaults.bool(forKey: "ai_enabled"),
             inlineSuggestionsEnabled: defaults.bool(forKey: "ai_inline_suggestions"),
-            candidatePopupEnabled: defaults.object(forKey: "ai_inline_candidate_popup") as? Bool ?? true
+            ghostSuggestionsEnabled: defaults.object(forKey: "ai_ghost_suggestions") as? Bool ?? true,
+            candidatePopupEnabled: defaults.object(forKey: "ai_inline_candidate_popup") as? Bool ?? true,
+            decisionEngineID: defaults.string(forKey: "decision.engine.id") ?? "jev",
+            decisionThreshold: min(1.0, max(0.0, threshold))
         )
     }
 }

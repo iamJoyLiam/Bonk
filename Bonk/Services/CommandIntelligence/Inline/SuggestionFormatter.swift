@@ -13,19 +13,12 @@ enum SuggestionFormatter {
     static let maxSuggestionTokens = 200
 
     /// Ghost display text — what the overlay draws.
-    static func displaySuffix(_ raw: String, typed: String) -> String {
-        let suffix = preserveLeadingSeparator(raw)
-        guard !suffix.isEmpty else { return "" }
-        let hasExplicitSeparator = suffix.first?.isWhitespace == true
-        let core = suffix.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !core.isEmpty else { return "" }
-        if hasExplicitSeparator || typed.last?.isWhitespace == true {
-            return hasExplicitSeparator ? " " + core : core
-        }
-        if shouldInsertTokenSeparator(typed: typed, suffix: core) {
-            return " " + core
-        }
-        return core
+    /// A-invariant: display MUST equal what Tab will insert. Only separators
+    /// already present in the raw suffix are preserved; no virtual space is
+    /// ever invented (the old token-separator branch showed " -compose" for
+    /// an insertion of "-compose").
+    static func displaySuffix(_ raw: String, typed _: String) -> String {
+        preserveLeadingSeparator(raw)
     }
 
     /// Suffix extracted from model raw output (echo stripping).
@@ -138,14 +131,4 @@ enum SuggestionFormatter {
 
     private static let promptLeftoverRegex: NSRegularExpression? = try? NSRegularExpression(pattern: #"^[>\$#%❯➜]\s+"#)
     private static let commandTextRegex: NSRegularExpression? = try? NSRegularExpression(pattern: #"[>%$#❯➜]\s+(\S.*)$"#)
-
-    private static func shouldInsertTokenSeparator(typed: String, suffix: String) -> Bool {
-        guard typed.last?.isWhitespace == false else { return false }
-        guard let first = suffix.first, first.isLetter || first.isNumber || first == "-" || first == "/" || first == "$" else { return false }
-        let tokens = typed.split(whereSeparator: { $0.isWhitespace })
-        guard tokens.count == 1 else { return false }
-        if let last = typed.last, "=/:.$~\\".contains(last) { return false }
-        if typed.contains("=") { return false }
-        return true
-    }
 }

@@ -5,6 +5,7 @@
 //  Wraps InlineSuggestionRecord (SwiftData) and 12-segment key generation.
 //
 
+import AppKit
 import Foundation
 import SwiftData
 
@@ -17,6 +18,57 @@ final class InlineSuggestionCache {
     private static let persistentLimit = 500
     private static let ttl: TimeInterval = 7 * 24 * 60 * 60
     private static let separator = "\u{001E}"
+    /// Coalescing window for disk writes. Memory state applies instantly;
+    /// SwiftData saves wait for quiet, resign-active, or terminate.
+    private static let saveDebounceNs: UInt64 = 2_000_000_000
+
+    private var saveTask: Task<Void, Never>?
+    private nonisolated(unsafe) var lifecycleObservers: [any NSObjectProtocol] = []
+
+    init() {
+        let center = NotificationCenter.default
+        lifecycleObservers = [
+            center.addObserver(
+                forName: NSApplication.willResignActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.flush() }
+            },
+            center.addObserver(
+                forName: NSApplication.willTerminateNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.flush() }
+            },
+        ]
+    }
+
+    deinit {
+        let observers = lifecycleObservers
+        for observer in observers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    /// Memory state applies instantly; this only schedules the disk write.
+    /// Never call modelContext.save() directly from the keystroke path.
+    private func scheduleSave() {
+        saveTask?.cancel()
+        saveTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.saveDebounceNs)
+            guard !Task.isCancelled else { return }
+            try? self?.modelContext?.save()
+        }
+    }
+
+    /// Immediate disk write: resign-active, terminate, and tests.
+    func flush() {
+        saveTask?.cancel()
+        saveTask = nil
+        try? modelContext?.save()
+    }
 
     private var rejected: Set<String> = []
 
@@ -54,20 +106,20 @@ final class InlineSuggestionCache {
             persistent[key] = rec
         }
         trimPersistent()
-        try? modelContext?.save()
+        scheduleSave()
     }
 
     func markAccepted(for key: String) {
         guard let rec = persistent[key] else { return }
         rec.acceptCount += 1
         rec.lastUsedAt = Date()
-        try? modelContext?.save()
+        scheduleSave()
     }
 
     func markRejected(suffix: String, for key: String) {
         if let rec = persistent[key] {
             rec.rejectCount += 1
-            try? modelContext?.save()
+            scheduleSave()
         }
         rejected.insert(key + "|" + suffix)
     }

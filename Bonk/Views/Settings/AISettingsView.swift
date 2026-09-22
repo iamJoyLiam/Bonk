@@ -1,11 +1,13 @@
 import SwiftData
 import SwiftUI
 
+
 struct AISettingsView: View {
     @Environment(I18n.self) var i18n
     @Environment(\.modelContext) private var modelContext
     @AppStorage("ai_enabled") private var aiEnabled = false
     @AppStorage("ai_inline_suggestions") private var inlineSuggestionsEnabled = false
+    @AppStorage("ai_ghost_suggestions") private var ghostSuggestionsEnabled = true
     @AppStorage("ai_inline_candidate_popup") private var candidatePopupEnabled = true
     @AppStorage("ai_include_terminal") private var includeTerminalOutput = true
     @AppStorage("ai_include_history") private var includeCommandHistory = true
@@ -53,6 +55,11 @@ struct AISettingsView: View {
                 // Privacy
                 privacySection
             }
+
+            // Decision Engine — independent of the AI master switch:
+            // the local engine is pure rules, Jev/Laya bring their own
+            // credentials/server and never use LLM providers.
+            DecisionEngineSettingsSection()
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
@@ -230,6 +237,8 @@ struct AISettingsView: View {
     private var inlineSuggestionsSection: some View {
         Section {
             Toggle(i18n.t(.enableInlineSuggestions), isOn: $inlineSuggestionsEnabled)
+            Toggle(i18n.t(.enableGhostSuggestions), isOn: $ghostSuggestionsEnabled)
+                .disabled(!inlineSuggestionsEnabled)
             Picker(i18n.t(.aiInlineModel), selection: $inlineProviderID) {
                 Text(i18n.t(.aiFollowMainProvider)).tag("")
                 ForEach(store.providers) { provider in
@@ -252,20 +261,34 @@ struct AISettingsView: View {
 
     private var agentSection: some View {
         Section {
-            Picker("执行权限模式", selection: $agentAccessModeRaw) {
+            Picker(i18n.t(.aiAccessMode), selection: $agentAccessModeRaw) {
                 ForEach(AgentMessage.AccessMode.allCases) { mode in
                     Label(mode.localizedName, systemImage: mode.icon).tag(mode.rawValue)
                 }
             }
-            Stepper("最大执行轮次: \(agentMaxIterations) 轮", value: $agentMaxIterations, in: 5...50, step: 5)
+            Stepper(value: $agentMaxIterations, in: 5...50, step: 5) {
+                HStack {
+                    Text(i18n.t(.aiMaxRounds))
+                    Spacer()
+                    Text(i18n.tr(.aiRoundsCount, args: agentMaxIterations))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+            }
             Toggle(i18n.t(.aiAllowDirectConnect), isOn: $allowDirectConnect)
         } header: {
             Text(i18n.t(.agentMode))
         } footer: {
-            Text("完全访问：自主执行常规命令，高危命令仍需确认；逐步确认：修改命令需逐一确认；只读模式：只允许只读检查。\n\(i18n.t(.aiDirectConnectDesc))")
+            Text(agentFooterText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private var agentFooterText: String {
+        let separator = i18n.lang.hasPrefix("zh") ? "；" : "; "
+        return [i18n.t(.aiModeFullDesc), i18n.t(.aiModeSupervisedDesc), i18n.t(.aiModeReadonlyDesc)]
+            .joined(separator: separator) + "\n" + i18n.t(.aiDirectConnectDesc)
     }
 
     // MARK: - Context

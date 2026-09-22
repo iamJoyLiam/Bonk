@@ -31,6 +31,12 @@ struct CommandContextSnapshot: Sendable, Equatable {
     /// Snapshot creation time — for TTL/debugging, not for equality.
     var timestamp: Date
 
+    /// Cursor resolved against inputBuffer. Single source of truth — every
+    /// consumer (trigger, pool, presentation, accept) shares this.
+    var cursorContext: CursorContext {
+        CursorContext.resolve(buffer: inputBuffer, cursorOffset: cursorOffset)
+    }
+
     init(
         inputBuffer: String,
         hostKey: String? = nil,

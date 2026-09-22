@@ -37,6 +37,9 @@ public struct InlineKeyboardRouter: Sendable {
     }
 
     /// Evaluates keyboard input against inline completion state.
+    /// Popup navigation is independent of ghost visibility: the popup can
+    /// show (and be navigated/dismissed) while ghost text is disabled, so
+    /// nav branches key off popup eligibility, not `hasSuggestion`.
     public static func route(
         keyCode: UInt16,
         modifiers: NSEvent.ModifierFlags,
@@ -76,14 +79,20 @@ public struct InlineKeyboardRouter: Sendable {
             return .accept
         }
 
+        // Popup eligibility is ghost-independent: navigation and dismissal
+        // work whenever the popup can show, even with ghost text disabled.
+        let canNavigate = isPopupEnabled && candidateCount > 1
+
         // 5. Esc (53) cancels/rejects suggestion if visible
-        if keyCode == 53, hasSuggestion {
+        // Popup dismissal counts even with ghost off (canNavigate covers it).
+        let canDismiss = hasSuggestion || canNavigate
+        if keyCode == 53, canDismiss {
             return .reject
         }
 
         // 6. Configured Candidate Selection Shortcuts (Default: Cmd+Down / Cmd+Up)
         if isNextCandidate {
-            if hasSuggestion, isPopupEnabled, candidateCount > 1 {
+            if canNavigate {
                 return .moveSelection(delta: 1)
             }
             // Consume shortcut when idle or single candidate to prevent sending escape sequences () to shell
@@ -91,7 +100,7 @@ public struct InlineKeyboardRouter: Sendable {
         }
 
         if isPreviousCandidate {
-            if hasSuggestion, isPopupEnabled, candidateCount > 1 {
+            if canNavigate {
                 return .moveSelection(delta: -1)
             }
             // Consume shortcut when idle or single candidate to prevent sending escape sequences () to shell
@@ -99,10 +108,10 @@ public struct InlineKeyboardRouter: Sendable {
         }
 
         // 7. Option+Down / Option+Up to engage candidate selection (legacy compatibility)
-        if keyCode == 125, modifiers.contains(.option), hasSuggestion, isPopupEnabled, candidateCount > 1 {
+        if keyCode == 125, modifiers.contains(.option), canNavigate {
             return .engageSelection(initialIndex: 0)
         }
-        if keyCode == 126, modifiers.contains(.option), hasSuggestion, isPopupEnabled, candidateCount > 1 {
+        if keyCode == 126, modifiers.contains(.option), canNavigate {
             return .engageSelection(initialIndex: candidateCount - 1)
         }
 
