@@ -17,7 +17,7 @@ protocol AgentTool: Sendable {
         id: String,
         arguments: [String: String],
         executionManager: AgentExecutionManager,
-        executor: @Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> (output: String, exitCode: Int32)
+        executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
     ) async throws -> (output: String, exitCode: Int32)
 }
 
@@ -51,16 +51,14 @@ struct BashRunTool: AgentTool {
         id: String,
         arguments: [String: String],
         executionManager: AgentExecutionManager,
-        executor: @Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> (output: String, exitCode: Int32)
+        executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
     ) async throws -> (output: String, exitCode: Int32) {
         guard let command = arguments["command"]?.trimmingCharacters(in: .whitespacesAndNewlines), !command.isEmpty else {
             return ("Error: Missing 'command' argument", 1)
         }
 
         return try await executor(command) { handle in
-            Task {
-                await executionManager.registerActive(handle)
-            }
+            await executionManager.registerActive(handle)
         }
     }
 }
@@ -95,7 +93,7 @@ struct ReadFileTool: AgentTool {
         id: String,
         arguments: [String: String],
         executionManager: AgentExecutionManager,
-        executor: @Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> (output: String, exitCode: Int32)
+        executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
     ) async throws -> (output: String, exitCode: Int32) {
         guard let path = arguments["path"]?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty else {
             return ("Error: Missing 'path' argument", 1)
@@ -103,9 +101,7 @@ struct ReadFileTool: AgentTool {
         let safePath = path.replacingOccurrences(of: "'", with: "'\\''")
         let cmd = "head -n 200 '\(safePath)' 2>/dev/null || cat '\(safePath)'"
         return try await executor(cmd) { handle in
-            Task {
-                await executionManager.registerActive(handle)
-            }
+            await executionManager.registerActive(handle)
         }
     }
 }
@@ -140,7 +136,7 @@ struct SearchHistoryTool: AgentTool {
         id: String,
         arguments: [String: String],
         executionManager: AgentExecutionManager,
-        executor: @Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> (output: String, exitCode: Int32)
+        executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
     ) async throws -> (output: String, exitCode: Int32) {
         guard let query = arguments["query"]?.trimmingCharacters(in: .whitespacesAndNewlines), !query.isEmpty else {
             return ("Error: Missing 'query' argument", 1)
@@ -148,9 +144,7 @@ struct SearchHistoryTool: AgentTool {
         let safeQuery = query.replacingOccurrences(of: "'", with: "'\\''")
         let cmd = "fc -ln -1000 2>/dev/null | grep -i '\(safeQuery)' | tail -n 25 || history | grep -i '\(safeQuery)' | tail -n 25"
         return try await executor(cmd) { handle in
-            Task {
-                await executionManager.registerActive(handle)
-            }
+            await executionManager.registerActive(handle)
         }
     }
 }
@@ -180,13 +174,11 @@ struct InspectSystemTool: AgentTool {
         id: String,
         arguments: [String: String],
         executionManager: AgentExecutionManager,
-        executor: @Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> (output: String, exitCode: Int32)
+        executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
     ) async throws -> (output: String, exitCode: Int32) {
         let cmd = "echo '--- OS ---'; uname -a; echo '--- UPTIME ---'; uptime; echo '--- MEMORY ---'; free -h 2>/dev/null || vm_stat; echo '--- DISK ---'; df -h /"
         return try await executor(cmd) { handle in
-            Task {
-                await executionManager.registerActive(handle)
-            }
+            await executionManager.registerActive(handle)
         }
     }
 }
@@ -221,15 +213,13 @@ struct ListDirectoryTool: AgentTool {
         id: String,
         arguments: [String: String],
         executionManager: AgentExecutionManager,
-        executor: @Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> (output: String, exitCode: Int32)
+        executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
     ) async throws -> (output: String, exitCode: Int32) {
         let target = arguments["path"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "."
         let safeTarget = (target.isEmpty ? "." : target).replacingOccurrences(of: "'", with: "'\\''")
         let cmd = "ls -la '\(safeTarget)'"
         return try await executor(cmd) { handle in
-            Task {
-                await executionManager.registerActive(handle)
-            }
+            await executionManager.registerActive(handle)
         }
     }
 }

@@ -205,7 +205,7 @@ extension AgentEngine {
         context: ModelContext?,
         foldEngine: any DecisionEngine = DecisionEngineFactory.makeEffective()
     ) async -> ExecutionReport {
-        let hybridExec: (@Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> String)? = if let session = hybridSession {
+        let hybridExec: (@Sendable (String, CommandHandleRegistration?) async throws -> String)? = if let session = hybridSession {
             { @Sendable command, registerHandle async throws -> String in
                 try await session.executeHybrid(command, registerHandle: registerHandle)
             }
@@ -274,11 +274,11 @@ extension AgentEngine {
                 let output = try await withTimeout(seconds: 30) {
                     if let exec = hybridExec {
                         return try await exec(command) { handle in
-                            Task { await AgentExecutionManager.shared.registerActive(handle) }
+                            await AgentExecutionManager.shared.registerActive(handle)
                         }
                     }
                     return try await sshService.executeCommand(command) { handle in
-                        Task { await AgentExecutionManager.shared.registerActive(handle) }
+                        await AgentExecutionManager.shared.registerActive(handle)
                     }
                 }
                 await AgentExecutionManager.shared.clearActive()

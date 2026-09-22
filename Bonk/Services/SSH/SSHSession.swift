@@ -70,7 +70,7 @@ public protocol SSHSession: Sendable {
     func execute(_ command: String) async throws -> SSHCommandResult
     func execute(
         _ command: String,
-        registerHandle: (@Sendable (any CommandExecutionHandle) -> Void)?
+        registerHandle: CommandHandleRegistration?
     ) async throws -> SSHCommandResult
     func openSFTP() async throws -> any SFTPChannel
     func close() async
@@ -79,7 +79,7 @@ public protocol SSHSession: Sendable {
 public extension SSHSession {
     func execute(
         _ command: String,
-        registerHandle: (@Sendable (any CommandExecutionHandle) -> Void)?
+        registerHandle: CommandHandleRegistration?
     ) async throws -> SSHCommandResult {
         _ = registerHandle
         return try await execute(command)

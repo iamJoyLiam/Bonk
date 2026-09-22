@@ -6,7 +6,7 @@ import SwiftData
 private struct AgentToolContext {
     let llmProvider: any LLMProvider
     let sshService: SSHNetworkService
-    let hybridExec: (@Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> String)? // v3.3 — multiplexed channel when available
+    let hybridExec: (@Sendable (String, CommandHandleRegistration?) async throws -> String)? // v3.3 — multiplexed channel when available
     let hostName: String?
     let conversation: AIConversationRecord?
     let context: ModelContext?
@@ -68,7 +68,7 @@ extension AgentEngine {
             self.activeRunAccessMode = nil
         }
 
-        let executor: @Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> (output: String, exitCode: Int32) = { command, registerHandle in
+        let executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32) = { command, registerHandle in
             if let session = hybridSession {
                 let out = try await session.executeHybrid(command, registerHandle: registerHandle)
                 return (out, 0)
@@ -374,11 +374,11 @@ extension AgentEngine {
             let output = try await withTimeout(seconds: 30) {
                 if let exec = hybridExec {
                     return try await exec(command) { handle in
-                        Task { await AgentExecutionManager.shared.registerActive(handle) }
+                        await AgentExecutionManager.shared.registerActive(handle)
                     }
                 }
                 return try await sshService.executeCommand(command) { handle in
-                    Task { await AgentExecutionManager.shared.registerActive(handle) }
+                    await AgentExecutionManager.shared.registerActive(handle)
                 }
             }
             await AgentExecutionManager.shared.clearActive()

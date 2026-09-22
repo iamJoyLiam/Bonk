@@ -32,7 +32,7 @@ final class CompatibilitySSHSession: SSHSession, @unchecked Sendable {
 
     func execute(
         _ command: String,
-        registerHandle: (@Sendable (any CommandExecutionHandle) -> Void)?
+        registerHandle: CommandHandleRegistration?
     ) async throws -> SSHCommandResult {
         let output = try await backend.executeCommand(command, registerHandle: registerHandle)
         return SSHCommandResult(output: output, exitCode: 0)

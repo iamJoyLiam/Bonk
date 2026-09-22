@@ -127,7 +127,7 @@ final class TerminalSession {
     /// over the legacy SSHNetworkService path. One connection, many exec channels.
     func executeHybrid(
         _ command: String,
-        registerHandle: (@Sendable (any CommandExecutionHandle) -> Void)? = nil
+        registerHandle: CommandHandleRegistration? = nil
     ) async throws -> String {
         if let vnext = vnextSession {
             let result = try await vnext.execute(command, registerHandle: registerHandle)

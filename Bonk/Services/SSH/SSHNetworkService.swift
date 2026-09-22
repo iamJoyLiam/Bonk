@@ -324,7 +324,7 @@ public actor SSHNetworkService {
     /// Returns clean stdout with no ANSI codes, no prompt, no echo.
     public func executeCommand(
         _ command: String,
-        registerHandle: (@Sendable (any CommandExecutionHandle) -> Void)? = nil
+        registerHandle: CommandHandleRegistration? = nil
     ) async throws -> String {
         guard case .connected = connectionState else {
             throw SSHServiceError.notConnected

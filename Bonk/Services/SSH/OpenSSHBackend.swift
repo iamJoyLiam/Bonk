@@ -226,7 +226,7 @@ final class OpenSSHBackend: @unchecked Sendable {
     /// Execute one command with clean output.
     func executeCommand(
         _ command: String,
-        registerHandle: (@Sendable (any CommandExecutionHandle) -> Void)? = nil
+        registerHandle: CommandHandleRegistration? = nil
     ) async throws -> String {
         let attemptID = UUID().uuidString
         let arguments = sshArguments(pty: false, command: command, additionalOptions: [], attemptID: attemptID)
@@ -238,7 +238,7 @@ final class OpenSSHBackend: @unchecked Sendable {
         defer { process.close() }
         let session = PTYSession()
         let handle = ProcessCommandExecutionHandle(process: process, session: session)
-        registerHandle?(handle)
+        await registerHandle?(handle)
         let rawStream = session.makeRawOutputStream()
         let responder = makeAuthResponder(process: process, allowInteractivePrompt: true)
         session.startProcess(fileDescriptor: process.masterFD, onExit: {}, onOutput: responder.observe)

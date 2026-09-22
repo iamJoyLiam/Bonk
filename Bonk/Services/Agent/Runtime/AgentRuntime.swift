@@ -103,7 +103,7 @@ final class AgentRuntime: @unchecked Sendable {
     /// Executes the agent loop and returns a stream of events.
     func run(
         input: String,
-        executor: @escaping @Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> (output: String, exitCode: Int32)
+        executor: @escaping @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
     ) -> AsyncStream<AgentEvent> {
         AsyncStream { continuation in
             let task = Task {
@@ -123,7 +123,7 @@ final class AgentRuntime: @unchecked Sendable {
 
     private func executeLoop(
         input: String,
-        executor: @escaping @Sendable (String, (@Sendable (any CommandExecutionHandle) -> Void)?) async throws -> (output: String, exitCode: Int32),
+        executor: @escaping @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32),
         continuation: AsyncStream<AgentEvent>.Continuation
     ) async {
         func emit(_ event: AgentEvent) {
@@ -293,7 +293,7 @@ final class AgentRuntime: @unchecked Sendable {
     /// Executor closure type for running shell commands on the agent target.
     private typealias ToolExecutorFn = @Sendable (
         String,
-        (@Sendable (any CommandExecutionHandle) -> Void)?
+        CommandHandleRegistration?
     ) async throws -> (output: String, exitCode: Int32)
 
     /// Hard stop after this many consecutive tool failures, even when outputs differ.

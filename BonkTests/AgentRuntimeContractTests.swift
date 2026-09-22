@@ -187,7 +187,10 @@ struct AgentRuntimeContractTests {
 
         let hasStarted = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
         let stream = runtime.run(input: "Run long command") { _, register in
-            register?(mockHandle)
+            // Awaited registration: ordered before execution starts, so a
+            // later cancel() is guaranteed to observe the handle. This is
+            // the production invariant (see CommandHandleRegistration).
+            await register?(mockHandle)
             hasStarted.withLock { $0 = true }
             try? await Task.sleep(nanoseconds: 5_000_000_000)
             return ("done", 0)
@@ -202,12 +205,6 @@ struct AgentRuntimeContractTests {
             if hasStarted.withLock({ $0 }) { break }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
-        // Registration itself hops through a fire-and-forget Task inside
-        // the tool's register callback, so hasStarted can be true before
-        // registerActive lands. Yield one scheduling slice so cancel()
-        // below cannot miss the handle under parallel-test load.
-        // (Production follow-up: make registration ordered with cancel.)
-        try await Task.sleep(nanoseconds: 100_000_000)
 
         // Cancel runtime
         runtime.cancel()

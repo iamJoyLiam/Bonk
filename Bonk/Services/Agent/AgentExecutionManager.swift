@@ -21,6 +21,15 @@ public protocol CommandExecutionHandle: Sendable {
     func close() async
 }
 
+/// Callback invoked when an execution channel starts, so the caller can
+/// register the live handle for cancellation.
+///
+/// Async by contract: the channel awaits registration before proceeding,
+/// which forms a deterministic sync boundary — once the channel runs,
+/// a concurrent cancel() is guaranteed to observe the handle. A
+/// fire-and-forget Task here would reopen the register/cancel race.
+public typealias CommandHandleRegistration = @Sendable (any CommandExecutionHandle) async -> Void
+
 /// Type-erased closure-based CommandExecutionHandle for lightweight adaptation.
 public struct AnyCommandExecutionHandle: CommandExecutionHandle {
     private let onInterrupt: @Sendable () async throws -> Void
