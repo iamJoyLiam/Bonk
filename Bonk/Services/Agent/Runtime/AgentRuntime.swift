@@ -10,6 +10,10 @@ import os
 
 /// Decoupled Agent Runtime driving the full Agentic Loop.
 /// Emits an immutable `AsyncStream<AgentEvent>` for the UI to consume.
+///
+/// Phase 1: the runtime OWNS per-run AgentState and the sole
+/// AgentBudgetController. Both are populated but never read to alter
+/// execution — budget produces warnings (trace only), never enforcement.
 final class AgentRuntime: @unchecked Sendable {
     let contextProvider: any AgentContextProvider
     let modelGateway: any AgentModelGateway
@@ -18,9 +22,15 @@ final class AgentRuntime: @unchecked Sendable {
     let executionManager: AgentExecutionManager
     let transcriptStore: AgentTranscriptStore
     let maxIterations: Int
+    /// Cross-run decision facts. Nil in tests/legacy paths — all recording
+    /// sites skip silently when nil (zero behavior change).
+    let decisionMemory: AgentDecisionMemory?
 
     private let pendingApprovals = OSAllocatedUnfairLock<[String: CheckedContinuation<Bool, Never>]>(uncheckedState: [:])
     private let activeTask = OSAllocatedUnfairLock<Task<Void, Never>?>(uncheckedState: nil)
+    private let ownedState = OSAllocatedUnfairLock(uncheckedState: AgentState())
+    private let budget: OSAllocatedUnfairLock<AgentBudgetController>
+    private static let budgetLog = Logger(subsystem: "com.bonk", category: "AgentBudget")
 
     init(
         contextProvider: any AgentContextProvider = DefaultAgentContextProvider(),
@@ -29,7 +39,8 @@ final class AgentRuntime: @unchecked Sendable {
         permissionPolicy: any AgentPermissionPolicy = DefaultAgentPermissionPolicy(),
         executionManager: AgentExecutionManager = .shared,
         transcriptStore: AgentTranscriptStore = AgentTranscriptStore(),
-        maxIterations: Int = 25
+        maxIterations: Int = 25,
+        decisionMemory: AgentDecisionMemory? = nil
     ) {
         self.contextProvider = contextProvider
         self.modelGateway = modelGateway
@@ -38,6 +49,14 @@ final class AgentRuntime: @unchecked Sendable {
         self.executionManager = executionManager
         self.transcriptStore = transcriptStore
         self.maxIterations = maxIterations
+        self.decisionMemory = decisionMemory
+        self.budget = OSAllocatedUnfairLock(uncheckedState: AgentBudgetController(maxIterations: maxIterations))
+    }
+
+    /// Snapshot of the owned per-run state. Read-only for future consumers
+    /// (DecisionEngine, UI); Phase 1 has no readers that alter execution.
+    var currentState: AgentState {
+        ownedState.withLock { $0 }
     }
 
     /// Resolves a pending user approval for a tool call.
@@ -97,6 +116,13 @@ final class AgentRuntime: @unchecked Sendable {
 
         emit(.userMessage(input))
 
+        // Phase 1: own the per-run state from the first event. Population
+        // only — nothing below reads it to alter execution.
+        ownedState.withLock {
+            $0.goal = input
+            $0.appendObservation(AgentObservation(kind: .userMessage, text: input))
+        }
+
         if Task.isCancelled {
             emit(.executionInterrupted(reason: "Task was cancelled prior to starting."))
             return
@@ -125,6 +151,21 @@ final class AgentRuntime: @unchecked Sendable {
             if Task.isCancelled {
                 emit(.executionInterrupted(reason: "Execution cancelled by user."))
                 return
+            }
+
+            // Phase 1: budget counting + warnings (trace only, never enforced).
+            // Counters mirror into the owned state so any exit path leaves
+            // fresh numbers behind.
+            let (iterationWarnings, budgetSnap) = budget.withLock { lock -> ([BudgetWarning], (iterations: Int, toolCalls: Int, decisionCalls: Int, wallClockMs: Double)) in
+                let warnings = lock.recordIteration()
+                return (warnings, lock.snapshot)
+            }
+            ownedState.withLock {
+                $0.budget.iterationsUsed = budgetSnap.iterations
+                $0.budget.wallClockMs = budgetSnap.wallClockMs
+            }
+            for warning in iterationWarnings {
+                traceBudgetWarning(warning)
             }
 
             let response: LLMResponse
@@ -272,6 +313,23 @@ final class AgentRuntime: @unchecked Sendable {
         emit(.toolOutput(id: callId, output: guardedOutput))
         emit(.toolCompleted(id: callId, exitCode: exitCode, duration: duration))
 
+        // Phase 1: populate owned state (never read back for decisions yet).
+        let toolSnap = budget.withLock { lock -> (iterations: Int, toolCalls: Int, decisionCalls: Int, wallClockMs: Double) in
+            lock.recordToolCall()
+            return lock.snapshot
+        }
+        ownedState.withLock {
+            $0.appendStep(AgentStepState(
+                tool: toolCall.name,
+                normalizedKey: Self.stateKey(tool: toolCall.name, arguments: authorized.args),
+                exitCode: exitCode,
+                outputSummary: String(guardedOutput.prefix(200))
+            ))
+            $0.appendObservation(AgentObservation(kind: .toolOutput, text: guardedOutput))
+            $0.budget.toolCalls = toolSnap.toolCalls
+            $0.budget.wallClockMs = toolSnap.wallClockMs
+        }
+
         let call = ExecutedCall(
             name: toolCall.name,
             rawArgs: toolCall.argumentsJSON,
@@ -286,6 +344,35 @@ final class AgentRuntime: @unchecked Sendable {
             messages: &messages,
             continuation: continuation
         )
+    }
+
+    /// State key for one tool call: normalized command for run_command,
+    /// tool + normalized arguments otherwise. Facts only, no raw secrets
+    /// beyond what the caller already placed in arguments.
+    private static func stateKey(tool: String, arguments: [String: String]) -> String {
+        if tool == "run_command", let cmd = arguments["command"] {
+            return CommandNormalizer.normalizedKey(cmd)
+        }
+        let argsKey = arguments.sorted(by: { $0.key < $1.key })
+            .map { "\($0.key)=\(CommandNormalizer.normalizedKey($0.value))" }
+            .joined(separator: " ")
+        return argsKey.isEmpty ? tool : "\(tool) \(argsKey)"
+    }
+
+    /// Fire-and-forget budget warning: trace + log, never enforcement.
+    private func traceBudgetWarning(_ warning: BudgetWarning) {
+        let result: String
+        switch warning {
+        case let .iterationsHigh(used, max): result = "iterations-\(used)/\(max)"
+        case let .wallClockHigh(elapsedMs, maxMs): result = "wallclock-\(Int(elapsedMs))/\(Int(maxMs))ms"
+        case let .decisionCallsHigh(used, max): result = "decision-calls-\(used)/\(max)"
+        }
+        Self.budgetLog.warning("\(result, privacy: .public)")
+        Task {
+            await DecisionTraceRecorder.shared.recordAgentEvent(AgentTraceEvent(
+                kind: .budgetWarning, engine: "budget", task: "agentExecute", result: result
+            ))
+        }
     }
 
     /// A tool call that passed the permission gate and registry lookup.
@@ -314,15 +401,24 @@ final class AgentRuntime: @unchecked Sendable {
 
         let callId = toolCall.id
         let argsDict = toolCall.arguments.compactMapValues { "\($0)" }
+        // Phase 1: record that a confirm gate was evaluated (facts only).
+        // Memory is nil in tests/legacy paths — recording is skipped then.
+        let memoryKey = Self.stateKey(tool: toolCall.name, arguments: argsDict)
         switch permissionPolicy.evaluate(tool: toolCall.name, arguments: argsDict) {
         case .allowed:
             break
         case let .confirmRequired(level, description):
             emit(.permissionRequested(id: callId, description: description, level: level))
+            if let memory = decisionMemory {
+                Task { await memory.recordEvaluation(key: memoryKey) }
+            }
             let approved = await withCheckedContinuation { cont in
                 pendingApprovals.withLock { $0[callId] = cont }
             }
             emit(.permissionResolved(id: callId, approved: approved))
+            if let memory = decisionMemory {
+                Task { await memory.recordDecision(key: memoryKey, decision: approved ? .approved : .denied) }
+            }
             if !approved {
                 emit(.executionInterrupted(reason: L.t(.agExecutionCancelled)))
                 emit(.completed)

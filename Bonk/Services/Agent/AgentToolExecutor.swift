@@ -38,7 +38,7 @@ extension AgentEngine {
         conversation: AIConversationRecord?,
         context: ModelContext?
     ) async {
-        guard let (provider, apiKey) = resolveProvider() else { return }
+        guard let (provider, apiKey) = await resolveAgentProvider(task: .agentExecute, input: input) else { return }
         let llmProvider = LLMProviderFactory.provider(
             for: provider, apiKey: apiKey, workload: .agentToolLoop
         )
@@ -53,7 +53,8 @@ extension AgentEngine {
             modelGateway: modelGateway,
             permissionPolicy: permissionPolicy,
             executionManager: executionManager,
-            maxIterations: AgentEngine.maxAgentIterations
+            maxIterations: AgentEngine.maxAgentIterations,
+            decisionMemory: decisionMemory
         )
 
         self.activeRuntime = runtime

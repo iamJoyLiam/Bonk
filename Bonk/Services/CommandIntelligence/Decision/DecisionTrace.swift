@@ -97,6 +97,9 @@ actor DecisionTraceRecorder {
     private static let capacity = 200
     private var traces: [DecisionTrace] = []
     private var accepts: [String: Int] = [:]
+    /// Agent lifecycle ring (see AgentTraceEvent.swift). Same bound, separate
+    /// ring so inline calibration data and agent events never evict each other.
+    var agentEvents: [AgentTraceEvent] = []
 
     func record(_ trace: DecisionTrace) {
         traces.append(trace)

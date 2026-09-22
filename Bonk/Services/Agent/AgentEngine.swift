@@ -32,6 +32,8 @@ final class AgentEngine {
     var agentMessages: [AgentMessage] = []
     var pendingConfirmation: PendingCommand?
     var activeRuntime: AgentRuntime?
+    /// Cross-run per-command decision facts (Phase 1: record only).
+    let decisionMemory = AgentDecisionMemory()
 
     private var currentTask: Task<Void, Never>?
 
@@ -71,6 +73,54 @@ final class AgentEngine {
         }
         activeProvider = provider
         return (provider, key)
+    }
+
+    /// Phase 1 agent provider resolution via ModelRouter. Deterministic core
+    /// only (no decision engine yet): preferred active provider still wins
+    /// whenever it survives the hard filters, so behavior matches
+    /// resolveProvider in the common case. Router misses fall back to the
+    /// legacy path — routing never fails a run the old code would start.
+    /// Every outcome leaves a trace (router.selected / router.fallback).
+    func resolveAgentProvider(task: IntelligenceTask, input: String) async -> (AIProviderConfig, String)? {
+        let preferredID = activeProvider?.id ?? providerStore.activeProvider?.id
+        let routerContext = RouterContext(
+            task: task,
+            contextSize: input.count,
+            latencyBudgetMs: 15_000,
+            requiresCapability: task == .agentExecute ? "toolCalls" : nil
+        )
+        let start = Date()
+        let routed = ModelRouter.shared.routeDeterministic(
+            task: task,
+            providers: providerStore.providers,
+            context: routerContext,
+            preferredID: preferredID
+        )
+        let latencyMs = Date().timeIntervalSince(start) * 1000
+        let taskLabel = task == .agentExecute ? "agentExecute" : "agentPlan"
+        if let routed {
+            let provider = routed.provider
+            let key = provider.apiKey
+            guard !provider.type.needsAPIKey || !key.isEmpty else {
+                lastError = String(format: L.t(.apiKeyNotSet), provider.name)
+                await DecisionTraceRecorder.shared.recordAgentEvent(AgentTraceEvent(
+                    kind: .routerFallback, engine: "router", task: taskLabel,
+                    latencyMs: latencyMs, success: false, result: "fallback-missing-key"
+                ))
+                return resolveProvider()
+            }
+            activeProvider = provider
+            await DecisionTraceRecorder.shared.recordAgentEvent(AgentTraceEvent(
+                kind: .routerSelected, engine: "router", task: taskLabel,
+                latencyMs: latencyMs, result: "\(routed.source)"
+            ))
+            return (provider, key)
+        }
+        await DecisionTraceRecorder.shared.recordAgentEvent(AgentTraceEvent(
+            kind: .routerFallback, engine: "router", task: taskLabel,
+            latencyMs: latencyMs, success: false, result: "fallback-no-route"
+        ))
+        return resolveProvider()
     }
 
     // MARK: - Unified Entry Point (snapshot-first)
