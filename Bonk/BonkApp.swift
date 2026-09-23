@@ -20,6 +20,15 @@ struct BonkApp: App {
         } else {
             UserDefaults.standard.set([saved], forKey: "AppleLanguages")
         }
+        // Forensics first: freeze any wipe scene BEFORE the container opens
+        // (never auto-restore — that would destroy evidence). Then force
+        // store init at launch (fail fast on corruption instead of trapping
+        // mid-session), snapshot it, and watch the live file for external
+        // interference.
+        StoreHealthGuard.freezeIncidentIfWiped()
+        _ = Self.sharedModelContainer
+        StoreBackupManager.backupIfNeeded()
+        StoreHealthGuard.startWatching()
     }
 
     static let sharedModelContainer: ModelContainer = {
@@ -404,6 +413,8 @@ struct BonkApp: App {
                     // Safety net: flush any pending change when leaving the app.
                     if newPhase == .background {
                         try? modelContext.save()
+                        let count = (try? modelContext.fetchCount(FetchDescriptor<HostItem>())) ?? 0
+                        StoreHealthGuard.recordHostCount(count)
                     }
                 }
         }
