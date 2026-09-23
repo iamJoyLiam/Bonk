@@ -6,6 +6,34 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.4.4</title>
+            <pubDate>Wed, 23 Sep 2026 15:45:00 +0800</pubDate>
+            <sparkle:version>20264004</sparkle:version>
+            <sparkle:shortVersionString>2026.4.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Changes
+
+- Fixed saved hosts and settings being deleted on app launch.
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.4.4/Bonk-2026.4.4-arm64.dmg"
+                length="24371993"
+                type="application/octet-stream"
+                sparkle:edSignature="nSEscPKN2y3illGeBuc/bURiJPdb5MJc9+GhzIueOu+aKIyzMuvGahk+qwzQkSp1++4GYgAJhY+uRu3mv8WzBQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.4.4/Bonk-2026.4.4-x86_64.dmg"
+                length="24929287"
+                type="application/octet-stream"
+                sparkle:edSignature="AO/KzWFNofWRwYIoeO+xLVYKz+4QBAI8bTrllIRHftaC16myEKPugYMFiiZ2PBDEYTgAECP+b6+rC97Lzbd3DQ=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.4.3</title>
             <pubDate>Wed, 23 Sep 2026 15:20:00 +0800</pubDate>
             <sparkle:version>20264003</sparkle:version>

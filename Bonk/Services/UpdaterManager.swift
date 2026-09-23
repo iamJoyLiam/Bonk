@@ -57,9 +57,11 @@ import SwiftData
 
         private static func storedPreference() -> Bool {
             // Best effort: no row yet on first launch → default YES.
-            guard let context = try? ModelContext(.init(for: Schema([UserPreferences.self]))) else {
-                return true
-            }
+            // CRITICAL: never open a second container here. A partial-schema,
+            // file-backed container against the live store makes SwiftData
+            // migration DROP every table outside its model (2026.4.3 wiped
+            // all hosts this way). Always read through the shared container.
+            let context = ModelContext(BonkApp.sharedModelContainer)
             let prefs = (try? context.fetch(FetchDescriptor<UserPreferences>())) ?? []
             return prefs.first?.checkForUpdates ?? true
         }

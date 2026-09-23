@@ -173,6 +173,24 @@ git tag vVERSION
 git push origin main && git push origin vVERSION
 ```
 
+### 步骤 11：发布后验证（血泪教训 2026.4.3：gh release create 可能建出 Draft）
+
+```bash
+# 1. 确认非 Draft
+gh release view vVERSION --json isDraft --jq .isDraft   # 必须 false
+
+# 2. 若是 Draft，立即发布
+gh release edit vVERSION --draft=false --latest
+
+# 3. 实测下载（走 appcast 里的完整 URL，核对字节数与 length 一致）
+curl -fSL -o /dev/null -w "http=%{http_code} size=%{size_download}\n" \
+  "https://github.com/iamJoyLiam/Bonk/releases/download/vVERSION/Bonk-VERSION-arm64.dmg"
+curl -fSL -o /dev/null -w "http=%{http_code} size=%{size_download}\n" \
+  "https://github.com/iamJoyLiam/Bonk/releases/download/vVERSION/Bonk-VERSION-x86_64.dmg"
+```
+
+**⚠️ 关键提醒：** 没跑完这一步，发布就不算完成。Draft 的资产 URL 外人下载会失败。
+
 ---
 
 ## 常见错误
