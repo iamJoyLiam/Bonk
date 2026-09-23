@@ -426,7 +426,6 @@ enum LKey: String, CaseIterable {
 
     // Agent plan executor
     case planRejected = "plan_rejected"
-    case noProvider
     case cancelledAtStep = "cancelled_at_step"
     case blockedStep = "blocked_step"
     case skippedStep = "skipped_step"
@@ -718,7 +717,7 @@ enum LKey: String, CaseIterable {
     case logDeleteProfileTitle = "log_delete_profile_title"
     case logDeleteProfileMsg = "log_delete_profile_msg"
     case logLivePreview = "log_live_preview"
-    case logRules
+    case logRules = "log_rules"
     case logAddPattern = "log_add_pattern"
     case logEditPattern = "log_edit_pattern"
     case logDeletePatternTitle = "log_delete_pattern_title"

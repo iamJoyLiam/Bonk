@@ -144,7 +144,7 @@ extension AgentEngine {
     ) async -> AgentPlan? {
         let aiMessages = buildAgentMessages()
         guard let (provider, apiKey) = resolveProvider() else {
-            appendAgentMessage(.system, content: lastError ?? L.t(.noProvider),
+            appendAgentMessage(.system, content: lastError ?? L.t(.noProvidersConfigured),
                                conversation: conversation, context: context)
             return nil
         }
