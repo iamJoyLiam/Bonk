@@ -20,6 +20,26 @@ final class AIConversationStore {
         return record
     }
 
+    /// Return the current conversation, creating and persisting one on first use.
+    /// Views reset to nil on "+" and only persist once the user actually sends
+    /// something, so repeated "+" presses never pile up empty "New Chat" rows.
+    func ensureConversation(_ current: AIConversationRecord?, context: ModelContext) -> AIConversationRecord {
+        if let current { return current }
+        let record = createConversation(context: context)
+        lastConversationID = record.id
+        return record
+    }
+
+    /// Delete conversations that never received a message (abandoned "+" drafts).
+    func pruneEmptyConversations(_ conversations: [AIConversationRecord], context: ModelContext) {
+        var pruned = false
+        for conv in conversations where conv.messages.isEmpty {
+            context.delete(conv)
+            pruned = true
+        }
+        if pruned { save(context, operation: "pruneEmptyConversations") }
+    }
+
     /// Add a message to a conversation.
     func addMessage(
         to conversation: AIConversationRecord,

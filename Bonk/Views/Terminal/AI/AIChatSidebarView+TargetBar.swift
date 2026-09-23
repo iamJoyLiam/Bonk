@@ -73,8 +73,7 @@ extension AIChatSidebarView {
     }
 
     private func submitAgentTask(text: String, ssh: SSHNetworkService, hybridSession: TerminalSession? = nil, hostName: String) {
-        if currentConversation == nil { createNewConversation() }
-        let conversation = currentConversation
+        let conversation = ensureConversation()
 
         let expanded = ContextMentionResolver.expandMentions(
             in: text,

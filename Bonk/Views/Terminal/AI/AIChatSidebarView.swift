@@ -608,12 +608,23 @@ struct AIChatSidebarView: View {
         if selectedMode == .agent {
             engine.agentMessages = []
         } else {
-            let conv = conversationStore.createConversation(context: modelContext)
-            currentConversation = conv
-            conversationStore.lastConversationID = conv.id
+            // Lazy start: drop abandoned empty drafts and reset to a fresh,
+            // unpersisted state. The conversation is created on first submit,
+            // so "+" never piles up empty "New Chat" rows by itself.
+            conversationStore.pruneEmptyConversations(conversations, context: modelContext)
+            currentConversation = nil
+            conversationStore.lastConversationID = nil
             inputText = ""
             engine.streamingResponse = ""
         }
+    }
+
+    /// Current conversation, persisted on first use. All submit paths go
+    /// through here instead of creating eagerly.
+    func ensureConversation() -> AIConversationRecord {
+        let conv = conversationStore.ensureConversation(currentConversation, context: modelContext)
+        currentConversation = conv
+        return conv
     }
 
     /// Whether an IME is currently composing (e.g. Pinyin candidate selection). Return during
@@ -702,10 +713,8 @@ struct AIChatSidebarView: View {
             if selectedMode == .agent {
                 engine.agentMessages.append(AgentMessage(role: .assistant, content: helpText))
             } else {
-                if currentConversation == nil { createNewConversation() }
-                if let conversation = currentConversation {
-                    conversationStore.addMessage(to: conversation, role: .assistant, content: helpText, context: modelContext)
-                }
+                let conversation = ensureConversation()
+                conversationStore.addMessage(to: conversation, role: .assistant, content: helpText, context: modelContext)
             }
         }
     }
@@ -739,8 +748,7 @@ struct AIChatSidebarView: View {
     }
 
     private func submitChat(text: String) {
-        if currentConversation == nil { createNewConversation() }
-        guard let conversation = currentConversation else { return }
+        let conversation = ensureConversation()
 
         conversationStore.addMessage(to: conversation, role: .user, content: text, context: modelContext)
         wasCancelled = false
