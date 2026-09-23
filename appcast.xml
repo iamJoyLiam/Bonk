@@ -6,6 +6,39 @@
     <channel>
         <title>Bonk</title>
         <item>
+            <title>2026.4.3</title>
+            <pubDate>Wed, 23 Sep 2026 15:20:00 +0800</pubDate>
+            <sparkle:version>20264003</sparkle:version>
+            <sparkle:shortVersionString>2026.4.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+## Changes
+
+- Added Agent mode to the AI assistant: plans and runs terminal tasks with confirmation folding, progress tracking, token and iteration budgets, and live run status.
+- Added pluggable command decision engines (deterministic local, Jev, Laya) with automatic fallback.
+- AI chat now starts conversations on first message; the new-chat button no longer piles up empty history entries.
+- Server monitoring uses layered polling for faster first readings and lower server load; the detail card adds CPU model, rate placeholders, and per-process rows. The Check for Updates setting is now honored.
+- Corrected Dracula, Nord, and Solarized terminal palettes against their official specs and softened the Dark theme foreground.
+- Added verified daily snapshots of the local database for data-loss protection.
+            ]]></description>
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.4.3/Bonk-2026.4.3-arm64.dmg"
+                length="24371658"
+                type="application/octet-stream"
+                sparkle:edSignature="woFSb7fROymixtAlYJi8urqHS6lKRigOOQ4WMgOI4hT0oH0diAEXzRilRLBfo2nFAHQadnx8kPVTzbWwa8a5AA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="arm64"
+            />
+            <enclosure
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.4.3/Bonk-2026.4.3-x86_64.dmg"
+                length="24928993"
+                type="application/octet-stream"
+                sparkle:edSignature="XRgER3FOu5EJP7OJF/eLXA2/KiIVKGZ9GItlfP0anvdLLpce0VUgs8yL36xeIFEDxIiyenzlcYO6InlQkARwBA=="
+                sparkle:os="macos"
+                sparkle:cpuAffinity="x86_64"
+            />
+        </item>
+        <item>
             <title>2026.4.2</title>
             <pubDate>Mon, 21 Sep 2026 22:22:41 +0800</pubDate>
             <sparkle:version>20264002</sparkle:version>
