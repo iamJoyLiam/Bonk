@@ -220,14 +220,14 @@ final class ServerResourceRingItemController {
             onShowDetails: onShowDetails
         )
         let hosting = NSHostingView(rootView: detail)
-        hosting.frame = NSRect(x: 0, y: 0, width: 340, height: 360)
+        hosting.frame = NSRect(x: 0, y: 0, width: 340, height: 400)
         let viewController = NSViewController()
         viewController.view = hosting
 
         let popover = NSPopover()
         popover.behavior = .transient
         popover.contentViewController = viewController
-        popover.contentSize = NSSize(width: 340, height: 360)
+        popover.contentSize = NSSize(width: 340, height: 400)
         popover.show(relativeTo: control.bounds, of: control, preferredEdge: .maxY)
         self.popover = popover
     }
@@ -263,7 +263,10 @@ struct ServerResourceDetailView: View {
                 header(snapshot.info)
                 gauges(snapshot.info)
                 Divider()
-                systemRows(snapshot.info)
+                ScrollView {
+                    systemRows(snapshot.info)
+                }
+                .scrollIndicators(.never)
                 Divider()
                 HStack(spacing: 8) {
                     Button(action: onRefresh) {
@@ -352,6 +355,9 @@ struct ServerResourceDetailView: View {
             if let kernel = info.kernel {
                 row(i18n.t(.kernel), kernel)
             }
+            if let cpu = info.cpuModel {
+                row(i18n.t(.cpu), cpu + (info.cpuCores.map { " ×\($0)" } ?? ""))
+            }
             if let load = info.loadAverage {
                 row(i18n.t(.loadAvg), load)
             }
@@ -363,15 +369,33 @@ struct ServerResourceDetailView: View {
             }
             if let received = info.networkRXRateBps, let transmitted = info.networkTXRateBps {
                 row(i18n.t(.network), "↓ \(formatRate(received))  ↑ \(formatRate(transmitted))")
+            } else {
+                row(i18n.t(.network), "…")
             }
             if let read = info.diskReadRateBps, let write = info.diskWriteRateBps {
                 row(i18n.t(.diskIO), "R \(formatRate(read))  W \(formatRate(write))")
+            } else {
+                row(i18n.t(.diskIO), "…")
             }
             if let temp = info.cpuTempCelsius {
                 row(i18n.t(.cpuTemp), "\(Int(temp.rounded()))°C")
             }
             if let procs = info.topProcesses, !procs.isEmpty {
-                row(i18n.t(.topProcesses), procs.replacingOccurrences(of: "|", with: " ").replacingOccurrences(of: ";", with: "  "))
+                HStack(alignment: .top) {
+                    Text(i18n.t(.topProcesses))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: AppStyle.statsLabelWidth, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(parseProcesses(procs), id: \.self) { proc in
+                            Text(proc)
+                                .font(.caption.monospaced())
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                    }
+                    Spacer()
+                }
             }
             if let ports = info.listenPorts, !ports.isEmpty {
                 row(i18n.t(.listenPorts), ports.trimmingCharacters(in: CharacterSet(charactersIn: ",")))
@@ -382,8 +406,15 @@ struct ServerResourceDetailView: View {
         }
     }
 
-    private func formatUptime(_ seconds: UInt64) -> String {
-        let days = seconds / 86_400
+    private func parseProcesses(_ raw: String) -> [String] {
+        raw.split(separator: ";").map { entry in
+            let parts = entry.split(separator: "|", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { return String(entry) }
+            return "\(parts[0])% \(parts[1])"
+        }
+    }
+
+    private func formatUptime(_ seconds: UInt64) -> String {        let days = seconds / 86_400
         let hours = (seconds % 86_400) / 3_600
         let minutes = (seconds % 3_600) / 60
         if days > 0 { return "\(days)d \(hours)h" }

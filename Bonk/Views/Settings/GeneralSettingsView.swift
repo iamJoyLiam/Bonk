@@ -21,6 +21,9 @@ struct GeneralSettingsView: View {
 
             Section(i18n.t(.launchBehavior)) {
                 Toggle(i18n.t(.checkUpdates), isOn: $preferences.checkForUpdates)
+                    .onChange(of: preferences.checkForUpdates) { _, enabled in
+                        UpdaterManager.shared.setAutomaticChecks(enabled)
+                    }
             }
 
             Section(i18n.t(.hostInformation)) {

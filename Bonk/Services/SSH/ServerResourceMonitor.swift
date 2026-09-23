@@ -21,6 +21,8 @@ struct ServerResourceSnapshot: Equatable {
 @MainActor
 final class ServerResourceMonitor {
     private static let maxConcurrentPolls = 3
+    /// Heavy details (top processes, listening ports) refresh at most this often.
+    private static let heavyRefreshInterval: TimeInterval = 60
     static let shared = ServerResourceMonitor()
 
     private(set) var snapshot: ServerResourceSnapshot?
@@ -33,6 +35,14 @@ final class ServerResourceMonitor {
     private var lastFetchDate = Date.distantPast
     private var lastNetworkSamples: [UUID: (receivedBytes: UInt64, transmittedBytes: UInt64, atValue: Date)] = [:]
     private var lastDiskSamples: [UUID: (read: UInt64, write: UInt64, atValue: Date)] = [:]
+    /// Static facts per tab, fetched once per connection.
+    private var staticCache: [UUID: ServerInfo] = [:]
+    /// Last heavy layer per tab; merged over fast on every tick.
+    private var heavyCache: [UUID: ServerInfo] = [:]
+    private var lastHeavyFetch: [UUID: Date] = [:]
+    /// Set by refreshNow (toolbar right-click / popover button): next tick
+    /// refreshes the heavy layer immediately instead of waiting out the 60s.
+    private var forceHeavyRefresh = false
 
     private init() {}
 
@@ -58,11 +68,16 @@ final class ServerResourceMonitor {
         lastFetchDate = .distantPast
         lastNetworkSamples = [:]
         lastDiskSamples = [:]
+        staticCache = [:]
+        heavyCache = [:]
+        lastHeavyFetch = [:]
+        forceHeavyRefresh = false
     }
 
     /// Force an immediate refresh (toolbar right-click).
     func refreshNow() async {
         lastFetchDate = .distantPast
+        forceHeavyRefresh = true
         await tickIfNeeded()
     }
 
@@ -96,25 +111,55 @@ final class ServerResourceMonitor {
             snapshot = nil
             // Prune allSnapshots for disconnected tabs
             allSnapshots = [:]
+            staticCache = [:]
+            heavyCache = [:]
+            lastHeavyFetch = [:]
             lastFetchDate = Date()
             return
         }
 
         let startedFetch = Date()
+        let forceHeavy = forceHeavyRefresh
+        forceHeavyRefresh = false
+        // Layer plan per tab, computed synchronously before fanning out.
+        let plans: [(tab: TerminalTab, service: SSHNetworkService, needStatic: Bool, needHeavy: Bool)] =
+            candidates.map { (tab, service) in
+                let needStatic = staticCache[tab.id] == nil
+                let lastHeavy = lastHeavyFetch[tab.id]
+                let needHeavy = forceHeavy || lastHeavy == nil
+                    || startedFetch.timeIntervalSince(lastHeavy!) >= Self.heavyRefreshInterval
+                return (tab, service, needStatic, needHeavy)
+            }
         var results: [(UUID, ServerInfo)] = []
         // Capped concurrency: process candidates in batches of maxConcurrentPolls to avoid thread/NIO explosion
-        for chunk in candidates.chunked(into: Self.maxConcurrentPolls) {
-            await withTaskGroup(of: (UUID, ServerInfo)?.self) { group in
-                for (tab, service) in chunk {
+        for chunk in plans.chunked(into: Self.maxConcurrentPolls) {
+            await withTaskGroup(of: (UUID, ServerInfo?, ServerInfo?, ServerInfo?)?.self) { group in
+                for plan in chunk {
                     group.addTask {
-                        if let info = await ServerInfoFetcher.fetch(using: service) {
-                            return (tab.id, info)
-                        }
-                        return nil
+                        async let staticInfo: ServerInfo? = plan.needStatic
+                            ? ServerInfoFetcher.fetchStatic(using: plan.service) : nil
+                        async let fastInfo: ServerInfo? = ServerInfoFetcher.fetchFast(using: plan.service)
+                        async let heavyInfo: ServerInfo? = plan.needHeavy
+                            ? ServerInfoFetcher.fetchHeavy(using: plan.service) : nil
+                        return (plan.tab.id, await staticInfo, await fastInfo, await heavyInfo)
                     }
                 }
                 for await res in group {
-                    if let pair = res { results.append(pair) }
+                    guard let (tabID, staticInfo, fastInfo, heavyInfo) = res,
+                          let fast = fastInfo
+                    else { continue }
+                    // Fast layer failed → keep last-known snapshot (existing behavior).
+                    if let staticInfo { self.staticCache[tabID] = staticInfo }
+                    guard let base = self.staticCache[tabID] else { continue }
+                    var merged = base.overlaying(fast)
+                    if let heavyInfo {
+                        self.heavyCache[tabID] = heavyInfo
+                        self.lastHeavyFetch[tabID] = startedFetch
+                    }
+                    if let heavy = self.heavyCache[tabID] {
+                        merged = merged.overlaying(heavy)
+                    }
+                    results.append((tabID, merged))
                 }
             }
         }
@@ -136,6 +181,9 @@ final class ServerResourceMonitor {
             allSnapshots.removeValue(forKey: key)
             lastNetworkSamples.removeValue(forKey: key)
             lastDiskSamples.removeValue(forKey: key)
+            staticCache.removeValue(forKey: key)
+            heavyCache.removeValue(forKey: key)
+            lastHeavyFetch.removeValue(forKey: key)
         }
         // If active tab is disconnected, clear its snapshot
         if let aid = activeID, !liveIDs.contains(aid) {

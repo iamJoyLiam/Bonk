@@ -7,7 +7,7 @@ import SwiftUI
 struct BonkApp: App {
     @NSApplicationDelegateAdaptor(BonkAppDelegate.self) private var appDelegate
     @State private var i18n = I18n()
-    @State private var updater = UpdaterManager()
+    @State private var updater = UpdaterManager.shared
     @State private var shortcutManager = ShortcutManager.shared
     #if os(macOS)
         @State private var quakeController = QuakeController()

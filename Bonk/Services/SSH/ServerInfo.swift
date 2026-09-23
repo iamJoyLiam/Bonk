@@ -42,12 +42,52 @@ struct ServerInfo: Equatable {
     var cpuTempCelsius: Double?
     var topProcesses: String?
     var listenPorts: String?
+
+    /// Overlay another sample's non-nil fields onto this one.
+    /// Layering: static ← fast ← heavy. A failed layer simply contributes
+    /// nothing, so last-known values survive transient fetch failures.
+    func overlaying(_ other: ServerInfo) -> ServerInfo {
+        var result = self
+        // Strings
+        if let v = other.hostname { result.hostname = v }
+        if let v = other.os { result.os = v }
+        if let v = other.kernel { result.kernel = v }
+        if let v = other.architecture { result.architecture = v }
+        if let v = other.cpuModel { result.cpuModel = v }
+        if let v = other.cpuCores { result.cpuCores = v }
+        if let v = other.memoryUsed { result.memoryUsed = v }
+        if let v = other.diskUsed { result.diskUsed = v }
+        if let v = other.loadAverage { result.loadAverage = v }
+        if let v = other.serverIP { result.serverIP = v }
+        if let v = other.shell { result.shell = v }
+        if let v = other.topProcesses { result.topProcesses = v }
+        if let v = other.listenPorts { result.listenPorts = v }
+        // Doubles
+        if let v = other.cpuUsagePercent { result.cpuUsagePercent = v }
+        if let v = other.cpuTempCelsius { result.cpuTempCelsius = v }
+        // Counters (rates are computed by the monitor, never overlaid)
+        if let v = other.memUsedBytes { result.memUsedBytes = v }
+        if let v = other.memTotalBytes { result.memTotalBytes = v }
+        if let v = other.diskUsedBytes { result.diskUsedBytes = v }
+        if let v = other.diskTotalBytes { result.diskTotalBytes = v }
+        if let v = other.swapUsedBytes { result.swapUsedBytes = v }
+        if let v = other.swapTotalBytes { result.swapTotalBytes = v }
+        if let v = other.networkRXBytes { result.networkRXBytes = v }
+        if let v = other.networkTXBytes { result.networkTXBytes = v }
+        if let v = other.diskReadBytes { result.diskReadBytes = v }
+        if let v = other.diskWriteBytes { result.diskWriteBytes = v }
+        if let v = other.uptimeSeconds { result.uptimeSeconds = v }
+        return result
+    }
 }
 
 /// Fetches server info via a single SSH exec command.
 enum ServerInfoFetcher {
-    /// Simple shell script using only basic echo/pipes. No herestrings, no read -r.
-    private static let script = [
+    // MARK: - Split scripts
+
+    /// Static facts: fetched once per connection, never change without a reboot.
+    /// Keeps the 10s poll to dynamic values only.
+    static let staticScript = [
         "echo hostname=$(hostname)",
         "echo kernel=$(uname -r)",
         "echo arch=$(uname -m)",
@@ -56,6 +96,29 @@ enum ServerInfoFetcher {
         "if [ -f /etc/os-release ]; then . /etc/os-release && echo os=$PRETTY_NAME; "
             + "elif command -v sw_vers >/dev/null 2>&1; then "
             + "echo os=$(sw_vers -productName) $(sw_vers -productVersion); else echo os=$(uname -s); fi",
+        // CPU model / cores
+        "if command -v lscpu >/dev/null 2>&1; then "
+            + "echo cpu=$(lscpu 2>/dev/null | grep 'Model name' | sed 's/.*: *//'); "
+            + "echo cores=$(nproc 2>/dev/null); "
+            + "else echo cpu=$(sysctl -n machdep.cpu.brand_string 2>/dev/null); "
+            + "echo cores=$(sysctl -n hw.ncpu 2>/dev/null); fi",
+        // Memory / swap totals — bytes with Linux free / macOS sysctl fallback
+        "if command -v free >/dev/null 2>&1; then "
+            + "echo mem_total_bytes=$(free -b 2>/dev/null | awk '/^Mem:/{print $2}'); "
+            + "echo swap_total_bytes=$(free -b 2>/dev/null | awk '/^Swap:/{print $2}'); "
+            + "else "
+            + "echo mem_total_bytes=$(sysctl -n hw.memsize 2>/dev/null); "
+            + "s=$(sysctl -n vm.swapusage 2>/dev/null); "
+            + "if [ -n \"$s\" ]; then "
+            + "st=$(echo \"$s\" | sed 's/.*total = \\([0-9.]*\\)M.*/\\1/'); "
+            + "echo swap_total_bytes=$(awk -v t=\"$st\" 'BEGIN{printf \"%d\", t*1048576}'); "
+            + "fi; fi",
+        // Disk total — bytes (df -kP works on both Linux and macOS)
+        "df -kP / 2>/dev/null | tail -1 | awk '{print \"disk_total_bytes=\" $2*1024}'",
+    ].joined(separator: "; ")
+
+    /// Fast dynamic values: every poll (10s). Feeds the toolbar rings.
+    static let fastScript = [
         // Uptime — seconds since boot, normalized across Linux / macOS
         "if [ -f /proc/uptime ]; then "
             + "echo uptime_seconds=$(awk '{print int($1)}' /proc/uptime); "
@@ -63,12 +126,6 @@ enum ServerInfoFetcher {
             + "boot=$(sysctl -n kern.boottime 2>/dev/null | sed 's/.*{ *sec = \\([0-9]*\\).*/\\1/'); "
             + "now=$(date +%s); echo uptime_seconds=$((now-boot)); "
             + "else echo uptime_seconds=$(uptime 2>/dev/null | sed 's/.*up //' | awk -F'[ ,]' '{if ($2==\"min\") print $1*60; else if ($2==\"days\") print $1*86400; else print $1*60}'); fi",
-        // CPU
-        "if command -v lscpu >/dev/null 2>&1; then "
-            + "echo cpu=$(lscpu 2>/dev/null | grep 'Model name' | sed 's/.*: *//'); "
-            + "echo cores=$(nproc 2>/dev/null); "
-            + "else echo cpu=$(sysctl -n machdep.cpu.brand_string 2>/dev/null); "
-            + "echo cores=$(sysctl -n hw.ncpu 2>/dev/null); fi",
         // CPU percent — real 1s sample on Linux, top fallback on macOS
         "if [ -f /proc/stat ]; then "
             + "c1=$(awk '/^cpu /{s=0; for(i=2;i<=NF;i++) s+=$i; print s}' /proc/stat); "
@@ -81,31 +138,26 @@ enum ServerInfoFetcher {
             + "elif command -v top >/dev/null 2>&1; then "
             + "echo cpu_percent=$(top -l 1 -n 0 2>/dev/null | awk '/CPU usage/{gsub(\"%\",\"\",$7); print 100-$7}'); "
             + "else echo cpu_percent=$(sysctl -n vm.loadavg 2>/dev/null | awk '{printf \"%.0f\", $2*100}'); fi",
-        // Memory — bytes with Linux free / macOS sysctl + vm_stat fallback
+        // Memory used — bytes with Linux free / macOS sysctl + vm_stat fallback
         "if command -v free >/dev/null 2>&1; then "
             + "echo mem=$(free -h 2>/dev/null | awk '/Mem:/{print $3\"/\"$2}'); "
             + "echo mem_used_bytes=$(free -b 2>/dev/null | awk '/^Mem:/{if ($7!=\"\") print $2-$7; else print $3}'); "
-            + "echo mem_total_bytes=$(free -b 2>/dev/null | awk '/^Mem:/{print $2}'); "
             + "echo swap_used_bytes=$(free -b 2>/dev/null | awk '/^Swap:/{print $3}'); "
-            + "echo swap_total_bytes=$(free -b 2>/dev/null | awk '/^Swap:/{print $2}'); "
             + "else "
             + "t=$(sysctl -n hw.memsize 2>/dev/null); "
             + "p=$(vm_stat 2>/dev/null | awk '/page size of/{print $8}'); "
             + "if [ -n \"$t\" ] && [ -n \"$p\" ]; then "
             + "f=$(vm_stat 2>/dev/null | awk '/Pages free/{print $3}' | tr -d '.'); "
             + "i=$(vm_stat 2>/dev/null | awk '/Pages inactive/{print $3}' | tr -d '.'); "
-            + "echo mem_total_bytes=$t; "
             + "echo mem_used_bytes=$((t-(f+i)*p)); "
             + "else echo mem=$(($(sysctl -n hw.memsize 2>/dev/null)/1024/1024))MB; fi; "
             + "s=$(sysctl -n vm.swapusage 2>/dev/null); "
             + "if [ -n \"$s\" ]; then "
-            + "st=$(echo \"$s\" | sed 's/.*total = \\([0-9.]*\\)M.*/\\1/'); "
             + "su=$(echo \"$s\" | sed 's/.*used = \\([0-9.]*\\)M.*/\\1/'); "
-            + "echo swap_total_bytes=$(awk -v t=\"$st\" 'BEGIN{printf \"%d\", t*1048576}'); "
             + "echo swap_used_bytes=$(awk -v u=\"$su\" 'BEGIN{printf \"%d\", u*1048576}'); "
             + "fi; fi",
-        // Disk — bytes (df -kP works on both Linux and macOS)
-        "df -kP / 2>/dev/null | tail -1 | awk '{print \"disk_used_bytes=\" $3*1024; print \"disk_total_bytes=\" $2*1024}'",
+        // Disk used — bytes (df -kP works on both Linux and macOS)
+        "df -kP / 2>/dev/null | tail -1 | awk '{print \"disk_used_bytes=\" $3*1024}'",
         // Disk (human-readable, for the sidebar)
         "echo disk=$(df -h / 2>/dev/null | tail -1 | awk '{print $3\"/\"$2}')",
         // Load
@@ -121,6 +173,18 @@ enum ServerInfoFetcher {
         "if [ -f /proc/diskstats ]; then "
             + "awk '$3 !~ /^(loop|ram|sr|fd|zram)/ {r+=$6; w+=$10} "
             + "END {print \"disk_read_bytes=\" r*512; print \"disk_write_bytes=\" w*512}' /proc/diskstats; fi",
+        // Network — cumulative bytes; the monitor turns deltas into rates
+        "if [ -f /proc/net/dev ]; then "
+            + "awk 'NR>2 {gsub(\":\",\"\",$1); if ($1!=\"lo\") {rx+=$2; tx+=$10}} "
+            + "END {print \"net_rx_bytes=\" rx; print \"net_tx_bytes=\" tx}' /proc/net/dev; "
+            + "else "
+            + "netstat -ibn 2>/dev/null | awk '/Link#/ && $1!=\"lo0\" {rx+=$7; tx+=$10} "
+            + "END {print \"net_rx_bytes=\" rx; print \"net_tx_bytes=\" tx}'; fi",
+    ].joined(separator: "; ")
+
+    /// Heavy detail values: top processes and listening ports. Only the detail
+    /// card consumes them, so they run on a slow cadence, not every poll.
+    static let heavyScript = [
         // Top processes by CPU ("12.3|bash;")
         "if command -v ps >/dev/null 2>&1; then "
             + "if [ \"$(uname -s)\" = \"Linux\" ]; then "
@@ -138,20 +202,34 @@ enum ServerInfoFetcher {
             + "elif command -v netstat >/dev/null 2>&1; then "
             + "echo listen_ports=$(netstat -tln 2>/dev/null | awk 'NR>2 {split($4,a,\":\"); print a[length(a)]}' "
             + "| sort -n | uniq | head -8 | tr '\\n' ','); fi",
-        // Network — cumulative bytes; the monitor turns deltas into rates
-        "if [ -f /proc/net/dev ]; then "
-            + "awk 'NR>2 {gsub(\":\",\"\",$1); if ($1!=\"lo\") {rx+=$2; tx+=$10}} "
-            + "END {print \"net_rx_bytes=\" rx; print \"net_tx_bytes=\" tx}' /proc/net/dev; "
-            + "else "
-            + "netstat -ibn 2>/dev/null | awk '/Link#/ && $1!=\"lo0\" {rx+=$7; tx+=$10} "
-            + "END {print \"net_rx_bytes=\" rx; print \"net_tx_bytes=\" tx}'; fi",
     ].joined(separator: "; ")
 
     /// Fetch server info from an SSH connection. Returns nil on failure.
     static func fetch(using sshService: SSHNetworkService) async -> ServerInfo? {
-        let cmd = "(\(script))"
+        let cmd = "(\(staticScript)); (\(fastScript)); (\(heavyScript))"
         guard let output = try? await sshService.executeCommand(cmd) else {
             Log.ssh.warning("Server info fetch failed")
+            return nil
+        }
+        return parseOutput(output)
+    }
+
+    /// Layered fetch: each layer parses independently; the monitor overlays
+    /// fast over static and heavy over fast.
+    static func fetchStatic(using sshService: SSHNetworkService) async -> ServerInfo? {
+        await fetchLayer(staticScript, using: sshService)
+    }
+
+    static func fetchFast(using sshService: SSHNetworkService) async -> ServerInfo? {
+        await fetchLayer(fastScript, using: sshService)
+    }
+
+    static func fetchHeavy(using sshService: SSHNetworkService) async -> ServerInfo? {
+        await fetchLayer(heavyScript, using: sshService)
+    }
+
+    private static func fetchLayer(_ script: String, using sshService: SSHNetworkService) async -> ServerInfo? {
+        guard let output = try? await sshService.executeCommand("(\(script))") else {
             return nil
         }
         return parseOutput(output)
