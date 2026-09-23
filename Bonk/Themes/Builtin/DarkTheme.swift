@@ -14,7 +14,12 @@ struct DarkTheme: TerminalTheme {
         id: "dark",
         name: "Dark",
         background: RGBAColor(0.118, 0.118, 0.118),
-        foreground: RGBAColor(0.941, 0.941, 0.941), // #f0f0f0 — bright, easy on eyes
+        // Primary foreground #d4d4d4: ~11.25:1 on #1e1e1e, above WCAG AAA 7:1
+        // while lowering luminance for long reading sessions. AAA is a floor,
+        // not a target — do NOT raise this back toward #fafafa in the name of
+        // "compliance". Emphasis white and cursor stay bright on purpose
+        // (small areas: hierarchy, not reading text).
+        foreground: RGBAColor(0.831, 0.831, 0.831),
         cursor: RGBAColor(0.941, 0.941, 0.941),
         ansiColors: SharedColors.darkANSI
     )
