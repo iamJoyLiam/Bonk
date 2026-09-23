@@ -164,8 +164,12 @@ enum ServerInfoFetcher {
         "if [ -f /proc/loadavg ]; then "
             + "echo load=$(cat /proc/loadavg | awk '{print $1, $2, $3}'); "
             + "else echo load=$(sysctl -n vm.loadavg 2>/dev/null | tr -d '{}'); fi",
-        // IP
-        "echo ip=$(hostname -I 2>/dev/null | awk '{print $1}')",
+        // IP — Linux first address; macOS primary interface
+        // (hostname -I is Linux-only, previously a dead fork on macOS)
+        "if [ \"$(uname -s)\" = \"Linux\" ]; then "
+            + "echo ip=$(hostname -I 2>/dev/null | awk '{print $1}'); "
+            + "elif [ \"$(uname -s)\" = \"Darwin\" ]; then "
+            + "echo ip=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null); fi",
         // CPU temperature (first Linux thermal zone)
         "if [ -f /sys/class/thermal/thermal_zone0/temp ]; then "
             + "echo cpu_temp_c=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{printf \"%.0f\", $1/1000}'); fi",

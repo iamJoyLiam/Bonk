@@ -10,6 +10,7 @@
 
 import Foundation
 import Observation
+import os
 
 /// Snapshot of the active connection's latest resource data.
 struct ServerResourceSnapshot: Equatable {
@@ -130,32 +131,27 @@ final class ServerResourceMonitor {
                     || startedFetch.timeIntervalSince(lastHeavy!) >= Self.heavyRefreshInterval
                 return (tab, service, needStatic, needHeavy)
             }
+        // Phase 1: static + fast → rings paint ASAP, never blocked by heavy.
         var results: [(UUID, ServerInfo)] = []
         // Capped concurrency: process candidates in batches of maxConcurrentPolls to avoid thread/NIO explosion
         for chunk in plans.chunked(into: Self.maxConcurrentPolls) {
-            await withTaskGroup(of: (UUID, ServerInfo?, ServerInfo?, ServerInfo?)?.self) { group in
+            await withTaskGroup(of: (UUID, ServerInfo?, ServerInfo?)?.self) { group in
                 for plan in chunk {
                     group.addTask {
                         async let staticInfo: ServerInfo? = plan.needStatic
                             ? ServerInfoFetcher.fetchStatic(using: plan.service) : nil
                         async let fastInfo: ServerInfo? = ServerInfoFetcher.fetchFast(using: plan.service)
-                        async let heavyInfo: ServerInfo? = plan.needHeavy
-                            ? ServerInfoFetcher.fetchHeavy(using: plan.service) : nil
-                        return (plan.tab.id, await staticInfo, await fastInfo, await heavyInfo)
+                        return (plan.tab.id, await staticInfo, await fastInfo)
                     }
                 }
                 for await res in group {
-                    guard let (tabID, staticInfo, fastInfo, heavyInfo) = res,
+                    guard let (tabID, staticInfo, fastInfo) = res,
                           let fast = fastInfo
                     else { continue }
                     // Fast layer failed → keep last-known snapshot (existing behavior).
                     if let staticInfo { self.staticCache[tabID] = staticInfo }
                     guard let base = self.staticCache[tabID] else { continue }
                     var merged = base.overlaying(fast)
-                    if let heavyInfo {
-                        self.heavyCache[tabID] = heavyInfo
-                        self.lastHeavyFetch[tabID] = startedFetch
-                    }
                     if let heavy = self.heavyCache[tabID] {
                         merged = merged.overlaying(heavy)
                     }
@@ -165,14 +161,33 @@ final class ServerResourceMonitor {
         }
 
         for (tabID, info) in results {
+            let isFirstPaint = allSnapshots[tabID] == nil
             let withRates = applyingRates(to: info, for: tabID)
-            // Update per-tab session.serverInfo
-            if let tab = tabs.first(where: { $0.id == tabID }) {
-                tab.session?.serverInfo = withRates
+            store(withRates, for: tabID, tabs: tabs, activeID: activeID)
+            if isFirstPaint {
+                Log.ssh.info("Server info first paint in \(String(format: "%.1f", Date().timeIntervalSince(startedFetch)))s")
             }
-            allSnapshots[tabID] = withRates
-            if tabID == activeID {
-                snapshot = ServerResourceSnapshot(tabID: tabID, info: withRates)
+        }
+
+        // Phase 2: heavy details merge in the background. Overlays onto the
+        // stored info (rates already computed) — never recomputed here, since
+        // re-running applyingRates within the same tick would wipe just-set rates.
+        let heavyPlans = plans.filter { $0.needHeavy }
+        for chunk in heavyPlans.chunked(into: Self.maxConcurrentPolls) {
+            await withTaskGroup(of: (UUID, ServerInfo?)?.self) { group in
+                for plan in chunk {
+                    group.addTask {
+                        (plan.tab.id, await ServerInfoFetcher.fetchHeavy(using: plan.service))
+                    }
+                }
+                for await res in group {
+                    guard let (tabID, heavyInfo) = res, let heavy = heavyInfo,
+                          let stored = self.allSnapshots[tabID]
+                    else { continue }
+                    self.heavyCache[tabID] = heavy
+                    self.lastHeavyFetch[tabID] = startedFetch
+                    store(stored.overlaying(heavy), for: tabID, tabs: tabs, activeID: activeID)
+                }
             }
         }
         // Prune snapshots for tabs that are no longer connected
@@ -190,6 +205,18 @@ final class ServerResourceMonitor {
             snapshot = nil
         }
         lastFetchDate = startedFetch
+    }
+
+    /// Write one tab's info to the session, the all-hosts map, and the active
+    /// snapshot. Shared by both phases; rates are computed by callers.
+    private func store(_ info: ServerInfo, for tabID: UUID, tabs: [TerminalTab], activeID: UUID?) {
+        if let tab = tabs.first(where: { $0.id == tabID }) {
+            tab.session?.serverInfo = info
+        }
+        allSnapshots[tabID] = info
+        if tabID == activeID {
+            snapshot = ServerResourceSnapshot(tabID: tabID, info: info)
+        }
     }
 
     /// Per-tab rates
