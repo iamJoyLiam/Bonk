@@ -195,6 +195,8 @@ final class TerminalEngine {
         flush()
     }
 
+    private var flushCounter = 0
+
     private func flush() {
         state.flushScheduled = false
         state.dirty = false
@@ -203,7 +205,12 @@ final class TerminalEngine {
         let bytes = state.pendingBytes
         state.buffer = ""
         state.pendingBytes = 0
-        pruneConsumers()
+        // Prune every 16 flushes to amortize the traversal cost
+        flushCounter += 1
+        if flushCounter >= 16 {
+            flushCounter = 0
+            pruneConsumers()
+        }
         for weakConsumer in state.consumers.values {
             weakConsumer.consumer?.receive(text)
             weakConsumer.consumer?.didConsume(bytes: bytes)

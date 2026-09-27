@@ -51,10 +51,20 @@ final class ServerResourceMonitor {
         self.sessionManager = sessionManager
         guard pollTask == nil else { return }
         pollTask = Task { [weak self] in
+            var idleTicks = 0
             while !Task.isCancelled {
                 guard let self else { return }
-                await self.tickIfNeeded()
-                try? await Task.sleep(for: .seconds(1))
+                let didWork = await self.tickIfNeeded()
+                // Adaptive polling: 1s when active, 5s when idle
+                if didWork {
+                    idleTicks = 0
+                    try? await Task.sleep(for: .seconds(1))
+                } else {
+                    idleTicks += 1
+                    // After 5 consecutive idle ticks, drop to 5s interval
+                    let interval: TimeInterval = idleTicks >= 5 ? 5 : 1
+                    try? await Task.sleep(for: .seconds(interval))
+                }
             }
         }
     }
@@ -79,19 +89,19 @@ final class ServerResourceMonitor {
     func refreshNow() async {
         lastFetchDate = .distantPast
         forceHeavyRefresh = true
-        await tickIfNeeded()
+        _ = await tickIfNeeded()
     }
 
     // MARK: - Private
 
-    private func tickIfNeeded() async {
-        guard let manager = sessionManager else { return }
+    private func tickIfNeeded() async -> Bool {
+        guard let manager = sessionManager else { return false }
         let tabs = manager.tabs
         let activeID = manager.activeTabID
         let isActiveConnected = manager.activeTab?.session?.isConnected ?? false
         let key: (UUID?, Bool) = (activeID, isActiveConnected)
         let keyChanged: Bool = if let lastPollKey { key != lastPollKey } else { true }
-        guard keyChanged || Date().timeIntervalSince(lastFetchDate) >= 10 else { return }
+        guard keyChanged || Date().timeIntervalSince(lastFetchDate) >= 10 else { return false }
         lastPollKey = key
         if keyChanged {
             // New active tab → drop its old counters so first sample never crosses hosts
@@ -116,7 +126,7 @@ final class ServerResourceMonitor {
             heavyCache = [:]
             lastHeavyFetch = [:]
             lastFetchDate = Date()
-            return
+            return false
         }
 
         let startedFetch = Date()
@@ -205,6 +215,7 @@ final class ServerResourceMonitor {
             snapshot = nil
         }
         lastFetchDate = startedFetch
+        return true
     }
 
     /// Write one tab's info to the session, the all-hosts map, and the active
