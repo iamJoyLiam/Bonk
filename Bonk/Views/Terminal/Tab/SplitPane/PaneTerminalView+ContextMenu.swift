@@ -208,11 +208,12 @@ extension PaneTerminalView {
 
     // MARK: - Helpers
 
+    @MainActor
     func sendInput(_ data: ArraySlice<UInt8>) {
         if TeamRelay.shared.isHosting {
             TeamRelay.shared.notifyHostTyping()
         }
-        Task {
+        Task { @MainActor in
             do {
                 try await sessionManager.sendInput(data, to: tab.id, paneID: paneState.id)
             } catch let error where SSHChannelLostError.isChannelLost(error) {
