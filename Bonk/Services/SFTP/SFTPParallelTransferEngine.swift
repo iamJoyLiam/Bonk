@@ -437,31 +437,34 @@ enum SFTPParallelTransferEngine {
             )
             files.append(SendableSFTPFile(file))
         }
-        defer {
-            for file in files { Task { try? await file.file.close() } }
-        }
         let merger = ProgressMerger(total: totalBytes, onProgress: onProgress)
         Log.sftp.info("[P2] multiChannel upload shards=\(shards) files=\(files.count)")
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            for idx in 0..<shards {
-                let start = UInt64(idx) * shardSize
-                guard start < totalBytes else { break }
-                let end = min(start + shardSize, totalBytes)
-                let remoteFile = files[idx]
-                group.addTask {
-                    try await uploadShard(
-                        localURL: localURL,
-                        remoteFile: remoteFile,
-                        range: start..<end,
-                        shards: shards,
-                        merger: merger,
-                        isCancelled: isCancelled,
-                        overrides: overrides
-                    )
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                for idx in 0..<shards {
+                    let start = UInt64(idx) * shardSize
+                    guard start < totalBytes else { break }
+                    let end = min(start + shardSize, totalBytes)
+                    let remoteFile = files[idx]
+                    group.addTask {
+                        try await uploadShard(
+                            localURL: localURL,
+                            remoteFile: remoteFile,
+                            range: start..<end,
+                            shards: shards,
+                            merger: merger,
+                            isCancelled: isCancelled,
+                            overrides: overrides
+                        )
+                    }
                 }
+                try await group.waitForAll()
             }
-            try await group.waitForAll()
         }
+        // Close files synchronously after all shards complete — defer { Task { close } }
+        // leaves fds open until the task runs, which can exhaust the fd table under
+        // concurrent transfers.
+        for file in files { try? await file.file.close() }
         if merger.completed != totalBytes {
             throw SFTPServiceError.operationFailed("Upload incomplete: expected \(totalBytes) got \(merger.completed)")
         }
@@ -492,9 +495,6 @@ enum SFTPParallelTransferEngine {
             let file = try await client.openFile(filePath: remotePath, flags: [.read])
             files.append(SendableSFTPFile(file))
         }
-        defer {
-            for file in files { Task { try? await file.file.close() } }
-        }
         // Preallocate
         FileManager.default.createFile(atPath: localURL.path, contents: nil)
         if let fileHandle = try? FileHandle(forWritingTo: localURL) {
@@ -503,26 +503,32 @@ enum SFTPParallelTransferEngine {
         }
         let merger = ProgressMerger(total: totalBytes, onProgress: onProgress)
         Log.sftp.info("[P2] multiChannel download shards=\(shards)")
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            for idx in 0..<shards {
-                let start = UInt64(idx) * shardSize
-                guard start < totalBytes else { break }
-                let end = min(start + shardSize, totalBytes)
-                let remoteFile = files[idx]
-                group.addTask {
-                    try await downloadShard(
-                        remoteFile: remoteFile,
-                        localURL: localURL,
-                        range: start..<end,
-                        shards: shards,
-                        merger: merger,
-                        isCancelled: isCancelled,
-                        overrides: overrides
-                    )
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                for idx in 0..<shards {
+                    let start = UInt64(idx) * shardSize
+                    guard start < totalBytes else { break }
+                    let end = min(start + shardSize, totalBytes)
+                    let remoteFile = files[idx]
+                    group.addTask {
+                        try await downloadShard(
+                            remoteFile: remoteFile,
+                            localURL: localURL,
+                            range: start..<end,
+                            shards: shards,
+                            merger: merger,
+                            isCancelled: isCancelled,
+                            overrides: overrides
+                        )
+                    }
                 }
+                try await group.waitForAll()
             }
-            try await group.waitForAll()
         }
+        // Close files synchronously after all shards complete — defer { Task { close } }
+        // leaves fds open until the task runs, which can exhaust the fd table under
+        // concurrent transfers.
+        for file in files { try? await file.file.close() }
         if merger.completed != totalBytes {
             throw SFTPServiceError.operationFailed("Download incomplete: expected \(totalBytes) got \(merger.completed)")
         }
@@ -556,31 +562,34 @@ enum SFTPParallelTransferEngine {
             Log.sftp.debug("[POOL] upload open done pool=\(handle.poolID.uuidString.prefix(8)) idx=\(idx)")
             files.append(SendableSFTPFile(file))
         }
-        defer {
-            for file in files { Task { try? await file.file.close() } }
-        }
         let merger = ProgressMerger(total: totalBytes, onProgress: onProgress)
         Log.sftp.info("[POOL] multiTCP upload shards=\(shards) handles=\(handles.count)")
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            for idx in 0..<shards {
-                let start = UInt64(idx) * shardSize
-                guard start < totalBytes else { break }
-                let end = min(start + shardSize, totalBytes)
-                let remoteFile = files[idx]
-                group.addTask {
-                    try await uploadShard(
-                        localURL: localURL,
-                        remoteFile: remoteFile,
-                        range: start..<end,
-                        shards: shards,
-                        merger: merger,
-                        isCancelled: isCancelled,
-                        overrides: overrides
-                    )
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                for idx in 0..<shards {
+                    let start = UInt64(idx) * shardSize
+                    guard start < totalBytes else { break }
+                    let end = min(start + shardSize, totalBytes)
+                    let remoteFile = files[idx]
+                    group.addTask {
+                        try await uploadShard(
+                            localURL: localURL,
+                            remoteFile: remoteFile,
+                            range: start..<end,
+                            shards: shards,
+                            merger: merger,
+                            isCancelled: isCancelled,
+                            overrides: overrides
+                        )
+                    }
                 }
+                try await group.waitForAll()
             }
-            try await group.waitForAll()
         }
+        // Close files synchronously after all shards complete — defer { Task { close } }
+        // leaves fds open until the task runs, which can exhaust the fd table under
+        // concurrent transfers.
+        for file in files { try? await file.file.close() }
         if merger.completed != totalBytes {
             throw SFTPServiceError.operationFailed("Upload incomplete: expected \(totalBytes) got \(merger.completed)")
         }
@@ -604,9 +613,6 @@ enum SFTPParallelTransferEngine {
             Log.sftp.debug("[POOL] download open done pool=\(handle.poolID.uuidString.prefix(8)) idx=\(handle.index)")
             files.append(SendableSFTPFile(file))
         }
-        defer {
-            for file in files { Task { try? await file.file.close() } }
-        }
         FileManager.default.createFile(atPath: localURL.path, contents: nil)
         if let fileHandle = try? FileHandle(forWritingTo: localURL) {
             try? fileHandle.truncate(atOffset: totalBytes)
@@ -614,26 +620,32 @@ enum SFTPParallelTransferEngine {
         }
         let merger = ProgressMerger(total: totalBytes, onProgress: onProgress)
         Log.sftp.info("[POOL] multiTCP download shards=\(shards) total=\(totalBytes)")
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            for idx in 0..<shards {
-                let start = UInt64(idx) * shardSize
-                guard start < totalBytes else { break }
-                let end = min(start + shardSize, totalBytes)
-                let remoteFile = files[idx]
-                group.addTask {
-                    try await downloadShard(
-                        remoteFile: remoteFile,
-                        localURL: localURL,
-                        range: start..<end,
-                        shards: shards,
-                        merger: merger,
-                        isCancelled: isCancelled,
-                        overrides: overrides
-                    )
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                for idx in 0..<shards {
+                    let start = UInt64(idx) * shardSize
+                    guard start < totalBytes else { break }
+                    let end = min(start + shardSize, totalBytes)
+                    let remoteFile = files[idx]
+                    group.addTask {
+                        try await downloadShard(
+                            remoteFile: remoteFile,
+                            localURL: localURL,
+                            range: start..<end,
+                            shards: shards,
+                            merger: merger,
+                            isCancelled: isCancelled,
+                            overrides: overrides
+                        )
+                    }
                 }
+                try await group.waitForAll()
             }
-            try await group.waitForAll()
         }
+        // Close files synchronously after all shards complete — defer { Task { close } }
+        // leaves fds open until the task runs, which can exhaust the fd table under
+        // concurrent transfers.
+        for file in files { try? await file.file.close() }
         if merger.completed != totalBytes {
             throw SFTPServiceError.operationFailed("Download incomplete: expected \(totalBytes) got \(merger.completed)")
         }
