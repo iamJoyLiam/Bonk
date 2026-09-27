@@ -27,6 +27,8 @@ struct HostListView: View {
     @State private var searchText = ""
     @State private var pendingDeleteHost: HostItem?
     @State private var diagnosisHost: HostItem?
+    /// Sidebar selection is a host identity, independent of tab selection.
+    @State private var selectedHostID: UUID?
 
     private var filteredHosts: [HostItem] {
         if searchText.isEmpty {
@@ -72,14 +74,19 @@ struct HostListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Host list
-            List(selection: $sessionManager.activeTabID) {
+            // Host list.
+            // Selection is tracked as a host ID, NOT bound to activeTabID:
+            // binding it to activeTabID made every click write through the tab
+            // selection, and a row with no tab (nil tag) wrote nil — blanking
+            // the detail pane to the "no terminal" page while other terminals
+            // were still open.
+            List(selection: $selectedHostID) {
                 ForEach(groupedHosts, id: \.0) { groupName, items in
                     Section {
                         ForEach(items) { host in
                             let tab = tabsByHostID[host.id]
                             hostRow(host, groupColor: groupModel(for: groupName)?.resolvedColor, tab: tab)
-                                .tag(tab?.id as UUID?)
+                                .tag(host.id)
                         }
                         .onDelete { indexSet in
                             if let idx = indexSet.first {
@@ -90,6 +97,11 @@ struct HostListView: View {
                         groupHeader(groupName)
                     }
                 }
+            }
+            .onChange(of: selectedHostID) { _, newValue in
+                guard let newValue, let host = hosts.first(where: { $0.id == newValue }) else { return }
+                // Single click only ever selects; it never opens a connection.
+                sessionManager.sidebarSingleClick(host: host)
             }
 
             Divider()
@@ -236,60 +248,54 @@ struct HostListView: View {
     private func hostRow(_ host: HostItem, groupColor: Color? = nil, tab: TerminalTab?) -> some View {
         let state = tab?.session?.connectionState ?? .disconnected
 
-        Button {
-            if let tab {
-                sessionManager.selectTab(tab.id)
+        HStack(spacing: 10) {
+            // Group color indicator
+            if let color = groupColor {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(color)
+                    .frame(width: AppStyle.indicatorMedium, height: 16)
+            }
+
+            if host.isSerial == true {
+                Image(systemName: "cable.connector")
+                    .font(.system(size: AppStyle.fontBody))
+                    .foregroundStyle(stateColor(state))
             } else {
-                sessionManager.openHost(host)
+                statusDot(state)
             }
-        } label: {
-            HStack(spacing: 10) {
-                // Group color indicator
-                if let color = groupColor {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(color)
-                        .frame(width: AppStyle.indicatorMedium, height: 16)
-                }
 
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text(host.name)
+                        .font(.system(size: AppStyle.fontRegular))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .layoutPriority(1)
+                    Spacer(minLength: 4)
+                    if host.isSerial != true {
+                        sidebarBadges(for: host)
+                    }
+                }
                 if host.isSerial == true {
-                    Image(systemName: "cable.connector")
-                        .font(.system(size: AppStyle.fontBody))
-                        .foregroundStyle(stateColor(state))
-                } else {
-                    statusDot(state)
+                    Text("\(i18n.t(.serialPort)) · \(host.host)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 4) {
-                        Text(host.name)
-                            .font(.system(size: AppStyle.fontRegular))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .layoutPriority(1)
-                        Spacer(minLength: 4)
-                        if host.isSerial != true {
-                            sidebarBadges(for: host)
-                        }
-                    }
-                    if host.isSerial == true {
-                        Text("\(i18n.t(.serialPort)) · \(host.host)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        // Single click selects (handled by the List selection binding);
+        // double click opens a connection. Keeping them separate is what stops
+        // a single click from connecting, and stops a double click from
+        // toggling selection twice.
+        .onTapGesture(count: 2) {
+            sessionManager.sidebarDoubleClick(host: host)
+        }
         .contextMenu {
             Button {
-                if let tab {
-                    sessionManager.selectTab(tab.id)
-                } else {
-                    sessionManager.openHost(host)
-                }
+                sessionManager.sidebarDoubleClick(host: host)
             } label: {
                 Label(i18n.t(.connect), systemImage: "bolt.fill")
             }

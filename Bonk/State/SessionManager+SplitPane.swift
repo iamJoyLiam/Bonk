@@ -23,6 +23,34 @@ extension SessionManager {
         tab.layout.setFraction(normalizedDelta, containerID: containerID, dividerIndex: dividerIndex)
     }
 
+    // MARK: - Sidebar Activation
+
+    /// Single click on a sidebar host: SELECT only.
+    ///
+    /// Focusing an already-open terminal is allowed, but a host with no tab is
+    /// never connected and the active tab is never cleared — clearing it made
+    /// the detail pane flash the "no terminal" page while other terminals were
+    /// still open. Opening requires a deliberate double click.
+    func sidebarSingleClick(host: HostItem) {
+        if let tab = tab(for: host) {
+            selectTab(tab.id)
+        }
+    }
+
+    /// Double click on a sidebar host: OPEN, or focus the existing tab.
+    func sidebarDoubleClick(host: HostItem) {
+        if let tab = tab(for: host) {
+            selectTab(tab.id)
+        } else {
+            openHost(host)
+        }
+    }
+
+    /// The tab currently bound to a host, if any.
+    func tab(for host: HostItem) -> TerminalTab? {
+        tabs.last { $0.hostItem.id == host.id }
+    }
+
     /// Split the active pane horizontally (left-right).
     func splitHorizontal() {
         guard let tab = activeTab else { return }
