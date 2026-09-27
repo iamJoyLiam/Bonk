@@ -142,6 +142,55 @@ final class InlinePipelineTests: XCTestCase {
         }
     }
 
+    func testDisablingInlineSuggestionsTearsDownActiveSuggestion() {
+        let defaults = UserDefaults.standard
+        let previousInline = defaults.object(forKey: "ai_inline_suggestions")
+        defer {
+            if let previousInline {
+                defaults.set(previousInline, forKey: "ai_inline_suggestions")
+            } else {
+                defaults.removeObject(forKey: "ai_inline_suggestions")
+            }
+            defaults.synchronize()
+            AIInlineSettings.shared.refresh()
+        }
+
+        let cache = InlineSuggestionCache()
+        let pipeline = InlineSuggestionPipeline(providerStore: .shared, cache: cache)
+        let snapshot = CommandContextSnapshot(
+            inputBuffer: "docker",
+            recentCommands: ["docker ps", "docker run -d nginx"],
+            recentOutput: ""
+        )
+
+        defaults.set(true, forKey: "ai_inline_suggestions")
+        defaults.synchronize()
+        AIInlineSettings.shared.refresh()
+        pipeline.request(snapshot: snapshot)
+        XCTAssertNotNil(pipeline.suggestion, "precondition: suggestion is live while enabled")
+
+        // Turning the switch off must post the teardown signal immediately
+        // rather than waiting for the next keystroke.
+        var didReceiveDisable = false
+        let token = NotificationCenter.default.addObserver(
+            forName: .aiInlineSuggestionsDidDisable,
+            object: nil,
+            queue: .main
+        ) { _ in
+            didReceiveDisable = true
+            pipeline.cancel()
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        defaults.set(false, forKey: "ai_inline_suggestions")
+        defaults.synchronize()
+        AIInlineSettings.shared.refresh()
+
+        XCTAssertTrue(didReceiveDisable)
+        XCTAssertNil(pipeline.suggestion)
+        XCTAssertFalse(pipeline.isRequesting)
+    }
+
     func testSingleCharacterRootMatching() {
         let cache = InlineSuggestionCache()
         let pipeline = InlineSuggestionPipeline(providerStore: .shared, cache: cache)

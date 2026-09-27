@@ -139,8 +139,18 @@ import SwiftTerm
         // Ghost updates coalesced to display tick — LLM streams many deltas per frame.
         nonisolated(unsafe) var ghostCoalesceTask: Task<Void, Never>?
         private nonisolated(unsafe) var resignObserver: NSObjectProtocol?
+        private nonisolated(unsafe) var inlineDisabledObserver: NSObjectProtocol?
         nonisolated(unsafe) var rightClickMonitor: Any?
         var currentMetrics = InlineMetrics()
+
+        /// Forget the last synced geometry so the next `layout()` re-publishes
+        /// it. Needed when the view is re-hosted in a differently sized pane —
+        /// otherwise the size is treated as unchanged and no SIGWINCH is sent,
+        /// leaving the PTY with a stale column count.
+        func invalidateSyncedSize() {
+            lastSyncedCols = -1
+            lastSyncedRows = -1
+        }
 
         override func layout() {
             super.layout()
@@ -181,6 +191,10 @@ import SwiftTerm
                 NotificationCenter.default.removeObserver(observer)
                 resignObserver = nil
             }
+            if let observer = inlineDisabledObserver {
+                NotificationCenter.default.removeObserver(observer)
+                inlineDisabledObserver = nil
+            }
             if let monitor = rightClickMonitor {
                 NSEvent.removeMonitor(monitor)
                 rightClickMonitor = nil
@@ -191,6 +205,22 @@ import SwiftTerm
                     self.hideGhost(reason: "window-nil")
                 }
                 return
+            }
+            // Turning the inline switch off must drop any in-flight request and
+            // hide the ghost immediately, not on the next keystroke.
+            inlineDisabledObserver = NotificationCenter.default.addObserver(
+                forName: .aiInlineSuggestionsDidDisable,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.pendingCompletionTask?.cancel()
+                    self.pendingCompletionTask = nil
+                    self.inlinePipeline?.cancel()
+                    self.hideGhost(reason: "inline-disabled")
+                    self.hideCandidateList()
+                }
             }
             // Fires when the window's key status or first responder changes.
             // Only hide the ghost visually — transient focus shifts shouldn't
@@ -222,6 +252,9 @@ import SwiftTerm
             resizeDebounceTask?.cancel()
             ghostCoalesceTask?.cancel()
             if let observer = resignObserver {
+                NotificationCenter.default.removeObserver(observer)
+            }
+            if let observer = inlineDisabledObserver {
                 NotificationCenter.default.removeObserver(observer)
             }
             if let monitor = rightClickMonitor {
@@ -312,6 +345,14 @@ import SwiftTerm
                 }
                 return event
             case .passthroughAndSchedule:
+                let hasInlineState = MainActor.assumeIsolated {
+                    self.inlinePipeline?.suggestion != nil
+                        || self.inlinePipeline?.ranked.isEmpty == false
+                        || self.inlinePipeline?.isRequesting == true
+                }
+                if !AIInlineSettings.current.inlineSuggestionsEnabled && !hasInlineState {
+                    return event
+                }
                 MainActor.assumeIsolated {
                     self.inlinePipeline?.resetEngagement()
                     self.inlinePipeline?.cancel()
@@ -377,6 +418,8 @@ import SwiftTerm
 
         private func scheduleCompletion() {
             pendingCompletionTask?.cancel()
+            pendingCompletionTask = nil
+            guard AIInlineSettings.current.inlineSuggestionsEnabled else { return }
             currentMetrics = InlineMetrics(keyPressedAt: Date())
             pendingCompletionTask = Task { @MainActor [weak self] in
                 // Allow SwiftTerm keyDown to finish and update inputBuffer / line state

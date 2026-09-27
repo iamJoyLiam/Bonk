@@ -10,6 +10,11 @@
 
 import Foundation
 
+extension Notification.Name {
+    /// Posted when the inline suggestions master switch transitions off.
+    static let aiInlineSuggestionsDidDisable = Notification.Name("com.bonk.aiInlineSuggestionsDidDisable")
+}
+
 /// AI toggles as seen by the hot path (semantics match the original
 /// UserDefaults reads).
 struct AISettingsSnapshot: Sendable {
@@ -61,8 +66,14 @@ final class AIInlineSettings: @unchecked Sendable {
     func refresh() {
         let fresh = Self.read()
         lock.lock()
+        let wasInlineEnabled = cached.inlineSuggestionsEnabled
         cached = fresh
         lock.unlock()
+        // Toggling inline off must tear down any in-flight request/ghost, not
+        // wait for the next keystroke to notice.
+        if wasInlineEnabled, !fresh.inlineSuggestionsEnabled {
+            NotificationCenter.default.post(name: .aiInlineSuggestionsDidDisable, object: nil)
+        }
     }
 
     private static func read() -> AISettingsSnapshot {
