@@ -721,7 +721,18 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         // Serial/process sessions report via fd; SSH-channel sessions never set
         // serialFD, so fall through to the channel flag for them.
         if serialFDBox.withLockedValue({ $0 }) >= 0 { return false }
-        return !channelReadyBox.withLockedValue { $0 }
+        // For SSH channel sessions: channelReadyBox is false before the channel
+        // opens, but that doesn't mean the session is closed — it's still opening.
+        // Only report closed if the channel was once ready and then became not ready,
+        // or if the session was never started.
+        if !channelReadyBox.withLockedValue({ $0 }) {
+            // If the reader task is still running, the channel is still opening
+            if let task = readerTaskBox.withLockedValue({ $0 }) {
+                return task.isCancelled
+            }
+            return true // Never started
+        }
+        return false
     }
 
     /// Waits for the SSH channel to open (start() is fire-and-forget). Returns false

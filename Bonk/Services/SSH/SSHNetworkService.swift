@@ -843,8 +843,8 @@ public actor SSHNetworkService {
             let elapsed = Date().timeIntervalSince(last)
             if elapsed < 10 {
                 return true
-            } else {}
-        } else {}
+            }
+        }
         if usesOpenSSHTransport {
             guard let backend = openSSHBackend else {
                 Log.ssh.warning("[PROBE] openssh no backend -> dead")
