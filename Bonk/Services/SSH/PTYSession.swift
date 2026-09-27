@@ -20,6 +20,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// Output buffer — stores recent lines for replay to new consumers.
     private let outputBuffer = OSAllocatedUnfairLock<[String]>(uncheckedState: [])
     private let bufferByteCount = OSAllocatedUnfairLock<Int>(uncheckedState: 0)
+    private let controlChunkMayContinueBox = NIOLockedValueBox<Bool>(false)
     private static let maxBufferSize = 10000
     private static let maxBufferBytes = 10 * 1024 * 1024 // 10 MB
     static let maxChunkBytes = 64 * 1024 // 64 KB per chunk
@@ -44,6 +45,10 @@ public final nonisolated class PTYSession: @unchecked Sendable {
 
     /// Track skipped chunks per consumer for diagnostics
     private let skippedChunks = OSAllocatedUnfairLock<[UUID: Int]>(uncheckedState: [:])
+
+    var pendingBytesForTest: Int {
+        pendingBytes.withLock { $0.values.reduce(0, +) }
+    }
 
     /// Internal signal — finishes when the session should end.
     private let sessionEndStream: AsyncStream<Void>
@@ -322,15 +327,16 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             bufferByteCount.withLock { $0 += chunkBytes }
             // Trim by line count
             if buf.count > Self.maxBufferSize {
-                let removed = buf.count - Self.maxBufferSize
-                buf.removeFirst(removed)
+                let removedCount = buf.count - Self.maxBufferSize
+                let removedBytes = buf.prefix(removedCount).reduce(0) { $0 + $1.utf8.count }
+                buf.removeFirst(removedCount)
+                bufferByteCount.withLock { $0 = max(0, $0 - removedBytes) }
             }
             // Trim by byte count
             while bufferByteCount.withLock({ $0 }) > Self.maxBufferBytes, buf.count > 1 {
-                if let first = buf.first {
-                    bufferByteCount.withLock { $0 -= first.utf8.count }
-                    buf.removeFirst()
-                }
+                guard let first = buf.first else { break }
+                buf.removeFirst()
+                bufferByteCount.withLock { $0 = max(0, $0 - first.utf8.count) }
             }
         }
         // Finalize command block after buffer append so output slice includes this chunk
@@ -360,6 +366,11 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         // Doing it per-chunk here would miss signatures split across chunks
         // and cause double hasANSI skips on coalesced buffers.
         let displayText = text
+        let mayContinueControlSequence = controlChunkMayContinueBox.withLockedValue { previous in
+            let current = displayText.contains("\u{1B}")
+            defer { previous = current }
+            return previous
+        }
         // Send to all live consumers with per-consumer backpressure.
         // Skip consumers whose pending bytes exceed the high watermark;
         // they will resume once the Coordinator calls decrementPendingBytes().
@@ -369,7 +380,9 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             let pending = pendingBytes.withLock { dict in
                 dict[id] ?? 0
             }
-            if pending >= Self.backpressureHighWatermark {
+            let isControl = displayText.contains("\u{1B}") || mayContinueControlSequence
+            let isInteractive = displayChunkSize <= 64 && !displayText.contains("\n")
+            if pending >= Self.backpressureHighWatermark && !isControl && !isInteractive {
                 // Track skipped chunks for diagnostics
                 skippedChunks.withLock { $0[id, default: 0] += 1 }
                 let skipCount = skippedChunks.withLock { $0[id] ?? 0 }
@@ -380,7 +393,21 @@ public final nonisolated class PTYSession: @unchecked Sendable {
                 continue // Consumer is too far behind, skip this chunk
             }
             pendingBytes.withLock { $0[id, default: 0] += displayChunkSize }
-            cont.yield(displayText)
+            switch cont.yield(displayText) {
+            case .dropped(let dropped):
+                let droppedBytes = dropped.utf8.count
+                pendingBytes.withLock { dict in
+                    dict[id] = max(0, (dict[id] ?? 0) - droppedBytes)
+                }
+            case .terminated:
+                pendingBytes.withLock { dict in
+                    dict[id] = max(0, (dict[id] ?? 0) - displayChunkSize)
+                    _ = dict.removeValue(forKey: id)
+                }
+                liveContinuations.withLock { _ = $0.removeValue(forKey: id) }
+            default:
+                break
+            }
         }
 
         let rawConsumers = rawLiveContinuations.withLock { $0 }
@@ -685,8 +712,7 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// Return the most recent buffered output lines (OSC/DCS stripped, ANSI intact).
     /// Used as LLM context for inline completion.
     public func recentOutput(maxLines: Int) -> String {
-        let lines = outputBuffer.withLock { $0 }
-        return Array(lines.suffix(maxLines)).joined(separator: "")
+        outputBuffer.withLock { $0.suffix(maxLines).joined() }
     }
 
     /// Whether this session has been closed (user-initiated or via reader EOF).
@@ -732,6 +758,11 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         // Mark user-initiated FIRST so the reader task (cancelled below) does
         // not fire onUnexpectedClose when it notices the fd is gone. Only
         // genuinely unexpected disconnects should surface as errors.
+        if let paneID = teamSessionIDBox.withLockedValue({ $0 })?.paneID {
+            TriggerEngine.shared.unsubscribe(paneID: paneID)
+        }
+        teamSessionIDBox.withLockedValue { $0 = nil }
+        controlChunkMayContinueBox.withLockedValue { $0 = false }
         userClosedBox.withLockedValue { $0 = true }
         channelReadyBox.withLockedValue { $0 = false }
         readerTaskBox.withLockedValue { $0?.cancel(); $0 = nil }
@@ -749,12 +780,26 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         // releases its PTY. Without it, split-pane sessions leaked an ssh
         // child per pane — enough pane churn exhausted the system PTY pool
         // (openpty ENXIO, "Pseudo Terminal Setup Error").
-        processCleanupBox.withLockedValue { $0 }?()
+        processCleanupBox.withLockedValue { cleanup in
+            cleanup?()
+            cleanup = nil
+        }
         pendingInputBox.withLockedValue { $0.removeAll() }
         outputObservers.withLock { $0.removeAll() }
-        liveContinuations.withLock { $0 }.values.forEach { $0.finish() }
-        rawLiveContinuations.withLock { $0 }.values.forEach { $0.finish() }
+        liveContinuations.withLock { continuations in
+            continuations.values.forEach { $0.finish() }
+            continuations.removeAll()
+        }
+        rawLiveContinuations.withLock { continuations in
+            continuations.values.forEach { $0.finish() }
+            continuations.removeAll()
+        }
+        pendingBytes.withLock { $0.removeAll() }
+        skippedChunks.withLock { $0.removeAll() }
         processOutputHandlerBox.withLockedValue { $0 = nil }
+        onUnexpectedCloseBox.withLockedValue { $0 = nil }
+        onWriteFailedBox.withLockedValue { $0 = nil }
+        inputTapBox.withLockedValue { $0 = nil }
         sessionEndContinuation.finish()
         // Reset echo correlation for this PTY lifecycle
         PTYEchoTracker.shared.reset()

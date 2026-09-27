@@ -66,7 +66,7 @@ final class AppKitTerminalConsumer: TerminalConsumer {
         }
     }
 
-    func didConsume(bytes: Int) { onBytesConsumed?(bytes) }
+    func didDrop(bytes: Int) { onBytesConsumed?(bytes) }
 }
 #endif
 

@@ -42,6 +42,7 @@ final class TerminalEngine {
     private let displaySource: any DisplaySource
     private var tickTask: Task<Void, Never>?
     private var resizeTask: Task<Void, Never>?
+    nonisolated(unsafe) private var appActiveObserver: (any NSObjectProtocol)?
 
     /// Called on resize flush (cols, rows). Caller forwards to PTY SIGWINCH.
     var onResize: ((Int, Int) -> Void)?
@@ -56,6 +57,9 @@ final class TerminalEngine {
     deinit {
         tickTask?.cancel()
         resizeTask?.cancel()
+        if let appActiveObserver {
+            NotificationCenter.default.removeObserver(appActiveObserver)
+        }
     }
 
     // MARK: - Public
@@ -87,7 +91,9 @@ final class TerminalEngine {
             } else {
                 state.droppedBytes += incomingBytes
                 state.droppedChunks += 1
-                // Drop newest bulk tail; keep VT state intact
+                for weakConsumer in state.consumers.values {
+                    weakConsumer.consumer?.didDrop(bytes: incomingBytes)
+                }
                 return
             }
         }
@@ -141,18 +147,18 @@ final class TerminalEngine {
     // MARK: - Private
 
     private func startTickLoop() {
+        let ticks = displaySource.ticks
         tickTask = Task { [weak self] in
-            guard let self else { return }
-            for await _ in self.displaySource.ticks {
-                guard !Task.isCancelled else { break }
-                // Display tick is only a render hint, not permission to process PTY
-                self.flushIfNeeded()
+            for await _ in ticks {
+                guard !Task.isCancelled, self != nil else { break }
+                // Display tick is a render hint, not permission to process PTY
+                self?.flushIfNeeded()
             }
         }
     }
 
     private func observeAppActive() {
-        NotificationCenter.default.addObserver(
+        appActiveObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
             object: nil,
             queue: .main

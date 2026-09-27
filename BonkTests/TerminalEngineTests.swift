@@ -5,6 +5,8 @@
 //  Headless seam test: Engine coalesces to display tick.
 //
 
+import AppKit
+import os
 import XCTest
 @testable import Bonk
 
@@ -59,6 +61,33 @@ final class TerminalEngineTests: XCTestCase {
         XCTAssertEqual(engine.droppedBytesForTest, 70)
     }
 
+    func testDroppedBulkAcknowledgesBytesSoPendingCannotLeak() async {
+        let display = TestDisplaySource()
+        let watermark = Watermark(high: 100, low: 50)
+        let engine = TerminalEngine(displaySource: display, watermark: watermark)
+        let view = NativeTerminalView(
+            frame: NSRect(x: 0, y: 0, width: 800, height: 600),
+            font: .monospacedSystemFont(ofSize: 12, weight: .regular)
+        )
+        let consumedBytes = OSAllocatedUnfairLock(initialState: 0)
+        let consumer = AppKitTerminalConsumer(
+            terminalView: view,
+            onBytesProcessed: { bytes in
+                consumedBytes.withLock { $0 += bytes }
+            }
+        )
+        engine.subscribe(UUID(), consumer: consumer)
+
+        engine.push(String(repeating: "a", count: 90))
+        engine.push(String(repeating: "b", count: 70)) // dropped by engine
+        display.tick()
+        try? await Task.sleep(for: .milliseconds(30))
+
+        XCTAssertEqual(engine.droppedBytesForTest, 70)
+        // 70 dropped + 90 rendered, every byte acknowledged exactly once
+        XCTAssertEqual(consumedBytes.withLock { $0 }, 160)
+    }
+
     func testWatermarkPreservesTinyInteractive() async {
         let display = TestDisplaySource()
         let watermark = Watermark(high: 100, low: 50)
@@ -105,6 +134,48 @@ final class TerminalEngineTests: XCTestCase {
         try? await Task.sleep(for: .milliseconds(30))
         XCTAssertTrue(c1.received.isEmpty)
         XCTAssertEqual(c2.joined, "hi")
+    }
+
+    func testEngineDeallocatesWhileDisplayStreamIsStillOpen() async {
+        let display = TestDisplaySource()
+        weak var weakEngine: TerminalEngine?
+        do {
+            let engine = TerminalEngine(displaySource: display)
+            weakEngine = engine
+            // Drive ticks while the engine is still alive so the tick loop
+            // has provably started and is suspended inside `for await`.
+            for _ in 0 ..< 20 { display.tick() }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+
+        // The display stream stays open, so only a correctly weak tick loop
+        // can let the engine deallocate.
+        try? await Task.sleep(for: .milliseconds(20))
+
+        XCTAssertNil(weakEngine)
+    }
+
+    func testAppKitConsumerAcknowledgesBytesExactlyOnce() async {
+        let display = TestDisplaySource()
+        let engine = TerminalEngine(displaySource: display)
+        let view = NativeTerminalView(
+            frame: NSRect(x: 0, y: 0, width: 800, height: 600),
+            font: .monospacedSystemFont(ofSize: 12, weight: .regular)
+        )
+        let consumedBytes = OSAllocatedUnfairLock(initialState: 0)
+        let consumer = AppKitTerminalConsumer(
+            terminalView: view,
+            onBytesProcessed: { bytes in
+                consumedBytes.withLock { $0 += bytes }
+            }
+        )
+        engine.subscribe(UUID(), consumer: consumer)
+
+        engine.push("x")
+        display.tick()
+        try? await Task.sleep(for: .milliseconds(30))
+
+        XCTAssertEqual(consumedBytes.withLock { $0 }, 1)
     }
 
     func testResizeCoalesced() async {
