@@ -128,6 +128,80 @@ final class TerminalViewCacheMoveTests: XCTestCase {
         )
     }
 
+    /// Bug 2 (perf): a re-hosted view whose geometry did NOT change must not
+    /// re-publish a resize. Every publish is an SSH window-change round trip
+    /// and makes full-screen apps (vim/top) repaint, so a redundant one on each
+    /// tab switch shows up as a dropped frame.
+    func testUnchangedGeometryDoesNotRepublishResize() async {
+        let view = makeView()
+        let published = NIOLockedValueBox<[(Int, Int)]>([])
+        view.onPhysicalLayout = { cols, rows in
+            published.withLockedValue { $0.append((cols, rows)) }
+        }
+
+        view.terminal.resize(cols: 120, rows: 40)
+        view.layout()
+        try? await Task.sleep(for: .milliseconds(60)) // resize debounce
+        let afterFirst = published.withLockedValue { $0.count }
+        XCTAssertGreaterThan(afterFirst, 0, "precondition: first layout publishes geometry")
+
+        // Same size again (tab switch back to a cached pane).
+        view.layout()
+        try? await Task.sleep(for: .milliseconds(60))
+        XCTAssertEqual(
+            published.withLockedValue { $0.count }, afterFirst,
+            "unchanged geometry must not trigger another resize"
+        )
+    }
+
+    /// A genuine size change must still be published, otherwise wide output
+    /// stays truncated.
+    func testChangedGeometryDoesPublishResize() async {
+        let view = makeView()
+        let published = NIOLockedValueBox<[(Int, Int)]>([])
+        view.onPhysicalLayout = { cols, rows in
+            published.withLockedValue { $0.append((cols, rows)) }
+        }
+
+        view.terminal.resize(cols: 200, rows: 50)
+        view.layout()
+        try? await Task.sleep(for: .milliseconds(60))
+        view.terminal.resize(cols: 90, rows: 30)
+        view.layout()
+        try? await Task.sleep(for: .milliseconds(60))
+
+        XCTAssertEqual(
+            published.withLockedValue { $0.last?.0 }, 90,
+            "a real size change must reach the PTY"
+        )
+    }
+
+    /// Quantifies what invalidateSyncedSize() costs: it forces a resize
+    /// publish even when nothing about the geometry changed. Each publish is
+    /// an SSH window-change round trip plus a full repaint in vim/top, so
+    /// calling this on every pane rebind costs a frame on every tab switch.
+    func testInvalidateSyncedSizeForcesRedundantPublish() async {
+        let view = makeView()
+        let published = NIOLockedValueBox<[(Int, Int)]>([])
+        view.onPhysicalLayout = { cols, rows in
+            published.withLockedValue { $0.append((cols, rows)) }
+        }
+
+        view.terminal.resize(cols: 120, rows: 40)
+        view.layout()
+        try? await Task.sleep(for: .milliseconds(60))
+        let baseline = published.withLockedValue { $0.count }
+
+        view.invalidateSyncedSize()
+        view.layout()
+        try? await Task.sleep(for: .milliseconds(60))
+
+        XCTAssertEqual(
+            published.withLockedValue { $0.count }, baseline + 1,
+            "invalidateSyncedSize forces a redundant resize publish at unchanged size"
+        )
+    }
+
     func testReboundResizeCallbackTargetsNewOwner() {
         let coordinator = makeCoordinator()
         let seen = NIOLockedValueBox<[Int]>([])

@@ -176,6 +176,10 @@ final class TerminalViewCache {
 
         // Full reset — the old scrollback belongs to the dead session.
         cached.view.terminal.resetToInitialState()
+        // The new PTY starts at its own default size while the view is already
+        // laid out, and the view's cached geometry would otherwise suppress the
+        // resize — leaving the fresh session at the wrong column count.
+        (cached.view as? NativeTerminalView)?.invalidateSyncedSize()
     }
 
     /// Re-key a cached view from one pane to another WITHOUT tearing it down.

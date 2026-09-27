@@ -291,18 +291,37 @@ import SwiftUI
             cached.view.needsDisplay = true
             onViewReady()
 
-            Task { @MainActor in try? await Task.sleep(for: .milliseconds(100))
-                nsView.window?.makeFirstResponder(cached.view)
+            scheduleFocus(of: cached.view, in: nsView, coordinator: context.coordinator)
+        }
+
+        /// Focus the pane after layout settles. Cancels any pending focus so
+        /// rapid tab switches do not stack competing makeFirstResponder calls.
+        private func scheduleFocus(of view: NSView, in container: NSView, coordinator: PaneCoordinator) {
+            coordinator.focusTask?.cancel()
+            coordinator.focusTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(100))
+                guard !Task.isCancelled else { return }
+                container.window?.makeFirstResponder(view)
             }
         }
 
-        static func dismantleNSView(_: NSView, coordinator _: PaneCoordinator) {}
-
+        static func dismantleNSView(_: NSView, coordinator: PaneCoordinator) {
+            coordinator.focusTask?.cancel()
+            coordinator.focusTask = nil
+        }
         /// A view moved between panes/tabs keeps its coordinator, but the
         /// coordinator's callbacks still point at the pane it was created for.
         /// Rebind them so input/resize reach the pane that now owns the view —
         /// otherwise SIGWINCH goes to the old PTY and the new one keeps a stale
         /// column count, truncating wide output.
+        ///
+        /// The synced size is deliberately NOT invalidated here. A genuine size
+        /// change already publishes itself: `layout()` reads `terminal.cols`
+        /// after `super.layout()` has resized it, so it differs from the last
+        /// published value. Invalidating would additionally force a redundant
+        /// publish at unchanged size on every tab switch — an SSH window-change
+        /// round trip plus a full repaint in vim/top, which reads as a dropped
+        /// frame when switching tabs quickly.
         private func rebindCallbacks(for cached: CachedTerminalView) {
             guard let coordinator = cached.coordinator as? ContainerTerminalCoordinator else { return }
             let send = onSend
@@ -311,9 +330,6 @@ import SwiftUI
             coordinator.onSend = { data in send(data) }
             coordinator.onResize = { cols, rows in resize?(cols, rows) }
             coordinator.onTitleChange = { title in titleChange?(title) }
-            // The view may now be a different size; force the next layout to
-            // publish fresh geometry instead of matching a stale cache.
-            (cached.view as? NativeTerminalView)?.invalidateSyncedSize()
         }
 
         private func createTerminalView(for paneID: UUID, context _: Context) -> CachedTerminalView {
@@ -413,9 +429,7 @@ import SwiftUI
                 }
             }
 
-            Task { @MainActor in try? await Task.sleep(for: .milliseconds(100))
-                containerView.window?.makeFirstResponder(cached.view)
-            }
+            scheduleFocus(of: cached.view, in: containerView, coordinator: context.coordinator)
         }
 
         private func updateSettings(for cached: CachedTerminalView, coordinator: PaneCoordinator) {
@@ -439,5 +453,8 @@ import SwiftUI
     private class PaneCoordinator: NSObject {
         var lastPaneID: UUID?
         var lastColorSchemeID: String?
+        /// Pending delayed focus. Cancelled on rebind so rapid tab switches do
+        /// not stack up competing makeFirstResponder calls.
+        var focusTask: Task<Void, Never>?
     }
 #endif
