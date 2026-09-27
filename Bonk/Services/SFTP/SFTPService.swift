@@ -624,52 +624,55 @@ final class SFTPService {
         let chunkSize = SFTPParallelStrategy.chunkSize(for: totalBytes)
         let pipelineDepth: Int = SFTPParallelStrategy.pipelinePerShard(shards: 1, totalBytes: totalBytes)
         let reader = try SFTPTransferActor(url: localURL)
-        defer { Task { await reader.close() } }
         var offset: UInt64 = 0
         var completedBytes: UInt64 = 0
         var pending = 0
         var updateCounter = 0
         var lastReportedProgress: Double = -1
 
-        try await withThrowingTaskGroup(of: Int.self) { group in
-            while true {
-                let isCancelled = transfers.first(where: { $0.id == transferID })?.isCancelled ?? false
-                if isCancelled { throw SFTPServiceError.transferCancelled }
+        do {
+            try await withThrowingTaskGroup(of: Int.self) { group in
+                while true {
+                    let isCancelled = transfers.first(where: { $0.id == transferID })?.isCancelled ?? false
+                    if isCancelled { throw SFTPServiceError.transferCancelled }
 
-                // Top up the write pipeline — file read off MainActor via actor
-                while pending < pipelineDepth {
-                    let chunkData = try await reader.readChunk(offset: offset, length: chunkSize)
-                    guard !chunkData.isEmpty else { break }
-                    let chunkOffset = offset
-                    offset += UInt64(chunkData.count)
-                    pending += 1
-                    group.addTask {
-                        try await SFTPTransferEngine.writeChunk(
-                            remoteFile, data: chunkData, at: chunkOffset
-                        )
+                    // Top up the write pipeline — file read off MainActor via actor
+                    while pending < pipelineDepth {
+                        let chunkData = try await reader.readChunk(offset: offset, length: chunkSize)
+                        guard !chunkData.isEmpty else { break }
+                        let chunkOffset = offset
+                        offset += UInt64(chunkData.count)
+                        pending += 1
+                        group.addTask {
+                            try await SFTPTransferEngine.writeChunk(
+                                remoteFile, data: chunkData, at: chunkOffset
+                            )
+                        }
+                    }
+
+                    if pending == 0 { break }
+                    // Wait for the oldest write to complete
+                    guard let written = try await group.next() else { break }
+                    pending -= 1
+                    completedBytes += UInt64(written)
+                    updateCounter += 1
+
+                    if updateCounter % 10 == 0 || completedBytes == totalBytes {
+                        if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
+                            transfers[idx].transferredBytes = completedBytes
+                        }
+                        let progress = totalBytes > 0 ? Double(completedBytes) / Double(totalBytes) : 1.0
+                        if progress - lastReportedProgress >= 0.01 || completedBytes == totalBytes {
+                            lastReportedProgress = progress
+                            continuation.yield(progress)
+                        }
                     }
                 }
-
-                if pending == 0 { break }
-                // Wait for the oldest write to complete
-                guard let written = try await group.next() else { break }
-                pending -= 1
-                completedBytes += UInt64(written)
-                updateCounter += 1
-
-                if updateCounter % 10 == 0 || completedBytes == totalBytes {
-                    if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                        transfers[idx].transferredBytes = completedBytes
-                    }
-                    let progress = totalBytes > 0 ? Double(completedBytes) / Double(totalBytes) : 1.0
-                    if progress - lastReportedProgress >= 0.01 || completedBytes == totalBytes {
-                        lastReportedProgress = progress
-                        continuation.yield(progress)
-                    }
-                }
+                try await group.waitForAll()
             }
-            try await group.waitForAll()
         }
+        // Close reader synchronously after all chunks are written
+        await reader.close()
     }
 
     /// Check if a file exists at the given absolute path.

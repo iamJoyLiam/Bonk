@@ -103,11 +103,12 @@ final class CitadelSFTPAdapter: SFTPChannel {
                     } else {
                         throw SFTPServiceError.operationFailed("no pool source for \(decision.rawValue)")
                     }
-                    defer { let profile = pool; Task { [profile] in for handle in profile { await handle.close() } } }
                     try await SFTPParallelTransferEngine.parallelUploadMultiTCP(
                         handles: pool, remotePath: tempRemotePath, localURL: localURL,
                         totalBytes: total, isCancelled: { false }, onProgress: onProgress
                     )
+                    // Close pool handles synchronously after transfer completes
+                    for handle in pool { await handle.close() }
                     try await verifyAndRenameRemote(tempPath: tempRemotePath, finalPath: remotePath, expectedBytes: total, sftp: sftp)
                     if total == 0 { onProgress(1.0) }
                     return
@@ -185,7 +186,6 @@ final class CitadelSFTPAdapter: SFTPChannel {
 
     private func singleStreamUpload(localURL: URL, total: UInt64, remoteFile: SendableSFTPFile, onProgress: @Sendable @escaping (Double) -> Void) async throws {
         let reader = try SFTPTransferActor(url: localURL)
-        defer { let row = reader; Task { [row] in await row.close() } }
         let chunkSize = SFTPParallelStrategy.chunkSize(for: total)
         let pipelineDepth = SFTPParallelStrategy.pipelinePerShard(shards: 1, totalBytes: total)
         var offset: UInt64 = 0
@@ -194,27 +194,32 @@ final class CitadelSFTPAdapter: SFTPChannel {
         var last: Double = -1
         var lastEmit = Date.distantPast
         let throttle: TimeInterval = 0.0 // 1:1
-        try await withThrowingTaskGroup(of: Int.self) { group in
-            while true {
-                while pending < pipelineDepth {
-                    let data = try await reader.readChunk(offset: offset, length: chunkSize)
-                    guard !data.isEmpty else { break }
-                    let off = offset
-                    offset += UInt64(data.count)
-                    pending += 1
-                    group.addTask { try await SFTPTransferEngine.writeChunk(remoteFile, data: data, at: off) }
+        do {
+            try await withThrowingTaskGroup(of: Int.self) { group in
+                while true {
+                    while pending < pipelineDepth {
+                        let data = try await reader.readChunk(offset: offset, length: chunkSize)
+                        guard !data.isEmpty else { break }
+                        let off = offset
+                        offset += UInt64(data.count)
+                        pending += 1
+                        group.addTask { try await SFTPTransferEngine.writeChunk(remoteFile, data: data, at: off) }
+                    }
+                    if pending == 0 { break }
+                    guard let written = try await group.next() else { break }
+                    pending -= 1
+                    completed += UInt64(written)
+                    let profile = total > 0 ? Double(completed) / Double(total) : 1.0
+                    let now = Date()
+                    // OR: 1% visible OR 50ms time — never drop visible jumps
+                    if profile >= 1.0 || now.timeIntervalSince(lastEmit) >= throttle { last = profile; lastEmit = now; onProgress(min(profile, 1.0)) }
                 }
-                if pending == 0 { break }
-                guard let written = try await group.next() else { break }
-                pending -= 1
-                completed += UInt64(written)
-                let profile = total > 0 ? Double(completed) / Double(total) : 1.0
-                let now = Date()
-                // OR: 1% visible OR 50ms time — never drop visible jumps
-                if profile >= 1.0 || now.timeIntervalSince(lastEmit) >= throttle { last = profile; lastEmit = now; onProgress(min(profile, 1.0)) }
+                try await group.waitForAll()
             }
-            try await group.waitForAll()
         }
+        // Close reader synchronously after all chunks are written — defer { Task { close } }
+        // leaves the fd open until the task runs, which can exhaust the fd table.
+        await reader.close()
     }
 
     func download(_ remotePath: String, to localURL: URL, operationID: UUID, onProgress: @escaping @Sendable (Double) -> Void) async throws {
@@ -242,11 +247,12 @@ final class CitadelSFTPAdapter: SFTPChannel {
                     } else {
                         throw SFTPServiceError.operationFailed("no pool source for \(decision.rawValue)")
                     }
-                    defer { let profile = pool; Task { [profile] in for handle in profile { await handle.close() } } }
                     try await SFTPParallelTransferEngine.parallelDownloadMultiTCP(
                         handles: pool, remotePath: remotePath, localURL: tempURL,
                         totalBytes: total, isCancelled: { false }, onProgress: onProgress
                     )
+                    // Close pool handles synchronously after transfer completes
+                    for handle in pool { await handle.close() }
                     try await verifyAndMove(tempURL: tempURL, finalURL: localURL, expectedBytes: total)
                     if total == 0 { onProgress(1.0) }
                     return
@@ -393,7 +399,6 @@ final class CitadelSFTPAdapter: SFTPChannel {
     // MARK: - Resume helpers (legacy)
     private func resumeSingleStreamUpload(localURL: URL, total: UInt64, resumeOffset: UInt64, remoteFile: SendableSFTPFile, onProgress: @Sendable @escaping (Double) -> Void) async throws {
         let reader = try SFTPTransferActor(url: localURL)
-        defer { let row = reader; Task { [row] in await row.close() } }
         let chunkSize = SFTPParallelStrategy.chunkSize(for: total - resumeOffset)
         let pipelineDepth = SFTPParallelStrategy.pipelinePerShard(shards: 1, totalBytes: total - resumeOffset)
         var offset = resumeOffset
@@ -401,27 +406,31 @@ final class CitadelSFTPAdapter: SFTPChannel {
         var pending = 0
         // Completed progress
         onProgress(Double(resumeOffset) / Double(total))
-        try await withThrowingTaskGroup(of: Int.self) { group in
-            while offset < total {
-                while pending < pipelineDepth && offset < total {
-                    let remaining = total - offset
-                    let len = Int(min(UInt64(chunkSize), remaining))
-                    let data = try await reader.readChunk(offset: offset, length: len)
-                    guard !data.isEmpty else { break }
-                    let off = offset
-                    offset += UInt64(data.count)
-                    pending += 1
-                    group.addTask { try await SFTPTransferEngine.writeChunk(remoteFile, data: data, at: off) }
+        do {
+            try await withThrowingTaskGroup(of: Int.self) { group in
+                while offset < total {
+                    while pending < pipelineDepth && offset < total {
+                        let remaining = total - offset
+                        let len = Int(min(UInt64(chunkSize), remaining))
+                        let data = try await reader.readChunk(offset: offset, length: len)
+                        guard !data.isEmpty else { break }
+                        let off = offset
+                        offset += UInt64(data.count)
+                        pending += 1
+                        group.addTask { try await SFTPTransferEngine.writeChunk(remoteFile, data: data, at: off) }
+                    }
+                    if pending == 0 { break }
+                    guard let written = try await group.next() else { break }
+                    pending -= 1
+                    completed += UInt64(written)
+                    let profile = Double(completed) / Double(total)
+                    onProgress(min(profile, 1.0))
                 }
-                if pending == 0 { break }
-                guard let written = try await group.next() else { break }
-                pending -= 1
-                completed += UInt64(written)
-                let profile = Double(completed) / Double(total)
-                onProgress(min(profile, 1.0))
+                try await group.waitForAll()
             }
-            try await group.waitForAll()
         }
+        // Close reader synchronously after all chunks are written
+        await reader.close()
     }
 
     private func resumeSingleStreamDownload(total: UInt64, resumeOffset: UInt64, remoteFile: SendableSFTPFile, localURL: URL, onProgress: @Sendable @escaping (Double) -> Void) async throws {

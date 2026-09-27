@@ -55,8 +55,6 @@ enum LogColorizer {
 
     // MARK: - Line Processing
 
-    // MARK: - Line Processing
-
     private static func colorizeLine(_ line: String, patterns: [LogFieldPattern], classifier: LogClassifier, previousWasLog: inout Bool) -> String {
         if line.isEmpty { previousWasLog = false; return line }
         if hasANSI(line) { previousWasLog = false; return line }
