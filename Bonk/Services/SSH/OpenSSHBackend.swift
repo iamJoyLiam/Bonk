@@ -21,6 +21,8 @@ final class OpenSSHBackend: @unchecked Sendable {
     let config: SSHConnectionConfig
     let generation: UUID
 
+    private static let diagnosticTailLimit = 4096
+
     private let lock = NSLock()
     private var activeProcess: OpenSSHProcessTransport?
     private var activePTYSession: PTYSession?
@@ -134,16 +136,21 @@ final class OpenSSHBackend: @unchecked Sendable {
         case .secureEnclaveKey(let tag): authDesc = "secureEnclave(\(tag))"
         }
         Log.ssh.info("[OPENSSH-CONFIG] host=\(self.config.host):\(self.config.port) user=\(self.config.username) authType=\(authDesc, privacy: .public) jump=\(self.config.jumpHost?.host ?? "nil", privacy: .public) attempt=\(attemptID, privacy: .public)")
-        let ptyTail = OSAllocatedUnfairLock<String>(initialState: "")
-        let stderrTail = OSAllocatedUnfairLock<String>(initialState: "")
+        let ptyTail = OSAllocatedUnfairLock(
+            initialState: BoundedTextTail(limit: Self.diagnosticTailLimit)
+        )
+        let stderrTail = OSAllocatedUnfairLock(
+            initialState: BoundedTextTail(limit: Self.diagnosticTailLimit)
+        )
         // attempt  onExit  11s  SIGHUP  auth
         let capturedAttemptID = attemptID
         let capturedPID = process.processID
         session.startProcess(
             fileDescriptor: process.masterFD,
-            onExit: {
-                let tail = ptyTail.withLock { String($0.suffix(4096)) }
-                let errTail = stderrTail.withLock { String($0.suffix(4096)) }
+            onExit: { [weak self, weak session] in
+                guard let self, let session else { return }
+                let tail = ptyTail.withLock { $0.value }
+                let errTail = stderrTail.withLock { $0.value }
                 // wasUserClosed  PTYSession.userClosedBoxclose  true  onUnexpectedClose ，
                 let wasClosed = session.isClosed
                 // exitStatus， 1； waitForExit  400ms

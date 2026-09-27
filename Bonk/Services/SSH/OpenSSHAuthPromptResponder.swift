@@ -10,6 +10,31 @@
 import Foundation
 import os.log
 
+struct BoundedTextTail {
+    let limit: Int
+    private(set) var value = ""
+
+    init(limit: Int) {
+        self.limit = limit
+    }
+
+    mutating func append(_ text: String) {
+        guard !text.isEmpty else { return }
+        if text.count >= limit {
+            value = String(text.suffix(limit))
+            return
+        }
+        value.append(text)
+        if value.count > limit {
+            value = String(value.suffix(limit))
+        }
+    }
+
+    mutating func removeAll() {
+        value.removeAll(keepingCapacity: true)
+    }
+}
+
 /// Responds to authentication prompts emitted by an OpenSSH PTY.
 ///
 /// Saved passwords are offered once. Further password prompts remain visible
@@ -22,8 +47,10 @@ struct OpenSSHPasswordCredential: Sendable, Equatable {
 }
 
 final class OpenSSHAuthPromptResponder: @unchecked Sendable {
+    static let promptBufferLimit = 1024
+
     private let lock = NSLock()
-    private var promptBuffer = ""
+    private var promptBuffer = BoundedTextTail(limit: OpenSSHAuthPromptResponder.promptBufferLimit)
     private var credentials: [OpenSSHPasswordCredential]
     private var autoAnsweredCount = 0
     private let maxAutoAnswers = 1 // Single auto-send per process to align with Prompts=1
@@ -82,24 +109,28 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
         self.write = write
     }
 
+    var promptBufferLengthForTest: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return promptBuffer.value.count
+    }
+
     func observe(_ data: Data) {
         guard let text = String(data: data, encoding: .utf8), !text.isEmpty else { return }
         let preview = String(text.prefix(80)).replacingOccurrences(of: "\n", with: "\\n").replacingOccurrences(of: "\r", with: "\\r")
-        var isMatch = false
-        var candidateCopy = ""
+        var verifiedPassword: String?
+        var passwordToWrite: String?
         lock.lock()
         promptBuffer.append(text)
-        let normalized = Self.stripANSI(promptBuffer)
+        let normalized = Self.stripANSI(promptBuffer.value)
         // Line-based parse: only last line ending with password: avoids banner cross-match
         let lines = normalized.components(separatedBy: "\n")
         let lastLine = lines.last ?? normalized
         let lastTrimmed = lastLine.trimmingCharacters(in: .whitespacesAndNewlines)
         let lastByCR = normalized.components(separatedBy: "\r").last?.trimmingCharacters(in: .whitespacesAndNewlines) ?? lastTrimmed
         let candidate = lastTrimmed.isEmpty ? lastByCR : lastTrimmed
-        isMatch = self.matchesPasswordPrompt(candidate)
-        candidateCopy = candidate
+        let isMatch = self.matchesPasswordPrompt(candidate)
         let suffixPreview = candidate.suffix(80).replacingOccurrences(of: "\n", with: "\\n").replacingOccurrences(of: "\r", with: "\\r")
-        lock.unlock()
 
         // A manually typed password is pending: decide acceptance over a short
         // window, not a single chunk. The server's rejection
@@ -124,22 +155,28 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
                 pendingPassword = nil
                 awaitingManualPassword = false
                 passwordResultDeadline = .distantPast
-                os_log("Manual password accepted, offering for save", type: .info)
-                onManualPasswordVerified?(pending)
+                verifiedPassword = pending
             }
             // else: keep waiting for the rejection signal within the window.
         }
 
         if isMatch {
-            if respondPasswordIfAvailable(for: candidateCopy) {
-                return
-            }
-            if promptContainsAuthHost(candidateCopy) {
+            passwordToWrite = respondPasswordLocked(for: candidate)
+            if passwordToWrite == nil, promptContainsAuthHost(candidate) {
                 awaitingManualPassword = true
                 manualPasswordBuffer = ""
                 captureExpiresAt = Date().addingTimeInterval(Self.captureTimeout)
             }
+        }
+        lock.unlock()
+
+        if let passwordToWrite {
+            write(Data((passwordToWrite + "\r").utf8))
             return
+        }
+        if let verifiedPassword {
+            os_log("Manual password accepted, offering for save", type: .info)
+            onManualPasswordVerified?(verifiedPassword)
         }
     }
 
@@ -187,13 +224,12 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
         return authUserHosts.contains { lower.contains($0.lowercased()) }
     }
 
-    @discardableResult
-    private func respondPasswordIfAvailable(for prompt: String) -> Bool {
-        lock.lock()
+    /// Caller must hold `lock`. Returns the password to send, or nil when no
+    /// saved credential may be auto-answered for this prompt.
+    private func respondPasswordLocked(for prompt: String) -> String? {
         // Dedup: same prompt within 800ms (chunked banner+password) should not double-send
         if Date().timeIntervalSince(lastSentAt) < 0.8 {
-            lock.unlock()
-            return false
+            return nil
         }
         let promptLowercased = prompt.lowercased()
         let credentialIndex = self.credentials.firstIndex {
@@ -201,27 +237,16 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
             return promptLowercased.contains(userHost)
         } ?? (self.allowUnscopedPassword && self.credentials.count >= 1 ? 0 : nil)
 
-        guard let credentialIndex else {
-            let avValue = self.autoAnsweredCount
-            let cnt = self.credentials.count
-            lock.unlock()
-            return false
-        }
-        guard self.autoAnsweredCount < self.maxAutoAnswers else {
-            lock.unlock()
-            return false
-        }
+        guard let credentialIndex else { return nil }
+        guard self.autoAnsweredCount < self.maxAutoAnswers else { return nil }
         let credential = self.credentials[credentialIndex]
         let fingerprint = OpenSSHBackend.passwordFingerprint(credential.password)
-        self.promptBuffer = ""
+        self.promptBuffer.removeAll()
         self.autoAnsweredCount += 1
         self.lastSentAt = Date()
         // Remove after send to avoid exhausting prompts
         self.credentials.remove(at: credentialIndex)
-        lock.unlock()
-
-        write(Data((credential.password + "\r").utf8))
-        return true
+        return credential.password
     }
 
     private func matchesPasswordPrompt(_ text: String) -> Bool {
@@ -231,18 +256,27 @@ final class OpenSSHAuthPromptResponder: @unchecked Sendable {
         ) != nil
     }
 
+    private static let csiRegex = try? NSRegularExpression(
+        pattern: #"\u001B\[[0-?]*[ -/]*[@-~]"#
+    )
+    private static let oscRegex = try? NSRegularExpression(
+        pattern: #"\u001B\][^\u0007]*(?:\u0007|\u001B\\)"#
+    )
+
     private static func stripANSI(_ text: String) -> String {
-        text
-            .replacingOccurrences(
-                of: #"\u001B\[[0-?]*[ -/]*[@-~]"#,
-                with: "",
-                options: .regularExpression
-            )
-            .replacingOccurrences(
-                of: #"\u001B\][^\u0007]*(?:\u0007|\u001B\\)"#,
-                with: "",
-                options: .regularExpression
-            )
+        guard let csiRegex, let oscRegex else { return text }
+        let range = NSRange(location: 0, length: text.utf16.count)
+        let withoutCSI = csiRegex.stringByReplacingMatches(
+            in: text,
+            range: range,
+            withTemplate: ""
+        )
+        let oscRange = NSRange(location: 0, length: withoutCSI.utf16.count)
+        return oscRegex.stringByReplacingMatches(
+            in: withoutCSI,
+            range: oscRange,
+            withTemplate: ""
+        )
     }
 }
 
