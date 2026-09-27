@@ -481,6 +481,7 @@ struct ContentView: View {
     struct QuakeTerminalView: View {
         @Environment(I18n.self) var i18n
         @StateObject private var themeManager = TerminalThemeManager.shared
+        @State private var quakeState = QuakePresentationState.shared
         let sessionManager: SessionManager
 
         private var colorScheme: TerminalColorScheme {
@@ -520,8 +521,12 @@ struct ContentView: View {
                 .padding(.vertical, AppStyle.spacingML)
                 .background(.ultraThinMaterial)
 
-                // Terminal content - shares the same tab
-                if let tab = sessionManager.activeTab {
+                // Terminal content - shares the same tab.
+                // Only mounted while the panel is on screen: this view consumes
+                // the tab's PTY through its own output stream and render
+                // engine, so keeping it alive while hidden doubled the cost of
+                // every tab switch and left two views sharing one session.
+                if quakeState.isVisible, let tab = sessionManager.activeTab {
                     TerminalTabContentView(
                         tab: tab,
                         colorScheme: colorScheme,

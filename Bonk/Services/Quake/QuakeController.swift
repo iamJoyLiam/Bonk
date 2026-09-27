@@ -140,6 +140,7 @@ final class QuakeController {
 
         let previousMode = currentMode
         currentMode = mode
+        QuakePresentationState.shared.setVisible(mode == .quake)
 
         switch mode {
         case .quake:
