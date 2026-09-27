@@ -27,6 +27,8 @@ extension SessionManager {
     func splitHorizontal() {
         guard let tab = activeTab else { return }
         guard let newPane = tab.layout.splitHorizontal() else { return }
+        newPane.hostItem = newPane.hostItem ?? tab.hostItem
+        newPane.title = newPane.title.isEmpty ? tab.hostItem.name : newPane.title
         tab.activePaneID = newPane.id
         TeamRelay.shared.setSharedSession(tabID: tab.id, paneID: newPane.id)
         FocusManager.shared.focus(newPane.id)
@@ -39,6 +41,8 @@ extension SessionManager {
     func splitVertical() {
         guard let tab = activeTab else { return }
         guard let newPane = tab.layout.splitVertical() else { return }
+        newPane.hostItem = newPane.hostItem ?? tab.hostItem
+        newPane.title = newPane.title.isEmpty ? tab.hostItem.name : newPane.title
         tab.activePaneID = newPane.id
         TeamRelay.shared.setSharedSession(tabID: tab.id, paneID: newPane.id)
         FocusManager.shared.focus(newPane.id)
@@ -96,7 +100,7 @@ extension SessionManager {
             // Update active pane
             tab.activePaneID = tab.layout.activePaneID
             // Update tab title
-            updateTabTitleForSplit(tab)
+            updateTabTitleAfterPaneRemoval(tab)
         }
     }
 
@@ -116,7 +120,7 @@ extension SessionManager {
             // Keep tab.activePaneID in sync unconditionally
             tab.activePaneID = tab.layout.activePaneID
             // Update tab title
-            updateTabTitleForSplit(tab)
+            updateTabTitleAfterPaneRemoval(tab)
         }
     }
 
@@ -183,15 +187,18 @@ extension SessionManager {
         if let newPane = newTab.layout.root.paneState {
             newPane.ptySession = ptySession
             ptySession.teamSessionID = TeamSessionID(tabID: newTab.id, paneID: newPane.id)
+            // Carry the live view across with the PTY. The view owns the
+            // alternate-screen buffer, so tearing it down makes vim/less
+            // repaint as raw escape sequences after the unsplit.
+            viewCache.move(from: paneID, to: newPane.id, parentTabID: newTab.id)
+        } else {
+            viewCache.remove(paneID)
         }
 
         // Remove the pane from the original tab
         if tab.layout.closePane(id: paneID) {
-            viewCache.remove(paneID)
             tab.activePaneID = tab.layout.activePaneID
-            if tab.layout.root.paneCount <= 1 {
-                tab.title = tab.hostItem.name
-            }
+            updateTabTitleAfterPaneRemoval(tab)
         }
 
         // Set the new tab as active
@@ -199,6 +206,21 @@ extension SessionManager {
         if let paneID = newTab.activePaneID {
             TeamRelay.shared.setSharedSession(tabID: newTab.id, paneID: paneID)
         }
+    }
+
+    /// Re-derive a tab's title after one of its panes left.
+    /// A tab that still holds a single pane belonging to a *different* host
+    /// (drag-to-split) must show that host, otherwise the two tabs end up
+    /// displaying the same name.
+    private func updateTabTitleAfterPaneRemoval(_ tab: TerminalTab) {
+        if tab.layout.root.paneCount > 1 {
+            tab.title = "Workspace"
+            return
+        }
+        let remainingHost = tab.layout.root.allPaneIDs
+            .compactMap { tab.layout.findPane(id: $0)?.hostItem?.name }
+            .first
+        tab.title = remainingHost ?? tab.hostItem.name
     }
 
     /// Connect a new pane (open PTY session).
@@ -313,6 +335,15 @@ extension SessionManager {
         newPane.title = sourceTab.hostItem.name
         // Remember the pane'sessionState true host so unsplit recreates the original tab
         newPane.hostItem = sourceTab.hostItem
+        // The target pane keeps its own host identity. Without this it stays nil
+        // and unsplitting it later falls back to the merged tab's host, making
+        // two different hosts collapse to the same tab name.
+        if sourcePane.hostItem == nil {
+            sourcePane.hostItem = targetTab.hostItem
+        }
+        if sourcePane.title.isEmpty {
+            sourcePane.title = targetTab.hostItem.name
+        }
 
         // Serial config: the moved pane may come from a serial tab
         if targetTab.serialConfig == nil {

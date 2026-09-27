@@ -117,8 +117,26 @@ final class TerminalViewCache {
 
     /// Remove a cached terminal view.
     func remove(_ tabID: UUID) {
-        cache.removeValue(forKey: tabID)
+        let cached = cache.removeValue(forKey: tabID)
         accessOrder.removeAll { $0 == tabID }
+        guard let cached else { return }
+        if let coordinator = cached.coordinator as? ContainerTerminalCoordinator {
+            coordinator.feedTask?.cancel()
+            coordinator.feedTask = nil
+            if let engine = coordinator.terminalEngine {
+                if let id = coordinator.engineConsumerID { engine.unsubscribe(id) }
+                if let id = coordinator.teamConsumerID { engine.unsubscribe(id) }
+            }
+            coordinator.engineConsumerID = nil
+            coordinator.engineConsumer = nil
+            coordinator.teamConsumerID = nil
+            coordinator.teamConsumer = nil
+            coordinator.terminalEngine = nil
+            coordinator.removeInlineCompletionMonitor()
+        }
+        cached.outputStream = nil
+        cached.onBytesProcessed = nil
+        cached.view.removeFromSuperview()
     }
 
     /// Connect output stream to a cached view with backpressure callback.
@@ -158,6 +176,36 @@ final class TerminalViewCache {
 
         // Full reset — the old scrollback belongs to the dead session.
         cached.view.terminal.resetToInitialState()
+    }
+
+    /// Re-key a cached view from one pane to another WITHOUT tearing it down.
+    ///
+    /// Used when a live PTY moves between panes/tabs (unsplit, drag-to-split).
+    /// The view holds the terminal's scrollback AND its alternate-screen state
+    /// (vim/less), so destroying and recreating it makes a running full-screen
+    /// app repaint as raw escape text. The feed task, stream and engine
+    /// subscription all stay attached to the same PTY, so the view must move
+    /// with it.
+    @discardableResult
+    func move(from oldID: UUID, to newID: UUID, parentTabID: UUID) -> CachedTerminalView? {
+        guard oldID != newID, let cached = cache.removeValue(forKey: oldID) else { return nil }
+        accessOrder.removeAll { $0 == oldID }
+
+        // Re-key the entry and re-parent it; the view/coordinator/stream and the
+        // running feed task are intentionally left untouched.
+        let moved = CachedTerminalView(
+            tabID: newID,
+            parentTabID: parentTabID,
+            view: cached.view,
+            coordinator: cached.coordinator
+        )
+        moved.outputStream = cached.outputStream
+        moved.onBytesProcessed = cached.onBytesProcessed
+        moved.constraints = cached.constraints
+        cache[newID] = moved
+        updateAccessOrder(newID)
+        evictIfNeeded(except: parentTabID)
+        return moved
     }
 
     /// Evict all cached views except those belonging to the active tab (used on memory pressure).
