@@ -118,6 +118,12 @@ extension SessionManager {
         tab.isBroadcastEnabled.toggle()
     }
 
+    /// Clean up input handler resources when a tab is closed.
+    /// Called from closeTab to prevent utf8Parsers dictionary growth.
+    func cleanupInputHandler(for tabID: UUID) {
+        inputHandler.utf8Parsers[tabID] = nil
+    }
+
     // MARK: - Broadcast Sync
 
     func syncBroadcastTargets() {

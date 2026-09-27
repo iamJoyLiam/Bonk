@@ -12,7 +12,8 @@ import Foundation
 final class InputHandler {
     /// Incremental UTF-8 decoders per tab, so multi-byte characters
     /// spanning multiple input chunks are assembled correctly.
-    private var utf8Parsers: [UUID: UTF8Accumulator] = [:]
+    /// internal (not private) so SessionManager.cleanupInputHandler can clear entries.
+    var utf8Parsers: [UUID: UTF8Accumulator] = [:]
 
     /// Send input bytes to a terminal pane, recording command history and broadcasting if enabled.
     func sendInput(
@@ -152,7 +153,8 @@ final class InputHandler {
 
 /// Buffers a UTF-8 byte stream and emits complete scalar values once the
 /// full multi-byte sequence has arrived. Invalid sequences are dropped.
-private struct UTF8Accumulator {
+/// internal (not private) because utf8Parsers in InputHandler references it.
+struct UTF8Accumulator {
     private var pending: [UInt8] = []
 
     /// Feed one byte. Returns the decoded scalar and whether the feed

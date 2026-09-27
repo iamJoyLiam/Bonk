@@ -198,6 +198,8 @@ final class SessionManager {
         authRetryStates.removeValue(forKey: id)
         showingAuthDialogs.remove(id)
         transientAuthResults.removeValue(forKey: id)
+        // Clean up input handler resources for this tab
+        cleanupInputHandler(for: id)
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
         await disconnectTab(id)
         // Clean up all pane views

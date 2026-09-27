@@ -413,7 +413,7 @@ struct HostListView: View {
     // MARK: - Backend Badge (v3.2 routing visualization)
 
     /// Pre-built lookup: "host|port" → newest valid profile (or stale fallback).
-    @State private var profileLookupCache: [String: SSHBackendProfile] = []
+    @State private var profileLookupCache: [String: SSHBackendProfile] = [:]
     @State private var profileLookupCacheKey: String = ""
 
     private var profileLookup: [String: SSHBackendProfile] {
