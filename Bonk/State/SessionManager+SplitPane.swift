@@ -383,8 +383,11 @@ extension SessionManager {
         sourcePTY.teamSessionID = TeamSessionID(tabID: targetTab.id, paneID: newPane.id)
         sourcePane.ptySession = nil
 
-        // Don't move terminal view cache
-        viewCache.remove(sourcePane.id)
+        // Carry the live view across with the PTY, exactly like unsplitPane.
+        // Dropping it here tore down the view that owned the alternate-screen
+        // buffer, so a running vim/less repainted as raw escape text after a
+        // drag-to-split.
+        viewCache.move(from: sourcePane.id, to: newPane.id, parentTabID: targetTab.id)
 
         // Update tab title and switch to target
         updateTabTitleForSplit(targetTab)

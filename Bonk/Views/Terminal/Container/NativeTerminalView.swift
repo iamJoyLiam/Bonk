@@ -140,6 +140,8 @@ import SwiftTerm
         nonisolated(unsafe) var ghostCoalesceTask: Task<Void, Never>?
         private nonisolated(unsafe) var resignObserver: NSObjectProtocol?
         private nonisolated(unsafe) var inlineDisabledObserver: NSObjectProtocol?
+        /// The window the observers above are currently installed for.
+        private nonisolated(unsafe) var observedWindow: NSWindow?
         nonisolated(unsafe) var rightClickMonitor: Any?
         var currentMetrics = InlineMetrics()
 
@@ -187,6 +189,12 @@ import SwiftTerm
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            // Switching tabs moves the view between containers, which fires
+            // this repeatedly for the SAME window. Tearing down and rebuilding
+            // the observers (and the right-click monitor) on every move is pure
+            // churn on the selection path, so only redo it when the window
+            // actually changes.
+            if window === observedWindow { return }
             if let observer = resignObserver {
                 NotificationCenter.default.removeObserver(observer)
                 resignObserver = nil
@@ -200,12 +208,14 @@ import SwiftTerm
                 rightClickMonitor = nil
             }
             guard let window else {
+                observedWindow = nil
                 MainActor.assumeIsolated {
                     self.inlinePipeline?.cancel()
                     self.hideGhost(reason: "window-nil")
                 }
                 return
             }
+            observedWindow = window
             // Turning the inline switch off must drop any in-flight request and
             // hide the ghost immediately, not on the next keystroke.
             inlineDisabledObserver = NotificationCenter.default.addObserver(

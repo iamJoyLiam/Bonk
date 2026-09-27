@@ -116,6 +116,14 @@ final class TerminalViewCache {
     }
 
     /// Remove a cached terminal view.
+    ///
+    /// The view is NOT detached from its superview here. `remove()` is reached
+    /// from SwiftUI state mutations (closing a pane), so touching the AppKit
+    /// hierarchy synchronously pulls the view out from under SwiftUI while it
+    /// still owns the container — AppKit then hits
+    /// "not legal to call -layoutSubtreeIfNeeded on a view which is already
+    /// being laid out" and the app dies. SwiftUI removes the view itself once
+    /// the pane leaves the layout.
     func remove(_ tabID: UUID) {
         let cached = cache.removeValue(forKey: tabID)
         accessOrder.removeAll { $0 == tabID }
@@ -136,7 +144,6 @@ final class TerminalViewCache {
         }
         cached.outputStream = nil
         cached.onBytesProcessed = nil
-        cached.view.removeFromSuperview()
     }
 
     /// Connect output stream to a cached view with backpressure callback.
@@ -212,6 +219,17 @@ final class TerminalViewCache {
         return moved
     }
 
+    /// Detach a view from its superview without doing it inside a layout pass.
+    /// Eviction can be triggered from memory pressure, which can land while
+    /// AppKit is mid-layout; removing the view there trips AppKit's layout
+    /// recursion guard.
+    private func detachFromSuperview(_ view: SwiftTerm.TerminalView) {
+        guard view.superview != nil else { return }
+        DispatchQueue.main.async { [weak view] in
+            view?.removeFromSuperview()
+        }
+    }
+
     /// Evict all cached views except those belonging to the active tab (used on memory pressure).
     func evictAllExceptActive(activeTabID: UUID?) {
         guard let activeTabID else { return }
@@ -234,7 +252,7 @@ final class TerminalViewCache {
                     Log.ui.info("[Cache] Cancelled feedTask for tab \(id.uuidString.prefix(8))")
                 }
                 // Remove from superview if attached
-                cached.view.removeFromSuperview()
+                detachFromSuperview(cached.view)
             }
             cache.removeValue(forKey: id)
         }
@@ -279,7 +297,7 @@ final class TerminalViewCache {
                     if let coordinator = cached.coordinator as? ContainerTerminalCoordinator {
                         coordinator.feedTask?.cancel()
                     }
-                    cached.view.removeFromSuperview()
+                    detachFromSuperview(cached.view)
                 }
                 cache.removeValue(forKey: evictID)
                 accessOrder.removeAll { $0 == evictID }

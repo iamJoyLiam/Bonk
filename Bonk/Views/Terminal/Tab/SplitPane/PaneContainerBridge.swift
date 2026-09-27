@@ -13,6 +13,13 @@ import SwiftUI
 #if os(macOS)
     import AppKit
 
+    /// Signpost for measuring the tab-selection path in Instruments.
+    /// Filter: subsystem "com.bonk", category "TerminalPerf", event "PaneRebind".
+    private let perfSignposter = OSSignposter(
+        subsystem: "com.bonk",
+        category: "TerminalPerf"
+    )
+
     /// Bridges PaneState to TerminalContainerView.
     struct PaneContainerBridge: View {
         let paneState: PaneState
@@ -239,6 +246,8 @@ import SwiftUI
         }
 
         func updateNSView(_ nsView: NSView, context: Context) {
+            let signpostStart = perfSignposter.beginInterval("PaneRebind")
+            defer { perfSignposter.endInterval("PaneRebind", signpostStart) }
             guard context.coordinator.lastPaneID != paneID else {
                 if let cached = TerminalViewCache.shared.retrieve(paneID) {
                     updateSettings(for: cached, coordinator: context.coordinator)

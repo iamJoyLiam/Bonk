@@ -5,6 +5,7 @@
 //  Regression cover for split / unsplit pane state integrity.
 //
 
+import AppKit
 import SwiftUI
 import XCTest
 @testable import Bonk
@@ -120,6 +121,76 @@ final class SplitPaneStateTests: XCTestCase {
         )
     }
 
+    // MARK: - Split then close (reported crash)
+
+    /// Closing a pane after a plain split must leave consistent state behind.
+    func testClosePaneAfterHorizontalSplit() {
+        let sm = SessionManager()
+        let (tabA, _, paneA, _) = makeTwoHostTabs(sm)
+        sm.activeTabID = tabA.id
+
+        guard let second = tabA.layout.splitHorizontal() else { return XCTFail("split failed") }
+        second.ptySession = PTYSession()
+        sm.updateTabTitleForSplit(tabA)
+
+        sm.closePane(second.id, in: tabA)
+
+        XCTAssertEqual(tabA.layout.root.paneCount, 1)
+        XCTAssertNotNil(tabA.layout.findPane(id: paneA.id), "surviving pane must remain")
+        XCTAssertNotNil(
+            tabA.layout.findPane(id: tabA.layout.activePaneID),
+            "activePaneID must still resolve to a live pane"
+        )
+    }
+
+    /// Closing a pane after a drag-to-split (two different hosts) must not
+    /// crash and must leave both hosts reachable.
+    func testClosePaneAfterDragToSplit() {
+        let sm = SessionManager()
+        let (tabA, tabB, paneA, _) = makeTwoHostTabs(sm)
+        sm.addPaneFromTab(tabB.id, to: tabA.id, paneID: paneA.id, position: .right)
+
+        let merged = sm.tabs[0]
+        XCTAssertEqual(merged.layout.root.paneCount, 2)
+
+        let movedPane = merged.layout.root.allPaneIDs
+            .compactMap { merged.layout.findPane(id: $0) }
+            .first { $0.hostItem != nil }!
+
+        sm.closePane(movedPane.id, in: merged)
+
+        XCTAssertEqual(merged.layout.root.paneCount, 1)
+        let remaining = merged.layout.root.allPaneIDs.first
+        XCTAssertNotNil(merged.layout.findPane(id: merged.layout.activePaneID))
+        XCTAssertNotNil(remaining)
+        // The surviving host must still be identified.
+        XCTAssertEqual(merged.title, "192.168.100.50")
+    }
+
+    /// Closing panes down to one, repeatedly, must stay consistent.
+    func testRepeatedSplitAndCloseStaysConsistent() {
+        let sm = SessionManager()
+        let (tabA, _, _, _) = makeTwoHostTabs(sm)
+        sm.activeTabID = tabA.id
+
+        for i in 0 ..< 5 {
+            guard let p = tabA.layout.splitHorizontal() else { break }
+            p.ptySession = PTYSession()
+            XCTAssertEqual(tabA.layout.root.paneCount, i + 2)
+        }
+        while tabA.layout.root.paneCount > 1 {
+            let victim = tabA.layout.root.allPaneIDs.last!
+            sm.closePane(victim, in: tabA)
+            XCTAssertNotNil(
+                tabA.layout.findPane(id: tabA.layout.activePaneID),
+                "activePaneID must resolve after close \(i0(tabA))"
+            )
+        }
+        XCTAssertEqual(tabA.layout.root.paneCount, 1)
+    }
+
+    private func i0(_ tab: TerminalTab) -> Int { tab.layout.root.paneCount }
+
     // MARK: - Bug 1: unsplit must carry the live view (and its alt screen) across
 
     func testUnsplitKeepsTheLiveViewAttachedToTheMovedPTY() {
@@ -167,6 +238,48 @@ final class SplitPaneStateTests: XCTestCase {
         XCTAssertTrue(
             cached?.view.terminal.isCurrentBufferAlternate ?? false,
             "alternate-screen state must survive, else vim repaints as raw escape text"
+        )
+    }
+
+    /// Drag-to-split must carry the live view too, not just unsplit.
+    func testDragToSplitKeepsTheLiveViewOnTheMovedPane() {
+        let sm = SessionManager(viewCache: .shared)
+        let cache = TerminalViewCache.shared
+        let (tabA, tabB, paneA, _) = makeTwoHostTabs(sm)
+
+        let view = NativeTerminalView(
+            frame: NSRect(x: 0, y: 0, width: 800, height: 600),
+            font: .monospacedSystemFont(ofSize: 12, weight: .regular)
+        )
+        view.feed(text: "\u{1B}[?1049h")
+        XCTAssertTrue(view.terminal.isCurrentBufferAlternate, "precondition: vim is on alt screen")
+        cache.store(
+            tabID: paneA.id,
+            parentTabID: tabA.id,
+            view: view,
+            coordinator: ContainerTerminalCoordinator(
+                onSend: { _ in }, onResize: { _, _ in }, onTitleChange: nil, copyOnSelect: false
+            )
+        )
+
+        // Drag B's pane (the one owning the live view) into A.
+        let sourcePane = tabB.layout.root.paneState!
+        cache.move(from: paneA.id, to: sourcePane.id, parentTabID: tabB.id)
+
+        sm.addPaneFromTab(tabB.id, to: tabA.id, paneID: paneA.id, position: .right)
+
+        let merged = sm.tabs[0]
+        let movedPane = merged.layout.root.allPaneIDs
+            .compactMap { merged.layout.findPane(id: $0) }
+            .first { $0.hostItem != nil }!
+
+        XCTAssertTrue(
+            cache.retrieve(movedPane.id)?.view === view,
+            "drag-to-split must carry the same view, not rebuild it"
+        )
+        XCTAssertTrue(
+            cache.retrieve(movedPane.id)?.view.terminal.isCurrentBufferAlternate ?? false,
+            "alternate-screen state must survive a drag-to-split"
         )
     }
 
