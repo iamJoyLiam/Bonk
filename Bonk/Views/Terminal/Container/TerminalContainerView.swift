@@ -12,6 +12,11 @@ import SwiftUI
 #if os(macOS)
     import AppKit
 
+    extension Notification.Name {
+        /// Posted when the user taps the terminal area — sidebar listens to clear its selection highlight.
+        static let terminalAreaTapped = Notification.Name("com.bonk.terminalAreaTapped")
+    }
+
     /// SwiftUI view that hosts the AppKit container.
     struct TerminalContainerView: View {
         @Environment(I18n.self) var i18n
@@ -64,6 +69,11 @@ import SwiftUI
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(terminalBackground)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                // Tapping the terminal area clears the sidebar selection highlight.
+                NotificationCenter.default.post(name: .terminalAreaTapped, object: nil)
+            }
             .onChange(of: activeTab.session?.ptySession != nil) { _, hasSession in
                 if hasSession {
                     Task { @MainActor in connectOutputStreamIfNeeded() }

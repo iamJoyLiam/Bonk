@@ -27,14 +27,11 @@ extension SessionManager {
 
     /// Single click on a sidebar host: SELECT only.
     ///
-    /// Focusing an already-open terminal is allowed, but a host with no tab is
-    /// never connected and the active tab is never cleared — clearing it made
-    /// the detail pane flash the "no terminal" page while other terminals were
-    /// still open. Opening requires a deliberate double click.
+    /// Purely visual — no terminal action, no tab switching, no connection.
+    /// The host's row shows a system highlight; nothing else happens.
+    /// Opening requires a deliberate double click.
     func sidebarSingleClick(host: HostItem) {
-        if let tab = tab(for: host) {
-            selectTab(tab.id)
-        }
+        _ = host  // no-op: selection state is tracked by selectedHostID in the view
     }
 
     /// Double click on a sidebar host: OPEN, or focus the existing tab.

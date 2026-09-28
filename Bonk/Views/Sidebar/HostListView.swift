@@ -77,8 +77,9 @@ struct HostListView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Native List selection: single click selects (system highlight),
-            // clicking outside clears selection automatically. Double-click
-            // opens a connection via simultaneousGesture in hostRow.
+            // double-click opens a connection via simultaneousGesture in hostRow.
+            // Tapping the terminal area posts .terminalAreaTapped, which clears
+            // the selection highlight.
             List(selection: $selectedHostID) {
                 ForEach(groupedHosts, id: \.0) { groupName, items in
                     Section {
@@ -96,6 +97,9 @@ struct HostListView: View {
                         groupHeader(groupName)
                     }
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalAreaTapped)) { _ in
+                selectedHostID = nil
             }
 
             Divider()

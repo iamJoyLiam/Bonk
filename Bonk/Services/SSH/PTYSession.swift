@@ -201,8 +201,10 @@ public final nonisolated class PTYSession: @unchecked Sendable {
             self.pendingBytes.withLock { $0[consumerID] = 0 }
 
             continuation.onTermination = { [weak self] _ in
-                self?.liveContinuations.withLock { _ = $0.removeValue(forKey: consumerID) }
-                self?.pendingBytes.withLock { _ = $0.removeValue(forKey: consumerID) }
+                guard let self else { return }
+                self.liveContinuations.withLock { _ = $0.removeValue(forKey: consumerID) }
+                self.pendingBytes.withLock { _ = $0.removeValue(forKey: consumerID) }
+                self.skippedChunks.withLock { _ = $0.removeValue(forKey: consumerID) }
                 Log.ssh.info("[PTY] Consumer \(consumerID.uuidString.prefix(8)) disconnected")
             }
         }
