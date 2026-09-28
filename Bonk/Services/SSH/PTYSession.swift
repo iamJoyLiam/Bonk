@@ -79,6 +79,10 @@ public final nonisolated class PTYSession: @unchecked Sendable {
     /// Set by close() so the reader task knows the close was user-initiated
     /// and must NOT report an unexpected disconnect.
     let userClosedBox = NIOLockedValueBox<Bool>(false)
+    /// close() is called up to 3x per session (pane close + session teardown +
+    /// tab teardown). Guard makes it idempotent so continuations are finished
+    /// exactly once and fd/process cleanup never double-runs.
+    private let didCloseBox = NIOLockedValueBox<Bool>(false)
     private static let maxPendingInputBytes = 64 * 1024
 
     /// Optional tap on bytes typed into the PTY (used to capture manual
@@ -762,8 +766,16 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         processCleanupBox.withLockedValue { $0 = closure }
     }
 
-    /// Gracefully close the PTY session.
+    /// Gracefully close the PTY session. Idempotent: disconnectTab tears down
+    /// pane sessions, the owning TerminalSession, and the tab itself, so this
+    /// can run up to 3x for one session — only the first pass does work.
     public func close() {
+        let firstClose = didCloseBox.withLockedValue { flag -> Bool in
+            if flag { return false }
+            flag = true
+            return true
+        }
+        guard firstClose else { return }
         if let pid = recordingPaneIDBox.withLockedValue({ $0 }) {
             Task { await SessionRecordingService.shared.stop(paneID: pid) }
             recordingPaneIDBox.withLockedValue { $0 = nil }
@@ -799,14 +811,22 @@ public final nonisolated class PTYSession: @unchecked Sendable {
         }
         pendingInputBox.withLockedValue { $0.removeAll() }
         outputObservers.withLock { $0.removeAll() }
-        liveContinuations.withLock { continuations in
-            continuations.values.forEach { $0.finish() }
+        // Snapshot continuations under lock, finish OUTSIDE the lock: finish()
+        // wakes suspended consumers whose onTermination re-enters these same
+        // locks (unfair locks are non-reentrant — finishing inside would
+        // deadlock or crash on teardown).
+        let liveToFinish = liveContinuations.withLock { continuations -> [AsyncStream<String>.Continuation] in
+            let all = Array(continuations.values)
             continuations.removeAll()
+            return all
         }
-        rawLiveContinuations.withLock { continuations in
-            continuations.values.forEach { $0.finish() }
+        let rawToFinish = rawLiveContinuations.withLock { continuations -> [AsyncStream<String>.Continuation] in
+            let all = Array(continuations.values)
             continuations.removeAll()
+            return all
         }
+        liveToFinish.forEach { $0.finish() }
+        rawToFinish.forEach { $0.finish() }
         pendingBytes.withLock { $0.removeAll() }
         skippedChunks.withLock { $0.removeAll() }
         processOutputHandlerBox.withLockedValue { $0 = nil }

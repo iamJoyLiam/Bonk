@@ -76,10 +76,10 @@ struct HostListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Native List selection: single click selects (system highlight),
-            // double-click opens a connection via simultaneousGesture in hostRow.
-            // Tapping the terminal area posts .terminalAreaTapped, which clears
-            // the selection highlight.
+            // Native List selection, Finder-style: single click selects and the
+            // highlight persists (gray when the list isn't focused — that's the
+            // system inactive-selection color, not a bug). Double-click opens
+            // a connection via simultaneousGesture in hostRow.
             List(selection: $selectedHostID) {
                 ForEach(groupedHosts, id: \.0) { groupName, items in
                     Section {
@@ -97,9 +97,6 @@ struct HostListView: View {
                         groupHeader(groupName)
                     }
                 }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .terminalAreaTapped)) { _ in
-                selectedHostID = nil
             }
 
             Divider()
