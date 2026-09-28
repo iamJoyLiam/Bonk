@@ -82,13 +82,22 @@ struct HostListView: View {
             // selection, and a row with no tab (nil tag) wrote nil — blanking
             // the detail pane to the "no terminal" page while other terminals
             // were still open.
-            List(selection: $selectedHostID) {
+            List {
                 ForEach(groupedHosts, id: \.0) { groupName, items in
                     Section {
                         ForEach(items) { host in
                             let tab = tabsByHostID[host.id]
                             hostRow(host, groupColor: groupModel(for: groupName)?.resolvedColor, tab: tab)
                                 .tag(host.id)
+                                .listRowBackground(
+                                    selectedHostID == host.id
+                                        ? Color.accentColor.opacity(0.12)
+                                        : Color.clear
+                                )
+                                .onTapGesture {
+                                    selectedHostID = host.id
+                                    sessionManager.sidebarSingleClick(host: host)
+                                }
                         }
                         .onDelete { indexSet in
                             if let idx = indexSet.first {
