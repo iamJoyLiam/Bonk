@@ -49,43 +49,24 @@ struct HostListView: View {
         return result
     }
 
-    /// Cached grouping result — recomputed only when inputs change, not on every body pass.
-    /// Key: host count + first host id + search text + group assignments hash.
-    @State private var groupedHostsCacheKey: String = ""
-    @State private var groupedHostsCache: [(String, [HostItem])] = []
-
+    /// Grouped and sorted host list — computed on each body pass.
+    /// For large host counts (>50), consider @State cache with .onChange invalidation.
     private var groupedHosts: [(String, [HostItem])] {
+        let grouped = Dictionary(grouping: filteredHosts) { $0.groupRef?.name ?? i18n.t(.unGrouped) }
         let ungroupedName = i18n.t(.unGrouped)
-        // Build a cheap cache key from inputs that affect grouping.
-        let key = "\(filteredHosts.count)-\(filteredHosts.first?.id.uuidString ?? "none")-\(searchText)-\(groupAssignmentsHash)"
-        if key != groupedHostsCacheKey {
-            groupedHostsCacheKey = key
-            let grouped = Dictionary(grouping: filteredHosts) { $0.groupRef?.name ?? ungroupedName }
-            groupedHostsCache = grouped.sorted { lhs, rhs in
-                if lhs.key == ungroupedName {
-                    return false
-                }
-                if rhs.key == ungroupedName {
-                    return true
-                }
-                let orderA = hostGroups.first(where: { $0.name == lhs.key })?.sortOrder ?? Int.max
-                let orderB = hostGroups.first(where: { $0.name == rhs.key })?.sortOrder ?? Int.max
-                return orderA < orderB
-            }.map { key, hosts in
-                (key, hosts.sorted { $0.sortOrder < $1.sortOrder })
+        return grouped.sorted { lhs, rhs in
+            if lhs.key == ungroupedName {
+                return false
             }
+            if rhs.key == ungroupedName {
+                return true
+            }
+            let orderA = hostGroups.first(where: { $0.name == lhs.key })?.sortOrder ?? Int.max
+            let orderB = hostGroups.first(where: { $0.name == rhs.key })?.sortOrder ?? Int.max
+            return orderA < orderB
+        }.map { key, hosts in
+            (key, hosts.sorted { $0.sortOrder < $1.sortOrder })
         }
-        return groupedHostsCache
-    }
-
-    /// Lightweight hash of current group assignments — invalidates grouping cache when hosts move groups.
-    private var groupAssignmentsHash: Int {
-        var hasher = Hasher()
-        for host in filteredHosts {
-            hasher.combine(host.id)
-            hasher.combine(host.groupRef?.id)
-        }
-        return hasher.finalize()
     }
 
     /// Look up HostGroup by name.
@@ -413,28 +394,22 @@ struct HostListView: View {
     // MARK: - Backend Badge (v3.2 routing visualization)
 
     /// Pre-built lookup: "host|port" → newest valid profile (or stale fallback).
-    @State private var profileLookupCache: [String: SSHBackendProfile] = [:]
-    @State private var profileLookupCacheKey: String = ""
-
+    /// Computed on each access — for large profile counts, consider @State cache
+    /// with .onChange invalidation keyed on backendProfiles.count.
     private var profileLookup: [String: SSHBackendProfile] {
-        let key = "\(backendProfiles.count)-\(backendProfiles.first?.id.uuidString ?? "none")"
-        if key != profileLookupCacheKey {
-            profileLookupCacheKey = key
-            var lookup: [String: SSHBackendProfile] = [:]
-            for profile in backendProfiles {
-                let dictKey = "\(profile.host)|\(profile.port)"
-                // Prefer valid over invalid; keep first seen (Query already sorted newest first)
-                if let existing = lookup[dictKey] {
-                    if !existing.isValid && profile.isValid {
-                        lookup[dictKey] = profile
-                    }
-                } else {
+        var lookup: [String: SSHBackendProfile] = [:]
+        for profile in backendProfiles {
+            let dictKey = "\(profile.host)|\(profile.port)"
+            // Prefer valid over invalid; keep first seen (Query already sorted newest first)
+            if let existing = lookup[dictKey] {
+                if !existing.isValid && profile.isValid {
                     lookup[dictKey] = profile
                 }
+            } else {
+                lookup[dictKey] = profile
             }
-            profileLookupCache = lookup
         }
-        return profileLookupCache
+        return lookup
     }
 
     private func latestProfile(for host: HostItem) -> SSHBackendProfile? {
