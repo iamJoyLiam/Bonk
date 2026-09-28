@@ -82,22 +82,16 @@ struct HostListView: View {
             // selection, and a row with no tab (nil tag) wrote nil — blanking
             // the detail pane to the "no terminal" page while other terminals
             // were still open.
-            List {
+            // Native List selection: single click selects (highlight shows),
+            // clicking outside the list clears selection automatically.
+            // No coupling to terminal tab state — purely visual selection.
+            List(selection: $selectedHostID) {
                 ForEach(groupedHosts, id: \.0) { groupName, items in
                     Section {
                         ForEach(items) { host in
                             let tab = tabsByHostID[host.id]
                             hostRow(host, groupColor: groupModel(for: groupName)?.resolvedColor, tab: tab)
                                 .tag(host.id)
-                                .listRowBackground(
-                                    selectedHostID == host.id
-                                        ? Color.accentColor.opacity(0.12)
-                                        : Color.clear
-                                )
-                                .onTapGesture {
-                                    selectedHostID = host.id
-                                    sessionManager.sidebarSingleClick(host: host)
-                                }
                         }
                         .onDelete { indexSet in
                             if let idx = indexSet.first {
@@ -110,9 +104,9 @@ struct HostListView: View {
                 }
             }
             .onChange(of: selectedHostID) { _, newValue in
-                guard let newValue, let host = hosts.first(where: { $0.id == newValue }) else { return }
-                // Single click only ever selects; it never opens a connection.
-                sessionManager.sidebarSingleClick(host: host)
+                // Selection changed — no side effects. The highlight is purely
+                // visual; double-click is the only action that opens a connection.
+                _ = newValue
             }
 
             Divider()
@@ -297,10 +291,9 @@ struct HostListView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .contentShape(Rectangle())
-        // Single click selects (handled by the List selection binding);
-        // double click opens a connection. Using simultaneousGesture ensures
-        // the double-click fires reliably on macOS List rows (where NSTableView
-        // can consume tap events before SwiftUI's onTapGesture sees them).
+        // Double click opens a connection. simultaneousGesture ensures it fires
+        // reliably on macOS List rows where NSTableView consumes tap events
+        // before SwiftUI's onTapGesture sees them.
         .simultaneousGesture(TapGesture(count: 2).onEnded {
             sessionManager.sidebarDoubleClick(host: host)
         })
