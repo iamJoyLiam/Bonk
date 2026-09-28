@@ -76,15 +76,9 @@ struct HostListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Host list.
-            // Selection is tracked as a host ID, NOT bound to activeTabID:
-            // binding it to activeTabID made every click write through the tab
-            // selection, and a row with no tab (nil tag) wrote nil — blanking
-            // the detail pane to the "no terminal" page while other terminals
-            // were still open.
-            // Native List selection: single click selects (highlight shows),
-            // clicking outside the list clears selection automatically.
-            // No coupling to terminal tab state — purely visual selection.
+            // Native List selection: single click selects (system highlight),
+            // clicking outside clears selection automatically. Double-click
+            // opens a connection via simultaneousGesture in hostRow.
             List(selection: $selectedHostID) {
                 ForEach(groupedHosts, id: \.0) { groupName, items in
                     Section {
@@ -102,11 +96,6 @@ struct HostListView: View {
                         groupHeader(groupName)
                     }
                 }
-            }
-            .onChange(of: selectedHostID) { _, newValue in
-                // Selection changed — no side effects. The highlight is purely
-                // visual; double-click is the only action that opens a connection.
-                _ = newValue
             }
 
             Divider()
