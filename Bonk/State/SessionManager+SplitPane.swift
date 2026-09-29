@@ -25,13 +25,15 @@ extension SessionManager {
 
     // MARK: - Sidebar Activation
 
-    /// Single click on a sidebar host: SELECT only.
+    /// Single click on a sidebar host: select + focus its tab if one is open.
     ///
-    /// Purely visual — no terminal action, no tab switching, no connection.
-    /// The host's row shows a system highlight; nothing else happens.
-    /// Opening requires a deliberate double click.
+    /// Never opens a connection and never clears the active tab — a host with
+    /// no tab only gets the visual highlight. Safe to run on every tap,
+    /// including the first tap of a double-click.
     func sidebarSingleClick(host: HostItem) {
-        _ = host  // no-op: selection state is tracked by selectedHostID in the view
+        if let tab = tab(for: host) {
+            selectTab(tab.id)
+        }
     }
 
     /// Double click on a sidebar host: OPEN, or focus the existing tab.

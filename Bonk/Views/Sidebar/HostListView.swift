@@ -7,6 +7,9 @@
 
 import SwiftData
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// Left sidebar: list of saved SSH hosts with connection status.
 struct HostListView: View {
@@ -29,6 +32,21 @@ struct HostListView: View {
     @State private var diagnosisHost: HostItem?
     /// Sidebar selection is a host identity, independent of tab selection.
     @State private var selectedHostID: UUID?
+    /// Manual double-click tracking: the row re-renders on selection change,
+    /// which tears down an in-flight TapGesture(count: 2) — the classic
+    /// "first double-click only selects" bug. Counting single taps with the
+    /// system double-click interval is immune: every tap is independent.
+    @State private var lastTapHostID: UUID?
+    @State private var lastTapTime: Date = .distantPast
+
+    /// System double-click speed (respects the user's mouse settings).
+    private var doubleClickInterval: TimeInterval {
+        #if os(macOS)
+        NSEvent.doubleClickInterval
+        #else
+        0.5
+        #endif
+    }
 
     private var filteredHosts: [HostItem] {
         if searchText.isEmpty {
@@ -74,12 +92,30 @@ struct HostListView: View {
         hostGroups.first(where: { $0.name == name })
     }
 
+    /// Single-tap entry for a host row. Selects always; a second tap on the
+    /// same host within the system double-click interval opens the connection.
+    private func handleHostTap(host: HostItem) {
+        selectedHostID = host.id
+        let now = Date()
+        if lastTapHostID == host.id, now.timeIntervalSince(lastTapTime) < doubleClickInterval {
+            lastTapHostID = nil
+            sessionManager.sidebarDoubleClick(host: host)
+        } else {
+            lastTapHostID = host.id
+            lastTapTime = now
+            sessionManager.sidebarSingleClick(host: host)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Native List selection, Finder-style: single click selects and the
             // highlight persists (gray when the list isn't focused — that's the
-            // system inactive-selection color, not a bug). Double-click opens
-            // a connection via simultaneousGesture in hostRow.
+            // system inactive-selection color, not a bug).
+            // Single click: select + focus the existing tab if any (never opens).
+            // Double click (two taps within the system interval): open or focus.
+            // Tap counting is manual — TapGesture(count: 2) dies mid-gesture when
+            // the row re-renders on selection change ("double-click twice" bug).
             List(selection: $selectedHostID) {
                 ForEach(groupedHosts, id: \.0) { groupName, items in
                     Section {
@@ -87,6 +123,9 @@ struct HostListView: View {
                             let tab = tabsByHostID[host.id]
                             hostRow(host, groupColor: groupModel(for: groupName)?.resolvedColor, tab: tab)
                                 .tag(host.id)
+                                .onTapGesture {
+                                    handleHostTap(host: host)
+                                }
                         }
                         .onDelete { indexSet in
                             if let idx = indexSet.first {
@@ -97,6 +136,15 @@ struct HostListView: View {
                         groupHeader(groupName)
                     }
                 }
+            }
+            .onChange(of: sessionManager.activeTabID) { _, newValue in
+                // One-way sync: highlight follows the active terminal tab so the
+                // list always shows where you are (Transmit/RoyalTS style).
+                // Never the reverse — selecting here never switches tabs by itself.
+                guard let newValue,
+                      let tab = sessionManager.tabs.first(where: { $0.id == newValue })
+                else { return }
+                selectedHostID = tab.hostItem.id
             }
 
             Divider()
@@ -281,12 +329,6 @@ struct HostListView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .contentShape(Rectangle())
-        // Double click opens a connection. simultaneousGesture ensures it fires
-        // reliably on macOS List rows where NSTableView consumes tap events
-        // before SwiftUI's onTapGesture sees them.
-        .simultaneousGesture(TapGesture(count: 2).onEnded {
-            sessionManager.sidebarDoubleClick(host: host)
-        })
         .contextMenu {
             Button {
                 sessionManager.sidebarDoubleClick(host: host)
