@@ -30,7 +30,13 @@ extension PaneTerminalView {
         }
 
         Button {
-            if let cached = TerminalViewCache.shared.retrieve(paneState.id) {
+            // Act on the pane that was right-clicked. The menu knows it exactly,
+            // so this must not guess from the tab — and it must also work in a
+            // single-pane tab, where the same view is cached under the tab's id.
+            if let cached = TerminalViewCache.shared.retrieveForPane(
+                paneID: paneState.id,
+                tabID: tab.id
+            ) {
                 cached.view.selectAll()
             }
         } label: {

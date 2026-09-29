@@ -115,6 +115,58 @@ final class TerminalViewCache {
         return cache[tabID]
     }
 
+    // MARK: - Target resolution
+    //
+    // The cache holds one entry per *view*, and a view is keyed by pane ID when
+    // the tab is split and by tab ID when it is not. Both layouts share this
+    // dictionary, so "look this up by tab id" is only correct in one of them.
+    //
+    // These two functions are the single definition of which view a command
+    // should act on. Callers go through one of them rather than picking a key.
+
+    /// The view a **tab-level** command (Copy, Select All, focus) should act on:
+    /// the tab's active pane.
+    ///
+    /// Falls back to the tab's own entry (single-pane layout) and then to any
+    /// view belonging to that tab, so a stale `activePaneID` degrades to doing
+    /// something sensible rather than silently doing nothing.
+    func retrieveActivePane(tabID: UUID, activePaneID: UUID?) -> CachedTerminalView? {
+        if let activePaneID, let cached = cache[activePaneID] {
+            updateAccessOrder(activePaneID)
+            return cached
+        }
+        if let cached = cache[tabID] {
+            updateAccessOrder(tabID)
+            return cached
+        }
+        // Any view of this tab, most recently used first — the same order the
+        // cache already evicts by, so the fallback is deterministic instead of
+        // whatever order the dictionary happens to yield. Never another tab's
+        // view.
+        let key = accessOrder.last { cache[$0]?.parentTabID == tabID }
+        guard let key, let cached = cache[key] else { return nil }
+        updateAccessOrder(key)
+        return cached
+    }
+
+    /// The view a **pane context menu** should act on: the pane the user
+    /// right-clicked.
+    ///
+    /// The menu already knows the exact pane, so this does not guess. It still
+    /// checks the tab's own entry because in a single-pane tab that is the same
+    /// view under a different key.
+    func retrieveForPane(paneID: UUID, tabID: UUID) -> CachedTerminalView? {
+        if let cached = cache[paneID] {
+            updateAccessOrder(paneID)
+            return cached
+        }
+        if let cached = cache[tabID] {
+            updateAccessOrder(tabID)
+            return cached
+        }
+        return nil
+    }
+
     /// Remove a cached terminal view.
     ///
     /// The view is NOT detached from its superview here. `remove()` is reached

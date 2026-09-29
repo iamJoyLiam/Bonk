@@ -351,8 +351,15 @@ extension TerminalTabView {
     }
 
     func copySelection() {
+        // Resolve the tab's *active pane*. Looking the tab up by its own id is a
+        // miss the moment the tab is split, because split views are cached under
+        // their pane id — Copy then did nothing at all, with no error to show
+        // the user why.
         guard let activeTab = sessionManager.activeTab,
-              let cached = TerminalViewCache.shared.retrieve(activeTab.id) else { return }
+              let cached = TerminalViewCache.shared.retrieveActivePane(
+                  tabID: activeTab.id,
+                  activePaneID: activeTab.activePaneID
+              ) else { return }
         if let selectedText = cached.view.getSelection(), !selectedText.isEmpty {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(selectedText, forType: .string)
