@@ -84,7 +84,7 @@ struct TeamPairingTrustTests {
     @Test("pairingChallenge round-trips with its nonce")
     func pairingChallengeRoundTrips() throws {
         let peer = TeamPeer(id: UUID(), displayName: "Guest", role: .guest)
-        let message = TeamMessage.pairingChallenge(pin: "123456", peer: peer, nonce: "nonce-1")
+        let message = TeamMessage.pairingChallenge(peer: peer, nonce: "nonce-1")
         let data = try JSONEncoder().encode(message)
         let decoded = try JSONDecoder().decode(TeamMessage.self, from: data)
         #expect(decoded == message)

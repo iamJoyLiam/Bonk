@@ -2,13 +2,17 @@
 //  TeamStore.swift
 //  Bonk
 //
-//  Single source of truth for Team isHosting + discovery (Phase 4).
-//  One NWListener, one isHosting, HostSession(1 pane) constraint, injected SessionManager.
+//  Single source of truth for Team isHosting + the single-pane shared
+//  constraint. Hosting itself lives in `TeamSSHHost`.
+//
+//  This type used to own an `NWListener` and a registry of `NWConnection`s.
+//  Both were removed when the relay moved to SSH: a plaintext listener that
+//  nothing calls is still a way to start a plaintext relay, and "nobody calls
+//  it today" is not the same as "it cannot be done".
 //
 
 import Combine
 import Foundation
-import Network
 import os
 
 @MainActor
@@ -27,53 +31,28 @@ final class TeamStore: ObservableObject {
     }
     @Published var hostSession: HostSession?
 
-    private var listener: NWListener?
-    private var connections: [UUID: NWConnection] = [:]
     private let logger = Logger(subsystem: "com.bonk", category: "TeamStore")
     private var cancellables = Set<AnyCancellable>()
 
     init() {}
 
-    // MARK: - Hosting (single NWListener)
+    // MARK: - Hosting (state only — the transport is TeamSSHHost)
 
-    func startHosting(displayName: String, serviceType: String = TeamConstants.serviceType) throws {
-        guard !isHosting else { return }
-        let params = NWParameters.tcp
-        let service = NWListener.Service(name: displayName, type: serviceType)
-        let newListener = try NWListener(service: service, using: params)
-        newListener.stateUpdateHandler = { [weak self] state in
-            Task { @MainActor in
-                guard let self else { return }
-                switch state {
-                case .ready:
-                    if let raw = newListener.port?.rawValue, raw != 0 { self.hostedPort = raw }
-                case .failed(let err):
-                    self.lastError = err.localizedDescription
-                    self.hostedPort = nil
-                case .cancelled:
-                    self.hostedPort = nil
-                default: break
-                }
-            }
-        }
-        newListener.newConnectionHandler = { [weak self] _ in
-            // Actual connection handling stays in TeamRelay/Host for now;
-            // Store owns the listener lifecycle, Relay owns the session logic.
-            // Single listener satisfies “one truth” — no second Bonjour listener.
-            self?.logger.info("[Store] newConnection delegated to Relay")
-        }
-        newListener.start(queue: .global(qos: .utility))
-        listener = newListener
+    /// Record that the relay started hosting on `port`.
+    func didStartHosting(on port: UInt16?) {
         isHosting = true
+        hostedPort = port
         lastError = nil
-        logger.info("[Store] hosting \(displayName) on \(String(describing: newListener.port))")
+        logger.info("[Store] hosting on \(String(describing: port))")
+    }
+
+    func didFailToStartHosting(_ error: String) {
+        isHosting = false
+        hostedPort = nil
+        lastError = error
     }
 
     func stopHosting() {
-        listener?.cancel()
-        listener = nil
-        for color in connections.values { color.cancel() }
-        connections.removeAll()
         isHosting = false
         hostedPort = nil
         hostSession = nil
@@ -92,19 +71,4 @@ final class TeamStore: ObservableObject {
     func clearHostSession() {
         hostSession = nil
     }
-
-    // MARK: - Connection registry (for Store-owned lifecycle)
-
-    func register(connection: NWConnection) -> UUID {
-        let id = UUID()
-        connections[id] = connection
-        return id
-    }
-
-    func unregister(id: UUID) {
-        connections[id]?.cancel()
-        connections.removeValue(forKey: id)
-    }
-
-    var underlyingListener: NWListener? { listener }
 }

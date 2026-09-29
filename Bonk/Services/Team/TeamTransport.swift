@@ -16,7 +16,6 @@
 //
 
 import Foundation
-import Network
 
 /// Lifecycle of a team channel, modelled explicitly so a transport never has
 /// to know what `NWConnection.State` is.
@@ -35,41 +34,17 @@ protocol TeamChannel: AnyObject {
     /// already-live channels implements this as a no-op.
     func activate()
 
-    func send(_ bytes: [UInt8], completion: @escaping (Error?) -> Void)
-    func receive(maxBytes: Int, completion: @escaping (Data?, Bool, Error?) -> Void)
+    /// Completions are `@Sendable` because a transport may fulfil them on
+    /// an event loop rather than the caller's context.
+    func send(_ bytes: [UInt8], completion: @escaping @Sendable (Error?) -> Void)
+    func receive(maxBytes: Int, completion: @escaping @Sendable (Data?, Bool, Error?) -> Void)
     func cancel()
 }
 
-/// Bridges `NWConnection` to `TeamChannel`.
+/// There is deliberately **no** `NWConnection` conformance here.
 ///
-/// This is the plaintext implementation. It exists so the transport
-/// abstraction can be introduced without changing behaviour, and so the
-/// plaintext path can be deleted in one place once SSH is the only path.
-extension NWConnection: TeamChannel {
-    var onStateChange: (@Sendable (TeamChannelState) -> Void)? {
-        get { nil }
-        set {
-            guard let newValue else { return }
-            stateUpdateHandler = { state in
-                switch state {
-                case .ready: newValue(.ready)
-                case let .failed(error): newValue(.failed(error.localizedDescription))
-                case .cancelled: newValue(.cancelled)
-                default: break
-                }
-            }
-        }
-    }
-
-    func activate() { start(queue: .global(qos: .utility)) }
-
-    func send(_ bytes: [UInt8], completion: @escaping (Error?) -> Void) {
-        send(content: Data(bytes), completion: .contentProcessed(completion))
-    }
-
-    func receive(maxBytes: Int, completion: @escaping (Data?, Bool, Error?) -> Void) {
-        receive(minimumIncompleteLength: 1, maximumLength: maxBytes) { data, _, isComplete, error in
-            completion(data, isComplete, error)
-        }
-    }
-}
+/// When SSH became the only transport, a plaintext `NWConnection` could still
+/// satisfy `TeamChannel`, which would leave "the team relay speaks only over
+/// SSH" as a convention rather than a property of the type. Removing the
+/// conformance makes reintroducing a plaintext path require writing a
+/// conformance by hand — an explicit, reviewable act.

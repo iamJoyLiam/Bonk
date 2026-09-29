@@ -143,7 +143,10 @@ enum TeamMessage: Codable, Sendable, Equatable {
     // System
     case notice(payload: String)
     case heartbeat
-    case pairingChallenge(pin: String, peer: TeamPeer, nonce: String)
+    /// Carries no PIN: the transport authenticates the PIN as SSH user
+    /// authentication, so repeating it here would put the credential on the
+    /// wire a second time for no added protection.
+    case pairingChallenge(peer: TeamPeer, nonce: String)
     /// Host confirms it validated our PIN. Carries the nonce we sent (so a
     /// recorded acceptance cannot be replayed at us) and the host's identity
     /// fingerprint. This is the ONLY message that may establish pairing on the
@@ -196,7 +199,6 @@ enum TeamMessage: Codable, Sendable, Equatable {
             let peer = try container.decodeIfPresent(TeamPeer.self, forKey: .peer)
                 ?? TeamPeer(displayName: "Guest", role: .guest)
             self = .pairingChallenge(
-                pin: try container.decode(String.self, forKey: .pin),
                 peer: peer,
                 nonce: try container.decode(String.self, forKey: .nonce)
             )
@@ -248,9 +250,8 @@ enum TeamMessage: Codable, Sendable, Equatable {
             try container.encode(payload, forKey: .payload)
         case .heartbeat:
             try container.encode(MessageType.heartbeat, forKey: .type)
-        case let .pairingChallenge(pin, peer, nonce):
+        case let .pairingChallenge(peer, nonce):
             try container.encode(MessageType.pairingChallenge, forKey: .type)
-            try container.encode(pin, forKey: .pin)
             try container.encode(peer, forKey: .peer)
             try container.encode(nonce, forKey: .nonce)
         case let .pairingAccepted(nonce, hostFingerprint, host):

@@ -173,20 +173,15 @@ extension TeamRelay {
 
     func handleHostMessage(_ message: TeamMessage, peerConnectionID: UUID) {
         switch message {
-        case let .pairingChallenge(pin, peer, nonce):
+        case let .pairingChallenge(peer, nonce):
+            // Reaching here means the transport already accepted this peer:
+            // `TeamSSHAuthDelegate` verified the PIN during the SSH handshake
+            // before any channel was opened, and the rate limit lives there.
+            // This handler therefore decides only whether an authenticated peer
+            // may enter the session — never whether its credential was valid.
             guard !isPaired(peerConnectionID) else { return }
             guard connectedPeers.count < TeamConstants.maxGuestCount else {
                 rejectHostConnection(peerConnectionID, reason: L.t(.tmGuestLimit))
-                return
-            }
-            guard allowPairingAttempt() else {
-                rejectHostConnection(peerConnectionID, reason: L.t(.tmTooManyAttempts))
-                return
-            }
-            guard pin == pairingPin else {
-                recordPairingFailure()
-                logger.warning("Host pairing PIN mismatch")
-                rejectHostConnection(peerConnectionID, reason: L.t(.tmWrongPin))
                 return
             }
 

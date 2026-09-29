@@ -1,18 +1,18 @@
 //
 //  TeamTransportAbstractionTests.swift
-//  BonkTests — the transport abstraction must be behaviour-preserving.
+//  BonkTests
 //
-//  This commit replaces the concrete `NWConnection` with `any TeamChannel`
-//  and changes nothing else. The security properties of the team session must
-//  therefore be identical before and after:
+//  The team relay must be reachable only over SSH.
 //
-//    plaintext TCP + PIN + existing pairing semantics
+//  This file replaces an earlier version that asserted the opposite — that the
+//  transport abstraction left the plaintext `NWConnection` and the in-band PIN
+//  untouched. That assertion was correct while SSH was still being built and
+//  would have failed the build if the migration had been done in one step, but
+//  keeping it would now forbid the very property we want.
 //
-//  The tests below state that as an explicit invariant rather than leaving it
-//  implicit, because the failure mode they guard against is a specific and
-//  easy mistake: during a transport migration, deleting the old
-//  authentication check *before* the new one is wired up. That produces a
-//  commit which is green, builds, and has no PIN check at all.
+//  The tests below state the *production* property, and are written to fail
+//  loudly if someone reintroduces a plaintext path or moves authentication out
+//  of the handshake.
 //
 
 import Testing
@@ -22,94 +22,97 @@ import Foundation
 @Suite("Team Transport Abstraction Tests")
 struct TeamTransportAbstractionTests {
 
-    /// The abstraction must not have changed what the host accepts: pairing
-    /// still requires the PIN.
-    @Test("Pairing still requires the PIN on the wire")
-    func pairingStillCarriesThePin() {
+    // MARK: - The plaintext path is structurally gone
+
+    /// No production Team file may name a plaintext socket type.
+    ///
+    /// This is the test that would have caught a "half-migrated" relay: a
+    /// commit where `startHosting` still built an `NWListener` while SSH was
+    /// wired up alongside it. Two code paths, one of them unencrypted, and
+    /// every green test still passing.
+    @Test("No Team production file constructs a plaintext socket")
+    func noPlaintextSocketInProduction() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Bonk/Services/Team")
+
+        let offenders = try FileManager.default
+            .contentsOfDirectory(atPath: root.path)
+            .filter { $0.hasSuffix(".swift") }
+            .compactMap { name -> String? in
+                let source = try String(
+                    contentsOf: root.appendingPathComponent(name),
+                    encoding: .utf8
+                )
+                // Strip line comments so prose about NWListener is not a hit.
+                let code = source
+                    .split(separator: "\n")
+                    .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+                    .joined(separator: "\n")
+                if code.contains("NWListener(") || code.contains("NWConnection(") {
+                    return name
+                }
+                return nil
+            }
+        #expect(offenders.isEmpty,
+                "plaintext socket construction in Team production code: \(offenders)")
+    }
+
+    /// `NWConnection` must not satisfy `TeamChannel`.
+    ///
+    /// This is a compile-time fact, so it cannot be asserted at runtime — any
+    /// expression of the form "this value is a `TeamChannel`" would simply fail
+    /// to build if the conformance were gone, which is the point. What *can* be
+    /// asserted is that the conformance's source is absent, which is why the
+    /// check below is part of `noPlaintextSocketInProduction` rather than a
+    /// separate test: `extension NWConnection: TeamChannel` would be written in
+    /// Team production code, and that scan is already done.
+    @Test("The plaintext conformance is not reintroduced")
+    func noPlaintextChannelConformance() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Bonk/Services/Team/TeamTransport.swift")
+        let source = try String(contentsOf: root, encoding: .utf8)
+        #expect(!source.contains(": TeamChannel"),
+                "a conformance to TeamChannel must not return to TeamTransport")
+    }
+
+    // MARK: - The PIN is the transport credential, not a protocol field
+
+    /// The challenge must not carry the PIN.
+    ///
+    /// The PIN is consumed by SSH user authentication. Re-encoding it in the
+    /// Team protocol would put the credential on the wire a second time, inside
+    /// a message an unauthenticated reader could have captured had the
+    /// transport ever been plaintext.
+    @Test("pairingChallenge does not carry the PIN")
+    func pairingChallengeCarriesNoPin() throws {
         let peer = TeamPeer(id: UUID(), displayName: "Guest", role: .guest)
-        // If the transport migration had moved the PIN into another layer,
-        // this would have become `pairingChallenge(peer:nonce:)` and the
-        // transport would be accepting unauthenticated peers.
-        let message = TeamMessage.pairingChallenge(pin: "123456", peer: peer, nonce: "n1")
-        guard case let .pairingChallenge(pin, _, _) = message else {
-            Issue.record("pairingChallenge must still carry the PIN")
-            return
-        }
-        #expect(pin == "123456")
-    }
+        let message = TeamMessage.pairingChallenge(peer: peer, nonce: "n1")
 
-    /// A PIN that does not match must not pair. The host handler is the single
-    /// place this is enforced, so assert the guard is present in the source
-    /// rather than asserting a code path that needs a live peer.
-    @Test("The host still rejects a PIN mismatch")
-    func hostStillChecksThePin() throws {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: root.appendingPathComponent("Bonk/Services/Team/TeamRelay+Host.swift"),
-            encoding: .utf8
+        let encoded = try JSONEncoder().encode(message)
+        let json = try #require(
+            try JSONSerialization.jsonObject(with: encoded) as? [String: Any]
         )
-        #expect(source.contains("pin == pairingPin"),
-                "the host must compare the presented PIN before pairing a peer")
-        #expect(source.contains("recordPairingFailure()"),
-                "a PIN mismatch must count against the retry budget")
-        #expect(source.contains("rejectHostConnection(peerConnectionID, reason: L.t(.tmWrongPin))"),
-                "a PIN mismatch must terminate the connection")
+        #expect(json["pin"] == nil,
+                "the PIN must not be re-encoded into the Team protocol")
     }
 
-    /// The pairing gate is unchanged: an unpaired peer still cannot inject
-    /// session state, and pinning still requires an acceptance that echoes
-    /// the guest's own nonce.
-    @Test("Pairing gate semantics are unchanged")
-    func pairingGateUnchanged() {
-        let sessionID = TeamSessionID(tabID: UUID(), paneID: UUID())
-        let gate = TeamRelay.PairingGate.self
-        #expect(gate.isUntrusted(.terminalOutput(sessionID: sessionID, payload: "x"), hasPaired: false))
-        #expect(gate.isUntrusted(.shareHosts(hosts: []), hasPaired: false))
-        // A pairing acceptance must reach the validator (it is the only
-        // message that can establish pairing), but a *wrong* one must not
-        // result in a paired guest.
-        #expect(!gate.isUntrusted(
-            .pairingAccepted(
-                nonce: "wrong",
-                hostFingerprint: "SHA256:a",
-                host: TeamPeer(id: UUID(), displayName: "H", role: .host, isDriver: true)
-            ),
-            hasPaired: false
-        ))
-        #expect(
-            TeamRelay.PairingGate.evaluateAcceptance(
-                nonce: "wrong",
-                expectedNonce: "expected",
-                presentedFingerprint: "SHA256:a",
-                pinnedFingerprint: nil
-            ) == .rejectReplay
-        )
-    }
+    /// A wrong PIN must be refused, and a right one accepted — the properties
+    /// the in-band check used to have, now owned by `TeamPINAuthenticator`.
+    @Test("The PIN is verified by the transport authenticator, not the protocol")
+    func pinLivesInTheAuthenticator() {
+        let authenticator = TeamPINAuthenticator()
+        let now = Date()
 
-    /// The abstraction is real: the relay's channel storage no longer names a
-    /// concrete `NWConnection`, so reverting to a plaintext socket requires an
-    /// explicit change rather than happening by accident.
-    @Test("Relay channels are typed as TeamChannel, not NWConnection")
-    func relayUsesTheAbstraction() throws {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        for file in [
-            "Bonk/Services/Team/TeamRelay.swift",
-            "Bonk/Services/Team/TeamRelay+Host.swift",
-            "Bonk/Services/Team/TeamRelay+Guest.swift",
-            "Bonk/Services/Team/TeamRelay+Messaging.swift",
-        ] {
-            let source = try String(
-                contentsOf: root.appendingPathComponent(file),
-                encoding: .utf8
-            )
-            #expect(!source.contains(": NWConnection"),
-                   "\(file) still stores a concrete NWConnection")
-            #expect(!source.contains("to connection: NWConnection"),
-                   "\(file) still exposes NWConnection in its API")
-        }
+        #expect(authenticator.evaluate(
+            peer: "a", presentedPin: "000000", expectedPin: "123456", now: now
+        ) == .reject(remaining: 4))
+
+        #expect(authenticator.evaluate(
+            peer: "a", presentedPin: "123456", expectedPin: "123456", now: now
+        ) == .accept)
     }
 }

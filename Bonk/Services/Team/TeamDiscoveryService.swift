@@ -36,16 +36,9 @@ final class TeamDiscoveryService: ObservableObject {
 
     // MARK: - Host: publish
 
-    func startHosting(displayName: String) {
-        hostedServiceName = displayName
-        do {
-            try store.startHosting(displayName: displayName)
-            logger.info("Started hosting via Store: \(displayName)")
-        } catch {
-            logger.error("Failed to start hosting via Store: \(error.localizedDescription)")
-        }
-    }
-
+    /// Hosting is owned by `TeamRelay`, which runs the SSH transport. This
+    /// service only browses; it no longer starts a listener, because the only
+    /// listener it could start was a plaintext one.
     func stopHosting() {
         store.stopHosting()
     }

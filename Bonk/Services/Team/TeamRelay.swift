@@ -34,7 +34,10 @@ final class TeamRelay: ObservableObject {
     @Published var hostedPort: UInt16?
 
     let logger = Logger(subsystem: "com.bonk", category: "TeamRelay")
-    var hostListener: NWListener?
+    /// The encrypted host. There is deliberately no `NWListener`: the relay has
+    /// no plaintext path, so a plaintext client cannot connect even if it
+    /// discovers the port.
+    var sshHost: TeamSSHHost?
     var hostedConnections: [UUID: any TeamChannel] = [:]
     var hostedFramers: [UUID: TeamMessageFramer] = [:]
     var hostPeer: TeamPeer?
@@ -115,43 +118,38 @@ final class TeamRelay: ObservableObject {
         sharedSessionID = currentActiveSessionID()
         pairingPin = generatePin()
 
-        do {
-            let parameters = NWParameters.tcp
-            hostListener = try NWListener(service: .init(name: displayName, type: TeamConstants.serviceType), using: parameters)
-            let listener = hostListener
-            hostListener?.stateUpdateHandler = { [weak self] state in
-                Task { @MainActor in
-                    guard let self else { return }
-                    self.logger.info("Host listener state: \(String(describing: state))")
-                    if case .ready = state {
-                        let raw = self.hostListener?.port?.rawValue
-                        if let raw, raw != 0 {
-                            self.hostedPort = raw
-                        }
-                    } else if case .failed = state {
-                        self.hostedPort = nil
-                    }
-                }
+        let host = TeamSSHHost()
+        sshHost = host
+        // The PIN is the SSH credential. Mirroring it into the host before the
+        // server starts means there is no window in which the relay accepts
+        // connections with no PIN configured.
+        host.update(pin: pairingPin)
+
+        // `isHosting` is set *before* the server starts, not after. A guest on
+        // the LAN can reach us the moment the socket is listening, and
+        // `handleNewHostConnection` drops any channel that arrives while
+        // `isHosting` is false — so setting it afterwards silently refuses
+        // whoever connected first. A failed start rolls it back below.
+        isHosting = true
+
+        Task { [weak self] in
+            guard let self else { return }
+            let started = await host.start(displayName: displayName) { [weak self] channel in
+                self?.handleNewHostConnection(channel)
             }
-            hostListener?.newConnectionHandler = { [weak self] connection in
-                Task { @MainActor in
-                    self?.handleNewHostConnection(connection)
-                }
+            guard started else {
+                self.resetHostState()
+                let message = L.t(.tmServiceStartFailed)
+                self.lastError = message
+                self.teamStore.didFailToStartHosting(message)
+                return
             }
-            hostListener?.start(queue: .global(qos: .utility))
-            isHosting = true
-            if let raw = listener?.port?.rawValue, raw != 0 {
-                hostedPort = raw
-            }
-            // Keep per-instance Store in sync (single truth for this Relay; shared Relay uses shared Store)
-            teamStore.isHosting = true
-            teamStore.hostedPort = hostedPort
-            logger.info("Hosting team relay on \(String(describing: self.hostListener?.port))")
-            updatePresenceSnapshot()
-        } catch {
-            logger.error("Failed to start host listener: \(error.localizedDescription)")
-            resetHostState()
-            lastError = String(format: L.t(.tmServiceStartFailed), error.localizedDescription)
+            self.hostedPort = host.port
+            // Keep per-instance Store in sync (single truth for this Relay;
+            // the shared Relay uses the shared Store).
+            self.teamStore.didStartHosting(on: self.hostedPort)
+            self.logger.info("Hosting team relay over SSH on port \(String(describing: self.hostedPort))")
+            self.updatePresenceSnapshot()
         }
     }
 
@@ -161,8 +159,8 @@ final class TeamRelay: ObservableObject {
         for (peerID, connection) in hostedConnections where isPaired(peerID) {
             sendMessage(disconnectNotice, to: connection)
         }
-        hostListener?.cancel()
-        hostListener = nil
+        sshHost?.stop()
+        sshHost = nil
         let pendingConnections = hostedConnections
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(120))
@@ -182,8 +180,7 @@ final class TeamRelay: ObservableObject {
         hostPairingTimeoutTasks.removeAll()
         hostLastActivity.removeAll()
         isHosting = false
-        teamStore.isHosting = false
-        teamStore.hostedPort = nil
+        teamStore.stopHosting()
         isHostMode = false
         pairingPin = nil
         hostedPort = nil
@@ -225,43 +222,73 @@ final class TeamRelay: ObservableObject {
         )
         guestPeer = peer
 
-        let connection = NWConnection(to: endpoint, using: .tcp)
-        guestConnection = connection
-        connection.stateUpdateHandler = { [weak self] state in
-            Task { @MainActor in
-                guard let self,
-                      self.guestConnectionGeneration == generation,
-                      self.guestConnection === connection
-                else { return }
+        guard let target = Self.resolve(endpoint) else {
+            lastError = L.t(.aiConnectFailed)
+            return
+        }
 
-                switch state {
-                case .ready:
-                    self.logger.info("Guest connected to host")
-                    self.isConnected = true
-                    self.guestLastActivity = Date()
-                    // Fresh nonce per attempt: it is what makes the host's
-                    // acceptance non-replayable.
-                    let nonce = Self.makePairingNonce()
-                    self.guestPairingNonce = nonce
-                    self.sendToGuest(.pairingChallenge(pin: pin, peer: peer, nonce: nonce))
-                    self.startGuestHeartbeat(generation: generation)
-                    self.startGuestPairingTimeout(generation: generation)
-                    self.receiveOnGuestConnection(generation: generation)
-                case .failed(let error):
-                    self.logger.error("Guest failed: \(error.localizedDescription)")
-                    self.finishGuestConnection(
-                        generation: generation,
-                        error: String(format: L.t(.aiConnectFailed), error.localizedDescription)
-                    )
-                case .cancelled:
-                    self.finishGuestConnection(generation: generation, error: nil)
-                default:
-                    break
+        logger.info("Guest connecting over SSH to \(target.host):\(target.port)")
+        let connector = TeamSSHGuest(
+            host: target.host,
+            port: target.port,
+            displayName: peer.displayName,
+            pin: pin,
+            pinnedHostFingerprint: TeamIdentityStore.pinnedHostFingerprint()
+        )
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let channel = try await connector.connect()
+                guard self.guestConnectionGeneration == generation else {
+                    channel.cancel()
+                    return
                 }
+                self.adoptGuestChannel(channel, peer: peer, generation: generation)
+            } catch {
+                // A real failure is reported as a failure. There is no
+                // fallback to a plaintext socket, by design.
+                self.logger.error("Guest SSH connect failed: \(error.localizedDescription)")
+                self.finishGuestConnection(
+                    generation: generation,
+                    error: error.localizedDescription
+                )
             }
         }
-        connection.start(queue: .global(qos: .utility))
-        logger.info("Guest connecting to \(String(describing: endpoint))")
+    }
+
+    /// Install an authenticated channel and start the Team protocol on it.
+    private func adoptGuestChannel(
+        _ channel: SSHTeamChannel,
+        peer: TeamPeer,
+        generation: UInt64
+    ) {
+        guestConnection = channel
+        isConnected = true
+        guestLastActivity = Date()
+        // Fresh nonce per attempt: it is what makes the host's acceptance
+        // non-replayable. The PIN is not repeated here — SSH user
+        // authentication already consumed it, and sending it twice would put
+        // the credential on the wire a second time for no added protection.
+        let nonce = Self.makePairingNonce()
+        guestPairingNonce = nonce
+        sendToGuest(.pairingChallenge(peer: peer, nonce: nonce))
+        startGuestHeartbeat(generation: generation)
+        startGuestPairingTimeout(generation: generation)
+        receiveOnGuestConnection(generation: generation)
+    }
+
+    /// Resolve a discovered endpoint to a host and port.
+    ///
+    /// Bonjour hands back a `.service` endpoint, which carries no address; the
+    /// browser already resolved it, so a manual-IP host short-circuits here and
+    /// anything else is reported as unusable rather than guessed at.
+    static func resolve(_ endpoint: NWEndpoint) -> (host: String, port: Int)? {
+        switch endpoint {
+        case let .hostPort(host, port):
+            return (String(describing: host), Int(port.rawValue))
+        default:
+            return nil
+        }
     }
 
     func disconnectGuest() {

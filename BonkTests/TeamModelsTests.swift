@@ -40,7 +40,7 @@ final class TeamModelsTests: XCTestCase {
 
     func testPairingMessageRoundTripPreservesGuestIdentity() throws {
         let peer = TeamPeer(id: UUID(), displayName: "Joy", role: .guest)
-        let message = TeamMessage.pairingChallenge(pin: "123456", peer: peer, nonce: "nonce-xyz")
+        let message = TeamMessage.pairingChallenge(peer: peer, nonce: "nonce-xyz")
 
         let encoded = try JSONEncoder().encode(message)
         let decoded = try JSONDecoder().decode(TeamMessage.self, from: encoded)
