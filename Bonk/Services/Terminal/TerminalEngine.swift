@@ -143,6 +143,11 @@ final class TerminalEngine {
 
     var pendingBytesForTest: Int { state.pendingBytes }
     var droppedBytesForTest: Int { state.droppedBytes }
+    /// Whether the engine believes it still has unflushed data. Exposed so the
+    /// post-flush state is assertable rather than taken on trust: a stale
+    /// `dirty` alongside an empty buffer is harmless today only because every
+    /// read site also checks the buffer.
+    var dirtyForTest: Bool { state.dirty }
 
     // MARK: - Private
 
@@ -196,10 +201,45 @@ final class TerminalEngine {
     }
 
     private var flushCounter = 0
+    /// True while a flush is walking the consumer table.
+    private var isFlushing = false
+    /// Set when a consumer re-entered `flush` from inside `receive`. The nested
+    /// flush is deferred rather than run inline.
+    private var flushPending = false
 
+    /// Deliver buffered bytes to every consumer, one batch at a time.
+    ///
+    /// `receive` runs arbitrary consumer code, and that code can push more
+    /// bytes — `push` forces an immediate flush once the buffer is large. So a
+    /// flush can be re-entered from inside itself. Running the nested flush
+    /// inline would hand the *newer* batch to every consumer the outer loop had
+    /// not reached yet, so they would see their output backwards.
+    ///
+    /// Re-entry therefore only sets a flag; the nested batch is drained after
+    /// the current one finishes, so each consumer sees batches in order.
     private func flush() {
+        guard !isFlushing else {
+            flushPending = true
+            return
+        }
+        isFlushing = true
         state.flushScheduled = false
         state.dirty = false
+        // Drained iteratively, not recursively: a consumer may re-enter on
+        // every batch, and recursion would grow the stack with the backlog.
+        repeat {
+            flushPending = false
+            flushOnce()
+        } while flushPending
+        isFlushing = false
+        // A consumer that pushed mid-flush marked the engine dirty again. After
+        // draining, `dirty` must mean "there is unflushed data" and nothing
+        // else, so the state a caller observes after a flush is predictable.
+        state.dirty = !state.buffer.isEmpty
+    }
+
+    /// One batch to one snapshot of the consumer table.
+    private func flushOnce() {
         guard !state.buffer.isEmpty else { return }
         let text = state.buffer
         let bytes = state.pendingBytes
@@ -211,9 +251,18 @@ final class TerminalEngine {
             flushCounter = 0
             pruneConsumers()
         }
-        for weakConsumer in state.consumers.values {
-            weakConsumer.consumer?.receive(text)
-            weakConsumer.consumer?.didConsume(bytes: bytes)
+        // Snapshot the table before calling out. Correctness should not depend
+        // on dictionary copy-on-write happening to pin the storage for the
+        // duration of the loop: a consumer may subscribe or unsubscribe from
+        // inside `receive`, and one that appears mid-flush must not be handed a
+        // batch that was already in flight before it existed.
+        let snapshot = Array(state.consumers.values)
+        for weakConsumer in snapshot {
+            // The weak reference may have been dropped between the snapshot and
+            // here — a view torn down while its batch was in flight.
+            guard let consumer = weakConsumer.consumer else { continue }
+            consumer.receive(text)
+            consumer.didConsume(bytes: bytes)
         }
     }
 
