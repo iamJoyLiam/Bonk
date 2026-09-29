@@ -139,7 +139,7 @@ final class HostFormViewModel {
             authType = cred.type == .privateKey ? .privateKey : .password
         } else {
             // Switching back to custom: restore only if current field is empty or still equals backup
-            // Prevent overwriting user-edited Nextenso_33@2025 with stale 1234 when picker accidentally toggled
+            // Prevent overwriting user-edited password with stale backup when picker accidentally toggled
             if password.isEmpty || password == customPasswordBackup || customPasswordBackup.isEmpty {
                 password = customPasswordBackup
             } // else keep edited password (user typed new while vault was selected via other path)

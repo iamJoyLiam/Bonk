@@ -4,12 +4,15 @@ use bonk_core::ssh::SshConnector;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     bonk_core::init();
+    // Never hardcode credentials: export BONK_TEST_PASSWORD in your shell.
+    let test_password = std::env::var("BONK_TEST_PASSWORD")
+        .expect("BONK_TEST_PASSWORD env var must be set (see README.bonk-core.md)");
     let config = SshConnectionConfig {
         host: "192.168.100.50".into(),
         port: 22,
         username: "root".into(),
         auth_type: AuthType::Password,
-        secret: Some("Nextenso_33@2025".into()),
+        secret: Some(test_password),
         ..Default::default()
     };
     println!("connecting to {}@{}:{} ...", config.username, config.host, config.port);

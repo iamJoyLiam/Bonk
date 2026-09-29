@@ -172,9 +172,14 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             Log.session.info("[TEST_TRIGGER] poll phase=\(String(describing: phase)) host=\(tab.hostItem.host) auto=\(autoRetry)")
             if let req = sessionManager.authRetryRequest, !didRetry, autoRetry {
                 didRetry = true
-                Log.session.info("[TEST_TRIGGER] sheet appeared rawError=\(req.rawError.prefix(80)) -> retry with Nextenso")
+                Log.session.info("[TEST_TRIGGER] sheet appeared rawError=\(req.rawError.prefix(80)) -> retry with env password")
+                // Never hardcode credentials: export BONK_TEST_PASSWORD in your shell.
+                guard let testPassword = ProcessInfo.processInfo.environment["BONK_TEST_PASSWORD"], !testPassword.isEmpty else {
+                    Log.session.error("[TEST_TRIGGER] BONK_TEST_PASSWORD not set, skipping auto retry")
+                    continue
+                }
                 // Build retry result as AuthRetrySheet does (trimmed)
-                let result = SessionManager.AuthRetryResult(password: "Nextenso_33@2025", privateKeyPEM: "", certificatePEM: "", secureEnclaveTag: nil, credentialID: nil, authType: .password)
+                let result = SessionManager.AuthRetryResult(password: testPassword, privateKeyPEM: "", certificatePEM: "", secureEnclaveTag: nil, credentialID: nil, authType: .password)
                 sessionManager.completeAuthRetry(with: result)
             } else if let req = sessionManager.authRetryRequest, !didRetry, !autoRetry {
                 Log.session.info("[TEST_TRIGGER_UI] sheet appeared, waiting for real UI typing...")
