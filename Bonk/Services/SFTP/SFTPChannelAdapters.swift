@@ -92,27 +92,23 @@ final class CitadelSFTPAdapter: SFTPChannel {
             // through to the multiChannel/single chain below (unchanged).
             if let shards = decision.poolShards, total > 0 {
                 Log.sftp.info("[POOL] planner \(decision.rawValue) N×TCP upload total=\(total) shards=\(shards)")
+                // Ownership: the pool is released on every exit path, including
+                // the fallback below. A failed pooled transfer used to leak N SSH
+                // connections and could trip the server's MaxSessions.
+                var pool: [PooledSFTPHandle] = []
                 do {
-                    let pool: [PooledSFTPHandle]
-                    if let factory = poolFactory, let cfg = pooledConfig, let store = pooledStore {
-                        pool = try await factory.makePool(configuration: SFTPPoolConfiguration(
-                            connectionConfig: cfg, hostKeyStore: store, shards: shards
-                        ))
-                    } else if let cfg = pooledConfig, let store = pooledStore {
-                        pool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
-                    } else {
-                        throw SFTPServiceError.operationFailed("no pool source for \(decision.rawValue)")
-                    }
+                    pool = try await makePool(shards: shards)
                     try await SFTPParallelTransferEngine.parallelUploadMultiTCP(
                         handles: pool, remotePath: tempRemotePath, localURL: localURL,
                         totalBytes: total, isCancelled: { false }, onProgress: onProgress
                     )
-                    // Close pool handles synchronously after transfer completes
-                    for handle in pool { await handle.close() }
+                    await closePool(pool)
+                    pool = []
                     try await verifyAndRenameRemote(tempPath: tempRemotePath, finalPath: remotePath, expectedBytes: total, sftp: sftp)
                     if total == 0 { onProgress(1.0) }
                     return
                 } catch {
+                    await closePool(pool)
                     Log.sftp.warning("[POOL] N×TCP upload failed, fallback: \(error)")
                     try? await sftp.remove(at: tempRemotePath)
                 }
@@ -236,27 +232,23 @@ final class CitadelSFTPAdapter: SFTPChannel {
             // Commit-3: planner decision drives pool execution (mirrors upload).
             if let shards = decision.poolShards, total > 0 {
                 Log.sftp.info("[POOL] planner \(decision.rawValue) N×TCP download total=\(total) shards=\(shards)")
+                // Ownership: the pool is released on every exit path, including
+                // the fallback below. A failed pooled transfer used to leak N SSH
+                // connections and could trip the server's MaxSessions.
+                var pool: [PooledSFTPHandle] = []
                 do {
-                    let pool: [PooledSFTPHandle]
-                    if let factory = poolFactory, let cfg = pooledConfig, let store = pooledStore {
-                        pool = try await factory.makePool(configuration: SFTPPoolConfiguration(
-                            connectionConfig: cfg, hostKeyStore: store, shards: shards
-                        ))
-                    } else if let cfg = pooledConfig, let store = pooledStore {
-                        pool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
-                    } else {
-                        throw SFTPServiceError.operationFailed("no pool source for \(decision.rawValue)")
-                    }
+                    pool = try await makePool(shards: shards)
                     try await SFTPParallelTransferEngine.parallelDownloadMultiTCP(
                         handles: pool, remotePath: remotePath, localURL: tempURL,
                         totalBytes: total, isCancelled: { false }, onProgress: onProgress
                     )
-                    // Close pool handles synchronously after transfer completes
-                    for handle in pool { await handle.close() }
+                    await closePool(pool)
+                    pool = []
                     try await verifyAndMove(tempURL: tempURL, finalURL: localURL, expectedBytes: total)
                     if total == 0 { onProgress(1.0) }
                     return
                 } catch {
+                    await closePool(pool)
                     Log.sftp.warning("[POOL] N×TCP download failed, fallback: \(error)")
                     try? FileManager.default.removeItem(at: tempURL)
                 }
@@ -309,6 +301,27 @@ final class CitadelSFTPAdapter: SFTPChannel {
             try? FileManager.default.removeItem(at: tempURL)
             throw error
         }
+    }
+
+    // MARK: - Pool ownership
+
+    /// Build N pooled SFTP handles from whichever source the caller injected.
+    private func makePool(shards: Int) async throws -> [PooledSFTPHandle] {
+        if let factory = poolFactory, let cfg = pooledConfig, let store = pooledStore {
+            return try await factory.makePool(configuration: SFTPPoolConfiguration(
+                connectionConfig: cfg, hostKeyStore: store, shards: shards
+            ))
+        }
+        if let cfg = pooledConfig, let store = pooledStore {
+            return try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
+        }
+        throw SFTPServiceError.operationFailed("no pool source for pooled transfer")
+    }
+
+    /// Release every pooled handle. Idempotent: handles already closed are
+    /// dropped from the array by the caller before the success path runs.
+    private func closePool(_ pool: [PooledSFTPHandle]) async {
+        for handle in pool { await handle.close() }
     }
 
     private func verifyAndMove(tempURL: URL, finalURL: URL, expectedBytes: UInt64) async throws {
@@ -365,7 +378,9 @@ final class CitadelSFTPAdapter: SFTPChannel {
                 guard let (off, data) = try await group.next() else { break }
                 inFlight -= 1
                 if data.isEmpty {
-                    if off + UInt64(data.count) >= total || off >= total - UInt64(chunkSize) { readDone = true }
+                    // Guard the subtraction: for small files total < chunkSize would
+                    // trap in `total - chunkSize`, turning a short read into a crash.
+                    if off >= total || (total >= UInt64(chunkSize) && off >= total - UInt64(chunkSize)) { readDone = true }
                     continue
                 }
                 if data.count < Int(chunkSize), off + UInt64(data.count) < total {

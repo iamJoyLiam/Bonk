@@ -166,8 +166,13 @@ enum SFTPParallelTransferEngine {
             }
             try await group.waitForAll()
         }
-        // Ensure 100%
-        if merger.completed < totalBytes { onProgress(1.0) }
+        // Verify completeness before claiming 100%. Reporting success on a
+        // short upload hides data loss behind a green progress bar; the
+        // download twin already throws here.
+        if merger.completed != totalBytes {
+            throw SFTPServiceError.operationFailed("Upload incomplete: expected \(totalBytes) got \(merger.completed)")
+        }
+        onProgress(1.0)
     }
 
     private static func uploadShard(
@@ -179,7 +184,10 @@ enum SFTPParallelTransferEngine {
         isCancelled: @Sendable () async -> Bool,
         overrides: SFTPTestOverrides? = nil
     ) async throws {
-        let rangeBytes = range.upperBound - range.lowerBound + 1
+        // `range` is half-open (start..<end); the byte count is the
+        // difference, not difference + 1. The extra byte only skewed the
+        // computed pipeline depth.
+        let rangeBytes = range.upperBound - range.lowerBound
         let pipeline = overrides?.pipelinePerShard
             ?? SFTPParallelStrategy.pipelinePerShard(shards: shards, totalBytes: rangeBytes)
         // P0 DispatchIO：Per shard fd, zero-copy
@@ -373,6 +381,12 @@ enum SFTPParallelTransferEngine {
                         if written < 0 {
                             throw SFTPServiceError.operationFailed("pwrite failed at \(batchStart): \(String(cString: strerror(errno)))")
                         }
+                        // A short write would advance progress for bytes that
+                        // never landed, letting the completeness check pass on
+                        // a truncated file.
+                        if written != batch.count {
+                            throw SFTPServiceError.operationFailed("short pwrite at \(batchStart): wrote \(written) of \(batch.count)")
+                        }
                         merger.add(batchBytes)
                         batch = Data()
                         batchStart = nextWriteOffset
@@ -387,6 +401,9 @@ enum SFTPParallelTransferEngine {
                         return Darwin.pwrite(fileDescriptor, base, batch.count, off_t(batchStart))
                     }
                     if written < 0 { throw SFTPServiceError.operationFailed("pwrite failed at \(batchStart)") }
+                    if written != batch.count {
+                        throw SFTPServiceError.operationFailed("short pwrite at \(batchStart): wrote \(written) of \(batch.count)")
+                    }
                     merger.add(batchBytes)
                 }
                 // Wait if next not ready
@@ -401,6 +418,9 @@ enum SFTPParallelTransferEngine {
                     }
                     if written < 0 {
                         throw SFTPServiceError.operationFailed("pwrite failed at \(key): \(String(cString: strerror(errno)))")
+                    }
+                    if written != bytes.count {
+                        throw SFTPServiceError.operationFailed("short pwrite at \(key): wrote \(written) of \(bytes.count)")
                     }
                     merger.add(UInt64(bytes.count))
                 }
@@ -429,14 +449,28 @@ enum SFTPParallelTransferEngine {
         let shards = overrides?.shards ?? SFTPParallelStrategy.shardCount(for: totalBytes)
         let shardSize = (totalBytes + UInt64(shards) - 1) / UInt64(shards)
         var files: [SendableSFTPFile] = []
+        // Ownership starts BEFORE the open loop: a throw on shard k must still
+        // release shards 0..<k. A closer built after the loop leaks them.
+        let closeAll = SFTPHandleCloser()
         // Open sequentially
-        for idx in 0..<shards {
-            let file = try await client.openFile(
-                filePath: remotePath,
-                flags: idx == 0 ? [.write, .create, .truncate] : [.write, .create]
-            )
-            files.append(SendableSFTPFile(file))
+        do {
+            for idx in 0..<shards {
+                let file = try await client.openFile(
+                    filePath: remotePath,
+                    flags: idx == 0 ? [.write, .create, .truncate] : [.write, .create]
+                )
+                let wrapped = SendableSFTPFile(file)
+                await closeAll.track(wrapped)
+                files.append(wrapped)
+            }
+        } catch {
+            // Shard k failed to open: release the 0..<k already opened.
+            await closeAll.closeRemaining()
+            throw error
         }
+        // Close every opened handle on ALL exit paths (success, shard failure,
+        // cancellation). Close synchronously — `defer { Task { close } }` leaves
+        // fds open until the task runs.
         let merger = ProgressMerger(total: totalBytes, onProgress: onProgress)
         Log.sftp.info("[P2] multiChannel upload shards=\(shards) files=\(files.count)")
         do {
@@ -461,10 +495,7 @@ enum SFTPParallelTransferEngine {
                 try await group.waitForAll()
             }
         }
-        // Close files synchronously after all shards complete — defer { Task { close } }
-        // leaves fds open until the task runs, which can exhaust the fd table under
-        // concurrent transfers.
-        for file in files { try? await file.file.close() }
+        await closeAll.closeRemaining()
         if merger.completed != totalBytes {
             throw SFTPServiceError.operationFailed("Upload incomplete: expected \(totalBytes) got \(merger.completed)")
         }
@@ -491,9 +522,18 @@ enum SFTPParallelTransferEngine {
         let shards = overrides?.shards ?? SFTPParallelStrategy.shardCount(for: totalBytes)
         let shardSize = (totalBytes + UInt64(shards) - 1) / UInt64(shards)
         var files: [SendableSFTPFile] = []
-        for _ in 0..<shards {
-            let file = try await client.openFile(filePath: remotePath, flags: [.read])
-            files.append(SendableSFTPFile(file))
+        // See parallelUploadMultiChannel: ownership begins before the open loop.
+        let closeAll = SFTPHandleCloser()
+        do {
+            for _ in 0..<shards {
+                let file = try await client.openFile(filePath: remotePath, flags: [.read])
+                let wrapped = SendableSFTPFile(file)
+                await closeAll.track(wrapped)
+                files.append(wrapped)
+            }
+        } catch {
+            await closeAll.closeRemaining()
+            throw error
         }
         // Preallocate
         FileManager.default.createFile(atPath: localURL.path, contents: nil)
@@ -525,10 +565,7 @@ enum SFTPParallelTransferEngine {
                 try await group.waitForAll()
             }
         }
-        // Close files synchronously after all shards complete — defer { Task { close } }
-        // leaves fds open until the task runs, which can exhaust the fd table under
-        // concurrent transfers.
-        for file in files { try? await file.file.close() }
+        await closeAll.closeRemaining()
         if merger.completed != totalBytes {
             throw SFTPServiceError.operationFailed("Download incomplete: expected \(totalBytes) got \(merger.completed)")
         }
@@ -553,14 +590,23 @@ enum SFTPParallelTransferEngine {
         let shardSize = (totalBytes + UInt64(shards) - 1) / UInt64(shards)
         // handle ， truncate
         var files: [SendableSFTPFile] = []
-        for (idx, handle) in handles.enumerated() {
-            Log.sftp.debug("[POOL] upload open start pool=\(handle.poolID.uuidString.prefix(8)) idx=\(idx)")
-            let file = try await handle.sftpClient.openFile(
-                filePath: remotePath,
-                flags: idx == 0 ? [.write, .create, .truncate] : [.write, .create]
-            )
-            Log.sftp.debug("[POOL] upload open done pool=\(handle.poolID.uuidString.prefix(8)) idx=\(idx)")
-            files.append(SendableSFTPFile(file))
+        // See parallelUploadMultiChannel: ownership begins before the open loop.
+        let closeAll = SFTPHandleCloser()
+        do {
+            for (idx, handle) in handles.enumerated() {
+                Log.sftp.debug("[POOL] upload open start pool=\(handle.poolID.uuidString.prefix(8)) idx=\(idx)")
+                let file = try await handle.sftpClient.openFile(
+                    filePath: remotePath,
+                    flags: idx == 0 ? [.write, .create, .truncate] : [.write, .create]
+                )
+                Log.sftp.debug("[POOL] upload open done pool=\(handle.poolID.uuidString.prefix(8)) idx=\(idx)")
+                let wrapped = SendableSFTPFile(file)
+                await closeAll.track(wrapped)
+                files.append(wrapped)
+            }
+        } catch {
+            await closeAll.closeRemaining()
+            throw error
         }
         let merger = ProgressMerger(total: totalBytes, onProgress: onProgress)
         Log.sftp.info("[POOL] multiTCP upload shards=\(shards) handles=\(handles.count)")
@@ -586,10 +632,7 @@ enum SFTPParallelTransferEngine {
                 try await group.waitForAll()
             }
         }
-        // Close files synchronously after all shards complete — defer { Task { close } }
-        // leaves fds open until the task runs, which can exhaust the fd table under
-        // concurrent transfers.
-        for file in files { try? await file.file.close() }
+        await closeAll.closeRemaining()
         if merger.completed != totalBytes {
             throw SFTPServiceError.operationFailed("Upload incomplete: expected \(totalBytes) got \(merger.completed)")
         }
@@ -607,11 +650,20 @@ enum SFTPParallelTransferEngine {
         let shards = handles.count
         let shardSize = (totalBytes + UInt64(shards) - 1) / UInt64(shards)
         var files: [SendableSFTPFile] = []
-        for handle in handles {
-            Log.sftp.debug("[POOL] download open start pool=\(handle.poolID.uuidString.prefix(8)) idx=\(handle.index)")
-            let file = try await handle.sftpClient.openFile(filePath: remotePath, flags: [.read])
-            Log.sftp.debug("[POOL] download open done pool=\(handle.poolID.uuidString.prefix(8)) idx=\(handle.index)")
-            files.append(SendableSFTPFile(file))
+        // See parallelUploadMultiChannel: ownership begins before the open loop.
+        let closeAll = SFTPHandleCloser()
+        do {
+            for handle in handles {
+                Log.sftp.debug("[POOL] download open start pool=\(handle.poolID.uuidString.prefix(8)) idx=\(handle.index)")
+                let file = try await handle.sftpClient.openFile(filePath: remotePath, flags: [.read])
+                Log.sftp.debug("[POOL] download open done pool=\(handle.poolID.uuidString.prefix(8)) idx=\(handle.index)")
+                let wrapped = SendableSFTPFile(file)
+                await closeAll.track(wrapped)
+                files.append(wrapped)
+            }
+        } catch {
+            await closeAll.closeRemaining()
+            throw error
         }
         FileManager.default.createFile(atPath: localURL.path, contents: nil)
         if let fileHandle = try? FileHandle(forWritingTo: localURL) {
@@ -642,10 +694,7 @@ enum SFTPParallelTransferEngine {
                 try await group.waitForAll()
             }
         }
-        // Close files synchronously after all shards complete — defer { Task { close } }
-        // leaves fds open until the task runs, which can exhaust the fd table under
-        // concurrent transfers.
-        for file in files { try? await file.file.close() }
+        await closeAll.closeRemaining()
         if merger.completed != totalBytes {
             throw SFTPServiceError.operationFailed("Download incomplete: expected \(totalBytes) got \(merger.completed)")
         }

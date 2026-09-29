@@ -5,6 +5,7 @@
 
 @preconcurrency import Citadel
 import Foundation
+import NIOConcurrencyHelpers
 import NIOCore
 import NIOFoundationCompat
 import os.log
@@ -736,6 +737,95 @@ enum SFTPServiceError: LocalizedError, Equatable {
 final class SendableSFTPFile: @unchecked Sendable {
     let file: SFTPFile
     init(_ file: SFTPFile) { self.file = file }
+}
+
+/// Anything the closer can release. Abstracted so the terminal-state
+/// ordering (track after close) is testable without a live SFTP channel;
+/// production code always uses `SFTPFile`. The type is not required to be
+/// `Sendable` itself — the closer only ever moves handles inside its lock.
+protocol RemoteClosable {
+    func closeRemote() async throws
+}
+
+struct SFTPFileHandle: RemoteClosable {
+    let file: SFTPFile
+    func closeRemote() async throws { try await file.close() }
+}
+
+/// Releases remote file handles exactly once, on every exit path of a
+/// transfer (success, shard failure, user cancellation).
+///
+/// A close loop placed after the shard task group only runs when the group
+/// succeeds, so any thrown shard leaked its remote fds — under concurrent
+/// transfers that exhausts the fd table. `defer { Task { close } }` is not a
+/// fix: it also leaves fds open until the spawned task runs.
+///
+/// Ownership is *closed*, not merely emptied. `closeRemaining()` transitions
+/// the closer to a terminal state, and `track(_:)` consults it under the same
+/// lock:
+///
+/// - open  → the handle joins the pending set and is closed on release;
+/// - closed → the handle is closed immediately by the tracking call.
+///
+/// That ordering guarantee is what makes a handle un-ownable impossible. It
+/// matters because the failure paths call `closeRemaining()` exactly once,
+/// while a shard's `openFile` may still be in flight: an in-flight open that
+/// completes afterwards is closed by its own `track` call instead of being
+/// stranded with no owner. Emptying the set without a terminal state would
+/// leak exactly that handle.
+struct RemoteHandleCloser<H: RemoteClosable>: @unchecked Sendable {
+    private enum State {
+        case open([H])
+        case closed
+    }
+
+    private let lock = NIOLockedValueBox<State>(.open([]))
+
+    /// Start empty and `track(_:)` handles as they are opened, so a failure
+    /// *during* the open loop still releases what was already opened.
+    init() {}
+
+    /// Register a handle. If the closer is already closed the handle is closed
+    /// before this call returns, so no handle is ever left without an owner.
+    func track(_ handle: H) async {
+        let closeNow: Bool = lock.withLockedValue { state in
+            switch state {
+            case .open(var pending):
+                pending.append(handle)
+                state = .open(pending)
+                return false
+            case .closed:
+                return true
+            }
+        }
+        if closeNow {
+            try? await handle.closeRemote()
+        }
+    }
+
+    func track(contentsOf handles: [H]) async {
+        for handle in handles { await track(handle) }
+    }
+
+    /// Close every tracked handle and move the closer to its terminal state.
+    /// Idempotent: a second call finds no pending handles and does nothing, so
+    /// the success path followed by the failure path cannot double-close.
+    func closeRemaining() async {
+        let pending: [H] = lock.withLockedValue { state in
+            defer { state = .closed }
+            if case let .open(handles) = state { return handles }
+            return []
+        }
+        for handle in pending {
+            try? await handle.closeRemote()
+        }
+    }
+}
+
+typealias SFTPHandleCloser = RemoteHandleCloser<SFTPFileHandle>
+
+extension RemoteHandleCloser where H == SFTPFileHandle {
+    func track(_ file: SendableSFTPFile) async { await track(SFTPFileHandle(file: file.file)) }
 }
 
 /// SFTP chunk I/O executed OUTSIDE the MainActor. Network round trips are
