@@ -72,8 +72,19 @@ class ZmodemHandler {
     var onProgress: ((Double) -> Void)?
     /// Called on completion (send or receive)
     var onCompletion: ((Result<URL?, Error>) -> Void)?
-    /// UI hook: given file info, return destination URL (or nil to cancel). If nil, auto-saves to Downloads.
+    /// UI hook: given file info, return destination URL, or nil to reject.
+    ///
+    /// This is the accept gate for every incoming file. When it is unset the
+    /// handler rejects rather than auto-saving: the remote host supplies the
+    /// filename, so writing it without an explicit decision would let a
+    /// hostile server drop arbitrary files on the user's disk.
     var onReceiveFileRequest: ((ZmodemFileInfo) -> URL?)?
+
+    /// Refuse transfers whose declared size exceeds this. The peer controls
+    /// the number, so it is only a ceiling: `processRawData` also enforces
+    /// it against the bytes actually written, which is what stops an
+    /// unbounded stream from filling the disk.
+    var maximumReceiveSize: Int64 = 40 * 1024 * 1024 * 1024 // 40 GiB
 
     private var receivedData = Data()
     private var currentFile: ZmodemFileInfo?
@@ -138,11 +149,38 @@ class ZmodemHandler {
         guard case .receivingFile = state, let fileHandle = receiveFileHandle else { return }
         // Ignore if data looks like a header
         if data.count >= 2, data[0] == ZmodemConstants.zpad, data[1] == ZmodemConstants.zpad { return }
+        // The declared size is peer-controlled and may lie, so the ceiling is
+        // also enforced against bytes actually written. Checked before the
+        // write, so an oversized transfer is stopped rather than truncated
+        // after the fact.
+        guard receiveBytesWritten + Int64(data.count) <= maximumReceiveSize else {
+            logger.error("Incoming file exceeded size limit, aborting")
+            abortReceive("file exceeds size limit")
+            return
+        }
         fileHandle.write(data)
         receiveBytesWritten += Int64(data.count)
         if receiveFileSize > 0 {
             onProgress?(Double(receiveBytesWritten) / Double(receiveFileSize))
         }
+    }
+
+    /// Abandon an in-flight receive: close the handle, delete the partial
+    /// file, and tell the peer to stop.
+    private func abortReceive(_ reason: String) {
+        let partial = receiveFileURL
+        receiveFileHandle?.closeFile()
+        receiveFileHandle = nil
+        receiveFileURL = nil
+        if let partial { try? FileManager.default.removeItem(at: partial) }
+        receiveBytesWritten = 0
+        receiveFileSize = 0
+        state = .error(reason)
+        sendZabort()
+        onCompletion?(.failure(NSError(
+            domain: "Zmodem", code: -4,
+            userInfo: [NSLocalizedDescriptionKey: reason]
+        )))
     }
 
     /// Convenience: detect ** pattern in String (for PTYSession's yieldOutput String path)
@@ -212,28 +250,107 @@ class ZmodemHandler {
 
     private func handleZrfile(data: [UInt8], offset: Int) {
         logger.info("Received ZRFILE - file info")
-        let info = parseFileInfo(from: data, offset: offset)
-        if let info {
-            currentFile = info
-            state = .receivingFile
-            receiveFileSize = info.size
-            receiveBytesWritten = 0
-            // Ask UI or auto-save to Downloads
-            let dest: URL?
-            if let provider = onReceiveFileRequest, let url = provider(info) {
-                dest = url
-            } else {
-                let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
-                dest = downloads.appendingPathComponent(info.name)
-            }
-            if let dest {
-                FileManager.default.createFile(atPath: dest.path, contents: nil)
-                receiveFileURL = dest
-                receiveFileHandle = try? FileHandle(forWritingTo: dest)
-                logger.info("Receiving to \(dest.path)")
-            }
+        guard let info = parseFileInfo(from: data, offset: offset) else {
+            sendZrpos(offset: 0)
+            return
+        }
+        // An incoming file is untrusted input from the remote host: reject it
+        // before any byte is written rather than opening a destination.
+        guard let dest = resolveReceiveDestination(for: info) else {
+            logger.error("Rejected incoming Zmodem file: \(info.name, privacy: .public)")
+            abortReceive("incoming file rejected")
+            return
+        }
+        currentFile = info
+        state = .receivingFile
+        receiveFileSize = info.size
+        receiveBytesWritten = 0
+        receiveFileURL = dest
+        // Declared size is only a hint from an untrusted peer; refuse early so
+        // nothing is opened for an oversized transfer.
+        guard info.size <= maximumReceiveSize else {
+            logger.error("Declared size \(info.size) exceeds limit, rejecting")
+            abortReceive("declared file too large")
+            return
+        }
+        // O_EXCL: refuse to write through a pre-existing file or a planted
+        // symlink at the destination.
+        let fd = Darwin.open(dest.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, mode_t(0o600))
+        if fd >= 0 {
+            receiveFileHandle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+            logger.info("Receiving to \(dest.path, privacy: .public)")
+        } else {
+            logger.error("Cannot create destination \(dest.path, privacy: .public): errno \(errno)")
+            abortReceive("cannot create destination")
+            return
         }
         sendZrpos(offset: 0)
+    }
+
+    /// Resolve where an incoming file may be written, or reject it.
+    ///
+    /// The remote controls `info.name`, so it is treated as an untrusted
+    /// component: only a single path component is honoured. `../escape`,
+    /// `/etc/passwd`, and `a/b` cannot select a destination outside the
+    /// receive root. A file only lands when the UI provider accepts it —
+    /// there is no silent auto-save.
+    private func resolveReceiveDestination(for info: ZmodemFileInfo) -> URL? {
+        // A provider that exists is the accept gate; its nil means "reject".
+        if let provider = onReceiveFileRequest {
+            guard let url = provider(info) else { return nil }
+            guard isContained(url, in: receiveRoot) else {
+                logger.error("Provider destination escapes receive root: \(url.lastPathComponent, privacy: .public)")
+                return nil
+            }
+            return url
+        }
+        // Legacy call sites installed a provider that always returned a URL.
+        // An unset provider is the only remaining case, and it rejects.
+        // No provider wired: refuse rather than silently writing to Downloads.
+        logger.error("No receive policy configured, rejecting \(info.name, privacy: .public)")
+        return nil
+    }
+
+    /// The single directory inbound files may be created in.
+    private var receiveRoot: URL {
+        FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+    }
+
+    /// True when `url` is `root` itself or lies beneath it, compared after
+    /// both sides are resolved through symlinks so a symlinked component
+    /// cannot smuggle the path outside.
+    /// Exposed for the receive-boundary contract tests.
+    func isContainedForTesting(_ url: URL, in root: URL) -> Bool {
+        isContained(url, in: root)
+    }
+
+    func isContained(_ url: URL, in root: URL) -> Bool {
+        let rootResolved = URL(fileURLWithPath: root.path).resolvingSymlinksInPath().standardizedFileURL
+        let target = url.resolvingSymlinksInPath().standardizedFileURL
+        let rootPath = rootResolved.path.hasSuffix("/") ? rootResolved.path : rootResolved.path + "/"
+        // A destination that does not exist yet still has to be inside root.
+        return target.path == rootResolved.path || target.path.hasPrefix(rootPath)
+    }
+
+    /// Validate a remote-supplied filename, or reject it.
+    ///
+    /// The rule is "exactly one plain path component". Anything that carries
+    /// path structure is refused rather than rewritten: silently reducing
+    /// `../foo` to `foo` would still accept an attacker's input, and accepting
+    /// `/etc/passwd` because its basename is harmless is the same mistake one
+    /// level up. Rejecting outright means a malicious name never becomes a
+    /// destination at all.
+    static func sanitizedRemoteName(_ raw: String) -> String? {
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != ".", name != ".." else { return nil }
+        // Any path structure at all — separators, absolute paths, traversal.
+        guard !name.contains("/"), !name.contains("\\") else { return nil }
+        // NUL and control characters truncate or corrupt the path.
+        guard !name.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) else { return nil }
+        // A colon invites an alternate data stream / drive interpretation.
+        guard !name.contains(":") else { return nil }
+        return name
     }
 
     private func handleZeof(data: [UInt8], offset: Int) {
@@ -427,6 +544,12 @@ class ZmodemHandler {
         let canSequence: [UInt8] = Array(repeating: ZmodemConstants.can, count: 8)
         onSendData?(canSequence)
         onSendData?(canSequence)
+    }
+
+    /// Tell the peer to stop the current transfer without completing it.
+    private func sendZabort() {
+        var frame: [UInt8] = [ZmodemConstants.zpad, 0x18, 0x42, ZmodemConstants.zabort, 0]
+        onSendData?(frame)
     }
 
     // MARK: - Helpers

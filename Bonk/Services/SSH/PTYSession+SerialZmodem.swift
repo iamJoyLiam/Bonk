@@ -144,9 +144,19 @@ public extension PTYSession {
             }
         }
         handler.onReceiveFileRequest = { info in
-            // Auto-save to Downloads; return nil would cancel. Main-thread safe (FileManager only).
-            let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
-            var dest = downloads.appendingPathComponent(info.name)
+            // Accept gate for an untrusted inbound file. The name comes from
+            // the remote host, so it is reduced to a single path component
+            // before it can influence a destination; `../escape` and
+            // `/etc/passwd` cannot select anything outside Downloads.
+            // ZmodemHandler additionally re-checks containment and refuses to
+            // write through symlinks.
+            guard let safeName = ZmodemHandler.sanitizedRemoteName(info.name) else {
+                Log.ssh.error("[Zmodem] rejected unsafe remote filename")
+                return nil
+            }
+            let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+                ?? FileManager.default.temporaryDirectory
+            var dest = downloads.appendingPathComponent(safeName)
             // Avoid overwriting: add suffix if exists
             var counter = 1
             let ext = dest.pathExtension
