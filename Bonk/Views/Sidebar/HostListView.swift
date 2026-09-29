@@ -92,10 +92,11 @@ struct HostListView: View {
         hostGroups.first(where: { $0.name == name })
     }
 
-    /// Single-tap entry for a host row. Selects always; a second tap on the
-    /// same host within the system double-click interval opens the connection.
+    /// Single-tap entry for a host row. Does NOT select or focus — native
+    /// List selection owns the highlight, and onChange(selectedHostID) owns
+    /// focusing. This handler only times taps: a second tap on the same host
+    /// within the system double-click interval opens the connection.
     private func handleHostTap(host: HostItem) {
-        selectedHostID = host.id
         let now = Date()
         if lastTapHostID == host.id, now.timeIntervalSince(lastTapTime) < doubleClickInterval {
             lastTapHostID = nil
@@ -103,7 +104,6 @@ struct HostListView: View {
         } else {
             lastTapHostID = host.id
             lastTapTime = now
-            sessionManager.sidebarSingleClick(host: host)
         }
     }
 
@@ -145,6 +145,16 @@ struct HostListView: View {
                       let tab = sessionManager.tabs.first(where: { $0.id == newValue })
                 else { return }
                 selectedHostID = tab.hostItem.id
+            }
+            .onChange(of: selectedHostID) { _, newValue in
+                // Focus follows NATIVE selection change (NSTableView mousedown),
+                // not the SwiftUI tap gesture: under rapid clicks the gesture can
+                // be dropped while native selection still lands — driving focus
+                // from here guarantees highlight and terminal never diverge.
+                guard let newValue,
+                      let host = hosts.first(where: { $0.id == newValue })
+                else { return }
+                sessionManager.sidebarSingleClick(host: host)
             }
 
             Divider()
