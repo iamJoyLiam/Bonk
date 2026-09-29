@@ -86,7 +86,12 @@ final class SessionManager {
 
     var authRetryRequest: AuthRetryRequest?
     var hostToEdit: HostItem?
-    var authRetryContinuation: CheckedContinuation<AuthRetryResult?, Never>?
+    /// Parked `requestAuthRetry` callers, one per tab.
+    ///
+    /// Per tab, not a single slot: two tabs failing auth would otherwise
+    /// overwrite each other's continuation, and the overwritten caller would
+    /// never be resumed.
+    var authRetryWaiters: [UUID: AuthRetryWaiter] = [:]
     /// Last retry password per tab for sheet prefill
     var lastRetryPassword: [UUID: String] = [:]
 
@@ -198,6 +203,12 @@ final class SessionManager {
         authRetryStates.removeValue(forKey: id)
         showingAuthDialogs.remove(id)
         transientAuthResults.removeValue(forKey: id)
+        // Release this tab's parked auth retry. Without this the caller stays
+        // suspended on a tab that no longer exists, and nothing reports it.
+        authRetryWaiters.removeValue(forKey: id)?.resolve(nil)
+        if authRetryRequest?.tab.id == id {
+            authRetryRequest = nil
+        }
         // Clean up input handler resources for this tab
         cleanupInputHandler(for: id)
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
@@ -227,6 +238,9 @@ final class SessionManager {
     /// Called when the main window closes — the app keeps running for the
     /// Quake terminal, but no SSH connection may linger in the background.
     func disconnectAllTabs() async {
+        // Release any parked auth retry first: a caller suspended on a
+        // continuation must not outlive the sessions it was waiting on.
+        cancelAllAuthRetries()
         for tab in tabs {
             await disconnectTab(tab.id)
         }

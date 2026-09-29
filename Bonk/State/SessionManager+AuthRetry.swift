@@ -11,6 +11,40 @@ import SwiftData
 import SwiftTerm
 import SwiftUI
 
+/// A parked `requestAuthRetry` caller, resumable at most once.
+///
+/// Resuming a `CheckedContinuation` twice is a runtime trap, so a double
+/// completion would crash rather than fail a test. Holding the flag here makes
+/// "exactly once" an ordinary property: a second resolve is a no-op, and
+/// `resolveCount` lets a test observe it.
+///
+/// This type exists because the original code kept a single continuation on
+/// `SessionManager`. Two tabs failing auth meant the second request overwrote
+/// the first, and the first caller was never resumed — it stayed suspended for
+/// the lifetime of the process, holding its tab in a connecting state with
+/// nothing on screen to explain it.
+@MainActor
+final class AuthRetryWaiter {
+    private var continuation: CheckedContinuation<SessionManager.AuthRetryResult?, Never>?
+    private(set) var resolveCount = 0
+
+    init(_ continuation: CheckedContinuation<SessionManager.AuthRetryResult?, Never>) {
+        self.continuation = continuation
+    }
+
+    var isResolved: Bool { continuation == nil }
+
+    /// - Returns: `true` if this call resumed the waiter.
+    @discardableResult
+    func resolve(_ result: SessionManager.AuthRetryResult?) -> Bool {
+        guard let continuation else { return false }
+        self.continuation = nil
+        resolveCount += 1
+        continuation.resume(returning: result)
+        return true
+    }
+}
+
 // MARK: - SessionManager Auth Retry
 
 extension SessionManager {
@@ -38,22 +72,52 @@ extension SessionManager {
     }
 
     /// New auth retry via sheet - shows AuthRetrySheet with full auth methods and raw error detail.
+    ///
+    /// The waiter is registered **per tab**. A single shared continuation cannot
+    /// serve two tabs: the second request would overwrite the first, and the
+    /// first caller would never be resumed.
+    ///
+    /// The sheet can only present one request at a time, so a request that is
+    /// superseded is unanswerable. It is therefore released as cancelled at the
+    /// moment it is superseded, rather than parked waiting for an answer that
+    /// can never arrive.
     func requestAuthRetry(for tab: TerminalTab, rawError: String) async -> AuthRetryResult? {
         let last = lastRetryPassword[tab.id]
         return await withCheckedContinuation { continuation in
-            authRetryContinuation = continuation
-            authRetryRequest = AuthRetryRequest(tab: tab, host: tab.hostItem, rawError: rawError, lastAttemptPassword: last)
+            // Release anything this request displaces: another tab's, or an
+            // earlier request for this same tab. An unreferenced continuation is
+            // never resumed, and its caller hangs.
+            var superseded: [UUID] = []
+            if let visible = visibleAuthRetryTabID, visible != tab.id {
+                superseded.append(visible)
+            }
+            if authRetryWaiters[tab.id] != nil {
+                superseded.append(tab.id)
+            }
+            for tabID in superseded {
+                authRetryWaiters.removeValue(forKey: tabID)?.resolve(nil)
+            }
+            authRetryWaiters[tab.id] = AuthRetryWaiter(continuation)
+            authRetryRequest = AuthRetryRequest(
+                tab: tab,
+                host: tab.hostItem,
+                rawError: rawError,
+                lastAttemptPassword: last
+            )
         }
     }
 
+    /// The tab whose request is currently on screen, if any.
+    private var visibleAuthRetryTabID: UUID? { authRetryRequest?.tab.id }
+
     func completeAuthRetry(with result: AuthRetryResult?) {
-        if let authResult = result, !authResult.password.isEmpty, let tabID = authRetryRequest?.tab.id {
+        guard let tabID = visibleAuthRetryTabID else { return }
+        if let authResult = result, !authResult.password.isEmpty {
             lastRetryPassword[tabID] = authResult.password
-        } else if result == nil, let tabID = authRetryRequest?.tab.id {
-            // Keep last input for next prefill
         }
-        authRetryContinuation?.resume(returning: result)
-        authRetryContinuation = nil
+        // Resolve the waiter that belongs to *this* request's tab, not
+        // whichever waiter happens to be registered.
+        authRetryWaiters.removeValue(forKey: tabID)?.resolve(result)
         authRetryRequest = nil
     }
 
@@ -63,8 +127,15 @@ extension SessionManager {
     }
 
     func cancelAuthRetry() {
-        authRetryContinuation?.resume(returning: nil)
-        authRetryContinuation = nil
+        completeAuthRetry(with: nil)
+    }
+
+    /// Release every parked waiter. Used when the manager is torn down, so no
+    /// caller is left suspended on a deallocated owner.
+    func cancelAllAuthRetries() {
+        let waiters = authRetryWaiters
+        authRetryWaiters.removeAll()
+        for (_, waiter) in waiters { waiter.resolve(nil) }
         authRetryRequest = nil
     }
 
