@@ -55,38 +55,70 @@ enum CommandSafety {
 
     // MARK: - Single Command
 
-    private static func classifySingleCommand(_ command: String) -> CommandSafety {
-        let trimmed = command.trimmingCharacters(in: .whitespaces)
+    private static func classifySingleCommand(_ command: String, depth: Int = 0) -> CommandSafety {
+        var trimmed = command.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return .blocked }
+        if isBlocked(trimmed) { return .blocked }
+
+        // Command substitution / backticks: attacker-controlled inner content
+        // must be classified too (e.g. `echo $(rm -rf ~)`). Never lowers risk.
+        let substitutionRisk = classifySubstitutions(trimmed)
+
+        // A single layer of subshell parens does not change what runs:
+        // `(rm -rf /)` is the same payload as `rm -rf /`.
+        trimmed = stripSubshellParens(trimmed)
+
         let parts = trimmed.split(separator: " ").map(String.init)
         guard let cmd = parts.first else { return .blocked }
 
-        // Blocked
-        if isBlocked(trimmed) { return .blocked }
+        let base: CommandSafety = {
+            // sudo → delegate to subcommand (with flag skipping: -u/-g/-p/-r take values)
+            if cmd == "sudo" { return classifySudo(parts) }
 
-        // Read-only listings are safe even for normally risky tools
-        // (e.g. `fdisk -l`, `parted -l`, bare `mount`, `docker ps`).
-        if isReadOnlyListing(cmd, trimmed) { return .safe }
+            // Shell / script interpreters execute code: `curl x | sh`,
+            // `bash -c '...'`, `python3 script.py` all need a decision, never silent allow.
+            if shellInterpreters.contains(cmd) { return classifyInterpreter(parts) }
 
-        // sudo → delegate to subcommand
-        if cmd == "sudo" { return classifySudo(parts) }
+            // Wrapper verbs must not hide the real command:
+            // `env FOO=1 rm -rf /x`, `xargs rm`, `find . -exec rm {} \;`, `su -c '...'`.
+            if cmd == "find" { return classifyFind(parts) }
+            if cmd == "xargs" { return classifyXargs(parts) }
+            if cmd == "su" { return classifySu(parts) }
+            if wrapperCommands.contains(cmd) {
+                guard depth < maxUnwrapDepth else { return .moderate }
+                let rest = unwrapPlainWrapper(cmd: cmd, parts: parts)
+                guard !rest.isEmpty else { return .moderate }
+                // Floor: a wrapper that survived parsing still deserves confirmation.
+                return maxRisk(classifySingleCommand(rest, depth: depth + 1), .moderate)
+            }
 
-        // Dangerous
-        if isDangerous(cmd) { return .dangerous }
+            // Read-only listings are safe even for normally risky tools
+            // (e.g. `fdisk -l`, `parted -l`, bare `mount`, `docker ps`).
+            if isReadOnlyListing(cmd, trimmed) { return .safe }
 
-        // Moderate
-        if isModerate(cmd, trimmed) { return .moderate }
+            // Dangerous
+            if isDangerous(cmd) { return .dangerous }
 
-        // -rf / -fr / -r -f anywhere → dangerous
-        if hasRecursiveForceFlag(trimmed) { return .dangerous }
+            // Moderate
+            if isModerate(cmd, trimmed) { return .moderate }
 
-        // Redirects (not to /dev/null) → moderate
-        if trimmed.contains(" >> ") || trimmed.contains(" > "),
-           !trimmed.contains("> /dev/null")
-        {
-            return .moderate
-        }
+            // -rf / -fr / -r -f anywhere → dangerous
+            if hasRecursiveForceFlag(trimmed) { return .dangerous }
 
-        return .safe
+            // File redirects (spaced or not, except to /dev/null) → moderate;
+            // redirects into shell rc / cron / sudoers / ssh trust files → blocked.
+            if let redirectRisk = fileRedirectRisk(trimmed) { return redirectRisk }
+
+            return .safe
+        }()
+
+        return maxRisk(base, substitutionRisk ?? .safe)
+    }
+
+    private static let maxUnwrapDepth = 8
+
+    private static func maxRisk(_ a: CommandSafety, _ b: CommandSafety) -> CommandSafety {
+        a.priority >= b.priority ? a : b
     }
 
     // MARK: - Blocked
@@ -194,13 +226,373 @@ enum CommandSafety {
     // MARK: - Sudo
 
     private static func classifySudo(_ parts: [String]) -> CommandSafety {
-        guard parts.count > 1 else { return .dangerous }
-        let sub = parts[1]
-        let rest = parts.dropFirst().joined(separator: " ")
+        // Skip sudo options: -u/--user, -g/--group, -p/--prompt, -r/--role,
+        // -C/--close-from consume the following token; other -flags are standalone.
+        let sudoValueFlags: Set<String> = ["-u", "--user", "-g", "--group", "-p", "--prompt", "-r", "--role", "-C", "--close-from"]
+        var idx = 1
+        while idx < parts.count {
+            let token = parts[idx]
+            if sudoValueFlags.contains(token) {
+                idx += 2
+                continue
+            }
+            if token.hasPrefix("-"), token.count > 1 { idx += 1; continue }
+            break
+        }
+        guard idx < parts.count else { return .dangerous }
+        let sub = parts[idx]
+        let rest = parts[idx...].joined(separator: " ")
 
         if isBlocked(rest) { return .blocked }
         if ["apt", "apt-get", "yum", "dnf", "pacman", "brew", "zypper", "pip", "npm"].contains(sub) { return .moderate }
         return .dangerous
+    }
+
+    // MARK: - Shell Interpreters
+
+    /// Verbs that execute code rather than perform a fixed operation.
+    /// A bare interpreter (`sh` as a pipe target, `python3 script.py`)
+    /// runs arbitrary input → dangerous. `-c`/`-e` payloads are classified
+    /// recursively so `sh -c 'rm -rf /'` is blocked while version/help
+    /// probes stay silent.
+    private static let shellInterpreters: Set<String> = [
+        "sh", "bash", "dash", "zsh", "fish", "ksh",
+        "python", "python3", "perl", "ruby", "node", "php", "lua",
+    ]
+
+    private static func classifyInterpreter(_ parts: [String]) -> CommandSafety {
+        guard parts.count > 1 else { return .dangerous }
+        let args = Array(parts.dropFirst())
+        // Read-only probes stay quiet.
+        if args.allSatisfy({ $0 == "--version" || $0 == "-V" || $0 == "-v" || $0 == "-h" || $0 == "--help" }) {
+            return .safe
+        }
+        // -c/--command/-e payload: classify what would actually run.
+        if let flagIdx = args.firstIndex(where: { $0 == "-c" || $0 == "--command" || $0 == "-e" }) {
+            let payload = args.dropFirst(flagIdx + 1).joined(separator: " ")
+            guard !payload.isEmpty else { return .dangerous }
+            return classify(payload)
+        }
+        return .dangerous
+    }
+
+    // MARK: - Wrapper Verbs
+
+    /// Verbs that only wrap another command. Unwrap and classify the inner
+    /// command so `env FOO=1 rm -rf /x` cannot hide behind `env`.
+    private static let wrapperCommands: Set<String> = [
+        "env", "nohup", "time", "nice", "stdbuf", "watch", "timeout", "command",
+    ]
+
+    /// Strip the wrapper verb plus its options, returning the inner command.
+    /// Unknown `-flags` stop unwrapping (the caller floors the result at
+    /// moderate) rather than being silently skipped with their values.
+    private static func unwrapPlainWrapper(cmd: String, parts: [String]) -> String {
+        var tokens = Array(parts.dropFirst())
+        // env VAR=assignments never contribute risk by themselves.
+        if cmd == "env" {
+            while let first = tokens.first, isEnvAssignment(first) { tokens.removeFirst() }
+        }
+        let valueFlags: Set<String>
+        let standaloneOK: Bool
+        switch cmd {
+        case "env":
+            valueFlags = ["-u", "--unset", "-C", "--chdir", "-S", "--split-string"]
+            standaloneOK = true // -i, -0, ...
+        case "timeout":
+            valueFlags = ["-s", "--signal", "-k", "--kill-after"]
+            standaloneOK = true // --preserve-status, -v, ...
+        case "watch":
+            valueFlags = ["-n", "--interval"]
+            standaloneOK = true // -d, -t, -b, -e, -g, -x, ...
+        case "nice":
+            valueFlags = ["-n", "--adjustment"]
+            standaloneOK = true
+        case "stdbuf":
+            valueFlags = ["-i", "--input", "-o", "--output", "-e", "--error"]
+            standaloneOK = false // inline forms like -o0 handled below
+        case "nohup", "time", "command":
+            valueFlags = []
+            standaloneOK = true
+        default:
+            valueFlags = []
+            standaloneOK = false
+        }
+        while let first = tokens.first, first.hasPrefix("-"), first.count > 1 {
+            let name = first.split(separator: "=", maxSplits: 1).map(String.init)[0]
+            if valueFlags.contains(name) {
+                tokens.removeFirst()
+                // Inline value (--signal=TERM, -o0): nothing more to consume.
+                if !first.contains("="), first == name, !tokens.isEmpty { tokens.removeFirst() }
+                continue
+            }
+            if cmd == "stdbuf", inlineValueFlagPrefix(first) != nil {
+                tokens.removeFirst()
+                continue
+            }
+            if standaloneOK { tokens.removeFirst(); continue }
+            break // unknown flag: stop, caller floors at moderate
+        }
+        if cmd == "timeout", let first = tokens.first, isDurationToken(first) {
+            tokens.removeFirst()
+        }
+        return tokens.joined(separator: " ")
+    }
+
+    private static func isEnvAssignment(_ token: String) -> Bool {
+        guard let eq = token.firstIndex(of: "=") else { return false }
+        let name = token[..<eq]
+        guard let first = name.first, first.isLetter || first == "_" else { return false }
+        return name.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
+    }
+
+    private static func inlineValueFlagPrefix(_ token: String) -> String? {
+        for prefix in ["-i", "-o", "-e"] where token.hasPrefix(prefix) && token != prefix {
+            return prefix
+        }
+        return nil
+    }
+
+    private static func isDurationToken(_ token: String) -> Bool {
+        guard !token.isEmpty else { return false }
+        let core = token.last.map { "smhd".contains($0) } == true ? token.dropLast() : token[...]
+        guard !core.isEmpty else { return false }
+        var dotSeen = false
+        return core.allSatisfy {
+            if $0 == ".", !dotSeen { dotSeen = true; return true }
+            return $0.isNumber
+        }
+    }
+
+    // MARK: - xargs / find / su
+
+    private static func classifyXargs(_ parts: [String]) -> CommandSafety {
+        let valueFlags: Set<String> = ["-n", "--max-args", "-I", "--replace", "-d", "--delimiter", "-P", "--max-procs", "-a", "--arg-file", "-s", "--max-chars", "-E", "--eof"]
+        var tokens = Array(parts.dropFirst())
+        while let first = tokens.first, first.hasPrefix("-"), first.count > 1 {
+            let name = first.split(separator: "=", maxSplits: 1).map(String.init)[0]
+            tokens.removeFirst()
+            if valueFlags.contains(name), !first.contains("="), !tokens.isEmpty { tokens.removeFirst() }
+        }
+        // Floor at moderate: xargs builds argv from stdin we cannot inspect, so
+        // even a safe-looking inner command executes dynamic arguments.
+        guard !tokens.isEmpty else { return .moderate }
+        return maxRisk(classify(tokens.joined(separator: " ")), .moderate)
+    }
+
+    private static func classifyFind(_ parts: [String]) -> CommandSafety {
+        let tokens = Array(parts.dropFirst())
+        if tokens.contains("-delete") { return .dangerous }
+        var worst: CommandSafety?
+        var idx = tokens.startIndex
+        while idx < tokens.endIndex {
+            let token = tokens[idx]
+            if ["-exec", "-execdir", "-ok", "-okdir"].contains(token) {
+                var payload: [String] = []
+                idx = tokens.index(after: idx)
+                while idx < tokens.endIndex, tokens[idx] != ";", tokens[idx] != "+" {
+                    payload.append(tokens[idx])
+                    idx = tokens.index(after: idx)
+                }
+                let inner = payload.joined(separator: " ")
+                let risk: CommandSafety = inner.isEmpty ? .moderate : classify(inner)
+                worst = worst.map { maxRisk($0, risk) } ?? risk
+            } else {
+                idx = tokens.index(after: idx)
+            }
+        }
+        // Plain `find` (no -exec/-delete) only reads the tree → safe.
+        return worst ?? .safe
+    }
+
+    private static func classifySu(_ parts: [String]) -> CommandSafety {
+        // Crossing a user boundary always needs confirmation; a blocked
+        // payload inside -c still propagates as blocked.
+        if let cIdx = parts.firstIndex(of: "-c") ?? parts.firstIndex(of: "--command") {
+            let payload = parts.dropFirst(cIdx + 1).joined(separator: " ")
+            guard !payload.isEmpty else { return .dangerous }
+            return maxRisk(classify(payload), .dangerous)
+        }
+        return .dangerous
+    }
+
+    // MARK: - Command Substitution
+
+    /// `$(...)` and backticks execute before the outer command does.
+    /// Classify each inner payload (full pipeline: chains included) and
+    /// return the worst risk found, or nil when there is none.
+    /// Only single-quoted regions are skipped: `"$(...)"` still expands.
+    private static func classifySubstitutions(_ command: String) -> CommandSafety? {
+        var worst: CommandSafety?
+        let chars = Array(command)
+        var idx = 0
+        var inSingleQuote = false
+        while idx < chars.count {
+            let char = chars[idx]
+            if char == "'", !isEscaped(chars, idx) {
+                inSingleQuote.toggle()
+                idx += 1
+                continue
+            }
+            if inSingleQuote {
+                idx += 1
+                continue
+            }
+            if char == "$", idx + 1 < chars.count, chars[idx + 1] == "(" {
+                if let (inner, next) = extractBalanced(chars, from: idx + 2) {
+                    worst = maxRisk(worst ?? .safe, classify(inner))
+                    idx = next
+                    continue
+                }
+                // Unbalanced `$(`: suspicious, floor at moderate.
+                worst = maxRisk(worst ?? .safe, .moderate)
+                idx += 1
+                continue
+            }
+            if char == "`" {
+                if let end = chars[(idx + 1)...].firstIndex(of: "`") {
+                    worst = maxRisk(worst ?? .safe, classify(String(chars[(idx + 1)..<end])))
+                    idx = end + 1
+                    continue
+                }
+                idx += 1
+                continue
+            }
+            idx += 1
+        }
+        return worst
+    }
+
+    private static func isEscaped(_ chars: [Character], _ idx: Int) -> Bool {
+        var backslashes = 0
+        var i = idx
+        while i > 0 {
+            i -= 1
+            guard chars[i] == "\\" else { break }
+            backslashes += 1
+        }
+        return backslashes % 2 == 1
+    }
+
+    /// Extract balanced `(...)` content starting at `from` (just past `$(`).
+    /// Returns the inner text plus the index just past the closing paren.
+    private static func extractBalanced(_ chars: [Character], from: Int) -> (String, Int)? {
+        var depth = 1
+        var idx = from
+        var inSingleQuote = false
+        while idx < chars.count {
+            let char = chars[idx]
+            if char == "'", !isEscaped(chars, idx) { inSingleQuote.toggle() }
+            if !inSingleQuote {
+                if char == "(" { depth += 1 }
+                if char == ")" {
+                    depth -= 1
+                    if depth == 0 {
+                        return (String(chars[from..<idx]), idx + 1)
+                    }
+                }
+            }
+            idx += 1
+        }
+        return nil
+    }
+
+    private static func stripSubshellParens(_ command: String) -> String {
+        var result = command
+        while result.hasPrefix("("), result.hasSuffix(")"), result.count >= 2 {
+            // Verify the outer parens actually balance (not `(a) && (b)`).
+            let inner = result.dropFirst().dropLast()
+            var depth = 0
+            var balanced = true
+            for char in inner {
+                if char == "(" { depth += 1 }
+                if char == ")" {
+                    depth -= 1
+                    if depth < 0 { balanced = false; break }
+                }
+            }
+            guard balanced, depth == 0 else { break }
+            result = String(inner).trimmingCharacters(in: .whitespaces)
+        }
+        return result
+    }
+
+    // MARK: - File Redirects (spaced or not)
+
+    /// Sensitive targets: writing here is persistence / trust subversion,
+    /// not an ordinary file write → blocked.
+    private static let sensitiveRedirectTargets = [
+        ".bashrc", ".zshrc", ".bash_profile", ".profile",
+        "/etc/cron", "/etc/sudoers", "/etc/passwd", "/etc/shadow",
+        "authorized_keys", "launchdaemons", "launchagents", "/etc/hosts",
+    ]
+
+    /// Detect `>` / `>>` file redirects with or without surrounding spaces
+    /// (`echo hi>/etc/x`, `2>file`). Quoted operators don't count;
+    /// `<<` heredocs, `>&N` fd-duplication, `=>`/`>=` comparisons, and
+    /// `/dev/null` sinks don't count either.
+    private static func fileRedirectRisk(_ command: String) -> CommandSafety? {
+        let chars = Array(command)
+        var idx = chars.startIndex
+        var inSingleQuote = false
+        var inDoubleQuote = false
+        var sawFileWrite = false
+        while idx < chars.endIndex {
+            let char = chars[idx]
+            if char == "'", !inDoubleQuote { inSingleQuote.toggle(); idx = chars.index(after: idx); continue }
+            if char == "\"", !inSingleQuote { inDoubleQuote.toggle(); idx = chars.index(after: idx); continue }
+            guard char == ">", !inSingleQuote, !inDoubleQuote else {
+                idx = chars.index(after: idx)
+                continue
+            }
+            // `=>` / `>=` are comparisons, not redirects.
+            if idx > chars.startIndex, chars[chars.index(before: idx)] == "=" {
+                idx = chars.index(after: idx)
+                continue
+            }
+            var next = chars.index(after: idx)
+            // `<<` / `<<<` heredoc: no file target.
+            if next < chars.endIndex, chars[next] == "<" {
+                idx = chars.index(after: idx)
+                continue
+            }
+            // `>>`: consume the second `>`.
+            if next < chars.endIndex, chars[next] == ">" { next = chars.index(after: next) }
+            // `>|` noclobber override: consume the `|`.
+            if next < chars.endIndex, chars[next] == "|" { next = chars.index(after: next) }
+            // `>&N` / `2>&N`: fd duplication, not a file write.
+            if next < chars.endIndex, chars[next] == "&" {
+                let afterAmp = chars.index(after: next)
+                if afterAmp < chars.endIndex, chars[afterAmp].isNumber || chars[afterAmp] == "-" {
+                    idx = chars.index(after: idx)
+                    continue
+                }
+                next = afterAmp // `&>file`: target follows the `&`
+            }
+            // Parse the target token.
+            var target = next
+            while target < chars.endIndex, chars[target] == " " || chars[target] == "\t" { target = chars.index(after: target) }
+            var targetEnd = target
+            while targetEnd < chars.endIndex, !" \t;|&<>()".contains(chars[targetEnd]) { targetEnd = chars.index(after: targetEnd) }
+            let targetText = String(chars[target..<targetEnd])
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            if targetText.lowercased().hasPrefix("/dev/null") {
+                idx = targetEnd
+                continue
+            }
+            if targetText.isEmpty {
+                sawFileWrite = true // `echo hi >` — incomplete, stay suspicious
+                idx = targetEnd
+                continue
+            }
+            let lowerTarget = targetText.lowercased()
+            if sensitiveRedirectTargets.contains(where: { lowerTarget.contains($0) }) {
+                return .blocked
+            }
+            sawFileWrite = true
+            idx = targetEnd
+        }
+        return sawFileWrite ? .moderate : nil
     }
 
     // MARK: - Chain Splitting
