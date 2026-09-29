@@ -6,6 +6,38 @@
     <channel>
         <title>Bonk</title>
         <item>
+        <title>2026.4.5</title>
+        <pubDate>Tue, 29 Sep 2026 11:03:26 +0800</pubDate>
+        <sparkle:version>20264005</sparkle:version>
+        <sparkle:shortVersionString>2026.4.5</sparkle:shortVersionString>
+        <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+        <description><![CDATA[
+## Changes
+
+- Sidebar selection rebuilt on native behavior: single click selects and focuses the open tab, double click always connects on the first try, highlight follows the active tab.
+- Fixed spurious SSH reconnects caused by a PTY closed-state race, plus bounded auth/process output buffers and a responder data race.
+- Terminal stability: fixed input-path crashes, stopped the hidden Quake panel double-consuming the active PTY, no more redundant SSH resize on tab switch.
+- SFTP transfers now close file handles synchronously to prevent descriptor exhaustion under parallel transfers.
+- Fixed an input-parser memory leak on tab close and reduced idle polling overhead.
+        ]]></description>
+        <enclosure
+            url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.4.5/Bonk-2026.4.5-arm64.dmg"
+            length="24737993"
+            type="application/octet-stream"
+            sparkle:edSignature="lbS1NPsuJl+Ng4IHqBJM0BfuLA0KZSxmkKmaQ1373cbV0Uqq/s+hfRowCWcXdTlOR1pMTpdzTKgFtrtyD9psDA=="
+            sparkle:os="macos"
+            sparkle:cpuAffinity="arm64"
+        />
+        <enclosure
+            url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.4.5/Bonk-2026.4.5-x86_64.dmg"
+            length="24953382"
+            type="application/octet-stream"
+            sparkle:edSignature="TlYsLIAGRwtWa7mCWiCx4mNYmUUMs2Rlcm2X2Uj9lHv9W5GecKl83u4tAZgt+nEeTTVIxoUdUTfrmruIUos1Ag=="
+            sparkle:os="macos"
+            sparkle:cpuAffinity="x86_64"
+        />
+    </item>
+    <item>
             <title>2026.4.4</title>
             <pubDate>Wed, 23 Sep 2026 15:45:00 +0800</pubDate>
             <sparkle:version>20264004</sparkle:version>
