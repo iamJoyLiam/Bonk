@@ -275,6 +275,12 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationWillTerminate(_: Notification) {
+        // Record the host count on a signal that actually fires. This marker
+        // is the only thing distinguishing "the user deleted everything" from
+        // "the store was destroyed", so it has to be trustworthy: the previous
+        // wiring sat in the Settings scene's scenePhase, which on macOS is
+        // AppKit-owned and effectively never reaches .background.
+        StoreHealthGuard.recordHostCount(currentHostCount())
         // Kill every bonk-ssh child so no PTY-holding process survives the
         // app (a plain app exit leaves the ssh children behind until the
         // NEXT launch's cleanup runs).
@@ -286,6 +292,11 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if let sm = sessionManager {
             SessionRestore.snapshot(tabs: sm.tabs, activeTabID: sm.activeTabID)
         }
+    }
+
+    private func currentHostCount() -> Int {
+        let context = ModelContext(BonkApp.sharedModelContainer)
+        return (try? context.fetchCount(FetchDescriptor<HostItem>())) ?? 0
     }
 
     func applicationShouldHandleReopen(_: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

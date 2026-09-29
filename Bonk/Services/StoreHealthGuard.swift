@@ -4,16 +4,20 @@ import SQLite3
 
 /// Startup forensics for the file-backed store.
 ///
-/// Forensics-first policy: on anomaly, FREEZE the scene and record evidence.
-/// Never auto-restore — restoring would overwrite the crime scene and make
-/// the root cause permanently uncatchable. Recovery stays a deliberate
-/// manual step from a dated snapshot under Bonk-Backups.
+/// Policy: on anomaly, FREEZE the scene, then RESTORE from the newest
+/// snapshot that actually holds user data. The scene is copied into its own
+/// `INCIDENT-*` directory first, so restoring the live file cannot destroy
+/// evidence — a previous version refused to restore on the mistaken belief
+/// that it would overwrite the scene, and that refusal is why the 2026-09-23
+/// and 2026-09-29 wipes each cost every host. Restores are refused when the
+/// candidate snapshot is corrupt or has no hosts.
 ///
-/// Background: the store was once found structurally rewritten in place
-/// (same inode; entity rows and Z_MAX zeroed; history purged; schema_version
-/// jumped ~55; sqlite_master byte-identical afterwards). No in-app deleter,
-/// reset routine, manual migration, or second container exists; root cause
-/// unproven. This guard exists to capture the NEXT incident intact.
+/// Background: the store was found structurally rewritten in place (same
+/// inode; entity rows and Z_MAX zeroed; history purged; schema_version
+/// climbed; sqlite_master byte-identical afterwards), then repopulated with
+/// nothing but the app's own seed data. No in-app deleter, reset routine,
+/// manual migration, or second container exists; root cause unproven. This
+/// guard exists to bound the damage of the next incident, not to prevent it.
 enum StoreHealthGuard {
     static let lastHostCountKey = "store_last_host_count"
     /// Set when a wipe is detected; UI/diagnostics can surface it.
@@ -92,7 +96,14 @@ enum StoreHealthGuard {
         ].joined(separator: "\n")
         try? ledger.write(to: incidentDir.appendingPathComponent("EVIDENCE.txt"), atomically: true, encoding: .utf8)
         UserDefaults.standard.set(stamp, forKey: wipeDetectedKey)
-        Log.app.fault("Store wipe detected (marker had \(marker, privacy: .public) hosts, live has 0) — scene frozen at \(incidentDir.lastPathComponent, privacy: .public), live files untouched")
+        Log.app.fault("Store wipe detected (marker had \(marker, privacy: .public) hosts, live has 0) — scene frozen at \(incidentDir.lastPathComponent, privacy: .public)")
+        // The scene is already copied above, so restoring the live file cannot
+        // destroy evidence. Leaving production empty until a human notices is
+        // what turns a recoverable incident into total loss — this ran on
+        // 2026-09-23 and again on 2026-09-29, each time wiping every host.
+        if let restored = StoreBackupManager.restoreLatestKnownGood() {
+            Log.app.notice("Store wipe recovered from \(restored, privacy: .public); wiped state preserved under \(incidentDir.lastPathComponent, privacy: .public)")
+        }
     }
 
     /// Record the current host count on graceful backgrounding.

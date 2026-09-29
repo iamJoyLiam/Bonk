@@ -20,6 +20,8 @@ enum StoreBackupManager {
     private static let backupDirName = "Bonk-Backups"
     private static let keepCount = 7
     private static let storeName = "default.store"
+    private static let incidentDirPrefix = "INCIDENT-"
+    private static let archivedDirPrefix = "RESTORED-"
 
     static func backupIfNeeded() {
         #if DEBUG
@@ -110,6 +112,107 @@ enum StoreBackupManager {
             return false
         }
         return true
+    }
+
+    /// Restore the newest snapshot that actually holds user data.
+    ///
+    /// Called by `StoreHealthGuard` right after it freezes the wiped scene into
+    /// its own `INCIDENT-*` directory. That copy is the crime scene, so
+    /// restoring the live file cannot destroy evidence.
+    ///
+    /// Never promotes a snapshot that is corrupt or has no hosts. Returns the
+    /// restored snapshot's directory name, or nil when nothing qualifies.
+    @discardableResult
+    static func restoreLatestKnownGood() -> String? {
+        let fileManager = FileManager.default
+        guard let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        else { return nil }
+        let dir = support.appendingPathComponent(backupDirName)
+        guard let source = newestRestorableSnapshot(in: dir) else {
+            Log.app.fault("Store wipe detected but no snapshot held user data — left untouched for manual recovery")
+            return nil
+        }
+        do {
+            try install(source: source, support: support)
+            let day = source.deletingLastPathComponent().lastPathComponent
+            Log.app.fault("Store restored from snapshot \(day, privacy: .public) after a wipe was detected")
+            return day
+        } catch {
+            Log.app.error("Store restore failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    /// Pure decision: which snapshot, if any, may be promoted into the live
+    /// store. Newest-first; a candidate qualifies only when it is intact AND
+    /// holds at least one host. `INCIDENT-*` and `RESTORED-*` are skipped:
+    /// they hold frozen evidence and archived wiped state, never history.
+    static func newestRestorableSnapshot(in dir: URL) -> URL? {
+        let fileManager = FileManager.default
+        guard let days = try? fileManager.contentsOfDirectory(atPath: dir.path)
+            .filter({ !$0.hasPrefix(incidentDirPrefix) && !$0.hasPrefix(archivedDirPrefix) })
+            .sorted(by: >)
+        else { return nil }
+        for day in days {
+            let candidate = dir.appendingPathComponent(day).appendingPathComponent(storeName)
+            guard fileManager.fileExists(atPath: candidate.path),
+                  snapshotIsPromotable(at: candidate.path)
+            else { continue }
+            return candidate
+        }
+        return nil
+    }
+
+    /// Swap a snapshot into the live location. A WAL-mode database is
+    /// inseparable from its -wal, so stale sidecars from the wiped store must
+    /// go or SQLite replays them onto the restored file.
+    private static func install(source: URL, support: URL) throws {
+        let fileManager = FileManager.default
+        let liveURL = support.appendingPathComponent(storeName)
+        let staged = support.appendingPathComponent(storeName + ".restoring")
+        try? fileManager.removeItem(at: staged)
+        try fileManager.copyItem(at: source, to: staged)
+        try? fileManager.removeItem(atPath: liveURL.path + "-wal")
+        try? fileManager.removeItem(atPath: liveURL.path + "-shm")
+        _ = try fileManager.replaceItemAt(liveURL, withItemAt: staged)
+    }
+
+    /// A snapshot may be promoted only if it is intact AND holds user data.
+    /// Both facts are read over ONE connection: a second read-only open can hit
+    /// SQLITE_BUSY while another reader holds the file, and treating "could not
+    /// determine" as "not promotable" would silently skip the only good copy.
+    private static func snapshotIsPromotable(at path: String) -> Bool {
+        guard let hosts = snapshotHostCount(at: path), hosts > 0 else { return false }
+        return true
+    }
+
+    /// Host count of a snapshot, or nil when unreadable or failing
+    /// `integrity_check`. A busy timeout keeps a transient lock from reading as
+    /// "no data" — that misread is what makes a safety net silently do nothing.
+    private static func snapshotHostCount(at path: String) -> Int? {
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK, let db else {
+            return nil
+        }
+        defer { sqlite3_close(db) }
+        sqlite3_busy_timeout(db, 2_000)
+
+        var integrity: OpaquePointer?
+        defer { sqlite3_finalize(integrity) }
+        guard sqlite3_prepare_v2(db, "PRAGMA integrity_check", -1, &integrity, nil) == SQLITE_OK,
+              let integrity,
+              sqlite3_step(integrity) == SQLITE_ROW,
+              let text = sqlite3_column_text(integrity, 0),
+              String(cString: text) == "ok"
+        else { return nil }
+
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM ZHOSTITEM", -1, &stmt, nil) == SQLITE_OK,
+              let stmt
+        else { return nil }
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+        return Int(sqlite3_column_int64(stmt, 0))
     }
 
     private enum StoreBackupError: Error {
