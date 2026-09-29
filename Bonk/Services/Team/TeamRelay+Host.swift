@@ -173,7 +173,7 @@ extension TeamRelay {
 
     func handleHostMessage(_ message: TeamMessage, peerConnectionID: UUID) {
         switch message {
-        case let .pairingChallenge(pin, peer):
+        case let .pairingChallenge(pin, peer, nonce):
             guard !isPaired(peerConnectionID) else { return }
             guard connectedPeers.count < TeamConstants.maxGuestCount else {
                 rejectHostConnection(peerConnectionID, reason: L.t(.tmGuestLimit))
@@ -199,6 +199,21 @@ extension TeamRelay {
             connectedPeers.append(guestPeer)
             startHostHeartbeat(for: peerConnectionID)
             updatePresenceSnapshot()
+            // Prove the PIN was accepted before any session traffic. The guest
+            // refuses to treat itself as paired without this message echoing
+            // the nonce it generated, so a peer that merely answers a TCP
+            // connection cannot impersonate the host. Our identity fingerprint
+            // rides along so the guest can pin it.
+            if let connection = hostedConnections[peerConnectionID], let hostPeer {
+                sendMessage(
+                    .pairingAccepted(
+                        nonce: nonce,
+                        hostFingerprint: hostIdentity.fingerprint,
+                        host: hostPeer
+                    ),
+                    to: connection
+                )
+            }
             sendReplay(to: peerConnectionID)
             if let connection = hostedConnections[peerConnectionID] {
                 sendMessage(.notice(payload: "[Connected]\r\n"), to: connection)

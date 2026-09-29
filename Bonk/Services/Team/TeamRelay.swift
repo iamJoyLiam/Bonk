@@ -45,11 +45,22 @@ final class TeamRelay: ObservableObject {
     var guestConnection: NWConnection?
     var guestFramer = TeamMessageFramer()
     var guestPeer: TeamPeer?
+    /// Nonce generated for the current pairing attempt. The host must echo it
+    /// in `pairingAccepted`; a mismatch means we are not talking to the peer
+    /// that received our challenge.
+    var guestPairingNonce: String?
+    /// Fingerprint of the host we are paired with, for display and audit.
+    @Published var hostIdentityFingerprint: String?
+    /// Set when the host's fingerprint differs from the pinned one.
+    @Published var hostIdentityChangedNotice: String?
     var guestHeartbeatTask: Task<Void, Never>?
     var guestPairingTimeoutTask: Task<Void, Never>?
     var guestLastActivity = Date.distantPast
     var guestConnectionGeneration: UInt64 = 0
     var hasPaired = false
+
+    /// This machine's identity as a host, stable across restarts.
+    private(set) lazy var hostIdentity: TeamHostIdentity = TeamIdentityStore.hostIdentity()
 
     var isHostMode = false
     var pairingFailureTimestamps: [Date] = []
@@ -228,7 +239,11 @@ final class TeamRelay: ObservableObject {
                     self.logger.info("Guest connected to host")
                     self.isConnected = true
                     self.guestLastActivity = Date()
-                    self.sendToGuest(.pairingChallenge(pin: pin, peer: peer))
+                    // Fresh nonce per attempt: it is what makes the host's
+                    // acceptance non-replayable.
+                    let nonce = Self.makePairingNonce()
+                    self.guestPairingNonce = nonce
+                    self.sendToGuest(.pairingChallenge(pin: pin, peer: peer, nonce: nonce))
                     self.startGuestHeartbeat(generation: generation)
                     self.startGuestPairingTimeout(generation: generation)
                     self.receiveOnGuestConnection(generation: generation)

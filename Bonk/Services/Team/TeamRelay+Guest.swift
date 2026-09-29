@@ -51,20 +51,87 @@ extension TeamRelay {
         }
     }
 
+    /// Whether a message from the connected peer may be acted on.
+    ///
+    /// A guest connects to a Bonjour-discovered endpoint, which any machine on
+    /// the LAN can advertise, so the peer is unverified until it proves it
+    /// validated our PIN. Previously `terminalOutput`, `notice` and
+    /// `presenceSnapshot` each set `hasPaired = true` on their own, so a peer
+    /// that sent nothing but a `notice` became "the host": its output was
+    /// rendered in the guest terminal, and its `shareHosts` payload — which
+    /// carries credentials — was queued for import.
+    ///
+    /// Kept as a pure function so the decision is testable without a live
+    /// relay; `handleGuestMessage` applies it.
+    enum PairingGate {
+        static func isUntrusted(_ message: TeamMessage, hasPaired: Bool) -> Bool {
+            guard !hasPaired else { return false }
+            switch message {
+            // A rejection is how a real host refuses us, and a heartbeat keeps
+            // the connection alive; both must get through or the user sees a
+            // silent timeout instead of a reason.
+            case .pairingRejected, .heartbeat, .pairingAccepted:
+                return false
+            default:
+                return true
+            }
+        }
+
+        /// Outcome of validating a `pairingAccepted` message.
+        enum Acceptance: Equatable {
+            case acceptAndPinFirstUse
+            case acceptAlreadyPinned
+            /// The echoed nonce is not the one we sent: this response is not
+            /// an answer to our challenge, so a recorded acceptance replayed
+            /// at us is rejected.
+            case rejectReplay
+            case rejectIdentityChanged(presented: String)
+            case rejectNoChallenge
+        }
+
+        /// Decide whether to accept a host's claim to have validated our PIN.
+        ///
+        /// Pure so both checks are testable without a live relay. The nonce
+        /// must echo the challenge generated for *this* attempt, and the host
+        /// identity must satisfy the trust policy. A host whose fingerprint
+        /// changed is refused even when the nonce matches.
+        static func evaluateAcceptance(
+            nonce: String,
+            expectedNonce: String?,
+            presentedFingerprint: String,
+            pinnedFingerprint: String?
+        ) -> Acceptance {
+            guard let expectedNonce, !expectedNonce.isEmpty else { return .rejectNoChallenge }
+            guard nonce == expectedNonce else { return .rejectReplay }
+            switch TeamHostIdentity.decide(presented: presentedFingerprint, pinned: pinnedFingerprint) {
+            case .trustOnFirstUse: return .acceptAndPinFirstUse
+            case .trustedMatch: return .acceptAlreadyPinned
+            case let .mismatch(_, presented): return .rejectIdentityChanged(presented: presented)
+            }
+        }
+    }
+
+    private func isUntrustedPeer(_ message: TeamMessage) -> Bool {
+        let untrusted = PairingGate.isUntrusted(message, hasPaired: hasPaired)
+        if untrusted { logger.warning("Ignoring team message from unpaired peer") }
+        return untrusted
+    }
+
     func handleGuestMessage(_ message: TeamMessage) {
+        if isUntrustedPeer(message) { return }
         switch message {
+        case let .pairingAccepted(nonce, hostFingerprint, host):
+            acceptPairing(nonce: nonce, hostFingerprint: hostFingerprint, host: host)
+
         case let .terminalOutput(sessionID, payload):
             guard sharedSessionID == nil || sharedSessionID == sessionID else { return }
             sharedSessionID = sessionID
-            hasPaired = true
             queueGuestOutput(payload)
 
         case let .notice(payload):
-            hasPaired = true
             queueGuestOutput(payload)
 
         case let .presenceSnapshot(snapshot):
-            hasPaired = true
             guestPairingTimeoutTask?.cancel()
             guestPairingTimeoutTask = nil
             let previousSessionID = sharedSessionID
@@ -80,7 +147,6 @@ extension TeamRelay {
             }
 
         case let .peerJoined(peer):
-            hasPaired = true
             if !connectedPeers.contains(where: { $0.id == peer.id }) {
                 connectedPeers.append(peer)
             }
@@ -101,6 +167,8 @@ extension TeamRelay {
             }
 
         case let .shareHosts(hosts):
+            // Reachable only after pairing, so the payload came from a host we
+            // accepted. The import sheet still asks the user before writing.
             pendingShareHosts = hosts
 
         case let .pairingRejected(reason):
@@ -118,6 +186,47 @@ extension TeamRelay {
         default:
             break
         }
+    }
+
+    /// Complete pairing: the echoed nonce must match the one we generated, and
+    /// the host identity must satisfy the trust policy.
+    private func acceptPairing(nonce: String, hostFingerprint: String, host: TeamPeer) {
+        let outcome = PairingGate.evaluateAcceptance(
+            nonce: nonce,
+            expectedNonce: guestPairingNonce,
+            presentedFingerprint: hostFingerprint,
+            pinnedFingerprint: TeamIdentityStore.pinnedHostFingerprint()
+        )
+        switch outcome {
+        case .acceptAndPinFirstUse:
+            TeamIdentityStore.pinHostFingerprint(hostFingerprint)
+            logger.info("Pinned first-seen host identity")
+        case .acceptAlreadyPinned:
+            break
+        case .rejectReplay:
+            logger.error("Pairing nonce mismatch — refusing to trust peer")
+            finishGuestConnection(generation: guestConnectionGeneration, error: L.t(.tmPinOrGone))
+            return
+        case .rejectNoChallenge:
+            finishGuestConnection(generation: guestConnectionGeneration, error: L.t(.tmInvalidData))
+            return
+        case let .rejectIdentityChanged(presented):
+            // Never silently accepted: the host changed, or something else is
+            // answering. Surface it and refuse.
+            logger.error("Host identity changed")
+            let notice = String(format: L.t(.tmHostIdentityChanged), presented)
+            hostIdentityChangedNotice = notice
+            finishGuestConnection(generation: guestConnectionGeneration, error: notice)
+            return
+        }
+
+        hasPaired = true
+        hostIdentityFingerprint = hostFingerprint
+        hostPeerID = host.id
+        hostPeer = host
+        guestPairingNonce = nil
+        guestPairingTimeoutTask?.cancel()
+        guestPairingTimeoutTask = nil
     }
 }
 

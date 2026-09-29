@@ -28,6 +28,18 @@ extension TeamRelay {
     func generatePin() -> String {
         String(format: "%06d", Int.random(in: 0...999_999))
     }
+
+    /// Cryptographically random pairing nonce. 128 bits is enough: it exists
+    /// to make a recorded `pairingAccepted` unusable against a later attempt.
+    nonisolated static func makePairingNonce() -> String {
+        var bytes = [UInt8](repeating: 0, count: 16)
+        if SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess {
+            return Data(bytes).base64EncodedString()
+        }
+        // Falling back to a UUID keeps the value unguessable enough to proceed;
+        // a predictable nonce would remove the replay protection entirely.
+        return UUID().uuidString.replacingOccurrences(of: "-", with: "")
+    }
 }
 
 // MARK: - Typing indicator

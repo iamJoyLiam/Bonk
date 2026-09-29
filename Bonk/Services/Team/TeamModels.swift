@@ -143,19 +143,25 @@ enum TeamMessage: Codable, Sendable, Equatable {
     // System
     case notice(payload: String)
     case heartbeat
-    case pairingChallenge(pin: String, peer: TeamPeer)
+    case pairingChallenge(pin: String, peer: TeamPeer, nonce: String)
+    /// Host confirms it validated our PIN. Carries the nonce we sent (so a
+    /// recorded acceptance cannot be replayed at us) and the host's identity
+    /// fingerprint. This is the ONLY message that may establish pairing on the
+    /// guest side: deriving "paired" from ordinary session traffic would let
+    /// any peer that answers a connection claim to be the host.
+    case pairingAccepted(nonce: String, hostFingerprint: String, host: TeamPeer)
     case pairingRejected(reason: String)
     case shareHosts(hosts: [HostItemExport])
     case typing(peerID: UUID, displayName: String)
 
     private enum CodingKeys: String, CodingKey {
-        case type, payload, sessionID, columns, rows, peerID, displayName, snapshot, peer, pin, reason, hosts
+        case type, payload, sessionID, columns, rows, peerID, displayName, snapshot, peer, pin, reason, hosts, nonce, hostFingerprint, host
     }
     private enum MessageType: String, Codable {
         case terminalOutput, terminalInput, resize
         case controlRequest, controlGrant, controlRevoke
         case presenceSnapshot, peerJoined, peerLeft
-        case notice, heartbeat, pairingChallenge, pairingRejected, shareHosts, typing
+        case notice, heartbeat, pairingChallenge, pairingAccepted, pairingRejected, shareHosts, typing
     }
 
     init(from decoder: Decoder) throws {
@@ -191,7 +197,14 @@ enum TeamMessage: Codable, Sendable, Equatable {
                 ?? TeamPeer(displayName: "Guest", role: .guest)
             self = .pairingChallenge(
                 pin: try container.decode(String.self, forKey: .pin),
-                peer: peer
+                peer: peer,
+                nonce: try container.decode(String.self, forKey: .nonce)
+            )
+        case .pairingAccepted:
+            self = .pairingAccepted(
+                nonce: try container.decode(String.self, forKey: .nonce),
+                hostFingerprint: try container.decode(String.self, forKey: .hostFingerprint),
+                host: try container.decode(TeamPeer.self, forKey: .host)
             )
         case .pairingRejected:
             self = .pairingRejected(reason: try container.decode(String.self, forKey: .reason))
@@ -235,10 +248,16 @@ enum TeamMessage: Codable, Sendable, Equatable {
             try container.encode(payload, forKey: .payload)
         case .heartbeat:
             try container.encode(MessageType.heartbeat, forKey: .type)
-        case let .pairingChallenge(pin, peer):
+        case let .pairingChallenge(pin, peer, nonce):
             try container.encode(MessageType.pairingChallenge, forKey: .type)
             try container.encode(pin, forKey: .pin)
             try container.encode(peer, forKey: .peer)
+            try container.encode(nonce, forKey: .nonce)
+        case let .pairingAccepted(nonce, hostFingerprint, host):
+            try container.encode(MessageType.pairingAccepted, forKey: .type)
+            try container.encode(nonce, forKey: .nonce)
+            try container.encode(hostFingerprint, forKey: .hostFingerprint)
+            try container.encode(host, forKey: .host)
         case let .pairingRejected(reason):
             try container.encode(MessageType.pairingRejected, forKey: .type)
             try container.encode(reason, forKey: .reason)

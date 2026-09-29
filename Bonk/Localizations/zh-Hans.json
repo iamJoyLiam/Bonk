@@ -769,6 +769,7 @@
   "tm_host_ended_share": "主持人已结束共享",
   "tm_host_disconnected": "主持人已断开连接",
   "tm_pin_or_gone": "PIN 不正确或主机已断开",
+  "tm_host_identity_changed": "主机身份已变化（当前 %@）。可能是另一台机器，也可能有人在截获连接。已断开。",
   "tm_team_pair_timeout": "团队配对超时",
   "tm_host_connect_timeout": "主持端连接超时",
   "tm_conn_rejected": "连接被拒绝，请检查 IP/Port/PIN",

@@ -825,6 +825,7 @@ enum LKey: String, CaseIterable {
     case tmHostEndedShare = "tm_host_ended_share"
     case tmHostDisconnected = "tm_host_disconnected"
     case tmPinOrGone = "tm_pin_or_gone"
+    case tmHostIdentityChanged = "tm_host_identity_changed"
     case tmTeamPairTimeout = "tm_team_pair_timeout"
     case tmHostConnectTimeout = "tm_host_connect_timeout"
     case tmConnRejected = "tm_conn_rejected"

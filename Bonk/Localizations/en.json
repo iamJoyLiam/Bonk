@@ -769,6 +769,7 @@
   "tm_host_ended_share": "Host has ended sharing",
   "tm_host_disconnected": "Host disconnected",
   "tm_pin_or_gone": "Incorrect PIN or host disconnected",
+  "tm_host_identity_changed": "This host's identity changed (now %@). It may be a different machine, or someone may be intercepting the connection. Not connected.",
   "tm_team_pair_timeout": "Team pairing timed out",
   "tm_host_connect_timeout": "Host connection timed out",
   "tm_conn_rejected": "Connection rejected, check IP/Port/PIN",
