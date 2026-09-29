@@ -6,7 +6,6 @@
 //
 
 @preconcurrency import Citadel
-import Crypto
 import Foundation
 import Network
 import NIOConcurrencyHelpers
@@ -279,14 +278,12 @@ public actor SSHNetworkService {
         Log.ssh.info("[ESTABLISH] Auth method mapped, setting up host key validator...")
         let fingerprintBox = NIOLockedValueBox<SSHHostFingerprint?>(nil)
 
-        let validator = HostKeyValidator { key in
-            var buffer = ByteBuffer()
-            key.write(to: &buffer)
-            let bytes = Data(buffer.readableBytesView)
-            let digest = SHA256.hash(data: bytes)
-            let b64 = Data(digest).base64EncodedString()
-                .trimmingCharacters(in: CharacterSet(charactersIn: "="))
-            fingerprintBox.withLockedValue { $0 = SSHHostFingerprint(hash: "SHA256:\(b64)") }
+        // Snapshot the known fingerprint BEFORE connect so the trust
+        // decision happens inside the handshake callback, pre-auth.
+        // Mismatch aborts before any credential is transmitted.
+        let expected = await hostKeyStore.knownFingerprint(for: config.host, port: config.port)
+        let validator = HostKeyValidator(expected: expected) { fingerprint in
+            fingerprintBox.withLockedValue { $0 = fingerprint }
         }
 
         Log.ssh.info("[ESTABLISH] Calling SSHClient.connect to \(config.host):\(config.port)...")

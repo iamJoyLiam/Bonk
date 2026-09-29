@@ -65,7 +65,8 @@ final class SFTPMatrixLocalTests: XCTestCase {
         try await SSHClient.connect(
             host: config.host, port: Int(config.port),
             authenticationMethod: .passwordBased(username: config.username, password: password),
-            hostKeyValidator: .custom(HostKeyValidator { _ in }),
+            // Test-only: local benchmark harness against 127.0.0.1, accept any host key.
+            hostKeyValidator: .custom(HostKeyValidator(expected: nil) { _ in }),
             reconnect: .never,
             algorithms: .all,
             protocolOptions: [.maximumPacketSize(SFTPChannelTuning.windowBytes)]
@@ -92,7 +93,8 @@ final class SFTPMatrixLocalTests: XCTestCase {
                     let client = try await SSHClient.connect(
                         host: cfg.host, port: Int(cfg.port),
                         authenticationMethod: .passwordBased(username: cfg.username, password: password),
-                        hostKeyValidator: .custom(HostKeyValidator { _ in }),
+                        // Test-only: local benchmark harness against 127.0.0.1, accept any host key.
+                        hostKeyValidator: .custom(HostKeyValidator(expected: nil) { _ in }),
                         reconnect: .never,
                         algorithms: .all
                     )

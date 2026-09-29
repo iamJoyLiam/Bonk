@@ -10,7 +10,6 @@ import Citadel
 import Crypto
 import Foundation
 import NIOConcurrencyHelpers
-import NIOCore
 import NIOSSH
 import os.log
 
@@ -138,17 +137,15 @@ enum SFTPMultiTCPPool {
         return PooledSFTPHandle(sshClient: sshClient, sftpClient: sftpClient, poolID: poolID, index: index)
     }
 
-    // Replicate TOFU
+    // Replicate TOFU — trust decision happens inside the handshake
+    // callback (pre-auth); post-connect block below only persists
+    // first-seen fingerprints and re-verifies as defense in depth.
     private static func makeNativeClient(config: SSHConnectionConfig, hostKeyStore: any SSHHostKeyStore) async throws -> SSHClient {
         let citadelAuth = try mapAuthMethod(config.authMethod, username: config.username)
         let fingerprintBox = NIOLockedValueBox<SSHHostFingerprint?>(nil)
-        let validator = HostKeyValidator { key in
-            var buffer = ByteBuffer()
-            key.write(to: &buffer)
-            let bytes = Data(buffer.readableBytesView)
-            let digest = SHA256.hash(data: bytes)
-            let b64 = Data(digest).base64EncodedString().trimmingCharacters(in: CharacterSet(charactersIn: "="))
-            fingerprintBox.withLockedValue { $0 = SSHHostFingerprint(hash: "SHA256:\(b64)") }
+        let expected = await hostKeyStore.knownFingerprint(for: config.host, port: config.port)
+        let validator = HostKeyValidator(expected: expected) { fingerprint in
+            fingerprintBox.withLockedValue { $0 = fingerprint }
         }
         let sshClient = try await SSHClient.connect(
             host: config.host,
