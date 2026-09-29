@@ -266,11 +266,7 @@ extension AgentEngine {
             } else {
                 outcome = "Error: unknown tool or missing command argument."
             }
-            results.append(LLMMessage(
-                role: .tool,
-                content: outcome,
-                toolCallID: call.id
-            ))
+            results.append(ToolMessage.untrusted(output: outcome, callID: call.id))
         }
         return results
     }

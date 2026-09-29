@@ -472,10 +472,13 @@ final class AgentRuntime: @unchecked Sendable {
                 guard !content.hasSuffix(Self.compactionMarker),
                       content.count > Self.staleToolOutputKeepChars
                 else { continue }
-                messages[index] = LLMMessage(
-                    role: .tool,
-                    content: String(content.prefix(Self.staleToolOutputKeepChars)) + Self.compactionMarker,
-                    toolCallID: messages[index].toolCallID
+                // Truncation must go through the envelope-aware helper: a
+                // plain prefix would drop the closing marker and leave the
+                // untrusted-data region open for the rest of the prompt.
+                let shortened = ToolOutputEnvelope.truncate(content, to: Self.staleToolOutputKeepChars)
+                    + Self.compactionMarker
+                messages[index] = ToolMessage.preservingTrustClass(
+                    original: messages[index], newContent: shortened
                 )
                 shrunk += 1
             }
@@ -604,15 +607,13 @@ final class AgentRuntime: @unchecked Sendable {
             }
         case let .blocked(reason):
             emit(.error(code: .generic, message: "Action blocked: \(reason)"))
-            let content = "Blocked by safety policy: \(reason)"
-            messages.append(LLMMessage(role: .tool, content: content, toolCallID: callId))
+            messages.append(ToolMessage.local("Blocked by safety policy: \(reason)", callID: callId))
             return .skipped
         }
         guard let tool = toolRegistry.tool(named: toolCall.name) else {
             let errMsg = "Tool not found in registry: \(toolCall.name)"
             emit(.error(code: .generic, message: errMsg))
-            let message = LLMMessage(role: .tool, content: errMsg, toolCallID: callId)
-            messages.append(message)
+            messages.append(ToolMessage.local(errMsg, callID: callId))
             return .skipped
         }
         return .authorized(AuthorizedToolCall(tool: tool, args: argsDict))
@@ -738,8 +739,9 @@ final class AgentRuntime: @unchecked Sendable {
                 let stopNote = "Tool execution failed \(failures) times in a row. "
                     + "Stopping to avoid an endless loop."
                 emit(.error(code: .generic, message: stopNote))
-                let content = "\(call.output)\n\n[\(stopNote)]"
-                messages.append(LLMMessage(role: .tool, content: content, toolCallID: call.callId))
+                messages.append(ToolMessage.untrusted(
+                    output: call.output, callID: call.callId, note: stopNote
+                ))
                 return .breakLoop
             }
         }
@@ -750,16 +752,19 @@ final class AgentRuntime: @unchecked Sendable {
         )
         switch result {
         case .proceed:
-            let message = LLMMessage(role: .tool, content: call.output, toolCallID: call.callId)
-            messages.append(message)
+            messages.append(ToolMessage.untrusted(output: call.output, callID: call.callId))
         case let .warnDuplicate(dupTool):
             emit(.thinking("Warning: duplicate invocation of \(dupTool)"))
-            let content = call.output + "\n\n[Warning: Duplicate tool execution without new findings.]"
-            messages.append(LLMMessage(role: .tool, content: content, toolCallID: call.callId))
+            messages.append(ToolMessage.untrusted(
+                output: call.output, callID: call.callId,
+                note: "Warning: Duplicate tool execution without new findings."
+            ))
         case let .terminateLoop(reason):
             emit(.error(code: .generic, message: "Agent loop stopped: \(reason)"))
-            let content = call.output + "\n\n[Warning: Repetitive tool calls detected. \(reason)]"
-            messages.append(LLMMessage(role: .tool, content: content, toolCallID: call.callId))
+            messages.append(ToolMessage.untrusted(
+                output: call.output, callID: call.callId,
+                note: "Warning: Repetitive tool calls detected. \(reason)"
+            ))
             return .breakLoop
         }
         // Phase 3: non-terminal guard outcome — consult semantic progress.
@@ -813,8 +818,10 @@ final class AgentRuntime: @unchecked Sendable {
             }
             traceAgent(kind: .decisionResolved, engine: engine.engineName, task: "agentExecute", latencyMs: latencyMs, result: "progress-break")
             emit(.error(code: .progressStall, message: "Agent loop stopped: \(reason)"))
-            let content = call.output + "\n\n[Warning: No meaningful progress detected. \(reason)]"
-            messages.append(LLMMessage(role: .tool, content: content, toolCallID: call.callId))
+            messages.append(ToolMessage.untrusted(
+                output: call.output, callID: call.callId,
+                note: "Warning: No meaningful progress detected. \(reason)"
+            ))
             return true
         } catch {
             traceAgent(kind: .decisionFallback, engine: engine.engineName, task: "agentExecute", success: false, result: "score-error")
