@@ -230,8 +230,16 @@ struct TerminalEngineFlushMutationTests {
                 "bytes pushed mid-flush are still pending, so the engine must say so")
 
         // Let the coalescing path deliver the mid-flush bytes.
+        //
+        // Polling for the observable, not sleeping for a guessed duration: the
+        // engine's safety-net flush is scheduled at 32 ms, but that timer
+        // competes with every other suite running in parallel. A fixed sleep
+        // made this test pass in isolation and fail in a full run.
         display.tick()
-        try? await Task.sleep(for: .milliseconds(60))
+        let deadline = ContinuousClock.now + .seconds(5)
+        while consumer.received.count < 2, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
 
         #expect(consumer.received == ["head", "tail"],
                 "batches must arrive once each, in order; saw \(consumer.received)")
