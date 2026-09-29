@@ -269,4 +269,10 @@ for arch in arm64 x86_64; do
     echo "    $arch: http=200 size=$got"
 done
 
+# Whole-feed audit: every historical entry must still resolve. A stale entry
+# once shipped 27 versions that were never released, and a renamed binary
+# went unnoticed because Sparkle tolerates dead items.
+phase "appcast feed audit"
+./scripts/verify-appcast.sh || die "appcast feed audit failed (see dead entries above)"
+
 echo "PASS: $TAG released and verified: https://github.com/$REPO/releases/tag/$TAG"
