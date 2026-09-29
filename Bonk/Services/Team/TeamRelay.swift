@@ -35,14 +35,14 @@ final class TeamRelay: ObservableObject {
 
     let logger = Logger(subsystem: "com.bonk", category: "TeamRelay")
     var hostListener: NWListener?
-    var hostedConnections: [UUID: NWConnection] = [:]
+    var hostedConnections: [UUID: any TeamChannel] = [:]
     var hostedFramers: [UUID: TeamMessageFramer] = [:]
     var hostPeer: TeamPeer?
     var hostHeartbeatTasks: [UUID: Task<Void, Never>] = [:]
     var hostPairingTimeoutTasks: [UUID: Task<Void, Never>] = [:]
     var hostLastActivity: [UUID: Date] = [:]
 
-    var guestConnection: NWConnection?
+    var guestConnection: (any TeamChannel)?
     var guestFramer = TeamMessageFramer()
     var guestPeer: TeamPeer?
     /// Nonce generated for the current pairing attempt. The host must echo it

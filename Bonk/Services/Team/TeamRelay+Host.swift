@@ -5,7 +5,7 @@ import os.log
 // MARK: - Host: handle connection
 
 extension TeamRelay {
-    func handleNewHostConnection(_ connection: NWConnection) {
+    func handleNewHostConnection(_ connection: any TeamChannel) {
         guard isHosting else {
             connection.cancel()
             return
@@ -16,7 +16,7 @@ extension TeamRelay {
         hostedFramers[peerConnectionID] = TeamMessageFramer()
         hostLastActivity[peerConnectionID] = Date()
 
-        connection.stateUpdateHandler = { [weak self] state in
+        connection.onStateChange = { [weak self] state in
             Task { @MainActor in
                 guard let self else { return }
                 switch state {
@@ -25,8 +25,8 @@ extension TeamRelay {
                     self.startHostPairingTimeout(for: peerConnectionID)
                     self.receiveOnHostConnection(peerConnectionID: peerConnectionID)
                     self.updatePresenceSnapshot()
-                case .failed(let error):
-                    self.logger.error("Host connection failed: \(error.localizedDescription)")
+                case let .failed(reason):
+                    self.logger.error("Host connection failed: \(reason)")
                     self.removeHostConnection(peerConnectionID)
                 case .cancelled:
                     self.removeHostConnection(peerConnectionID)
@@ -35,7 +35,7 @@ extension TeamRelay {
                 }
             }
         }
-        connection.start(queue: .global(qos: .utility))
+        connection.activate()
     }
 
     func startHostPairingTimeout(for peerConnectionID: UUID) {
@@ -128,7 +128,7 @@ extension TeamRelay {
 extension TeamRelay {
     func receiveOnHostConnection(peerConnectionID: UUID) {
         guard let connection = hostedConnections[peerConnectionID] else { return }
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
+        connection.receive(maxBytes: 64 * 1024) { [weak self] data, isComplete, error in
             guard let self else { return }
             if let data, !data.isEmpty {
                 Task { @MainActor in

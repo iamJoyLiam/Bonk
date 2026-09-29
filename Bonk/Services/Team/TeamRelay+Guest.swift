@@ -7,7 +7,7 @@ import os.log
 extension TeamRelay {
     func receiveOnGuestConnection(generation: UInt64) {
         guard let connection = guestConnection else { return }
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
+        connection.receive(maxBytes: 64 * 1024) { [weak self] data, isComplete, error in
             guard let self else { return }
             if let data, !data.isEmpty {
                 Task { @MainActor in

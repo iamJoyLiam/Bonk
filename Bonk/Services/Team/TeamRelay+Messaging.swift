@@ -5,7 +5,7 @@ import os.log
 // MARK: - Messaging
 
 extension TeamRelay {
-    func sendMessage(_ message: TeamMessage, to connection: NWConnection) {
+    func sendMessage(_ message: TeamMessage, to connection: any TeamChannel) {
         guard let payload = try? JSONEncoder().encode(message) else {
             logger.error("Failed to encode team message")
             return
@@ -17,12 +17,12 @@ extension TeamRelay {
 
         var framed = payload
         framed.append(0x0A)
-        connection.send(content: framed, completion: .contentProcessed { [weak self] error in
+        connection.send(Array(framed)) { [weak self] error in
             guard let error else { return }
             Task { @MainActor in
                 self?.logger.error("Team send failed: \(error.localizedDescription)")
             }
-        })
+        }
     }
 
     func sendToGuest(_ message: TeamMessage) {
@@ -41,13 +41,14 @@ extension TeamRelay {
         }
         var framed = payload
         framed.append(0x0A)
+        let bytes = Array(framed)
         for (peerID, connection) in hostedConnections where isPaired(peerID) {
-            connection.send(content: framed, completion: .contentProcessed { [weak self] error in
+            connection.send(bytes) { [weak self] error in
                 guard let error else { return }
                 Task { @MainActor in
                     self?.logger.error("Team send failed: \(error.localizedDescription)")
                 }
-            })
+            }
         }
     }
 }
