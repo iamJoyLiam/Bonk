@@ -26,6 +26,10 @@ struct BonkApp: App {
         // mid-session), snapshot it, and watch the live file for external
         // interference.
         StoreHealthGuard.freezeIncidentIfWiped()
+        // Remove credential temp files a previous crash left behind. Nothing
+        // can clean up at the instant the process dies, so recovery is on the
+        // next launch.
+        SecureTempFileSweeper.sweepStale()
         _ = Self.sharedModelContainer
         StoreBackupManager.backupIfNeeded()
         StoreHealthGuard.startWatching()

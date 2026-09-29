@@ -29,11 +29,14 @@ extension OpenSSHBackend {
     }
 
     func writeIdentityFile(_ contents: String, suffix: String) throws -> URL {
-        let url = URL(fileURLWithPath: "/tmp/bonk-ssh-\(UUID().uuidString)\(suffix)")
         let fileContents = Self.openSSHCompatiblePrivateKey(contents, suffix: suffix)
-        try Data(fileContents.utf8).write(to: url, options: [.atomic])
-        _ = chmod(url.path, mode_t(0o600))
-        return url
+        // Created with 0600 atomically: the old `write(.atomic)` + `chmod`
+        // sequence left the private key world-readable in between.
+        let file = try SecureTempFile.create(
+            name: "bonk-ssh-\(UUID().uuidString)\(suffix)",
+            contents: Data(fileContents.utf8)
+        )
+        return file.url
     }
 
     static func openSSHCompatiblePrivateKey(_ contents: String, suffix: String) -> String {

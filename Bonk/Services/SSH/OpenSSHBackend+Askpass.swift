@@ -20,23 +20,48 @@ extension OpenSSHBackend {
         host: String,
         username: String
     ) -> String {
-        let path = "/tmp/bonk-ssh-askpass-\(attemptID)"
-        let secretPath = "/tmp/bonk-ssh-askpass-\(attemptID).secret"
-        // 0600 secret ， shell
-        if let data = password.data(using: .utf8) {
-            try? data.write(to: URL(fileURLWithPath: secretPath), options: [.atomic])
-            _ = chmod(secretPath, mode_t(0o600))
-        }
+        // Both files are created 0600 at creation time; see SecureTempFile
+        // for why write-then-chmod is not acceptable.
+        let secretFile = try? SecureTempFile.create(
+            name: "bonk-ssh-askpass-\(attemptID).secret",
+            contents: Data(password.utf8)
+        )
+        guard let secretFile else { return Self.unusableAskpassPath(attemptID) }
         let script = """
         #!/bin/sh
         attempt=$(basename "$0" | sed 's/^bonk-ssh-askpass-//')
         /usr/bin/logger -t bonk.askpass "[ASKPASS] attempt=$attempt invoked host=\(Self.shellQuote(host)) username=\(Self.shellQuote(username)) passwordLength=\(password.count)"
-        cat "\(secretPath)"
+        cat "\(Self.shellQuote(secretFile.path))"
         printf '\\n'
         """
-        try? Data(script.utf8).write(to: URL(fileURLWithPath: path), options: [.atomic])
-        _ = chmod(path, mode_t(0o700))
-        return path
+        // 0700: the script is executable, and it is the only thing that reads
+        // the secret, so it must not be writable by anyone else.
+        let scriptFile = try? SecureTempFile.create(
+            name: "bonk-ssh-askpass-\(attemptID)",
+            contents: Data(script.utf8)
+        )
+        guard let scriptFile else {
+            // Never leave the secret behind when the script cannot be created.
+            secretFile.remove()
+            return Self.unusableAskpassPath(attemptID)
+        }
+        // The script must be executable. Widening 0600 → 0700 only adds owner
+        // execute; group/other stay absent, so no new exposure.
+        _ = chmod(scriptFile.path, mode_t(0o700))
+        return scriptFile.path
+    }
+
+    /// A path that cannot exist, returned when the askpass pair could not be
+    /// created. The connection then fails instead of running with a
+    /// half-initialised credential pair.
+    private static func unusableAskpassPath(_ attemptID: String) -> String {
+        "/nonexistent/bonk-askpass-\(attemptID)"
+    }
+
+    /// Remove an askpass script together with its secret file.
+    static func removeAskpassPair(at scriptPath: String) {
+        try? FileManager.default.removeItem(atPath: scriptPath)
+        try? FileManager.default.removeItem(atPath: scriptPath + ".secret")
     }
 
     static func shellQuote(_ value: String) -> String {

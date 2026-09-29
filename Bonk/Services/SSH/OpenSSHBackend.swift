@@ -388,8 +388,11 @@ final class OpenSSHBackend: @unchecked Sendable {
         for file in ([targetIdentityFile, targetCertificateFile, jumpIdentityFile, jumpCertificateFile] as [URL?]).compactMap(\.self) {
             try? FileManager.default.removeItem(at: file)
         }
-        if let askpass = jumpAskpassPath { try? FileManager.default.removeItem(atPath: askpass); try? FileManager.default.removeItem(atPath: askpass + ".secret") }
-        if let askpass = targetAskpassPath { try? FileManager.default.removeItem(atPath: askpass); try? FileManager.default.removeItem(atPath: askpass + ".secret") }
+        // Askpass pair: the script and the secret it reads. Both are removed
+        // on every close path, success or failure. A leftover plaintext
+        // secret here is swept on the next launch by SecureTempFileSweeper.
+        if let askpass = jumpAskpassPath { Self.removeAskpassPair(at: askpass) }
+        if let askpass = targetAskpassPath { Self.removeAskpassPair(at: askpass) }
         targetIdentityFile = nil; targetCertificateFile = nil; jumpIdentityFile = nil; jumpCertificateFile = nil
         jumpAskpassPath = nil; targetAskpassPath = nil
     }
