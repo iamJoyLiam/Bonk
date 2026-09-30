@@ -35,70 +35,15 @@ struct BonkApp: App {
         StoreHealthGuard.startWatching()
     }
 
+    /// The production store. Construction is delegated to `BonkStore` so this
+    /// file is not a second place a container can be built — see that type's
+    /// comment for the incident that made this a rule.
     static let sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            HostItem.self, UserPreferences.self, Credential.self, HostGroup.self,
-            AIConversationRecord.self, AIMessageRecord.self, AIProviderRecord.self,
-            Snippet.self, PortForward.self, JumpHost.self, InlineSuggestionRecord.self,
-            SSHBackendProfile.self, TriggerRule.self,
-            LogProfile.self, LogPatternRow.self,
-        ])
-        // AGENTS.md: never change storeName — always use default. DEBUG uses in-memory store to avoid touching real DB (Xcode runs).
-        #if DEBUG
-            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-        #else
-            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-        #endif
-        func deleteDevStore() {
-            let fileManager = FileManager.default
-            if let url = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
-                let base = url.appendingPathComponent("Bonk-Dev.store")
-                for ext in ["", "-shm", "-wal"] {
-                    let file = URL(fileURLWithPath: base.path + ext)
-                    try? fileManager.removeItem(at: file)
-                }
-            }
-        }
-        func isSchemaMismatch(_ error: Error) -> Bool {
-            let msg = error.localizedDescription + " " + String(describing: error)
-            return msg.contains("no such table") || msg.contains("no such column")
-                || msg.contains("ZSSHBACKENDPROFILE") || msg.contains("ZFORCECOMPATIBILITY")
-                || msg.contains("ZTRIGGERRULE") || msg.contains("TriggerRule")
-        }
         do {
-            let container = try ModelContainer(for: schema, configurations: [config])
-            // Verify tables exist — ModelContainer init is lazy; first fetch reveals missing table
-            do {
-                let ctx = ModelContext(container)
-                _ = try ctx.fetch(FetchDescriptor<SSHBackendProfile>())
-                _ = try ctx.fetch(FetchDescriptor<HostItem>())
-                _ = try ctx.fetch(FetchDescriptor<TriggerRule>())
-            } catch {
-                if isSchemaMismatch(error) {
-                    #if DEBUG
-                        Log.app.error("Schema mismatch detected after init, deleting Dev store and retrying: \(error)")
-                        deleteDevStore()
-                        return try ModelContainer(for: schema, configurations: [config])
-                    #else
-                        Log.app.error("Schema mismatch detected after init: \(error) — needs migration, not deletion")
-                    #endif
-                }
-                throw error
-            }
-            return container
+            return try BonkStore.makeProduction()
         } catch {
-            #if DEBUG
-                if isSchemaMismatch(error) {
-                    Log.app.error("ModelContainer missing table/column, deleting Dev store and retrying: \(error)")
-                    deleteDevStore()
-                    do {
-                        return try ModelContainer(for: schema, configurations: [config])
-                    } catch {
-                        Log.app.error("Retry failed: \(error)")
-                    }
-                }
-            #endif
-            Log.app.error("ModelContainer failed: \(error.localizedDescription)")
+            // `makeProduction` already fails fast; unreachable in practice, but
+            // keeps this call site's contract explicit.
             fatalError("Database initialization failed: \(error)")
         }
     }()

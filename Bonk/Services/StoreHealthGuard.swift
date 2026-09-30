@@ -101,12 +101,45 @@ enum StoreHealthGuard {
         // destroy evidence. Leaving production empty until a human notices is
         // what turns a recoverable incident into total loss — this ran on
         // 2026-09-23 and again on 2026-09-29, each time wiping every host.
-        if let restored = StoreBackupManager.restoreLatestKnownGood() {
+        let restored = StoreBackupManager.restoreLatestKnownGood()
+        if let restored {
             Log.app.notice("Store wipe recovered from \(restored, privacy: .public); wiped state preserved under \(incidentDir.lastPathComponent, privacy: .public)")
         }
+        // A restore that leaves no trace looks exactly like a bug that never
+        // happened. Record what was lost, from what, and over what window.
+        let version = StoreIncidentRecord.appVersion()
+        StoreIncidentRecord.record(.init(
+            timestamp: Date(),
+            trigger: "SCHEMA_INTEGRITY:hosts_zero",
+            pid: ProcessInfo.processInfo.processIdentifier,
+            bundleIdentifier: Bundle.main.bundleIdentifier ?? "unknown",
+            appVersion: version.short,
+            buildVersion: version.build,
+            damagedSchemaVersion: pragmaValue(in: liveURL, statement: "PRAGMA schema_version"),
+            damagedHostCount: rowCount(in: liveURL, table: "ZHOSTITEM"),
+            expectedHostCount: marker,
+            quarantinedTo: incidentDir.lastPathComponent,
+            restoredFrom: restored,
+            dataLossWindowHours: restored.flatMap { hoursSince(day: $0) }
+        ))
     }
 
-    /// Record the current host count on graceful backgrounding.
+    /// Age of a daily snapshot directory, which bounds how much a restore from
+    /// it can have lost.
+    private static func hoursSince(day: String) -> Double? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd"
+        guard let snapshotDate = formatter.date(from: day) else { return nil }
+        return Date().timeIntervalSince(snapshotDate) / 3600
+    }
+
+    /// A recovery *heuristic*, not an authority.
+    ///
+    /// This is the last count the app saw on a clean path. It is recorded on
+    /// terminate, so it misses crashes, `kill -9` and power loss, and it cannot
+    /// distinguish "user deleted everything" from "the store was destroyed".
+    /// Integrity is therefore decided by reading the store, never by trusting
+    /// this number — it only decides whether a wipe is worth investigating.
     static func recordHostCount(_ count: Int) {
         UserDefaults.standard.set(count, forKey: lastHostCountKey)
     }

@@ -1,5 +1,63 @@
 # Bonk Project Guidelines
 
+## SwiftData Production Store Safety
+
+The store holds every host, credential and preference the user has. On
+2026-09-23 and again on 2026-09-29 it was found with all fifteen entity tables
+DROPped and every host gone.
+
+What happened, established from the database itself: at 22:53:59 the store held
+only CoreData's bookkeeping tables plus one stray `ZAPIREQUESTMODEL` — a table
+present in no commit and on no branch. A scratch `ModelContainer` had been built
+from a schema listing that model and none of the production entities, and
+because it specified neither `isStoredInMemoryOnly` nor an explicit `url`, it
+defaulted to the production file. SwiftData's migration then dropped every table
+outside the schema it was handed.
+
+Only the developer's machine was affected: the destructive code never shipped.
+
+**These are rules, not advice.**
+
+1. **Never construct a `ModelContainer` outside `BonkStore`.**
+   `makeProduction()` is the only way to reach the real store. `makeTest(at:)`
+   requires an explicit URL and cannot name the production path.
+   `makeInMemory()` for throwaway state. Enforced by
+   `StoreConfigurationSafetyTests` — a container built anywhere else fails the
+   build, including in `BonkApp.swift`.
+
+2. **A test container must be verified by reading its file, not its container.**
+   A container that ignored its URL still returns a working object and passes
+   every in-container assertion. Use `BonkStore.hostRows(in:)`. Do not assert on
+   the live store from a test: with the bug live, running the assertion is itself
+   the write.
+
+3. **Production schema changes go through `BonkStore.Schema`.**
+   Adding an entity: register it in the schema literal, in `entityNames`, and in
+   `StoreSchemaContract.baselineEntityNames`. Adding is safe.
+
+4. **Removing an entity requires explicit approval.**
+   It drops the table and every row. Record it in
+   `BonkStore.Schema.approvedEntityDeletions` with a reason, and remove it from
+   both other lists. Three edits, deliberately.
+
+5. **Destructive test code must not compile into production.**
+   No `/tmp` trigger files, no result files, no hand-driven UI harnesses, no
+   hardcoded credentials. Test-only behaviour belongs behind `#if DEBUG` in the
+   same file, or in `BonkTests`. Enforced by
+   `StoreConfigurationSafetyTests`.
+
+6. **A failed read is never zero records.**
+   `SQLITE_BUSY`, a missing table and an empty table are three different facts.
+   Anything that decides "no data" must distinguish them, or a safety net will
+   quietly do nothing exactly when it is needed. See
+   `StoreBackupManager.snapshotHostCount`.
+
+7. **Never mutate a working guard to test it.**
+   Adversarial mutation is required (see below) and the mutation that matters
+   most — dropping `makeTest`'s `url:` — writes to the real store. Run it, then
+   verify the production row count and clean up any residue. Do not skip the
+   cleanup; do not assume the mutation was harmless.
+
 ## Database (SwiftData) Rules
 
 ### Schema Changes
@@ -10,9 +68,9 @@
 - **NEVER** use `String?` for entity references. Use `@Relationship`.
 - **NEVER** open a second `ModelContainer` against the live store, especially
   with a partial `Schema`. SwiftData migration DROPs every table outside the
-  opened model's schema — v2026.4.3 wiped all hosts this way via a 1-entity
-  `Schema([UserPreferences.self])` with default (file-backed) config. Always
-  read through `BonkApp.sharedModelContainer`; tests use in-memory stores only.
+  opened model's schema — v2026.4.3 and v2026.9.x each wiped all hosts this way.
+  Always read through `BonkApp.sharedModelContainer`; tests use in-memory stores
+  or a `BonkStore.makeTest` temporary directory only.
 
 ### Current Issues
 - ~~`HostItem.group: String?`~~ ✅ Fixed in v2026.0.4 — added `groupRef: HostGroup?` @Relationship
@@ -125,6 +183,26 @@ not merely: implementation structure → test passes.
 Applies to security boundaries, trust boundaries, authorization gates,
 lifecycle safety, sensitive-data handling, and any other invariant whose
 accidental removal could silently reintroduce a vulnerability.
+
+## Agent Capability Boundary
+
+An agent may generate code freely. An agent may NOT freely acquire
+production capabilities.
+
+Code that only ever runs in a test is not automatically safe, because
+the resources it touches — SwiftData stores, SQLite files, the
+filesystem, Keychain, UserDefaults, the network, real accounts — do not
+know they are being tested. "The test passed" and "the test was safe"
+are different claims, and this repo has now been damaged by conflating
+them twice.
+
+The same shape as the generative → decision → policy → deterministic
+runtime layering the rest of the app follows: generation is unbounded,
+acquisition of a production resource is not.
+
+Before running anything that opens a store, writes a file outside a
+temp directory, or reads a secret, ask which process will own the
+resource when it runs.
 
 ## Git Rules
 - DMG files must NEVER be in git (use .gitignore)
