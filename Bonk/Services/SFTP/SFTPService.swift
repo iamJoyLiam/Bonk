@@ -116,56 +116,84 @@ final class SFTPService {
             }
         #endif
 
+        // One decision, one implementation. `SFTPBackendFallback.run` owns the
+        // sequence so the tests exercise the function production runs; the gate
+        // is not restated here, because a second copy of it is how the original
+        // defect existed — an untyped catch that could not tell a rejected host
+        // key from a refused connection.
+        // A host-key mismatch must not reach the second transport. The two
+        // transports keep independent trust state (PersistentHostKeyStore in
+        // UserDefaults, versus a known_hosts file ssh(1) writes itself), so
+        // retrying does not re-run the check: OpenSSH has never seen this host,
+        // `accept-new` accepts the key Citadel just rejected, and the
+        // attacker's key is persisted as trusted. A detected MITM would become a
+        // silent one.
+        //
+        // The SSH session path already draws this line — see
+        // `SSHFailureClassification.canFallbackToCompatibility`, which excludes
+        // `.hostKeyVerification` — and it is honoured here through the same
+        // shared predicate rather than a second opinion.
+        let openSSHLeg: (@MainActor () async throws -> Void)?
+        if preferredBackend == .openSSH {
+            openSSHLeg = nil
+        } else {
+            openSSHLeg = { [self] in try await connectOpenSSHLeg(sshService) }
+        }
+        try await SFTPBackendFallback.run(
+            SFTPBackendLegs(
+                citadel: { [self] in try await connectCitadelLeg(sshService) },
+                openSSH: openSSHLeg
+            )
+        )
+    }
+
+    /// The Citadel/native leg. Throws whatever the SSH layer threw, after
+    /// releasing the client so a failed attempt leaves no half-open channel.
+    private func connectCitadelLeg(_ sshService: SSHNetworkService) async throws {
+        let client = try await sshService.openSFTPClient()
         do {
-            let client = try await sshService.openSFTPClient()
-            do {
-                let path = try await client.getRealPath(atPath: ".")
-                sftpClient = client
-                channel = CitadelSFTPAdapter(
+            let path = try await client.getRealPath(atPath: ".")
+            sftpClient = client
+            channel = CitadelSFTPAdapter(
                 sftp: client,
                 pooledConfig: await sshService.config,
                 pooledStore: sshService.hostKeyStore,
                 rttProvider: sessionRTT,
                 poolFactory: DefaultSFTPPoolFactory()
             )
-                vnextChannel = channel
-                currentPath = path
-                Log.sftp.info("SFTP connected, initial path: \(self.currentPath)")
-                try await listDirectory()
-                await refreshSessionRTT()
-            } catch {
-                try? await client.close()
-                sftpClient = nil
-                channel = nil
-                vnextChannel = nil
-                throw error
-            }
+            vnextChannel = channel
+            currentPath = path
+            Log.sftp.info("SFTP connected, initial path: \(self.currentPath)")
+            try await listDirectory()
+            await refreshSessionRTT()
         } catch {
-            #if os(macOS)
-                // Citadel-first failed: fall back to OpenSSH rather
-                // than stranding the user without file access.
-                // Covers automatic (default) and citadelExperimental.
-                if preferredBackend != .openSSH,
-                   let fallback = try? await sshService.openOpenSSHSFTPClient()
-                {
-                    Log.sftp.warning("Citadel SFTP failed, falling back to OpenSSH")
-                    do {
-                        let path = try await fallback.realPath()
-                        openSSHSFTPClient = fallback
-                        channel = OpenSSHSFTPChannelAdapter(client: fallback)
-                        vnextChannel = channel
-                        currentPath = path
-                        try await listDirectory()
-                        await refreshSessionRTT()
-                        return
-                    } catch {
-                        fallback.close()
-                        openSSHSFTPClient = nil
-                        channel = nil
-                        vnextChannel = nil
-                    }
-                }
-            #endif
+            try? await client.close()
+            sftpClient = nil
+            channel = nil
+            vnextChannel = nil
+            throw error
+        }
+    }
+
+    /// The OpenSSH leg. Runs only when `SFTPBackendFallback` permits it.
+    private func connectOpenSSHLeg(_ sshService: SSHNetworkService) async throws {
+        guard let fallback = try await sshService.openOpenSSHSFTPClient() else {
+            throw SFTPServiceError.operationFailed("OpenSSH SFTP is unavailable for this connection.")
+        }
+        do {
+            let path = try await fallback.realPath()
+            openSSHSFTPClient = fallback
+            channel = OpenSSHSFTPChannelAdapter(client: fallback)
+            vnextChannel = channel
+            currentPath = path
+            Log.sftp.info("OpenSSH SFTP connected, initial path: \(self.currentPath)")
+            try await listDirectory()
+            await refreshSessionRTT()
+        } catch {
+            fallback.close()
+            openSSHSFTPClient = nil
+            channel = nil
+            vnextChannel = nil
             throw error
         }
     }

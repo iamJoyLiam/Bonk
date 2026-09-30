@@ -384,13 +384,24 @@ final class SFTPMatrixLocalTests: XCTestCase {
         await ssh.disconnect()
     }
 
-    /// Service-level fallback gate: a poisoned TOFU fingerprint kills
-    /// Citadel only (hostKeyMismatch); the default automatic backend
-    /// (Citadel-first) must still connect via OpenSSH and transfer,
-    /// with no Citadel error surfacing.
+    /// Service-level fallback gate: a poisoned TOFU fingerprint must NOT be
+    /// retried on the other transport.
+    ///
+    /// This previously asserted the opposite — that a `hostKeyMismatch` would
+    /// fall through to OpenSSH, connect, transfer 8 MB, and surface no error.
+    /// That enshrined the defect: the two transports keep independent host-key
+    /// trust state, so the OpenSSH leg was asked to `accept-new` a key the
+    /// Citadel leg had just rejected, and persist it. A detected MITM became a
+    /// silent one, with a green test standing behind it.
+    ///
+    /// The assertion now is that the connection fails and nothing is
+    /// transferred. `SFTPBackendFallbackTests` covers the same rule without
+    /// needing a bench server, so this remains the end-to-end confirmation
+    /// rather than the only evidence.
+    ///
     /// The shared store is restored before return (real fp captured first
     /// with a throwaway store, so order with other tests does not matter).
-    func testServiceCitadelToOpenSSHallback() async throws {
+    func testServiceHostKeyMismatchDoesNotFallBack() async throws {
         try XCTSkipUnless(tcpOpen(port: 2222), "bench-linux absent")
         let cfg = config(port: 2222)
         let probeStore = AcceptAllHostKeyStore()
@@ -415,24 +426,19 @@ final class SFTPMatrixLocalTests: XCTestCase {
             let ssh = SSHNetworkService(hostKeyStore: Self.store)
             try await ssh.connect(config: cfg)
             let service = await MainActor.run { SFTPService() }
-            // Default automatic backend is Citadel-first: poison forces the
-            // OpenSSH fallback leg.
+            // Default automatic backend is Citadel-first, so poison reaches the
+            // leg that would otherwise fall back.
             await MainActor.run { service.preferredBackend = .automatic }
-            try await service.connect(using: ssh)
-            // Fallback served by OpenSSH: no Citadel error surfaces.
-            let errMessage = await MainActor.run { service.errorMessage }
-            XCTAssertNil(errMessage)
-            // Real transfer through the fallback channel.
-            let scratch = URL(fileURLWithPath: "/tmp/bench_scratch_2222", isDirectory: true)
-            let local = scratch.appendingPathComponent("payload_8388608.bin")
-            let remote = "/tmp/bench/fbfallback_\(Int(Date().timeIntervalSince1970)).bin"
-            for try await _ in await MainActor.run { service.upload(local, to: remote) } {}
-            let dest = scratch.appendingPathComponent("fbfallback_dl.bin")
-            try? FileManager.default.removeItem(at: dest)
-            try await service.download(SFTPFileEntry(id: remote, name: "fbfallback.bin", path: remote, isDirectory: false, size: 8 * 1024 * 1024, permissions: 0o644, modifiedAt: nil, longname: ""), to: dest)
-            let got = (try FileManager.default.attributesOfItem(atPath: dest.path)[.size] as? UInt64) ?? 0
-            XCTAssertEqual(got, 8 * 1024 * 1024)
-            try? FileManager.default.removeItem(at: dest)
+            do {
+                try await service.connect(using: ssh)
+                XCTFail("a host-key mismatch must not reach the OpenSSH transport")
+            } catch {
+                // Expected. The connection must fail.
+            }
+            // Nothing may have been transferred over a channel that accepted a
+            // key we had already rejected.
+            let entries = await MainActor.run { service.entries }
+            XCTAssertTrue(entries.isEmpty, "no directory listing may come from a rejected host key")
             await service.disconnect()
             await ssh.disconnect()
         } catch {

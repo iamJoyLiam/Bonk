@@ -82,6 +82,30 @@ public enum SSHFailureClassification: String, Sendable, Hashable, Codable {
     case configuration          //  
     case unknown
 
+    /// Is this error a host-key *trust* failure — a key that did not match what
+    /// we already accepted?
+    ///
+    /// One definition, deliberately shared. The session path needs it to decide
+    /// whether it may switch SSH backend (`canFallbackToCompatibility` already
+    /// excludes `.hostKeyVerification`), and the SFTP path needs it to decide
+    /// whether it may switch transport. They are the same question, and two
+    /// definitions is how the SFTP path came to treat a rejected key as a
+    /// transport problem.
+    ///
+    /// The type check alone is not sufficient. NIO surfaces some handshake
+    /// failures as an opaque `NSError` whose only signal is the message, which
+    /// is why the native classifier has always matched on text as well; a
+    /// predicate that only understood the enum would let those through.
+    static func isHostKeyTrustFailure(_ error: Error) -> Bool {
+        if let svc = error as? SSHServiceError, case .hostKeyMismatch = svc { return true }
+        let nsError = error as NSError
+        let described = (error as? LocalizedError)?.errorDescription ?? ""
+        let text = nsError.localizedDescription + " " + described
+        return text.contains("host key mismatch")
+            || text.contains("host key verification failed")
+            || text.contains("fingerprint mismatch")
+    }
+
     /// Only these two trigger Native → Compatibility
     public var canFallbackToCompatibility: Bool {
         switch self {
@@ -179,11 +203,17 @@ public struct NativeErrorClassifier: SSHErrorClassifier {
     }
 
     private func isHostKeyIdentityMismatch(_ error: Error, msg: String, desc: String) -> Bool {
-        if let svc = error as? SSHServiceError, case .hostKeyMismatch = svc { return true }
+        // The classifier sees the transport's own message text, which is richer
+        // than `localizedDescription`, so it is offered to the shared predicate
+        // rather than the definition being restated here.
         let haystack = msg + " " + desc
-        return haystack.contains("host key mismatch")
+        if haystack.contains("host key mismatch")
             || haystack.contains("host key verification failed")
             || haystack.contains("fingerprint mismatch")
+        {
+            return true
+        }
+        return SSHFailureClassification.isHostKeyTrustFailure(error)
     }
 }
 
