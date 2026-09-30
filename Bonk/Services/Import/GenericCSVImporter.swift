@@ -54,13 +54,19 @@ struct GenericCSVImporter: SessionImporter {
         let password = string(dict, keys: ["password", "pwd", "pass"])
         let privateKey = string(dict, keys: ["privateKey", "privateKeyPath", "key", "pem"])
 
-        if let privateKeyValue = privateKey, !privateKeyValue.isEmpty {
-            if privateKeyValue.hasPrefix("-----BEGIN") { return HostItem(name: name, host: host, port: port, username: username, authType: .privateKey, privateKeyPEM: privateKeyValue) }
-            let expanded = (privateKeyValue as NSString).expandingTildeInPath
-            if let content = try? String(contentsOfFile: expanded, encoding: .utf8), content.contains("BEGIN") {
-                return HostItem(name: name, host: host, port: port, username: username, authType: .privateKey, privateKeyPEM: content)
+        if let privateKeyValue = privateKey, !privateKeyValue.isEmpty,
+           let material = ImportKeyMaterial.resolve(manifestValue: privateKeyValue)
+        {
+            if let inline = material.inlinePEM {
+                return HostItem(
+                    name: name, host: host, port: port, username: username,
+                    authType: .privateKey, privateKeyPEM: inline
+                )
             }
-            return HostItem(name: name, host: host, port: port, username: username, authType: .privateKey, privateKeyPEM: privateKeyValue)
+            // A path named by an untrusted file is data, not a file access.
+            // Opening it would let a manifest choose which local secret becomes
+            // this host's key — see ImportKeyMaterial.
+            material.logDeclinedReference(host: host)
         }
         if let pwd = password, !pwd.isEmpty {
             return HostItem(name: name, host: host, port: port, username: username, authType: .password, password: pwd)
@@ -125,8 +131,13 @@ struct GenericCSVImporter: SessionImporter {
             let user = col(userIdx) ?? "root"
             let pwd = col(passIdx)
             let privateKeyValue = col(keyIdx)
-            if let privateKeyString = privateKeyValue, !privateKeyString.isEmpty {
-                result.append(HostItem(name: name, host: host, port: port, username: user, authType: .privateKey, privateKeyPEM: privateKeyString))
+            // A second parse path in this file, alongside `parseDict`. It stored the
+            // manifest's value as the key verbatim, so a path became key material —
+            // routed through the same decision as the other path.
+            let material = ImportKeyMaterial.resolve(manifestValue: privateKeyValue)
+            material?.logDeclinedReference(host: host)
+            if let inline = material?.inlinePEM {
+                result.append(HostItem(name: name, host: host, port: port, username: user, authType: .privateKey, privateKeyPEM: inline))
             } else if let pwdVal = pwd, !pwdVal.isEmpty {
                 result.append(HostItem(name: name, host: host, port: port, username: user, authType: .password, password: pwdVal))
             } else {

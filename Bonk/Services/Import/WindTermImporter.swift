@@ -85,8 +85,14 @@ struct WindTermImporter: SessionImporter {
                     let portValue = port ?? SSHConstants.defaultPort
                     let usernameValue = username ?? "root"
                     if let privateKeyString = privateKeyValue, !privateKeyString.isEmpty {
-                        let pem: String? = privateKeyString.hasPrefix("-----BEGIN") ? privateKeyString : (try? String(contentsOfFile: (privateKeyString as NSString).expandingTildeInPath, encoding: .utf8))
-                        return HostItem(name: name, host: hostString, port: portValue, username: usernameValue, authType: .privateKey, privateKeyPEM: pem ?? privateKeyString)
+                        // A path named by an untrusted file is data, not a file access —
+                        // see ImportKeyMaterial. Previously a non-PEM value was read from
+                        // disk, and on failure the path string itself became the key.
+                        let material = ImportKeyMaterial.resolve(manifestValue: privateKeyString)
+                        material?.logDeclinedReference(host: hostString)
+                        if let inline = material?.inlinePEM {
+                        return HostItem(name: name, host: hostString, port: portValue, username: usernameValue, authType: .privateKey, privateKeyPEM: inline)
+                        }
                     }
                     if let passwordString = passwordValue, !passwordString.isEmpty {
                         return HostItem(name: name, host: hostString, port: portValue, username: usernameValue, authType: .password, password: passwordString)
@@ -105,8 +111,14 @@ struct WindTermImporter: SessionImporter {
         let privateKeyValue = (dict["privateKey"] as? String) ?? (dict["privateKeyPath"] as? String) ?? (dict["key"] as? String)
 
         if let privateKeyString = privateKeyValue, !privateKeyString.isEmpty {
-            let pem: String? = privateKeyString.hasPrefix("-----BEGIN") ? privateKeyString : (try? String(contentsOfFile: (privateKeyString as NSString).expandingTildeInPath, encoding: .utf8))
-            return HostItem(name: name, host: hostString, port: portValue, username: usernameValue, authType: .privateKey, privateKeyPEM: pem ?? privateKeyString)
+            // A path named by an untrusted file is data, not a file access —
+            // see ImportKeyMaterial. Previously a non-PEM value was read from
+            // disk, and on failure the path string itself became the key.
+            let material = ImportKeyMaterial.resolve(manifestValue: privateKeyString)
+            material?.logDeclinedReference(host: hostString)
+            if let inline = material?.inlinePEM {
+            return HostItem(name: name, host: hostString, port: portValue, username: usernameValue, authType: .privateKey, privateKeyPEM: inline)
+            }
         }
         if let passwordString = passwordValue, !passwordString.isEmpty {
             return HostItem(name: name, host: hostString, port: portValue, username: usernameValue, authType: .password, password: passwordString)

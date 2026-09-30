@@ -66,19 +66,17 @@ struct ElectermImporter: SessionImporter {
         var pem: String?
         var pwd: String?
 
-        if let privateKeyValue = privateKey, !privateKeyValue.isEmpty {
-            if privateKeyValue.hasPrefix("-----BEGIN") {
-                pem = privateKeyValue; authType = .privateKey
+        if let privateKeyValue = privateKey, !privateKeyValue.isEmpty,
+            let material = ImportKeyMaterial.resolve(manifestValue: privateKeyValue)
+        {
+            if let inline = material.inlinePEM {
+                pem = inline; authType = .privateKey
             } else {
-                let expanded = (privateKeyValue as NSString).expandingTildeInPath
-                if let content = try? String(contentsOfFile: expanded, encoding: .utf8), content.contains("BEGIN") {
-                    pem = content; authType = .privateKey
-                } else {
-                    pem = privateKeyValue; authType = .privateKey
-                }
+                // A path named by an untrusted file is data, not a file access.
+                // Opening it would let a manifest choose which local secret becomes
+                // this host's key — see ImportKeyMaterial.
+                material.logDeclinedReference(host: host)
             }
-        } else if let passwordValue = password, !passwordValue.isEmpty {
-            pwd = passwordValue; authType = .password
         }
 
         return HostItem(name: title, host: host, port: port, username: username, authType: authType, password: pwd, privateKeyPEM: pem)

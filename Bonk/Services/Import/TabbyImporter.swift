@@ -79,20 +79,15 @@ struct TabbyImporter: SessionImporter {
         var pem: String?
         var pwd: String?
         if let privateKey = privateKeyField, !privateKey.isEmpty {
-            if privateKey.hasPrefix("-----BEGIN") {
-                pem = privateKey
+            if let inline = ImportKeyMaterial.resolve(manifestValue: privateKey)?.inlinePEM {
+                pem = inline
                 authType = .privateKey
             } else {
-                // Treat as file path
-                let expanded = (privateKey as NSString).expandingTildeInPath
-                if let content = try? String(contentsOfFile: expanded, encoding: .utf8), content.contains("BEGIN") {
-                    pem = content
-                    authType = .privateKey
-                } else {
-                    // Fallback: store path as-is (user can fix)
-                    pem = privateKey
-                    authType = .privateKey
-                }
+                // A path named by an untrusted file is data, not a file access. The old
+                // fallback stored the path *as* the key, which later sent a path string to
+                // a server as a password. See ImportKeyMaterial.
+                ImportKeyMaterial.resolve(manifestValue: privateKey)?
+                    .logDeclinedReference(host: host)
             }
         } else if let pwdVal = password, !pwdVal.isEmpty {
             pwd = pwdVal
@@ -123,8 +118,13 @@ struct TabbyImporter: SessionImporter {
         func flush() {
             if let host = currentHost, !host.isEmpty {
                 let name = currentName ?? host
-                let authType: AuthType = (currentKey != nil) ? .privateKey : .password
-                let item = HostItem(name: name, host: host, port: currentPort, username: currentUser.isEmpty ? "root" : currentUser, authType: authType, password: currentPassword, privateKeyPEM: currentKey)
+                // The YAML path stored the profile's value as the key verbatim, so a
+                // path became key material. Only an inline PEM authorises a key here.
+                let material = ImportKeyMaterial.resolve(manifestValue: currentKey)
+                material?.logDeclinedReference(host: host)
+                let inlineKey = material?.inlinePEM
+                let authType: AuthType = (inlineKey != nil) ? .privateKey : .password
+                let item = HostItem(name: name, host: host, port: currentPort, username: currentUser.isEmpty ? "root" : currentUser, authType: authType, password: currentPassword, privateKeyPEM: inlineKey)
                 hosts.append(item)
             }
             currentName = nil; currentHost = nil; currentPort = 22; currentUser = ""; currentPassword = nil; currentKey = nil
