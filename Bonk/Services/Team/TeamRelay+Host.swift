@@ -281,11 +281,13 @@ extension TeamRelay {
         }
     }
 
+    /// A remote guest's terminal size. Exempt from the local size-authority gate
+    /// — see `resizePTYFromRemoteRelay`.
     func forwardResize(columns: Int, rows: Int, to sessionID: TeamSessionID) {
         let sessionManager = injectedSessionManager ?? BonkAppDelegate.shared?.sessionManager
         guard let sessionManager else { return }
         Task { @MainActor in
-            try? await sessionManager.resizePTY(
+            try? await sessionManager.resizePTYFromRemoteRelay(
                 cols: columns,
                 rows: rows,
                 tabID: sessionID.tabID,

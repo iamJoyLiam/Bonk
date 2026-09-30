@@ -46,6 +46,7 @@ import SwiftUI
                     if activeTab.session?.terminalState == .ready {
                         MacTerminalContainerBridge(
                             activeTabID: activeTab.id,
+                            activePaneID: activeTab.activePaneID,
                             owner: owner,
                             colorScheme: colorScheme,
                             fontSize: fontSize,
@@ -148,6 +149,14 @@ import SwiftUI
     /// AppKit container that manages terminal view switching.
     private struct MacTerminalContainerBridge: NSViewRepresentable {
         let activeTabID: UUID
+        /// The pane whose PTY this view renders.
+        ///
+        /// This mount site is tab-level — the Quake panel and the iOS main
+        /// window both come through here — so it renders the tab's *active*
+        /// pane rather than a pane of its own. That is also the PTY it
+        /// competes with the main window's pane view over when both are on
+        /// screen, which is why the size authority is keyed by this pane.
+        let activePaneID: UUID?
         /// Which mount site this is. Deliberately has no default: the main
         /// window and the Quake panel both mount this view for the same tab,
         /// and a default would silently re-create the single-slot collision
@@ -186,6 +195,7 @@ import SwiftUI
             }
             attach(cached, to: containerView)
             context.coordinator.lastKey = key
+            registerViewportAuthority(cached)
             return containerView
         }
 
@@ -198,6 +208,7 @@ import SwiftUI
                     if let coord = cached.coordinator as? ContainerTerminalCoordinator {
                         coord.updateCopyOnSelect(copyOnSelect)
                     }
+                    registerViewportAuthority(cached)
                 }
                 return
             }
@@ -211,6 +222,7 @@ import SwiftUI
                 if let oldCoord = oldCached.coordinator as? ContainerTerminalCoordinator {
                     oldCoord.removeCopyOnSelectMonitor()
                     oldCoord.removeInlineCompletionMonitor()
+                    releaseViewportAuthority(oldCoord)
                 }
             }
 
@@ -226,6 +238,49 @@ import SwiftUI
             // Force re-render after re-adding cached view
             cached.view.needsDisplay = true
             nsView.window?.makeFirstResponder(cached.view)
+            registerViewportAuthority(cached)
+        }
+
+        // MARK: - PTY size authority
+
+        /// Declare this view as a candidate for its PTY's size, and hand the
+        /// coordinator the identity it needs to publish and yield.
+        ///
+        /// Re-run from `updateNSView` rather than once at creation, because the
+        /// PTY is the tab's *active* pane: when the active pane changes while
+        /// the Quake panel is open, this view starts sharing a different PTY
+        /// and has to re-register against it.
+        private func registerViewportAuthority(_ cached: CachedTerminalView) {
+            guard let paneID = activePaneID else { return }
+            let key = TerminalViewportRegistry.PTYKey(tabID: activeTabID, paneID: paneID)
+            let size = cached.view.terminal.map {
+                TerminalViewportSize(cols: $0.cols, rows: $0.rows)
+            }
+            TerminalViewportRegistry.shared.register(
+                owner,
+                for: key,
+                isVisible: true,
+                isActive: true,
+                size: size
+            )
+            if let coord = cached.coordinator as? ContainerTerminalCoordinator {
+                coord.viewportOwner = owner
+                coord.viewportPTYKey = key
+                coord.installViewportFocusObserver()
+            }
+        }
+
+        /// Withdraw this view from size arbitration.
+        ///
+        /// Matters most for the Quake panel: a stale `isVisible: true` entry
+        /// would go on owning the PTY after the panel closed, so hiding Quake
+        /// would not hand authority back to the main window.
+        private func releaseViewportAuthority(_ coord: ContainerTerminalCoordinator) {
+            guard let owner = coord.viewportOwner, let key = coord.viewportPTYKey else { return }
+            coord.removeViewportFocusObserver()
+            TerminalViewportRegistry.shared.unregister(owner, in: key)
+            coord.viewportOwner = nil
+            coord.viewportPTYKey = nil
         }
 
         /// Add a cached view to a container and (re)install its constraints.
@@ -247,7 +302,19 @@ import SwiftUI
             // PTY sync is handled by NativeTerminalView.layout() — no manual work here.
         }
 
-        static func dismantleNSView(_: NSView, coordinator _: ContainerCoordinator) {}
+        static func dismantleNSView(_: NSView, coordinator: ContainerCoordinator) {
+            // The Quake panel mounts and unmounts here as it is shown and
+            // hidden, so this is where it stops competing for the PTY's size.
+            guard let key = coordinator.lastKey,
+                  let cached = TerminalViewCache.shared.retrieve(key),
+                  let coord = cached.coordinator as? ContainerTerminalCoordinator
+            else { return }
+            guard let owner = coord.viewportOwner, let ptyKey = coord.viewportPTYKey else { return }
+            coord.removeViewportFocusObserver()
+            TerminalViewportRegistry.shared.unregister(owner, in: ptyKey)
+            coord.viewportOwner = nil
+            coord.viewportPTYKey = nil
+        }
 
         // MARK: - Helpers
 
@@ -397,8 +464,69 @@ import SwiftUI
         func handleResize(cols: Int, rows: Int) {
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                // Publish this view's size before the engine decides whether to
+                // forward it. The registry has to know the candidate's size for
+                // the authority decision to mean anything, and `resizePTY` reads
+                // that same registry when the forwarded resize arrives.
+                if let owner = self.viewportOwner, let key = self.viewportPTYKey {
+                    TerminalViewportRegistry.shared.setSize(
+                        TerminalViewportSize(cols: cols, rows: rows), for: owner, in: key
+                    )
+                }
                 self.getOrCreateEngine().resize(cols: cols, rows: rows)
             }
+        }
+
+        // MARK: - PTY size authority
+
+        /// Which view this coordinator speaks for, and which PTY it shares.
+        ///
+        /// Set by the mount site, which is the only place that knows both. Nil
+        /// means the coordinator is not competing for a PTY's size and its
+        /// layout reports must not be arbitrated.
+        nonisolated(unsafe) var viewportOwner: TerminalViewOwner?
+        nonisolated(unsafe) var viewportPTYKey: TerminalViewportRegistry.PTYKey?
+
+        /// Watch for this view's window becoming key, and claim size authority
+        /// when it does.
+        ///
+        /// The signal is the window, not the view's first-responder state: a
+        /// terminal keeps its first responder across a resign-key, so
+        /// first-responder would report the Quake panel as focused even while
+        /// the user is typing in the main window. The main window and the Quake
+        /// panel are separate windows, so `didBecomeKey` separates them.
+        ///
+        /// Every pane view in a window matches the same notification, so a pane
+        /// claims authority only if it is the focused pane; the others clear
+        /// theirs. Panes have separate PTYs and therefore separate registry
+        /// keys, so they cannot disturb each other.
+        func installViewportFocusObserver() {
+            removeViewportFocusObserver()
+            focusObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
+            ) { [weak self] note in
+                guard let self,
+                      let owner = self.viewportOwner,
+                      let key = self.viewportPTYKey,
+                      let view = self.terminalView,
+                      let window = note.object as? NSWindow,
+                      window === view.window
+                else { return }
+                let claim: TerminalViewOwner? = switch owner {
+                case .pane(let paneID):
+                    FocusManager.shared.focusedPaneID == paneID ? owner : nil
+                case .mainWindow, .quakePanel:
+                    owner
+                }
+                MainActor.assumeIsolated {
+                    TerminalViewportRegistry.shared.setFocused(claim, in: key)
+                }
+            }
+        }
+
+        func removeViewportFocusObserver() {
+            if let focusObserver { NotificationCenter.default.removeObserver(focusObserver) }
+            focusObserver = nil
         }
 
         init(

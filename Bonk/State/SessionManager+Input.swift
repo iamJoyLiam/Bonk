@@ -14,11 +14,71 @@ import SwiftUI
 // MARK: - SessionManager Input
 
 extension SessionManager {
-    func resizePTY(cols: Int, rows: Int, tabID: UUID, paneID: UUID? = nil) async throws {
+    /// Resize a tab's PTY, on behalf of one of the views rendering it.
+    ///
+    /// A PTY has one size and a tab can have several views onto it — the main
+    /// window's pane view, the Quake panel's view, and in linked mode a second
+    /// pane view. Each reports its own size from its own pixel dimensions, so
+    /// forwarding all of them would leave the views disagreeing with the PTY and
+    /// full-screen programs rendering clipped or wrapped in whichever view is
+    /// not the current winner.
+    ///
+    /// So this is the gate: only the view that `TerminalViewportSizePolicy`
+    /// names as authority reaches the PTY, and everyone else's report is
+    /// dropped. The policy is focused-wins, so the PTY follows the view the user
+    /// is typing in.
+    ///
+    /// `owner` has no default. A call site that forgets which view it speaks for
+    /// should fail to compile rather than quietly bypass the gate.
+    func resizePTY(
+        cols: Int,
+        rows: Int,
+        tabID: UUID,
+        paneID: UUID? = nil,
+        owner: TerminalViewOwner
+    ) async throws {
         guard let tab = tabs.first(where: { $0.id == tabID }),
               let targetPaneID = paneID ?? tab.activePaneID else { return }
         guard let pane = tab.layout.findPane(id: targetPaneID),
               let pty = pane.ptySession else { return }
+
+        let key = TerminalViewportRegistry.PTYKey(tabID: tabID, paneID: targetPaneID)
+        guard TerminalViewportRegistry.shared.mayResize(owner, in: key) else {
+            // Not an error: a non-authority view's layout pass is expected
+            // while another view owns the size.
+            Log.session.debug(
+                "[PTY] resize from non-authority \(owner.stableSortKey, privacy: .public) ignored"
+            )
+            return
+        }
+        try await pty.resize(cols: cols, rows: rows)
+    }
+
+    /// Resize a PTY on behalf of a remote Team guest's terminal.
+    ///
+    /// Deliberately outside the authority gate above. A guest relaying their
+    /// terminal size is not a second local view of this PTY — it is a different
+    /// participant in a different session, and it has no `TerminalViewOwner` to
+    /// be ranked against the main window and the Quake panel. So it is exempt,
+    /// which means it can still race a focused local view. That race is
+    /// pre-existing and this commit does not change it; modelling the guest as
+    /// a first-class view of the PTY is a product decision, not a refactor.
+    ///
+    /// Kept as its own named method so the exemption is visible at the call site
+    /// instead of being an `owner` argument with a magic value.
+    func resizePTYFromRemoteRelay(
+        cols: Int,
+        rows: Int,
+        tabID: UUID,
+        paneID: UUID?
+    ) async throws {
+        guard let tab = tabs.first(where: { $0.id == tabID }),
+              let targetPaneID = paneID ?? tab.activePaneID else { return }
+        guard let pane = tab.layout.findPane(id: targetPaneID),
+              let pty = pane.ptySession else { return }
+        Log.session.debug(
+            "[PTY] resize from Team relay \(cols, privacy: .public)x\(rows, privacy: .public) (exempt from size authority)"
+        )
         try await pty.resize(cols: cols, rows: rows)
     }
 

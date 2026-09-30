@@ -235,7 +235,11 @@ extension PaneTerminalView {
     func resizePTY(cols: Int, rows: Int) {
         Task {
             do {
-                try await sessionManager.resizePTY(cols: cols, rows: rows, tabID: tab.id, paneID: paneState.id)
+                try await sessionManager.resizePTY(
+                    cols: cols, rows: rows,
+                    tabID: tab.id, paneID: paneState.id,
+                    owner: .pane(paneState.id)
+                )
             } catch {}
         }
     }

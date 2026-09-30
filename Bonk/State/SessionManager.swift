@@ -106,6 +106,28 @@ final class SessionManager {
 
     init(viewCache: TerminalViewCache = .shared) {
         self.viewCache = viewCache
+        installViewportAuthorityTransition()
+    }
+
+    /// Route size-authority changes to the PTY.
+    ///
+    /// When a terminal view becomes the authority for a PTY — because it took
+    /// focus, or because the view that had it went away — the PTY is resized to
+    /// that view's size. This has to be driven from the registry rather than
+    /// left to each view's own layout pass: a view that reported its size while
+    /// it was *not* the authority had that report absorbed by the coalescer, so
+    /// nothing would re-send it on promotion and the PTY would stay sized for a
+    /// view the user is no longer looking at.
+    private func installViewportAuthorityTransition() {
+        TerminalViewportRegistry.shared.onAuthorityChange = { [weak self] decision, key in
+            Task { @MainActor in
+                try? await self?.resizePTY(
+                    cols: decision.size.cols, rows: decision.size.rows,
+                    tabID: key.tabID, paneID: key.paneID,
+                    owner: decision.owner
+                )
+            }
+        }
     }
 
     func setModelContext(_ context: ModelContext) {
@@ -749,7 +771,15 @@ final class SessionManager {
             let rows = cached.view.terminal.rows
             guard cols > 0, rows > 0 else { return }
             Log.session.info("[PTY] Post-setup sync: \(cols)x\(rows)")
-            try? await ptySession.resize(cols: cols, rows: rows)
+            // Through the gated path, naming the view the size was read from.
+            // Reading a pane view's dimensions and pushing them straight at the
+            // PTY is still a resize, and skipping the gate would let a connect
+            // override whatever view currently owns the size.
+            try? await resizePTY(
+                cols: cols, rows: rows,
+                tabID: tab.id, paneID: paneID,
+                owner: .pane(paneID)
+            )
         }
 
         ptySession.osc7Detector.onCWDChange = { [weak tab] cwd in
@@ -788,7 +818,13 @@ final class SessionManager {
             let rows = cached.view.terminal.rows
             guard cols > 0, rows > 0 else { return }
             Log.session.info("[PTY] Post-setup sync: \(cols)x\(rows)")
-            try? await ptySession.resize(cols: cols, rows: rows)
+            // Gated, as above: this size belongs to the pane's view, so that view
+            // is the owner it is attributed to.
+            try? await resizePTY(
+                cols: cols, rows: rows,
+                tabID: tab.id, paneID: paneID,
+                owner: .pane(paneID)
+            )
         }
     }
 

@@ -340,7 +340,13 @@ struct ContentView: View {
             copyOnSelect: preferences.copyOnSelect,
             scrollSensitivity: preferences.scrollSensitivity ?? 1.0,
             onSend: { data in Task { try? await sessionManager.sendInput(data, to: tab.id) } },
-            onResize: { cols, rows in Task { try? await sessionManager.resizePTY(cols: cols, rows: rows, tabID: tab.id) } },
+            onResize: { cols, rows in
+                Task {
+                    try? await sessionManager.resizePTY(
+                        cols: cols, rows: rows, tabID: tab.id, owner: .mainWindow
+                    )
+                }
+            },
             onTitleChange: { title in
                 Task { @MainActor in sessionManager.updateTabTitle(title, tabID: tab.id) }
             },
@@ -528,6 +534,9 @@ struct ContentView: View {
                 // engine, so keeping it alive while hidden doubled the cost of
                 // every tab switch and left two views sharing one session.
                 if quakeState.isVisible, let tab = sessionManager.activeTab {
+                    // Captured outside the closure: the resize callback is
+                    // `@Sendable`, so it takes the id rather than the tab.
+                    let quakeTabID = tab.id
                     TerminalTabContentView(
                         tab: tab,
                         owner: .quakePanel,
@@ -545,7 +554,13 @@ struct ContentView: View {
                                 try? await sessionManager.sendInput(data, to: tab.id)
                             }
                         },
-                        onResize: nil,
+                        onResize: { cols, rows in
+                Task {
+                    try? await sessionManager.resizePTY(
+                        cols: cols, rows: rows, tabID: quakeTabID, owner: .quakePanel
+                    )
+                }
+            },
                         onTitleChange: nil,
                         onReconnect: nil
                     )

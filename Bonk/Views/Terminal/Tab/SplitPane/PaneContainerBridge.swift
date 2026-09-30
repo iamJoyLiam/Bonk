@@ -68,6 +68,7 @@ import SwiftUI
                         PaneMacBridge(
                             paneID: paneState.id,
                             tabID: tab.id,
+                            isActive: isActive,
                             colorScheme: colorScheme,
                             fontSize: fontSize,
                             fontFamily: fontFamily,
@@ -215,6 +216,9 @@ import SwiftUI
     private struct PaneMacBridge: NSViewRepresentable {
         let paneID: UUID
         let tabID: UUID
+        /// Whether this pane is the tab's active one. Only a tiebreak in size
+        /// arbitration — it never outranks focus.
+        let isActive: Bool
         let colorScheme: TerminalColorScheme
         let fontSize: Double
         let fontFamily: String
@@ -234,13 +238,14 @@ import SwiftUI
         let onViewReady: () -> Void
 
         func makeCoordinator() -> PaneCoordinator {
-            PaneCoordinator()
+            PaneCoordinator(tabID: tabID)
         }
 
         func makeNSView(context: Context) -> NSView {
             let containerView = NSView()
             containerView.translatesAutoresizingMaskIntoConstraints = false
             setupTerminalView(for: paneID, in: containerView, context: context)
+            registerViewportAuthority(for: paneID)
             onViewReady()
             return containerView
         }
@@ -251,6 +256,7 @@ import SwiftUI
             guard context.coordinator.lastPaneID != paneID else {
                 if let cached = TerminalViewCache.shared.retrieveForPane(paneID: paneID, tabID: tabID) {
                     updateSettings(for: cached, coordinator: context.coordinator)
+                    registerViewportAuthority(for: paneID)
                 }
                 return
             }
@@ -262,6 +268,18 @@ import SwiftUI
                 // Same as the single-pane bridge: clear stale selection on switch-away so old text can't be re-copied by later clicks.
                 oldCached.view.selectNone()
                 oldCached.view.removeFromSuperview()
+                // And drop its claim on the PTY's size. A pane that is no longer
+                // mounted must not stay the authority, or a split that no longer
+                // shows it would still be setting the PTY's size.
+                if let oldCoord = oldCached.coordinator as? ContainerTerminalCoordinator {
+                    oldCoord.removeViewportFocusObserver()
+                    TerminalViewportRegistry.shared.unregister(
+                        .pane(oldID),
+                        in: TerminalViewportRegistry.PTYKey(tabID: tabID, paneID: oldID)
+                    )
+                    oldCoord.viewportOwner = nil
+                    oldCoord.viewportPTYKey = nil
+                }
             }
 
             let cached: CachedTerminalView
@@ -295,6 +313,7 @@ import SwiftUI
             NSLayoutConstraint.activate(cached.constraints)
 
             updateSettings(for: cached, coordinator: context.coordinator)
+            registerViewportAuthority(for: paneID)
 
             // Force re-render after re-adding cached view
             cached.view.needsDisplay = true
@@ -317,6 +336,18 @@ import SwiftUI
         static func dismantleNSView(_: NSView, coordinator: PaneCoordinator) {
             coordinator.focusTask?.cancel()
             coordinator.focusTask = nil
+            // Leaving a mounted-looking claim behind would keep this pane's
+            // view as its PTY's size authority after the view is gone.
+            guard let paneID = coordinator.lastPaneID,
+                  let cached = TerminalViewCache.shared.retrieveForPane(paneID: paneID, tabID: coordinator.tabID),
+                  let coord = cached.coordinator as? ContainerTerminalCoordinator,
+                  let owner = coord.viewportOwner,
+                  let ptyKey = coord.viewportPTYKey
+            else { return }
+            coord.removeViewportFocusObserver()
+            TerminalViewportRegistry.shared.unregister(owner, in: ptyKey)
+            coord.viewportOwner = nil
+            coord.viewportPTYKey = nil
         }
         /// A view moved between panes/tabs keeps its coordinator, but the
         /// coordinator's callbacks still point at the pane it was created for.
@@ -395,6 +426,34 @@ import SwiftUI
             return cached
         }
 
+        /// Declare this pane's view as a candidate for its PTY's size.
+        ///
+        /// A pane owns its PTY outright, so the registry key is the pane
+        /// itself. This view is the main window's view of it — the one that
+        /// competes with the Quake panel when both are on screen.
+        private func registerViewportAuthority(for paneID: UUID) {
+            let key = TerminalViewportRegistry.PTYKey(tabID: tabID, paneID: paneID)
+            var size: TerminalViewportSize?
+            if let cached = TerminalViewCache.shared.retrieveForPane(paneID: paneID, tabID: tabID) {
+                size = TerminalViewportSize(
+                    cols: cached.view.terminal.cols, rows: cached.view.terminal.rows
+                )
+            }
+            TerminalViewportRegistry.shared.register(
+                .pane(paneID),
+                for: key,
+                isVisible: true,
+                isActive: isActive,
+                size: size
+            )
+            if let coord = TerminalViewCache.shared.retrieveForPane(paneID: paneID, tabID: tabID)?
+                .coordinator as? ContainerTerminalCoordinator {
+                coord.viewportOwner = .pane(paneID)
+                coord.viewportPTYKey = key
+                coord.installViewportFocusObserver()
+            }
+        }
+
         private func setupTerminalView(for paneID: UUID, in containerView: NSView, context: Context) {
             // Check cache first to preserve terminal state across tab switches
             let cached: CachedTerminalView
@@ -464,8 +523,15 @@ import SwiftUI
     }
 
     private class PaneCoordinator: NSObject {
+        /// The tab this coordinator belongs to, so teardown can name the PTY it
+        /// has to release without reaching back into the representable.
+        let tabID: UUID
         var lastPaneID: UUID?
         var lastColorSchemeID: String?
+
+        init(tabID: UUID) {
+            self.tabID = tabID
+        }
         /// Pending delayed focus. Cancelled on rebind so rapid tab switches do
         /// not stack up competing makeFirstResponder calls.
         var focusTask: Task<Void, Never>?
