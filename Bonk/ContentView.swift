@@ -329,6 +329,7 @@ struct ContentView: View {
     private func iOSTerminalDetail(_ tab: TerminalTab) -> some View {
         TerminalTabContentView(
             tab: tab,
+            owner: .mainWindow,
             colorScheme: colorScheme,
             fontSize: preferences.fontSize,
             fontFamily: preferences.fontFamily,
@@ -467,7 +468,7 @@ struct ContentView: View {
             controller.setup(contentView: hostingView)
             controller.focusManager.alternateScreenProvider = { @MainActor [weak sessionManager] in
                 guard let sessionManager, let tab = sessionManager.activeTab else { return false }
-                return TerminalViewCache.shared.isAnyPaneAlternate(paneIDs: tab.paneIDs)
+                return TerminalViewCache.shared.isAnyPaneAlternate(paneIDs: tab.paneIDs, in: tab.id)
             }
         }
     }
@@ -529,6 +530,7 @@ struct ContentView: View {
                 if quakeState.isVisible, let tab = sessionManager.activeTab {
                     TerminalTabContentView(
                         tab: tab,
+                        owner: .quakePanel,
                         colorScheme: colorScheme,
                         fontSize: 13,
                         fontFamily: "SF Mono",

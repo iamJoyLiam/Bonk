@@ -16,6 +16,10 @@ import SwiftUI
     struct TerminalContainerView: View {
         @Environment(I18n.self) var i18n
         let activeTab: TerminalTab
+        /// Which mount site this is. No default: the main window and the Quake
+        /// panel both show the same tab, and a default would silently re-create
+        /// the single-slot collision this key type exists to remove.
+        let owner: TerminalViewOwner
         let colorScheme: TerminalColorScheme
         let fontSize: Double
         let fontFamily: String
@@ -42,6 +46,7 @@ import SwiftUI
                     if activeTab.session?.terminalState == .ready {
                         MacTerminalContainerBridge(
                             activeTabID: activeTab.id,
+                            owner: owner,
                             colorScheme: colorScheme,
                             fontSize: fontSize,
                             fontFamily: fontFamily,
@@ -83,11 +88,12 @@ import SwiftUI
         }
 
         private func connectOutputStreamIfNeeded() {
+            let key = TerminalViewCacheKey(tabID: activeTab.id, owner: owner)
             guard let ptySession = activeTab.session?.ptySession else {
                 Log.ui.warning("[TerminalContainer] connectOutputStreamIfNeeded: no PTY session for tab \(activeTab.id.uuidString.prefix(8))")
                 return
             }
-            let cached = TerminalViewCache.shared.retrieve(activeTab.id)
+            let cached = TerminalViewCache.shared.retrieve(key)
             if let coord = cached?.coordinator as? ContainerTerminalCoordinator {
                 coord.hostItem = activeTab.hostItem
             }
@@ -97,7 +103,7 @@ import SwiftUI
                 TerminalViewCache.shared.connectOutputStream(
                     result.stream,
                     onBytesProcessed: result.onBytesProcessed,
-                    to: activeTab.id
+                    to: key
                 )
                 if let coord = cached?.coordinator as? ContainerTerminalCoordinator {
                     coord.hostItem = activeTab.hostItem
@@ -142,6 +148,11 @@ import SwiftUI
     /// AppKit container that manages terminal view switching.
     private struct MacTerminalContainerBridge: NSViewRepresentable {
         let activeTabID: UUID
+        /// Which mount site this is. Deliberately has no default: the main
+        /// window and the Quake panel both mount this view for the same tab,
+        /// and a default would silently re-create the single-slot collision
+        /// this key type exists to remove.
+        let owner: TerminalViewOwner
         let colorScheme: TerminalColorScheme
         let fontSize: Double
         let fontFamily: String
@@ -162,13 +173,27 @@ import SwiftUI
         func makeNSView(context: Context) -> NSView {
             let containerView = NSView()
             containerView.translatesAutoresizingMaskIntoConstraints = false
-            setupTerminalView(for: activeTabID, in: containerView, context: context)
+            // Mount consults the cache exactly as update does. Creating
+            // unconditionally meant a second mount for the same tab always
+            // built a fresh view and evicted the live one from the index —
+            // which is what the Quake panel did to the main window.
+            let key = TerminalViewCacheKey(tabID: activeTabID, owner: owner)
+            let cached: CachedTerminalView
+            if let existing = TerminalViewCache.shared.retrieve(key) {
+                cached = existing
+            } else {
+                cached = createTerminalView(for: key, context: context)
+            }
+            attach(cached, to: containerView)
+            context.coordinator.lastKey = key
             return containerView
         }
 
         func updateNSView(_ nsView: NSView, context: Context) {
-            guard context.coordinator.lastTabID != activeTabID else {
-                if let cached = TerminalViewCache.shared.retrieve(activeTabID) {
+            let key = TerminalViewCacheKey(tabID: activeTabID, owner: owner)
+            let previousKey = context.coordinator.lastKey
+            guard previousKey != key else {
+                if let cached = TerminalViewCache.shared.retrieve(key) {
                     updateSettings(for: cached)
                     if let coord = cached.coordinator as? ContainerTerminalCoordinator {
                         coord.updateCopyOnSelect(copyOnSelect)
@@ -177,10 +202,9 @@ import SwiftUI
                 return
             }
 
-            let oldTabID = context.coordinator.lastTabID
-            context.coordinator.lastTabID = activeTabID
+            context.coordinator.lastKey = key
 
-            if let oldID = oldTabID, let oldCached = TerminalViewCache.shared.retrieve(oldID) {
+            if let oldKey = previousKey, let oldCached = TerminalViewCache.shared.retrieve(oldKey) {
                 // Clear stale selection on switch-away: leftover selections are the other half of cross-terminal pollution.
                 oldCached.view.selectNone()
                 oldCached.view.removeFromSuperview()
@@ -191,41 +215,43 @@ import SwiftUI
             }
 
             let cached: CachedTerminalView
-            if let existing = TerminalViewCache.shared.retrieve(activeTabID) {
+            if let existing = TerminalViewCache.shared.retrieve(key) {
                 cached = existing
             } else {
-                Log.ui.info("[TerminalContainer] Cache miss for tab \(activeTabID.uuidString.prefix(8)), creating new view")
-                cached = createTerminalView(for: activeTabID, context: context)
+                Log.ui.info("[TerminalContainer] Cache miss for owner of tab \(activeTabID.uuidString.prefix(8)), creating new view")
+                cached = createTerminalView(for: key, context: context)
             }
-
-            cached.view.translatesAutoresizingMaskIntoConstraints = false
-            nsView.addSubview(cached.view)
-            if let coord = cached.coordinator as? ContainerTerminalCoordinator {
-                coord.installCopyOnSelectMonitor()
-                coord.installInlineCompletionMonitor()
-            }
-
-            NSLayoutConstraint.deactivate(cached.constraints)
-
-            cached.constraints = [
-                cached.view.leadingAnchor.constraint(equalTo: nsView.leadingAnchor, constant: terminalViewInsets.left),
-                cached.view.trailingAnchor.constraint(equalTo: nsView.trailingAnchor, constant: -terminalViewInsets.right),
-                cached.view.topAnchor.constraint(equalTo: nsView.topAnchor, constant: terminalViewInsets.top),
-                cached.view.bottomAnchor.constraint(equalTo: nsView.bottomAnchor, constant: -terminalViewInsets.bottom),
-            ]
-            NSLayoutConstraint.activate(cached.constraints)
+            attach(cached, to: nsView)
 
             // Force re-render after re-adding cached view
             cached.view.needsDisplay = true
             nsView.window?.makeFirstResponder(cached.view)
-            // PTY sync is now handled by NativeTerminalView.layout() — no manual intervention needed
+        }
+
+        /// Add a cached view to a container and (re)install its constraints.
+        private func attach(_ cached: CachedTerminalView, to containerView: NSView) {
+            cached.view.translatesAutoresizingMaskIntoConstraints = false
+            containerView.addSubview(cached.view)
+            if let coord = cached.coordinator as? ContainerTerminalCoordinator {
+                coord.installCopyOnSelectMonitor()
+                coord.installInlineCompletionMonitor()
+            }
+            NSLayoutConstraint.deactivate(cached.constraints)
+            cached.constraints = [
+                cached.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: terminalViewInsets.left),
+                cached.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -terminalViewInsets.right),
+                cached.view.topAnchor.constraint(equalTo: containerView.topAnchor, constant: terminalViewInsets.top),
+                cached.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -terminalViewInsets.bottom),
+            ]
+            NSLayoutConstraint.activate(cached.constraints)
+            // PTY sync is handled by NativeTerminalView.layout() — no manual work here.
         }
 
         static func dismantleNSView(_: NSView, coordinator _: ContainerCoordinator) {}
 
         // MARK: - Helpers
 
-        private func createTerminalView(for tabID: UUID, context _: Context) -> CachedTerminalView {
+        private func createTerminalView(for key: TerminalViewCacheKey, context _: Context) -> CachedTerminalView {
             let font = createSafeFont(family: fontFamily, size: CGFloat(fontSize))
             let terminal = NativeTerminalView(frame: .zero, font: font)
             terminal.bellStyle = .none
@@ -250,7 +276,7 @@ import SwiftUI
                 onResize: onResize,
                 onTitleChange: onTitleChange,
                 copyOnSelect: copyOnSelect,
-                sessionID: tabID.uuidString
+                sessionID: key.tabID.uuidString
             )
             terminal.terminalDelegate = coordinator
             coordinator.terminalView = terminal
@@ -265,30 +291,10 @@ import SwiftUI
             coordinator.installCopyOnSelectMonitor()
             coordinator.installInlineCompletionMonitor()
 
-            let cached = CachedTerminalView(tabID: tabID, view: terminal, coordinator: coordinator)
-            TerminalViewCache.shared.store(tabID: tabID, view: terminal, coordinator: coordinator)
+            let cached = CachedTerminalView(tabID: key.tabID, view: terminal, coordinator: coordinator)
+            TerminalViewCache.shared.store(key, view: terminal, coordinator: coordinator)
 
             return cached
-        }
-
-        private func setupTerminalView(for tabID: UUID, in containerView: NSView, context: Context) {
-            let cached = createTerminalView(for: tabID, context: context)
-            cached.view.translatesAutoresizingMaskIntoConstraints = false
-            containerView.addSubview(cached.view)
-
-            cached.constraints = [
-                cached.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: terminalViewInsets.left),
-                cached.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -terminalViewInsets.right),
-                cached.view.topAnchor.constraint(equalTo: containerView.topAnchor, constant: terminalViewInsets.top),
-                cached.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -terminalViewInsets.bottom),
-            ]
-            NSLayoutConstraint.activate(cached.constraints)
-            context.coordinator.lastTabID = tabID
-
-            // Force re-render after adding view
-            cached.view.needsDisplay = true
-            containerView.window?.makeFirstResponder(cached.view)
-            // PTY sync is now handled by NativeTerminalView.layout() — no manual intervention needed
         }
 
         private func updateSettings(for cached: CachedTerminalView) {
@@ -308,7 +314,9 @@ import SwiftUI
 
     /// Coordinator for the container.
     private class ContainerCoordinator: NSObject {
-        var lastTabID: UUID?
+        /// The (tab, owner) this container last mounted, so a tab switch can
+        /// clean up the entry it actually owns rather than guessing by id.
+        var lastKey: TerminalViewCacheKey?
     }
 
     /// Terminal coordinator for container-managed views.

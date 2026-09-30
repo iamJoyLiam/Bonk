@@ -28,7 +28,7 @@ import XCTest
 @MainActor
 final class TerminalSelectionResponderTests: XCTestCase {
 
-    private var storedKeys: [UUID] = []
+    private var storedKeys: [TerminalViewCacheKey] = []
     private var responder: TerminalSelectionResponder?
     private var responseObserver: (any NSObjectProtocol)?
 
@@ -115,12 +115,11 @@ final class TerminalSelectionResponderTests: XCTestCase {
         let text = "selected from the left pane"
         let view = makeView(withText: text)
         TerminalViewCache.shared.store(
-            tabID: paneID,
-            parentTabID: tab.id,
+            TerminalViewCacheKey.pane(paneID, in: tab.id),
             view: view,
             coordinator: makeCoordinator()
         )
-        storedKeys.append(paneID)
+        storedKeys.append(TerminalViewCacheKey.pane(paneID, in: tab.id))
 
         let response = respondToRequest(manager: manager)
         XCTAssertEqual(response ?? nil, text,
@@ -133,11 +132,11 @@ final class TerminalSelectionResponderTests: XCTestCase {
         let text = "single pane selection"
         let view = makeView(withText: text)
         TerminalViewCache.shared.store(
-            tabID: tab.id,
+            TerminalViewCacheKey(tabID: tab.id, owner: .mainWindow),
             view: view,
             coordinator: makeCoordinator()
         )
-        storedKeys.append(tab.id)
+        storedKeys.append(TerminalViewCacheKey(tabID: tab.id, owner: .mainWindow))
 
         let response = respondToRequest(manager: manager)
         XCTAssertEqual(response ?? nil, text)
@@ -149,15 +148,15 @@ final class TerminalSelectionResponderTests: XCTestCase {
         let left = makeView(withText: "left pane text")
         let right = makeView(withText: "right pane text")
         TerminalViewCache.shared.store(
-            tabID: paneID, parentTabID: tab.id, view: right, coordinator: makeCoordinator()
+            TerminalViewCacheKey.pane(paneID, in: tab.id), view: right, coordinator: makeCoordinator()
         )
-        storedKeys.append(paneID)
+        storedKeys.append(TerminalViewCacheKey.pane(paneID, in: tab.id))
         // A sibling pane of the same tab, cached but not active.
         let siblingPane = UUID()
         TerminalViewCache.shared.store(
-            tabID: siblingPane, parentTabID: tab.id, view: left, coordinator: makeCoordinator()
+            TerminalViewCacheKey.pane(siblingPane, in: tab.id), view: left, coordinator: makeCoordinator()
         )
-        storedKeys.append(siblingPane)
+        storedKeys.append(TerminalViewCacheKey.pane(siblingPane, in: tab.id))
 
         let response = respondToRequest(manager: manager)
         XCTAssertEqual(response ?? nil, "right pane text",
@@ -173,9 +172,11 @@ final class TerminalSelectionResponderTests: XCTestCase {
             font: .monospacedSystemFont(ofSize: 12, weight: .regular)
         )
         TerminalViewCache.shared.store(
-            tabID: tab.id, view: view, coordinator: makeCoordinator()
+            TerminalViewCacheKey(tabID: tab.id, owner: .mainWindow),
+            view: view,
+            coordinator: makeCoordinator()
         )
-        storedKeys.append(tab.id)
+        storedKeys.append(TerminalViewCacheKey(tabID: tab.id, owner: .mainWindow))
 
         let response = respondToRequest(manager: manager)
         XCTAssertNotNil(response, "an empty selection is still a response")

@@ -26,7 +26,7 @@ import XCTest
 @MainActor
 final class TerminalViewCacheTargetResolutionTests: XCTestCase {
 
-    private var storedKeys: [UUID] = []
+    private var storedKeys: [TerminalViewCacheKey] = []
 
     override func tearDown() async throws {
         for key in storedKeys { TerminalViewCache.shared.remove(key) }
@@ -59,12 +59,11 @@ final class TerminalViewCacheTargetResolutionTests: XCTestCase {
         view: NativeTerminalView
     ) -> NativeTerminalView {
         TerminalViewCache.shared.store(
-            tabID: paneID,
-            parentTabID: tabID,
+            TerminalViewCacheKey.pane(paneID, in: tabID),
             view: view,
             coordinator: makeCoordinator()
         )
-        storedKeys.append(paneID)
+        storedKeys.append(TerminalViewCacheKey.pane(paneID, in: tabID))
         return view
     }
 
@@ -75,11 +74,11 @@ final class TerminalViewCacheTargetResolutionTests: XCTestCase {
         view: NativeTerminalView
     ) -> NativeTerminalView {
         TerminalViewCache.shared.store(
-            tabID: tabID,
+            TerminalViewCacheKey(tabID: tabID, owner: .mainWindow),
             view: view,
             coordinator: makeCoordinator()
         )
-        storedKeys.append(tabID)
+        storedKeys.append(TerminalViewCacheKey(tabID: tabID, owner: .mainWindow))
         return view
     }
 
@@ -103,10 +102,10 @@ final class TerminalViewCacheTargetResolutionTests: XCTestCase {
         let left = storePane(tabID, leftPane, view: makeView())
         let right = storePane(tabID, rightPane, view: makeView())
         // Make the non-active pane the most recently used.
-        _ = cache.retrieve(leftPane)
+        _ = cache.retrieve(TerminalViewCacheKey.pane(leftPane, in: tabID))
 
         // The lookup the old code performed: the tab's own id. This is the bug.
-        XCTAssertNil(cache.retrieve(tabID),
+        XCTAssertNil(cache.retrieve(TerminalViewCacheKey.pane(tabID, in: tabID)),
                      "a split tab has no entry under its own id — the old lookup missed")
 
         let resolved = cache.retrieveActivePane(tabID: tabID, activePaneID: rightPane)

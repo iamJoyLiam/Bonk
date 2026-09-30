@@ -238,7 +238,7 @@ struct CommandBlocksPanel: View {
 
     private func searchInTerminal(_ term: String) {
         let pid = paneID
-        if let view = TerminalViewCache.shared.retrieve(pid)?.view {
+        if let view = TerminalViewCache.shared.findPaneView(paneID: pid)?.view {
             _ = view.findNext(term)
         }
     }

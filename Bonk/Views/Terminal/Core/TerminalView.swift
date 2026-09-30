@@ -11,6 +11,10 @@ import SwiftUI
 struct TerminalTabContentView: View {
     @Environment(I18n.self) var i18n
     let tab: TerminalTab
+    /// Which mount site is showing this tab. The main window and the Quake
+    /// panel both mount the same tab, so the terminal cache has to tell their
+    /// views apart. No default: a caller that forgets would silently collide.
+    let owner: TerminalViewOwner
     let colorScheme: TerminalColorScheme
     let fontSize: Double
     let fontFamily: String
@@ -52,6 +56,7 @@ struct TerminalTabContentView: View {
     private var terminalView: some View {
         TerminalContainerView(
             activeTab: tab,
+            owner: owner,
             colorScheme: colorScheme,
             fontSize: fontSize,
             fontFamily: fontFamily,

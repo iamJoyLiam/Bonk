@@ -49,8 +49,10 @@ extension SessionManager {
                                     endpoint: SSHEndpoint(host: tab.hostItem.host, port: UInt16(tab.hostItem.port))
                                 )
                             }
-                            TerminalViewCache.shared.rebindOutputStream(for: tab.id, to: newPTY)
-                            TerminalViewCache.shared.rebindOutputStream(for: firstPane.id, to: newPTY)
+                            // Rebind every owner of this tab: the main window and
+                            // the Quake panel both hold a view, and rebinding one
+                            // would leave the other feeding a closed session.
+                            TerminalViewCache.shared.rebindOutputStream(forTab: tab.id, to: newPTY)
                             // Fix 1: log stages
                             Log.session.info("[RECOVERY_STEP] ptyReady=true outputBound=true pane=\(firstPane.id.uuidString.prefix(8), privacy: .public)")
                             syncPTYSize(for: firstPane.id, ptySession: newPTY)

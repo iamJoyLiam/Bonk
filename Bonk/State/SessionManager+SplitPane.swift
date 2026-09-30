@@ -122,8 +122,9 @@ extension SessionManager {
         if tab.layout.closePane(id: paneID) {
             // Close the PTY session for the closed pane
             pane.ptySession?.close()
-            // Clean up the closed pane
-            viewCache.remove(paneID)
+            // Clean up the closed pane. Keyed by (tab, owner) so it removes the
+            // entry that pane actually stored.
+            viewCache.remove(TerminalViewCacheKey.pane(paneID, in: tab.id))
             // Update active pane
             tab.activePaneID = tab.layout.activePaneID
             // Update tab title
@@ -143,7 +144,7 @@ extension SessionManager {
             // Close the PTY session for the closed pane
             pane.ptySession?.close()
             // Clean up the closed pane
-            viewCache.remove(paneID)
+            viewCache.remove(TerminalViewCacheKey.pane(paneID, in: tab.id))
             // Keep tab.activePaneID in sync unconditionally
             tab.activePaneID = tab.layout.activePaneID
             // Update tab title
@@ -217,9 +218,12 @@ extension SessionManager {
             // Carry the live view across with the PTY. The view owns the
             // alternate-screen buffer, so tearing it down makes vim/less
             // repaint as raw escape sequences after the unsplit.
-            viewCache.move(from: paneID, to: newPane.id, parentTabID: newTab.id)
+            viewCache.move(
+                from: TerminalViewCacheKey.pane(paneID, in: tab.id),
+                to: TerminalViewCacheKey.pane(newPane.id, in: newTab.id)
+            )
         } else {
-            viewCache.remove(paneID)
+            viewCache.remove(TerminalViewCacheKey.pane(paneID, in: tab.id))
         }
 
         // Remove the pane from the original tab
@@ -386,7 +390,10 @@ extension SessionManager {
         // Dropping it here tore down the view that owned the alternate-screen
         // buffer, so a running vim/less repainted as raw escape text after a
         // drag-to-split.
-        viewCache.move(from: sourcePane.id, to: newPane.id, parentTabID: targetTab.id)
+        viewCache.move(
+            from: TerminalViewCacheKey.pane(sourcePane.id, in: sourceTab.id),
+            to: TerminalViewCacheKey.pane(newPane.id, in: targetTab.id)
+        )
 
         // Update tab title and switch to target
         updateTabTitleForSplit(targetTab)

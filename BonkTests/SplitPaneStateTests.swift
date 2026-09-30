@@ -213,8 +213,7 @@ final class SplitPaneStateTests: XCTestCase {
         view.feed(text: "\u{1B}[?1049h")
         XCTAssertTrue(view.terminal.isCurrentBufferAlternate, "precondition: vim is on alt screen")
         cache.store(
-            tabID: movedPane.id,
-            parentTabID: merged.id,
+            TerminalViewCacheKey.pane(movedPane.id, in: merged.id),
             view: view,
             coordinator: ContainerTerminalCoordinator(
                 onSend: { _ in }, onResize: { _, _ in }, onTitleChange: nil, copyOnSelect: false
@@ -225,7 +224,7 @@ final class SplitPaneStateTests: XCTestCase {
 
         let newTab = sm.tabs.first { $0.id == sm.activeTabID }!
         let newPaneID = try! XCTUnwrap(newTab.layout.root.paneState?.id)
-        let cached = cache.retrieve(newPaneID)
+        let cached = cache.retrieve(TerminalViewCacheKey.pane(newPaneID, in: newTab.id))
 
         XCTAssertNotNil(
             cached,
@@ -254,8 +253,7 @@ final class SplitPaneStateTests: XCTestCase {
         view.feed(text: "\u{1B}[?1049h")
         XCTAssertTrue(view.terminal.isCurrentBufferAlternate, "precondition: vim is on alt screen")
         cache.store(
-            tabID: paneA.id,
-            parentTabID: tabA.id,
+            TerminalViewCacheKey.pane(paneA.id, in: tabA.id),
             view: view,
             coordinator: ContainerTerminalCoordinator(
                 onSend: { _ in }, onResize: { _, _ in }, onTitleChange: nil, copyOnSelect: false
@@ -264,7 +262,10 @@ final class SplitPaneStateTests: XCTestCase {
 
         // Drag B's pane (the one owning the live view) into A.
         let sourcePane = tabB.layout.root.paneState!
-        cache.move(from: paneA.id, to: sourcePane.id, parentTabID: tabB.id)
+        cache.move(
+            from: TerminalViewCacheKey.pane(paneA.id, in: tabA.id),
+            to: TerminalViewCacheKey.pane(sourcePane.id, in: tabB.id)
+        )
 
         sm.addPaneFromTab(tabB.id, to: tabA.id, paneID: paneA.id, position: .right)
 
@@ -274,11 +275,11 @@ final class SplitPaneStateTests: XCTestCase {
             .first { $0.hostItem != nil }!
 
         XCTAssertTrue(
-            cache.retrieve(movedPane.id)?.view === view,
+            cache.retrieve(TerminalViewCacheKey.pane(movedPane.id, in: merged.id))?.view === view,
             "drag-to-split must carry the same view, not rebuild it"
         )
         XCTAssertTrue(
-            cache.retrieve(movedPane.id)?.view.terminal.isCurrentBufferAlternate ?? false,
+            cache.retrieve(TerminalViewCacheKey.pane(movedPane.id, in: merged.id))?.view.terminal.isCurrentBufferAlternate ?? false,
             "alternate-screen state must survive a drag-to-split"
         )
     }

@@ -143,7 +143,7 @@ import SwiftUI
                             continue
                         }
 
-                        let cached = TerminalViewCache.shared.retrieve(paneState.id)
+                        let cached = TerminalViewCache.shared.retrieveForPane(paneID: paneState.id, tabID: tab.id)
                         guard let cached else {
                             // View created after this task started — wait for it.
                             Log.session.info("[PTY-RETRY] Terminal view not cached yet, retry \(attempt + 1)/\(maxRetries)")
@@ -156,7 +156,7 @@ import SwiftUI
                             TerminalViewCache.shared.connectOutputStream(
                                 result.stream,
                                 onBytesProcessed: result.onBytesProcessed,
-                                to: paneState.id
+                                to: TerminalViewCacheKey.pane(paneState.id, in: tab.id)
                             )
                             if let coord = cached.coordinator as? ContainerTerminalCoordinator {
                                 coord.hostItem = tab.hostItem
@@ -249,7 +249,7 @@ import SwiftUI
             let signpostStart = perfSignposter.beginInterval("PaneRebind")
             defer { perfSignposter.endInterval("PaneRebind", signpostStart) }
             guard context.coordinator.lastPaneID != paneID else {
-                if let cached = TerminalViewCache.shared.retrieve(paneID) {
+                if let cached = TerminalViewCache.shared.retrieveForPane(paneID: paneID, tabID: tabID) {
                     updateSettings(for: cached, coordinator: context.coordinator)
                 }
                 return
@@ -258,7 +258,7 @@ import SwiftUI
             let oldPaneID = context.coordinator.lastPaneID
             context.coordinator.lastPaneID = paneID
 
-            if let oldID = oldPaneID, let oldCached = TerminalViewCache.shared.retrieve(oldID) {
+            if let oldID = oldPaneID, let oldCached = TerminalViewCache.shared.retrieveForPane(paneID: oldID, tabID: tabID) {
                 // Same as the single-pane bridge: clear stale selection on switch-away so old text can't be re-copied by later clicks.
                 oldCached.view.selectNone()
                 oldCached.view.removeFromSuperview()
@@ -266,7 +266,7 @@ import SwiftUI
 
             let cached: CachedTerminalView
             let created: Bool
-            if let existing = TerminalViewCache.shared.retrieve(paneID) {
+            if let existing = TerminalViewCache.shared.retrieveForPane(paneID: paneID, tabID: tabID) {
                 cached = existing
                 created = false
                 if let native = cached.view as? NativeTerminalView {
@@ -380,8 +380,12 @@ import SwiftUI
             coordinator.installCopyOnSelectMonitor()
             coordinator.installInlineCompletionMonitor()
 
-            let cached = CachedTerminalView(tabID: paneID, view: terminal, coordinator: coordinator)
-            TerminalViewCache.shared.store(tabID: paneID, parentTabID: tabID, view: terminal, coordinator: coordinator)
+            let cached = CachedTerminalView(tabID: tabID, view: terminal, coordinator: coordinator)
+            TerminalViewCache.shared.store(
+                TerminalViewCacheKey.pane(paneID, in: tabID),
+                view: terminal,
+                coordinator: coordinator
+            )
             // If this pane is already the shared one (restore path), subscribe team immediately
             if TeamRelay.shared.isHosting, TeamRelay.shared.sharedSessionID?.paneID == paneID,
                let sid = TeamRelay.shared.sharedSessionID
@@ -395,7 +399,7 @@ import SwiftUI
             // Check cache first to preserve terminal state across tab switches
             let cached: CachedTerminalView
             let created: Bool
-            if let existing = TerminalViewCache.shared.retrieve(paneID) {
+            if let existing = TerminalViewCache.shared.retrieveForPane(paneID: paneID, tabID: tabID) {
                 cached = existing
                 created = false
                 if let native = cached.view as? NativeTerminalView {

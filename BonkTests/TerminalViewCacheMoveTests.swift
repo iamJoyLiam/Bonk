@@ -42,15 +42,15 @@ final class TerminalViewCacheMoveTests: XCTestCase {
         let view = makeView()
         let coordinator = makeCoordinator()
 
-        cache.store(tabID: oldID, parentTabID: tabID, view: view, coordinator: coordinator)
-        XCTAssertNotNil(cache.retrieve(oldID))
+        cache.store(TerminalViewCacheKey.pane(oldID, in: tabID), view: view, coordinator: coordinator)
+        XCTAssertNotNil(cache.retrieve(TerminalViewCacheKey.pane(oldID, in: tabID)))
 
-        let moved = cache.move(from: oldID, to: newID, parentTabID: tabID)
+        let moved = cache.move(from: TerminalViewCacheKey.pane(oldID, in: tabID), to: TerminalViewCacheKey.pane(newID, in: tabID))
 
         XCTAssertNotNil(moved)
         XCTAssertTrue(moved?.view === view, "the same view instance must survive the move")
-        XCTAssertNil(cache.retrieve(oldID), "old key must be released")
-        XCTAssertTrue(cache.retrieve(newID)?.view === view, "view must be reachable under the new key")
+        XCTAssertNil(cache.retrieve(TerminalViewCacheKey.pane(oldID, in: tabID)), "old key must be released")
+        XCTAssertTrue(cache.retrieve(TerminalViewCacheKey.pane(newID, in: tabID))?.view === view, "view must be reachable under the new key")
     }
 
     /// The alternate screen is the state that breaks when a view is recreated.
@@ -62,12 +62,12 @@ final class TerminalViewCacheMoveTests: XCTestCase {
         let view = makeView()
         let coordinator = makeCoordinator()
 
-        cache.store(tabID: oldID, parentTabID: tabID, view: view, coordinator: coordinator)
+        cache.store(TerminalViewCacheKey.pane(oldID, in: tabID), view: view, coordinator: coordinator)
         // Simulate vim entering the alternate screen.
         view.feed(text: "\u{1B}[?1049h")
         XCTAssertTrue(view.terminal.isCurrentBufferAlternate, "precondition: vim is on the alt screen")
 
-        let moved = cache.move(from: oldID, to: newID, parentTabID: tabID)
+        let moved = cache.move(from: TerminalViewCacheKey.pane(oldID, in: tabID), to: TerminalViewCacheKey.pane(newID, in: tabID))
 
         XCTAssertTrue(
             moved?.view.terminal.isCurrentBufferAlternate ?? false,
@@ -84,11 +84,11 @@ final class TerminalViewCacheMoveTests: XCTestCase {
         let coordinator = makeCoordinator()
         let (stream, continuation) = AsyncStream<String>.makeStream()
 
-        cache.store(tabID: oldID, parentTabID: tabID, view: view, coordinator: coordinator)
-        cache.connectOutputStream(stream, onBytesProcessed: { _ in }, to: oldID)
+        cache.store(TerminalViewCacheKey.pane(oldID, in: tabID), view: view, coordinator: coordinator)
+        cache.connectOutputStream(stream, onBytesProcessed: { _ in }, to: TerminalViewCacheKey.pane(oldID, in: tabID))
         continuation.yield("hello")
 
-        let moved = cache.move(from: oldID, to: newID, parentTabID: tabID)
+        let moved = cache.move(from: TerminalViewCacheKey.pane(oldID, in: tabID), to: TerminalViewCacheKey.pane(newID, in: tabID))
 
         XCTAssertTrue(moved?.coordinator === coordinator, "coordinator must travel with the view")
         XCTAssertNotNil(moved?.outputStream, "the live stream must stay attached")
@@ -100,12 +100,12 @@ final class TerminalViewCacheMoveTests: XCTestCase {
         let id = UUID()
         let tabID = UUID()
         let view = makeView()
-        cache.store(tabID: id, parentTabID: tabID, view: view, coordinator: makeCoordinator())
+        cache.store(TerminalViewCacheKey.pane(id, in: tabID), view: view, coordinator: makeCoordinator())
 
-        let moved = cache.move(from: id, to: id, parentTabID: tabID)
+        let moved = cache.move(from: TerminalViewCacheKey.pane(id, in: tabID), to: TerminalViewCacheKey.pane(id, in: tabID))
 
         XCTAssertNil(moved, "moving onto the same key must not evict the live view")
-        XCTAssertNotNil(cache.retrieve(id), "entry must remain reachable")
+        XCTAssertNotNil(cache.retrieve(TerminalViewCacheKey.pane(id, in: tabID)), "entry must remain reachable")
     }
 
     /// Bug 2: a re-hosted view must re-publish its geometry, otherwise the

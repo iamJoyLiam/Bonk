@@ -191,7 +191,7 @@ struct PaneTerminalView: View {
                 .allowsHitTesting(false)
         }
         .onAppear {
-            terminalNSView = TerminalViewCache.shared.retrieve(paneState.id)?.view
+            terminalNSView = TerminalViewCache.shared.retrieveForPane(paneID: paneState.id, tabID: tab.id)?.view
         }
     }
 
@@ -276,7 +276,7 @@ struct PaneTerminalView: View {
 
     @MainActor
     private func updateTeamSubscription() {
-        guard let cached = TerminalViewCache.shared.retrieve(paneState.id),
+        guard let cached = TerminalViewCache.shared.retrieveForPane(paneID: paneState.id, tabID: tab.id),
               let coordinator = cached.coordinator as? ContainerTerminalCoordinator else { return }
         // Only the shared pane (host) broadcasts; guest never broadcasts
         if teamRelay.isHosting, let shared = teamRelay.sharedSessionID, shared.paneID == paneState.id {

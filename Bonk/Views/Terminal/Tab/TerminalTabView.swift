@@ -56,7 +56,7 @@ struct TerminalTabView: View {
                 if !isShowing {
                     if let tab = sessionManager.activeTab,
                        let paneID = tab.activePaneID,
-                       let cached = TerminalViewCache.shared.retrieve(paneID)
+                       let cached = TerminalViewCache.shared.retrieveForPane(paneID: paneID, tabID: tab.id)
                     {
                         cached.view.clearSearch()
                     }
@@ -158,7 +158,7 @@ struct TerminalTabView: View {
             currentMatch = 0
             if let tab = sessionManager.activeTab,
                let paneID = tab.activePaneID,
-               let cached = TerminalViewCache.shared.retrieve(paneID)
+               let cached = TerminalViewCache.shared.retrieveForPane(paneID: paneID, tabID: tab.id)
             {
                 cached.view.clearSearch()
             }
@@ -175,7 +175,7 @@ struct TerminalTabView: View {
     private func handleAgentMirror(_ notification: Notification) {
         guard let tab = sessionManager.activeTab,
               let paneID = tab.activePaneID,
-              let cached = TerminalViewCache.shared.retrieve(paneID),
+              let cached = TerminalViewCache.shared.retrieveForPane(paneID: paneID, tabID: tab.id),
               let command = notification.userInfo?[AITerminalMirror.commandKey] as? String,
               let raw = notification.userInfo?[AITerminalMirror.statusKey] as? String,
               let status = AgentMessage.CommandStatus(rawValue: raw) else { return }
@@ -321,7 +321,7 @@ extension TerminalTabView {
         guard !searchText.isEmpty,
               let tab = sessionManager.activeTab,
               let paneID = tab.activePaneID,
-              let cached = TerminalViewCache.shared.retrieve(paneID) else { return }
+              let cached = TerminalViewCache.shared.retrieveForPane(paneID: paneID, tabID: tab.id) else { return }
 
         let found: Bool
         switch direction {
@@ -341,7 +341,7 @@ extension TerminalTabView {
     private func updateMatchCount(_ term: String) {
         guard let tab = sessionManager.activeTab,
               let paneID = tab.activePaneID,
-              let cached = TerminalViewCache.shared.retrieve(paneID) else
+              let cached = TerminalViewCache.shared.retrieveForPane(paneID: paneID, tabID: tab.id) else
         {
             matchCount = 0; return
         }

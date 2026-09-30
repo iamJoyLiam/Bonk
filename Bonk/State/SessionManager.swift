@@ -213,10 +213,9 @@ final class SessionManager {
         cleanupInputHandler(for: id)
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
         await disconnectTab(id)
-        // Clean up all pane views
-        for paneID in tab.paneIDs {
-            viewCache.remove(paneID)
-        }
+        // Every view this tab owns, across all mount sites. Removing by pane id
+        // missed the main window's entry, whose key is (tab.id, .mainWindow).
+        viewCache.removeAll(forTab: tab.id)
         sessionStore.removeSession(id)
         tabs.removeAll(where: { $0.id == id })
 
@@ -562,11 +561,11 @@ final class SessionManager {
             await svc.setAuthFailureHandler(nil)
         }
         await sessionStore.disconnect(id)
-        // Close all pane PTY sessions and clean up cached views
+        // Close all pane PTY sessions and clean up every cached view for the tab
         for paneID in tab.paneIDs {
             tab.layout.findPane(id: paneID)?.ptySession?.close()
-            viewCache.remove(paneID)
         }
+        viewCache.removeAll(forTab: tab.id)
         tab.session?.disconnect()
         tab.session = nil
     }
@@ -731,8 +730,7 @@ final class SessionManager {
         Log.session.info("[PTY] PTY session assigned to pane")
 
         // Direct rebind for immediate refresh (fixes retry hang where Notification is coalesced)
-        TerminalViewCache.shared.rebindOutputStream(for: pane.id, to: ptySession)
-        TerminalViewCache.shared.rebindOutputStream(for: tab.id, to: ptySession)
+        TerminalViewCache.shared.rebindOutputStream(forTab: tab.id, to: ptySession)
         // Notify terminal views to connect output stream
         NotificationCenter.default.post(name: .terminalPTYSessionReady, object: nil, userInfo: ["tabID": tab.id])
 
@@ -744,7 +742,9 @@ final class SessionManager {
             guard let self, let tab, self.tabs.contains(where: { $0.id == tab.id }),
                   let pane, pane.ptySession === ptySession,
                   let paneID = tab.activePaneID,
-                  let cached = TerminalViewCache.shared.retrieve(paneID) else { return }
+                  let cached = TerminalViewCache.shared.retrieveForPane(
+                      paneID: paneID, tabID: tab.id
+                  ) else { return }
             let cols = cached.view.terminal.cols
             let rows = cached.view.terminal.rows
             guard cols > 0, rows > 0 else { return }
@@ -779,11 +779,11 @@ final class SessionManager {
             try? await Task.sleep(for: .milliseconds(100))
             guard let self, let ptySession else { return }
             // Ensure pane still exists and is still bound to this PTY session
-            let stillValid = self.tabs.contains { tab in
-                tab.layout.findPane(id: paneID)?.ptySession === ptySession
-            }
-            guard stillValid else { return }
-            guard let cached = TerminalViewCache.shared.retrieve(paneID) else { return }
+            guard let tab = self.tabs.first(where: { $0.layout.findPane(id: paneID)?.ptySession === ptySession })
+            else { return }
+            guard let cached = TerminalViewCache.shared.retrieveForPane(
+                paneID: paneID, tabID: tab.id
+            ) else { return }
             let cols = cached.view.terminal.cols
             let rows = cached.view.terminal.rows
             guard cols > 0, rows > 0 else { return }

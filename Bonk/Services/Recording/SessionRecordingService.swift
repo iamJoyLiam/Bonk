@@ -89,7 +89,7 @@ actor SessionRecordingService {
         var activeRec = ActiveRecording(recording: Recording(id: UUID(), url: url, host: host, tabID: tabID, paneID: paneID, startDate: Date()), startTime: startTime, fileHandle: fileHandle)
         // Capture initial prompt line only — previous 4000-char tail caused huge blank gap + duplicated prompts
         let snapshot: String? = await MainActor.run {
-            guard let cached = TerminalViewCache.shared.retrieve(paneID) else { return nil }
+            guard let cached = TerminalViewCache.shared.retrieveForPane(paneID: paneID, tabID: tabID) else { return nil }
             guard let terminal = cached.view.terminal, terminal.cols > 0, terminal.rows > 0 else { return nil }
             // Prefer the current cursor line (the prompt) — trimRight false keeps "[root@...]# " spacing
             let (cursorX, cursorY) = terminal.getCursorLocation()

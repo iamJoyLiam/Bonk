@@ -14,23 +14,63 @@ import SwiftTerm
     import UIKit
 #endif
 
+/// Which mounting site owns a cached terminal view.
+///
+/// A tab can be mounted in more than one place at once: the main window shows
+/// it, and the Quake drop-down panel mounts a view for the same tab at the same
+/// time. Keying the cache by tab ID alone gave those two windows one slot, so
+/// the second mount evicted the first from the index while both stayed alive —
+/// and the next update reparented the wrong view across windows.
+///
+/// The owner must be **stable** for the life of the mount site. A UUID minted
+/// per `makeNSView` would not help: it would make every mount a cache miss and
+/// guarantee the view is never reused.
+enum TerminalViewOwner: Hashable, Sendable {
+    /// The main window's single-pane container for a tab.
+    case mainWindow
+    /// A specific split pane in the main window.
+    case pane(UUID)
+    /// The Quake drop-down panel.
+    case quakePanel
+}
+
+/// Identity of a cached terminal view: the tab, plus the site that owns it.
+///
+/// Store, retrieve and remove all take this, so the three lifecycle entry
+/// points cannot disagree about what a view is keyed by. That disagreement was
+/// real: the container stored under `tab.id` while `closeTab` removed under
+/// `paneID`, and for a single-pane tab those are different UUIDs, so closing a
+/// tab left its view cached forever.
+struct TerminalViewCacheKey: Hashable, Sendable {
+    let tabID: UUID
+    let owner: TerminalViewOwner
+
+    init(tabID: UUID, owner: TerminalViewOwner) {
+        self.tabID = tabID
+        self.owner = owner
+    }
+
+    /// A split pane of `tabID`.
+    static func pane(_ paneID: UUID, in tabID: UUID) -> TerminalViewCacheKey {
+        TerminalViewCacheKey(tabID: tabID, owner: .pane(paneID))
+    }
+}
+
 /// A cached terminal view with its coordinator.
 @MainActor
 final class CachedTerminalView {
     let view: SwiftTerm.TerminalView
     let coordinator: NSObject
+    /// The tab this view belongs to. For a split pane this is the *parent* tab,
+    /// which is what eviction groups by — the pane's own id is in the owner.
     let tabID: UUID
-    /// The parent tab ID this view belongs to (used for eviction protection).
-    /// For tab-level views, this equals tabID. For pane views, this is the parent tab's UUID.
-    let parentTabID: UUID
     var outputStream: AsyncStream<String>?
     /// Backpressure callback — called after feeding text to signal bytes consumed.
     var onBytesProcessed: (@Sendable (Int) -> Void)?
     var constraints: [NSLayoutConstraint] = []
 
-    init(tabID: UUID, parentTabID: UUID? = nil, view: SwiftTerm.TerminalView, coordinator: NSObject) {
+    init(tabID: UUID, view: SwiftTerm.TerminalView, coordinator: NSObject) {
         self.tabID = tabID
-        self.parentTabID = parentTabID ?? tabID
         self.view = view
         self.coordinator = coordinator
     }
@@ -42,13 +82,18 @@ final class CachedTerminalView {
 final class TerminalViewCache {
     static let shared = TerminalViewCache()
 
-    /// Cached terminal views keyed by tab ID.
-    private var cache: [UUID: CachedTerminalView] = [:]
+    /// Cached terminal views, keyed by tab *and* owning mount site.
+    private var cache: [TerminalViewCacheKey: CachedTerminalView] = [:]
 
     /// LRU access order (most recently used at the end).
-    private var accessOrder: [UUID] = []
+    private var accessOrder: [TerminalViewCacheKey] = []
 
-    /// Maximum number of cached tabs before eviction.
+    /// Maximum number of cached **tabs** before eviction.
+    ///
+    /// Counted as distinct tab ids, not entries. A tab open in both the main
+    /// window and the Quake panel owns two entries, and comparing against
+    /// `cache.count` meant mounting the panel evicted a live tab — the
+    /// second-oldest, not the oldest — losing its scrollback.
     private let maxCachedTabs = 10
 
     /// Diagnostic: track eviction events for debugging
@@ -99,20 +144,25 @@ final class TerminalViewCache {
         }
     #endif
 
-    /// Store a terminal view for a tab.
-    func store(tabID: UUID, parentTabID: UUID? = nil, view: SwiftTerm.TerminalView, coordinator: NSObject) {
-        let cached = CachedTerminalView(tabID: tabID, parentTabID: parentTabID, view: view, coordinator: coordinator)
-        cache[tabID] = cached
-        updateAccessOrder(tabID)
-        evictIfNeeded(except: parentTabID ?? tabID)
+    /// Store a terminal view under a (tab, owner) identity.
+    func store(_ key: TerminalViewCacheKey, view: SwiftTerm.TerminalView, coordinator: NSObject) {
+        let cached = CachedTerminalView(tabID: key.tabID, view: view, coordinator: coordinator)
+        cache[key] = cached
+        updateAccessOrder(key)
+        evictIfNeeded(except: key.tabID)
     }
 
-    /// Retrieve a cached terminal view for a tab.
-    func retrieve(_ tabID: UUID) -> CachedTerminalView? {
-        if cache[tabID] != nil {
-            updateAccessOrder(tabID)
+    /// Retrieve the view owned by a specific mount site.
+    func retrieve(_ key: TerminalViewCacheKey) -> CachedTerminalView? {
+        if cache[key] != nil {
+            updateAccessOrder(key)
         }
-        return cache[tabID]
+        return cache[key]
+    }
+
+    /// Every entry belonging to a tab, across all owners.
+    func entries(forTab tabID: UUID) -> [CachedTerminalView] {
+        cache.filter { $0.key.tabID == tabID }.map(\.value)
     }
 
     // MARK: - Target resolution
@@ -131,19 +181,23 @@ final class TerminalViewCache {
     /// view belonging to that tab, so a stale `activePaneID` degrades to doing
     /// something sensible rather than silently doing nothing.
     func retrieveActivePane(tabID: UUID, activePaneID: UUID?) -> CachedTerminalView? {
-        if let activePaneID, let cached = cache[activePaneID] {
-            updateAccessOrder(activePaneID)
-            return cached
+        if let activePaneID {
+            let paneKey = TerminalViewCacheKey.pane(activePaneID, in: tabID)
+            if let cached = cache[paneKey] {
+                updateAccessOrder(paneKey)
+                return cached
+            }
         }
-        if let cached = cache[tabID] {
-            updateAccessOrder(tabID)
+        let mainKey = TerminalViewCacheKey(tabID: tabID, owner: .mainWindow)
+        if let cached = cache[mainKey] {
+            updateAccessOrder(mainKey)
             return cached
         }
         // Any view of this tab, most recently used first — the same order the
         // cache already evicts by, so the fallback is deterministic instead of
         // whatever order the dictionary happens to yield. Never another tab's
         // view.
-        let key = accessOrder.last { cache[$0]?.parentTabID == tabID }
+        let key = accessOrder.last { cache[$0]?.tabID == tabID }
         guard let key, let cached = cache[key] else { return nil }
         updateAccessOrder(key)
         return cached
@@ -156,15 +210,32 @@ final class TerminalViewCache {
     /// checks the tab's own entry because in a single-pane tab that is the same
     /// view under a different key.
     func retrieveForPane(paneID: UUID, tabID: UUID) -> CachedTerminalView? {
-        if let cached = cache[paneID] {
-            updateAccessOrder(paneID)
+        let paneKey = TerminalViewCacheKey.pane(paneID, in: tabID)
+        if let cached = cache[paneKey] {
+            updateAccessOrder(paneKey)
             return cached
         }
-        if let cached = cache[tabID] {
-            updateAccessOrder(tabID)
+        let mainKey = TerminalViewCacheKey(tabID: tabID, owner: .mainWindow)
+        if let cached = cache[mainKey] {
+            updateAccessOrder(mainKey)
             return cached
         }
         return nil
+    }
+
+    /// Find a pane's view when only the pane id is known.
+    ///
+    /// A *query*, not a lifecycle key: a `PaneState` UUID is unique across the
+    /// app, so this is well defined without the owning tab. Lifecycle operations
+    /// (store / retrieve / remove) still require the full key, so they cannot
+    /// silently act on the wrong owner.
+    func findPaneView(paneID: UUID) -> CachedTerminalView? {
+        guard let key = accessOrder.last(where: {
+            if case let .pane(id) = $0.owner { return id == paneID }
+            return false
+        }), let cached = cache[key] else { return nil }
+        updateAccessOrder(key)
+        return cached
     }
 
     /// Remove a cached terminal view.
@@ -176,9 +247,9 @@ final class TerminalViewCache {
     /// "not legal to call -layoutSubtreeIfNeeded on a view which is already
     /// being laid out" and the app dies. SwiftUI removes the view itself once
     /// the pane leaves the layout.
-    func remove(_ tabID: UUID) {
-        let cached = cache.removeValue(forKey: tabID)
-        accessOrder.removeAll { $0 == tabID }
+    func remove(_ key: TerminalViewCacheKey) {
+        let cached = cache.removeValue(forKey: key)
+        accessOrder.removeAll { $0 == key }
         guard let cached else { return }
         if let coordinator = cached.coordinator as? ContainerTerminalCoordinator {
             coordinator.feedTask?.cancel()
@@ -198,20 +269,37 @@ final class TerminalViewCache {
         cached.onBytesProcessed = nil
     }
 
+    /// Remove every entry a tab owns, across all mount sites.
+    ///
+    /// Closing a tab previously looped its `paneIDs` and removed each by pane id.
+    /// That is the wrong key for a single-pane tab: the main window's container
+    /// stores under `(tab.id, .mainWindow)`, and a `PaneState` mints its own
+    /// UUID, so `paneID != tab.id` and the main window's view was never removed
+    /// at all. Removing by tab cannot disagree with how the entry was stored.
+    func removeAll(forTab tabID: UUID) {
+        for key in accessOrder.reversed() where cache[key]?.tabID == tabID {
+            remove(key)
+        }
+        // Anything not yet in the access order (defensive; store always adds).
+        for key in cache.keys where key.tabID == tabID {
+            remove(key)
+        }
+    }
+
     /// Connect output stream to a cached view with backpressure callback.
     func connectOutputStream(
         _ stream: AsyncStream<String>,
         onBytesProcessed: @Sendable @escaping (Int) -> Void,
-        to tabID: UUID
+        to key: TerminalViewCacheKey
     ) {
-        guard let cached = cache[tabID] else {
-            Log.ui.warning("[Cache] connectOutputStream: tab \(tabID.uuidString.prefix(8)) not in cache")
+        guard let cached = cache[key] else {
+            Log.ui.warning("[Cache] connectOutputStream: owner of tab \(key.tabID.uuidString.prefix(8)) not in cache")
             return
         }
         cached.outputStream = stream
         cached.onBytesProcessed = onBytesProcessed
         if let coordinator = cached.coordinator as? ContainerTerminalCoordinator {
-            Log.ui.info("[Cache] Connecting output stream for tab \(tabID.uuidString.prefix(8))")
+            Log.ui.info("[Cache] Connecting output stream for tab \(key.tabID.uuidString.prefix(8))")
             coordinator.startFeeding(from: stream, onBytesProcessed: onBytesProcessed)
         }
     }
@@ -220,8 +308,20 @@ final class TerminalViewCache {
     /// session (after reconnect) and reset the terminal so the new session
     /// starts clean. Without this the view keeps feeding from the closed old
     /// session and never renders the new one.
-    func rebindOutputStream(for paneID: UUID, to session: PTYSession) {
-        guard let cached = cache[paneID] else { return }
+    /// Rebind every entry a tab owns, across all owners.
+    ///
+    /// A reconnect must reach the main window *and* the Quake panel: both mount
+    /// a view for the tab, and rebinding only one leaves the other feeding from
+    /// the closed session.
+    func rebindOutputStream(forTab tabID: UUID, to session: PTYSession) {
+        for key in accessOrder.reversed() where cache[key]?.tabID == tabID {
+            rebindOutputStream(for: key, to: session)
+        }
+    }
+
+    /// Rebind one owner. Public for tests; prefer `rebindOutputStream(forTab:to:)`.
+    func rebindOutputStream(for key: TerminalViewCacheKey, to session: PTYSession) {
+        guard let cached = cache[key] else { return }
 
         if let coordinator = cached.coordinator as? ContainerTerminalCoordinator {
             coordinator.feedTask?.cancel()
@@ -231,7 +331,7 @@ final class TerminalViewCache {
         cached.onBytesProcessed = nil
 
         let result = session.makeOutputStream()
-        connectOutputStream(result.stream, onBytesProcessed: result.onBytesProcessed, to: paneID)
+        connectOutputStream(result.stream, onBytesProcessed: result.onBytesProcessed, to: key)
 
         // Full reset — the old scrollback belongs to the dead session.
         cached.view.terminal.resetToInitialState()
@@ -250,24 +350,23 @@ final class TerminalViewCache {
     /// subscription all stay attached to the same PTY, so the view must move
     /// with it.
     @discardableResult
-    func move(from oldID: UUID, to newID: UUID, parentTabID: UUID) -> CachedTerminalView? {
-        guard oldID != newID, let cached = cache.removeValue(forKey: oldID) else { return nil }
-        accessOrder.removeAll { $0 == oldID }
+    func move(from oldKey: TerminalViewCacheKey, to newKey: TerminalViewCacheKey) -> CachedTerminalView? {
+        guard oldKey != newKey, let cached = cache.removeValue(forKey: oldKey) else { return nil }
+        accessOrder.removeAll { $0 == oldKey }
 
         // Re-key the entry and re-parent it; the view/coordinator/stream and the
         // running feed task are intentionally left untouched.
         let moved = CachedTerminalView(
-            tabID: newID,
-            parentTabID: parentTabID,
+            tabID: newKey.tabID,
             view: cached.view,
             coordinator: cached.coordinator
         )
         moved.outputStream = cached.outputStream
         moved.onBytesProcessed = cached.onBytesProcessed
         moved.constraints = cached.constraints
-        cache[newID] = moved
-        updateAccessOrder(newID)
-        evictIfNeeded(except: parentTabID)
+        cache[newKey] = moved
+        updateAccessOrder(newKey)
+        evictIfNeeded(except: newKey.tabID)
         return moved
     }
 
@@ -286,35 +385,31 @@ final class TerminalViewCache {
     func evictAllExceptActive(activeTabID: UUID?) {
         guard let activeTabID else { return }
 
-        // Protect all cache entries whose parentTabID matches the active tab
-        let protectedIDs = Set(cache.values
-            .filter { $0.parentTabID == activeTabID }
-            .map { $0.tabID })
+        // Protect all cache entries belonging to the active tab, across owners
+        let protectedIDs = Set(cache.keys.filter { $0.tabID == activeTabID })
 
-        let evictedIDs = cache.keys.filter { !protectedIDs.contains($0) }
-        for id in evictedIDs {
-            // Log the eviction
-            evictionLog.append((Date(), "memory_pressure", id))
+        let evictedKeys = cache.keys.filter { !protectedIDs.contains($0) }
+        for key in evictedKeys {
+            evictionLog.append((Date(), "memory_pressure", key.tabID))
             if evictionLog.count > 100 { evictionLog.removeFirst(50) }
 
-            // Cancel feed task before removing
-            if let cached = cache[id] {
+            if let cached = cache[key] {
                 if let coordinator = cached.coordinator as? ContainerTerminalCoordinator {
                     coordinator.feedTask?.cancel()
-                    Log.ui.info("[Cache] Cancelled feedTask for tab \(id.uuidString.prefix(8))")
+                    Log.ui.info("[Cache] Cancelled feedTask for tab \(key.tabID.uuidString.prefix(8))")
                 }
-                // Remove from superview if attached
                 detachFromSuperview(cached.view)
             }
-            cache.removeValue(forKey: id)
+            cache.removeValue(forKey: key)
         }
         accessOrder = accessOrder.filter { protectedIDs.contains($0) }
     }
 
     /// Whether any of the given panes is currently in alternate screen (vim/less).
-    func isAnyPaneAlternate(paneIDs: [UUID]) -> Bool {
-        for id in paneIDs {
-            if let cached = cache[id], cached.view.terminal.isCurrentBufferAlternate { return true }
+    func isAnyPaneAlternate(paneIDs: [UUID], in tabID: UUID) -> Bool {
+        for paneID in paneIDs {
+            let key = TerminalViewCacheKey.pane(paneID, in: tabID)
+            if let cached = cache[key], cached.view.terminal.isCurrentBufferAlternate { return true }
         }
         return false
     }
@@ -329,30 +424,30 @@ final class TerminalViewCache {
 
     // MARK: - LRU Private
 
-    private func updateAccessOrder(_ tabID: UUID) {
-        accessOrder.removeAll { $0 == tabID }
-        accessOrder.append(tabID)
+    private func updateAccessOrder(_ key: TerminalViewCacheKey) {
+        accessOrder.removeAll { $0 == key }
+        accessOrder.append(key)
     }
 
     private func evictIfNeeded(except keepTabID: UUID) {
         // Protect all entries belonging to the same parent tab
-        let protectedIDs = Set(cache.values
-            .filter { $0.parentTabID == keepTabID }
-            .map { $0.tabID })
+        let protectedIDs = Set(cache.keys.filter { $0.tabID == keepTabID })
 
-        while cache.count > maxCachedTabs {
-            if let evictID = accessOrder.first(where: { !protectedIDs.contains($0) }) {
-                evictionLog.append((Date(), "lru_overflow", evictID))
+        // The budget is in tabs, so a second owner of an already-cached tab is
+        // free and never costs another tab its entry.
+        while Set(cache.keys.map(\.tabID)).count > maxCachedTabs {
+            if let evictKey = accessOrder.first(where: { !protectedIDs.contains($0) }) {
+                evictionLog.append((Date(), "lru_overflow", evictKey.tabID))
                 if evictionLog.count > 100 { evictionLog.removeFirst(50) }
 
-                if let cached = cache[evictID] {
+                if let cached = cache[evictKey] {
                     if let coordinator = cached.coordinator as? ContainerTerminalCoordinator {
                         coordinator.feedTask?.cancel()
                     }
                     detachFromSuperview(cached.view)
                 }
-                cache.removeValue(forKey: evictID)
-                accessOrder.removeAll { $0 == evictID }
+                cache.removeValue(forKey: evictKey)
+                accessOrder.removeAll { $0 == evictKey }
             } else {
                 break
             }
