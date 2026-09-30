@@ -46,6 +46,10 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let workspace = WorkspaceManager()
         let sessionManager = SessionManager()
         self.sessionManager = sessionManager
+        // One responder owns the terminal-selection round trip for the whole
+        // process. Placing it on a terminal view instead meant split tabs had no
+        // responder at all, and the reply it did send was always empty.
+        TerminalSelectionResponder(sessionManager: sessionManager).start()
         self.workspace = workspace
         let coordinator = ToolbarCoordinator(
             workspace: workspace,

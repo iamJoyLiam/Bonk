@@ -53,18 +53,12 @@ import SwiftTerm
                 }
             }
 
-            // Selection request → respond with selected text
-            selectionObserver = NotificationCenter.default.addObserver(
-                forName: .requestTerminalSelection,
-                object: nil,
-                queue: .main
-            ) { [weak self] notification in
-                let selectedText = (notification.object as? String) ?? ""
-                MainActor.assumeIsolated {
-                guard let self, self.terminalView != nil else { return }
-                NotificationCenter.default.post(name: .terminalSelectionResponse, object: selectedText)
-                }
-            }
+            // NOTE: `.requestTerminalSelection` is deliberately NOT handled
+            // here. This view is the single-pane terminal, so a responder placed
+            // here does not exist at all for a split tab. It also used to reply
+            // with the notification's own object — which every sender posts as
+            // nil — so it always answered "" and never called `getSelection()`.
+            // `TerminalSelectionResponder` owns the round trip.
 
             // Select all text in terminal
             selectAllObserver = NotificationCenter.default.addObserver(
@@ -99,10 +93,6 @@ import SwiftTerm
             if let observer = fontObserver {
                 NotificationCenter.default.removeObserver(observer)
                 fontObserver = nil
-            }
-            if let observer = selectionObserver {
-                NotificationCenter.default.removeObserver(observer)
-                selectionObserver = nil
             }
             if let observer = selectAllObserver {
                 NotificationCenter.default.removeObserver(observer)

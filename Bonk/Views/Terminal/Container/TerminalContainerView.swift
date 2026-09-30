@@ -324,7 +324,6 @@ import SwiftUI
         private nonisolated(unsafe) var mouseUpMonitor: Any?
         private nonisolated(unsafe) var completionKeyMonitor: Any?
         var fontObserver: NSObjectProtocol?
-        var selectionObserver: NSObjectProtocol?
         var selectAllObserver: NSObjectProtocol?
         var focusObserver: NSObjectProtocol?
         // Engine seam — one per coordinator, display-synced via shared source
