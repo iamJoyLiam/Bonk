@@ -205,6 +205,42 @@ final class TerminalViewCacheOwnershipTests: XCTestCase {
                      "closing a tab must clear the Quake panel's cached view")
     }
 
+    /// The cache cap counts **tabs**, not entries.
+    ///
+    /// `maxCachedTabs` is documented as a limit on cached tabs, but the
+    /// implementation compared it against `cache.count`. With owner-aware keys
+    /// a tab open in both the main window and the Quake panel contributes two
+    /// entries, so opening the panel pushed a live tab over the cap and evicted
+    /// it — losing that tab's scrollback. Making the cap count distinct tabs
+    /// restores the documented intent.
+    func testOpeningTheQuakePanelDoesNotEvictALiveTab() throws {
+        let cache = TerminalViewCache.shared
+        // Fill the cache to its documented capacity in single-pane tabs.
+        var tabIDs: [UUID] = []
+        for _ in 0..<10 {
+            let tabID = UUID()
+            tabIDs.append(tabID)
+            let key = TerminalViewCacheKey(tabID: tabID, owner: .mainWindow)
+            store(key, view: makeView())
+        }
+        XCTAssertEqual(cache.entries(forTab: tabIDs[0]).count, 1, "precondition: tab cached")
+
+        // The panel mounts a second view for the tab the user is looking at.
+        let panelKey = TerminalViewCacheKey(tabID: tabIDs[0], owner: .quakePanel)
+        store(panelKey, view: makeView())
+
+        // Every tab that was cached before the panel mounted must still be
+        // cached after. Checking only the two ends would miss it: eviction takes
+        // the *first* non-protected entry in access order, so it is the
+        // second-oldest tab that disappears, not the last.
+        for (index, tabID) in tabIDs.enumerated() {
+            XCTAssertNotNil(
+                cache.retrieve(TerminalViewCacheKey(tabID: tabID, owner: .mainWindow)),
+                "tab \(index) was evicted when the Quake panel mounted"
+            )
+        }
+    }
+
     /// The entries a tab owns, across all owners.
     func testEntriesForTabSpansOwners() throws {
         let cache = TerminalViewCache.shared
