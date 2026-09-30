@@ -22,6 +22,8 @@ struct PaneTerminalView: View {
     @State var focusManager = FocusManager.shared
     @State var isDragOver = false
     @State var dropPosition: DropPosition = .right
+    /// Pane size, so a drop position can be resolved from the pointer location.
+    @State private var paneSize: CGSize = .zero
     @State var terminalNSView: NSView?
     @State var isRecording = false
 
@@ -160,17 +162,28 @@ struct PaneTerminalView: View {
                         .padding(AppStyle.spacingXS)
                 }
             }
-
-            // Drag-and-drop overlay (transparent, handles all drag events)
-            DragDropView(
-                terminalView: terminalNSView,
+        }
+        // Drop registration lives on the pane container, not on an overlay.
+        // An overlay that returns nil from hitTest is a *sibling* of the
+        // terminal, and a drop target must be the hit view or an ancestor of it,
+        // so the pane was never a reachable drop target.
+        .background {
+            GeometryReader { geometry in
+                Color.clear.onChange(of: geometry.size, initial: true) { _, newValue in
+                    paneSize = newValue
+                }
+            }
+        }
+        .onDrop(
+            of: PaneDropDelegate.acceptedTypes,
+            delegate: PaneDropDelegate(
                 currentTabID: tab.id,
+                sizeProvider: { paneSize },
                 onTabDrop: handleTabDrop,
                 onFileDrop: handleFileDrop,
                 onDragStateChange: handleDragStateChange
             )
-            .allowsHitTesting(true)
-        }
+        )
         .overlay(alignment: .topTrailing) {
             TeamStatusOverlay(relay: teamRelay)
                 .padding(.top, 6)
