@@ -35,7 +35,10 @@ enum CommandSafety {
     }
 
     static func classify(_ command: String) -> CommandSafety {
-        let trimmed = command.trimmingCharacters(in: .whitespaces)
+        // Newlines included: the shell this string is handed to treats a
+        // leading or trailing newline as a separator, so trimming it away here
+        // would hide a second command rather than remove one.
+        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return .blocked }
         if isBlocked(trimmed) { return .blocked }
 
@@ -56,7 +59,9 @@ enum CommandSafety {
     // MARK: - Single Command
 
     private static func classifySingleCommand(_ command: String, depth: Int = 0) -> CommandSafety {
-        var trimmed = command.trimmingCharacters(in: .whitespaces)
+        // Newlines included for the same reason as in `classify`: a segment that
+        // still carries one misses the exact-match sets and reads as safe.
+        var trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return .blocked }
         if isBlocked(trimmed) { return .blocked }
 
@@ -632,6 +637,30 @@ enum CommandSafety {
                     appendSegment(&current, to: &segments)
                     cursor = next
                     continue
+                } else if char.isNewline {
+                    // Line separator. The shell this string reaches splits on
+                    // it, so an unmodelled one let everything after it escape
+                    // classification: "ls\nreboot" matched no exact-set entry,
+                    // classified L1, and was allowed in every access mode while
+                    // the remote shell ran both commands. Split only outside
+                    // quotes, where a newline is a literal character to the
+                    // shell as well.
+                    //
+                    // `isNewline` rather than comparing against a newline or
+                    // carriage-return literal: Swift treats CRLF as ONE
+                    // Character, so an equality check against either literal
+                    // never matches a Windows line ending, and a CRLF pair
+                    // stayed a single unclassified segment.
+                    //
+                    // A bare "&" is deliberately NOT handled here. It is a
+                    // separator in most positions but a redirection operator in
+                    // "2>&1", and splitting on it broke
+                    // `CommandSafetyBypassTests.fdDuplicationRedirectsStaySafe`.
+                    // Modelling it correctly needs redirection-context tracking,
+                    // which is a separate change — tracked, not guessed at.
+                    appendSegment(&current, to: &segments)
+                    cursor = next
+                    continue
                 } else {
                     current.append(char)
                 }
@@ -646,7 +675,9 @@ enum CommandSafety {
     }
 
     private static func appendSegment(_ current: inout String, to segments: inout [String]) {
-        let trimmed = current.trimmingCharacters(in: .whitespaces)
+        // Newlines included, or a segment keeps a leading "\n" and misses the
+        // exact-match sets below exactly as the whole command did.
+        let trimmed = current.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { segments.append(trimmed) }
         current = ""
     }
