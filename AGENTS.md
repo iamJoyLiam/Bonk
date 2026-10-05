@@ -184,6 +184,44 @@ Applies to security boundaries, trust boundaries, authorization gates,
 lifecycle safety, sensitive-data handling, and any other invariant whose
 accidental removal could silently reintroduce a vulnerability.
 
+## Test Execution Evidence
+
+A test that did not run is not a passing test. `TEST SUCCEEDED` with zero
+executed tests is not evidence.
+
+Any verification of a security or lifecycle boundary must state the number of
+tests actually executed, and `requested == executed` must hold. A filtered test
+run that matches zero tests must be treated as invalid verification, regardless
+of process exit status.
+
+For Swift Testing, `xcodebuild -only-testing` requires the test identifier to
+include `()`. Omitting `()` can silently match zero tests while returning
+`TEST SUCCEEDED` and exit code 0.
+
+Verification scripts MUST fail closed when the requested test count is non-zero
+and the executed test count is zero, or when requested and executed counts
+differ.
+
+### Why this is a rule and not advice
+
+Adopted 2026-10-05 after this exact failure occurred twice in one session while
+verifying a command-deadline boundary. A filtered run was reported as "passes in
+isolation" on the strength of `TEST SUCCEEDED`, when it had executed nothing.
+That produced a wrong conclusion, which then produced a wrong hypothesis about
+the cause, which survived two rounds of investigation before being caught.
+
+It is the same class of error as the ones above, arriving from a different
+direction: not a test that passes while the guard is broken, but a *verification
+step* that passes while nothing is being verified. A green suite and a green
+verification command are the same claim, and both need the same evidence.
+
+Two consequences worth internalizing:
+
+- Exit status is not evidence. Neither is "no failures reported".
+- A conclusion drawn from a filtered run is only as good as the proof that the
+  filter selected what you meant. Check the executed count before reading the
+  result, not after.
+
 ## Agent Capability Boundary
 
 An agent may generate code freely. An agent may NOT freely acquire
