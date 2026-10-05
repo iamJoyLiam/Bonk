@@ -46,9 +46,38 @@ final class NativeSSHSession: SSHSession, @unchecked Sendable {
     }
 
     func execute(_ command: String) async throws -> SSHCommandResult {
-        let buffer = try await client.executeCommand(command)
-        let output = String(buffer: buffer)
-        return SSHCommandResult(output: output, exitCode: 0)
+        try await execute(command, registerHandle: nil)
+    }
+
+    /// Executes a command and registers a live cancellation handle.
+    ///
+    /// Previously this overload was not implemented here, so it fell through to
+    /// the protocol extension in `SSHSession.swift` — which discards the handle
+    /// with `_ = registerHandle`. The consequence was not a missing
+    /// optimisation: `AgentExecutionManager` had nothing to interrupt, so the
+    /// Stop button was inert for every Secure Enclave host. `AgentRuntime.cancel`
+    /// also cancels the Swift `Task`, but the Citadel await is an
+    /// `EventLoopFuture` and is not cancellation-cooperative, so the loop stayed
+    /// parked inside it.
+    ///
+    /// Two independent things have to be true for Stop to work, and they are
+    /// tested separately because either can fail alone:
+    ///
+    /// 1. a handle is registered with the execution manager, and
+    /// 2. cancelling that handle actually stops a running command.
+    ///
+    /// `NativeExecCancellationHandle` covers both, and documents the cost of
+    /// what Citadel exposes.
+    func execute(
+        _ command: String,
+        registerHandle: CommandHandleRegistration?
+    ) async throws -> SSHCommandResult {
+        let handle = NativeExecCancellationHandle(client: client)
+        // Registered before the await, so a cancel racing startup is observed
+        // rather than lost — the registration is the sync boundary.
+        await registerHandle?(handle)
+        let buffer = try await handle.run(command)
+        return SSHCommandResult(output: String(buffer: buffer), exitCode: 0)
     }
 
     func openSFTP() async throws -> any SFTPChannel {
@@ -63,6 +92,82 @@ final class NativeSSHSession: SSHSession, @unchecked Sendable {
         stateBox.withLockedValue { $0 = .disconnected }
         try? await client.close()
     }
+}
+
+// MARK: - Cancellation
+
+/// Cancellation authority for a command running on a Citadel-backed session.
+///
+/// Citadel's `executeCommand` creates its exec channel internally and never
+/// hands it back, so there is no channel to close. `SSHClient.close()` is the
+/// only termination primitive it exposes, and it closes the whole connection —
+/// which does stop the remote command, because closing the connection closes
+/// every channel on it.
+///
+/// That makes this a blunt instrument, and it is worth being plain about the
+/// trade-off rather than presenting it as equivalent to a per-command
+/// interrupt: cancelling an agent command here also drops the multiplexed PTY
+/// the user is typing in. The alternative — leaving the handle unimplemented —
+/// is worse, because the user presses Stop, nothing happens, and a destructive
+/// command runs to completion. Failing loudly and recoverably beats failing
+/// silently, but this is a real limitation and the next thing to fix is a
+/// Citadel API that returns the exec channel.
+///
+/// Escalation is intentionally all-or-nothing at the connection level: there is
+/// no way to send SIGINT to one channel without the channel, so `interrupt` and
+/// `terminate` are no-ops and only `close` acts. Repeating a close is harmless
+/// and keeps the manager's escalation ladder working unchanged.
+final class NativeExecCancellationHandle: CommandExecutionHandle, @unchecked Sendable {
+    private let client: SSHClient
+    /// Latch so a late escalation after a completed cancel does not re-close a
+    /// connection the user may have reconnected in the meantime.
+    private let cancelled = NIOLockedValueBox<Bool>(false)
+
+    init(client: SSHClient) {
+        self.client = client
+    }
+
+    /// Run the command, and stop waiting for it if cancellation arrives.
+    ///
+    /// The Citadel future is not cancellation-cooperative, so `Task.cancel()`
+    /// alone leaves it running: the `withTaskCancellationHandler` closes the
+    /// connection, which fails the underlying promise, which is what actually
+    /// unblocks the await. Without that, cancelling the task would be cosmetic.
+    func run(_ command: String) async throws -> ByteBuffer {
+        // `SSHClient` is not `Sendable`, but this handle is `@unchecked
+        // Sendable` and every use here is on the session that owns the client:
+        // `run` from the caller's task, and `close` from the cancellation
+        // handler. There is no concurrent mutation of the client's own state
+        // here — `close` is idempotent and latched above. Marking the capture
+        // non-Sendable would push the same unsafety somewhere less visible.
+        nonisolated(unsafe) let client = client
+        return try await withTaskCancellationHandler {
+            try await client.executeCommand(command)
+        } onCancel: {
+            Task { await self.close() }
+        }
+    }
+
+    func interrupt() async throws {
+        // No exec channel to signal. See the type comment.
+    }
+
+    func terminate() async throws {
+        // No exec channel to signal. See the type comment.
+    }
+
+    func close() async {
+        let alreadyCancelled = cancelled.withLockedValue { seen -> Bool in
+            let first = !seen
+            seen = true
+            return first
+        }
+        guard alreadyCancelled else { return }
+        try? await client.close()
+    }
+
+    /// Test seam: whether cancellation has been requested.
+    var hasCancelled: Bool { cancelled.withLockedValue { $0 } }
 }
 
 // MARK: - Adapters

@@ -164,6 +164,16 @@ struct AgentRuntimeContractTests {
         #expect(fullAccess.evaluate(tool: "run_command", arguments: ["command": ":(){ :|:& };:"]) == .blocked(reason: "Critical command blocked by security policy: :(){ :|:& };:"))
     }
 
+    /// Contract coverage only — **not** evidence that cancellation works.
+    ///
+    /// This was the test that hid Finding 3. The mock executor calls
+    /// `register`, so the handle reaches the manager and the test goes green,
+    /// while `NativeSSHSession` never registered anything and Stop was inert on
+    /// every Secure Enclave host. A mock proves the escalation ladder runs; it
+    /// cannot prove any transport ever hands it something to escalate.
+    ///
+    /// The production-path proof lives in `NativeSSHCancellationAuthorityTests`,
+    /// which runs a real server, a real exec channel and a real subprocess.
     @Test("4. Hard cancellation halts active task and dispatches interrupt")
     func testAgentRuntimeHardCancellation() async throws {
         let mockHandle = MockExecutionHandle()
