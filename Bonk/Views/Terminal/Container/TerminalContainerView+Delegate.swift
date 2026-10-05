@@ -35,14 +35,9 @@ import SwiftTerm
             // SwiftTerm detects OSC 8 links and implicit URLs (linkReporting
             // defaults to .implicit); open them in the default browser.
             // Cmd+click activates; plain click only when no selection/drag.
-            var components = URLComponents(string: link)
-            if components?.scheme == nil {
-                components?.scheme = "https"
-            }
-            guard let scheme = components?.scheme?.lowercased(),
-                  scheme == "http" || scheme == "https",
-                  let url = components?.url
-            else { return }
+            // The allowlist is shared with the team guest terminal so the two
+            // surfaces cannot drift apart into different policies.
+            guard let url = ExternalLinkPolicy.resolve(link) else { return }
             NSWorkspace.shared.open(url)
         }
         func bell(source _: SwiftTerm.TerminalView) {}

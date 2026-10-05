@@ -246,7 +246,13 @@ private struct TeamGuestFullTerminalBridge: NSViewRepresentable {
         }
         func clipboardRead(source: SwiftTerm.TerminalView) -> Data? { nil }
         func requestOpenLink(source: SwiftTerm.TerminalView, link: String, params: [String : String]) {
-            if let url = URL(string: link) { NSWorkspace.shared.open(url) }
+            // This terminal's content comes from the machine on the other end
+            // of the session, so a link here is a request the remote host
+            // chose to make. Same allowlist as the main terminal: without it,
+            // `file://`, `smb://` or `itms-apps://` printed by a remote host
+            // reached `NSWorkspace.open` and whatever handler claims it.
+            guard let url = ExternalLinkPolicy.resolve(link) else { return }
+            NSWorkspace.shared.open(url)
         }
         func bell(source: SwiftTerm.TerminalView) {}
         func iTermContent(source: SwiftTerm.TerminalView, content: ArraySlice<UInt8>) {}
