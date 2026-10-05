@@ -56,6 +56,12 @@ final class TeamRelay: ObservableObject {
     @Published var hostIdentityFingerprint: String?
     /// Set when the host's fingerprint differs from the pinned one.
     @Published var hostIdentityChangedNotice: String?
+    /// Set when the handshake refused the host key we were presented.
+    ///
+    /// Distinct from `lastError`, which says only that connecting failed. This
+    /// is the fact that there is a recovery, and the two fingerprints the user
+    /// needs in order to decide whether to take it.
+    @Published var hostKeyMismatch: TeamHostKeyMismatch?
     var guestHeartbeatTask: Task<Void, Never>?
     var guestPairingTimeoutTask: Task<Void, Never>?
     var guestLastActivity = Date.distantPast
@@ -213,8 +219,12 @@ final class TeamRelay: ObservableObject {
 
         isHostMode = false
         isConnected = false
+        hostKeyMismatch = nil
         hasPaired = false
         lastError = nil
+        // A refusal from the previous attempt is not this attempt's fact; it is
+        // recomputed below if this connection is refused again.
+        hostKeyMismatch = nil
         hostPeerID = nil
         driverPeerID = nil
         sharedSessionID = nil
@@ -259,12 +269,33 @@ final class TeamRelay: ObservableObject {
                 // A real failure is reported as a failure. There is no
                 // fallback to a plaintext socket, by design.
                 self.logger.error("Guest SSH connect failed: \(error.localizedDescription)")
+                // A refused host key is not just another failed connect: it is
+                // the one failure the user can do something about, and without
+                // this the pin they cannot see the value of is the thing
+                // locking them out. Recorded before the generic error so the
+                // sheet can offer the recovery next to the fingerprints.
+                if let mismatch = TeamHostKeyMismatchClassifier.classify(error) {
+                    self.hostKeyMismatch = mismatch
+                    self.logger.error("Host key changed; pinned \(mismatch.pinned)")
+                }
                 self.finishGuestConnection(
                     generation: generation,
                     error: error.localizedDescription
                 )
             }
         }
+    }
+
+    /// Accept the key the handshake refused and clear the pin.
+    ///
+    /// Reachable only from an explicit user action displayed alongside both
+    /// fingerprints. Dropping the pin is the one way back from a legitimate
+    /// key rotation; doing it without asking would defeat the check that
+    /// produced it. The caller re-issues the connect — nothing here reaches the
+    /// network, so a retry is never something the user did not ask for.
+    func acceptChangedHostKey() {
+        identityStore.forgetPinnedHost()
+        logger.info("User accepted a changed host key; pin cleared, reconnect required")
     }
 
     /// Install an authenticated channel and start the Team protocol on it.

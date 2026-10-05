@@ -14,6 +14,10 @@ struct TeamGuestSheet: View {
     @State private var displayName = ""
     @State private var selectedHost: DiscoveredTeamHost?
     @State private var showPinPrompt = false
+    /// What the user asked to connect to, kept so a host-key refusal can be
+    /// retried after they accept the new key. Holding it here rather than in
+    /// the relay keeps the endpoint and the PIN out of long-lived relay state.
+    @State private var attempt: (endpoint: NWEndpoint, displayName: String, pin: String)?
 
     private var savedDisplayName: String {
         if let saved = UserDefaults.standard.string(forKey: "team_display_name"), !saved.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -164,6 +168,29 @@ struct TeamGuestSheet: View {
         } message: {
             Text(relay.lastError ?? "")
         }
+        // Shown instead of, never on top of, the generic failure. The pinned
+        // value is deliberately included: "the key changed" is only actionable
+        // if the user can see what it changed from.
+        .alert(
+            i18n.t(.tmHostKeyChangedTitle),
+            isPresented: Binding(get: { relay.hostKeyMismatch != nil }, set: { if !$0 { relay.hostKeyMismatch = nil } })
+        ) {
+            Button(i18n.t(.tmTrustNewHostKey), role: .destructive) {
+                // Forget first, then retry: the retry is what makes the action
+                // feel like acceptance of the new key rather than a no-op.
+                relay.acceptChangedHostKey()
+                if let attempt {
+                    relay.connectToHost(endpoint: attempt.endpoint, displayName: attempt.displayName, pin: attempt.pin)
+                }
+            }
+            // Explicitly not `cancel`: the PIN must not be re-sent while the
+            // user is still reading what they are agreeing to.
+            Button(i18n.t(.cancel), role: .cancel) { relay.hostKeyMismatch = nil }
+        } message: {
+            if let mismatch = relay.hostKeyMismatch {
+                Text(i18n.tr(.tmHostKeyChangedBody, args: mismatch.pinned, mismatch.presented))
+            }
+        }
         .alert(i18n.t(.tmEnterPin), isPresented: $showPinPrompt) {
             SecureField("PIN", text: $pinInput)
                 .textContentType(.oneTimeCode)
@@ -200,8 +227,9 @@ struct TeamGuestSheet: View {
             }
             endpoint = discovery.manualEndpoint(host: manualHost, port: portValue)
         }
-        let effective = displayName.trimmingCharacters(in: .whitespaces).isEmpty ? savedDisplayName : displayName
+        let effective = displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? savedDisplayName : displayName
         persistDisplayName(effective)
+        attempt = (endpoint: endpoint, displayName: effective, pin: pinInput)
         relay.connectToHost(endpoint: endpoint, displayName: effective, pin: pinInput)
     }
 }

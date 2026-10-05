@@ -311,7 +311,218 @@ struct TeamSSHHostKeyPinningTests {
                 "the identity store must write its injected defaults")
     }
 
+    // MARK: - Telling a changed key apart from any other failure
+
+    /// Both directions, and neither inferred from the message text.
+    ///
+    /// Deny is the half that matters for safety: any other failure must not
+    /// present the user with "trust this key", because accepting would discard
+    /// a pin that was never actually contradicted.
+    @Test("Only a changed host key is classified as one")
+    func classifierRecognisesOnlyHostKeyFailures() throws {
+        let mismatch = try #require(
+            TeamHostKeyMismatchClassifier.classify(
+                SSHServiceError.hostKeyMismatch(expected: "SHA256:old", received: "SHA256:new")
+            )
+        )
+        #expect(mismatch == TeamHostKeyMismatch(pinned: "SHA256:old", presented: "SHA256:new"))
+
+        // Unrelated failures must not offer the recovery.
+        #expect(TeamHostKeyMismatchClassifier.classify(SSHServiceError.connectionFailed("refused")) == nil)
+        #expect(TeamHostKeyMismatchClassifier.classify(SSHServiceError.reconnectExhausted(attempts: 3)) == nil)
+        #expect(TeamHostKeyMismatchClassifier.classify(SSHServiceError.notConnected) == nil)
+        #expect(TeamHostKeyMismatchClassifier.classify(CancellationError()) == nil)
+    }
+
+    /// The message must not be the trigger. `SSHServiceError`'s description is
+    /// an unlocalized string in the error type; if the classifier keyed on it,
+    /// a re-worded sentence would silently remove the user's only way out.
+    @Test("Classification does not depend on the error's wording")
+    func classificationIgnoresWording() throws {
+        let error = SSHServiceError.hostKeyMismatch(expected: "a", received: "b")
+        #expect(TeamHostKeyMismatchClassifier.classify(error) != nil)
+        #expect(error.errorDescription?.isEmpty == false,
+               "sanity: this error does carry a message, and is still classified by type")
+    }
+
+    /// End to end: a real connection to a host presenting a different key must
+    /// surface as a *named* refusal carrying both fingerprints.
+    ///
+    /// This is the assertion that proves the relay's `catch` classifies at all;
+    /// a pure function test would pass with the call site deleted.
+    @Test("A refused connect is surfaced as a named mismatch, with both fingerprints")
+    func refusedConnectIsSurfacedAsAMismatch() async throws {
+        let identityStore = TeamIdentityStore(defaults: makeIsolatedDefaults())
+
+        let honest = TeamRelay(
+            store: TeamStore(),
+            identityStore: TeamIdentityStore(defaults: makeIsolatedDefaults())
+        )
+        honest.startHosting(displayName: "Host")
+        let honestPort = try await waitForPort(honest)
+        defer { honest.stopHosting() }
+
+        let guest = TeamRelay(store: TeamStore(), identityStore: identityStore)
+        guest.connectToHost(endpoint: endpoint(honestPort), displayName: "First", pin: honest.pairingPin!)
+        try await waitUntilOrThrow { guest.isConnected }
+        let pinned = try #require(identityStore.pinnedSSHHostKeyFingerprint())
+        guest.disconnectGuest()
+
+        let rotated = TeamSSHHost(hostKeyStore: TeamHostKeyStore(defaults: makeIsolatedDefaults()))
+        rotated.update(pin: honest.pairingPin)
+        let rotatedPort = try await startHost(rotated)
+        defer { rotated.stop() }
+
+        let refused = TeamRelay(store: TeamStore(), identityStore: identityStore)
+        refused.connectToHost(endpoint: endpoint(rotatedPort), displayName: "Second", pin: honest.pairingPin!)
+        try await waitUntilOrThrow { refused.hostKeyMismatch != nil }
+
+        let mismatch = try #require(refused.hostKeyMismatch)
+        #expect(mismatch.pinned == pinned, "the refusal must name what we trusted")
+        #expect(mismatch.presented.hasPrefix("SHA256:"))
+        #expect(mismatch.presented != mismatch.pinned)
+    }
+
+    /// A refusal from an earlier attempt must not be re-reported by the next
+    /// one: it is recomputed, not remembered.
+    @Test("A stale mismatch does not survive into the next attempt")
+    func staleMismatchIsClearedOnReconnect() async throws {
+        let identityStore = TeamIdentityStore(defaults: makeIsolatedDefaults())
+
+        let honest = TeamRelay(
+            store: TeamStore(),
+            identityStore: TeamIdentityStore(defaults: makeIsolatedDefaults())
+        )
+        honest.startHosting(displayName: "Host")
+        let honestPort = try await waitForPort(honest)
+        defer { honest.stopHosting() }
+
+        let guest = TeamRelay(store: TeamStore(), identityStore: identityStore)
+        guest.connectToHost(endpoint: endpoint(honestPort), displayName: "First", pin: honest.pairingPin!)
+        try await waitUntilOrThrow { guest.isConnected }
+        let pinned = try #require(identityStore.pinnedSSHHostKeyFingerprint())
+        guest.disconnectGuest()
+
+        let rotated = TeamSSHHost(hostKeyStore: TeamHostKeyStore(defaults: makeIsolatedDefaults()))
+        rotated.update(pin: honest.pairingPin)
+        let rotatedPort = try await startHost(rotated)
+        defer { rotated.stop() }
+
+        let refused = TeamRelay(store: TeamStore(), identityStore: identityStore)
+        refused.connectToHost(endpoint: endpoint(rotatedPort), displayName: "Second", pin: honest.pairingPin!)
+        try await waitUntilOrThrow { refused.hostKeyMismatch != nil }
+
+        // Accept, then start the retry the user asked for.
+        refused.acceptChangedHostKey()
+        #expect(identityStore.pinnedSSHHostKeyFingerprint() == nil,
+                "accepting must clear the pin, or the retry is refused again")
+
+        // And the recovery has to actually work, not just clear state.
+        refused.connectToHost(endpoint: endpoint(rotatedPort), displayName: "Third", pin: honest.pairingPin!)
+        try await waitUntilOrThrow {
+            if refused.lastError != nil { Issue.record("recovery connect failed: \(refused.lastError!)") }
+            return refused.isConnected
+        }
+        #expect(refused.hostKeyMismatch == nil)
+        let relearned = try #require(identityStore.pinnedSSHHostKeyFingerprint())
+        #expect(relearned != pinned, "the new key must be what is now pinned")
+        refused.disconnectGuest()
+    }
+
+    /// The recovery action clears the SSH pin and nothing else.
+    ///
+    /// If it also dropped the identity pin, accepting a new host key would
+    /// silently re-trust a different machine's identity — two trust surfaces,
+    /// one user gesture.
+    @Test("Accepting a new key does not discard the identity pin")
+    func acceptingDoesNotDropTheIdentityPin() {
+        let store = TeamIdentityStore(defaults: makeIsolatedDefaults())
+        let relay = TeamRelay(store: TeamStore(), identityStore: store)
+        store.pinTeamIdentityFingerprint("SHA256:identity-value")
+        store.pinSSHHostKeyFingerprint("SHA256:ssh-key-value")
+        relay.hostKeyMismatch = TeamHostKeyMismatch(pinned: "SHA256:ssh-key-value", presented: "SHA256:other")
+
+        relay.acceptChangedHostKey()
+
+        #expect(store.pinnedSSHHostKeyFingerprint() == nil)
+        #expect(store.pinnedTeamIdentityFingerprint() == "SHA256:identity-value")
+    }
+
+    /// Accepting must not quietly open a connection, and must not erase the
+    /// warning either.
+    ///
+    /// The action forgets and stops. If it reconnected on its own, the user
+    /// would be connected to a machine they had only just been warned about,
+    /// which is a different decision from the one they made. And "I accept this
+    /// key" is not "this never happened" — the warning stays until a new
+    /// attempt supersedes it, which is what clears it.
+    @Test("Accepting only forgets the pin: no connection, warning retained")
+    func acceptingOnlyForgets() async throws {
+        let store = TeamIdentityStore(defaults: makeIsolatedDefaults())
+        let relay = TeamRelay(store: TeamStore(), identityStore: store)
+        store.pinSSHHostKeyFingerprint("SHA256:ssh-key-value")
+        let mismatch = TeamHostKeyMismatch(pinned: "SHA256:ssh-key-value", presented: "SHA256:other")
+        relay.hostKeyMismatch = mismatch
+
+        relay.acceptChangedHostKey()
+        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(store.pinnedSSHHostKeyFingerprint() == nil)
+        #expect(!relay.isConnected, "accepting a key must not open a session")
+        #expect(relay.guestConnection == nil)
+        #expect(relay.guestPeer == nil)
+        #expect(relay.hostKeyMismatch == mismatch, "accepting is not the same as dismissing the warning")
+    }
+
+    /// The view has no behavioural test harness in this project — every view
+    /// contract here is a source guard — so this only proves the recovery is
+    /// *reachable*, not that it looks right. Stated plainly because the user
+    /// needs to know which of the two claims is being made.
+    @Test("The guest sheet offers the recovery when a key is refused")
+    func guestSheetOffersRecovery() throws {
+        let sheet = try String(
+            contentsOf: SourceLocator.projectFile("Bonk/Views/Team/TeamGuestSheet.swift"),
+            encoding: .utf8
+        )
+        let relay = try String(
+            contentsOf: SourceLocator.projectFile("Bonk/Services/Team/TeamRelay.swift"),
+            encoding: .utf8
+        )
+
+        // Present only while a refusal is pending.
+        #expect(sheet.contains("isPresented: Binding(get: { relay.hostKeyMismatch != nil }"))
+        // The action must forget *before* retrying, and must be destructive so
+        // it cannot read as the ordinary confirmation.
+        let accept = try #require(sheet.range(of: "relay.acceptChangedHostKey()"))
+        let retry = try #require(sheet.range(of: "relay.connectToHost"))
+        #expect(accept.lowerBound < retry.lowerBound, "the pin must be dropped before the retry")
+        #expect(sheet.contains("role: .destructive"))
+        // Dismissing without choosing must leave the pin alone: "not now" is not
+        // "trust this key".
+        let cancel = try #require(sheet.range(of: "Button(i18n.t(.cancel), role: .cancel)"))
+        #expect(cancel.lowerBound > accept.lowerBound)
+        let cancelScope = String(sheet[cancel.upperBound...].prefix(200))
+        #expect(!cancelScope.contains("acceptChangedHostKey"))
+        #expect(!cancelScope.contains("forgetPinnedHost"))
+        // Cancelling must not resend the PIN while the user is still reading.
+        #expect(!cancelScope.contains("connectToHost"))
+        // Both fingerprints must be shown: "the key changed" is not actionable
+        // if the user cannot see what it changed from.
+        #expect(sheet.contains("mismatch.pinned"))
+        #expect(sheet.contains("mismatch.presented"))
+        // The relay must actually do it, and must not do it unprompted.
+        #expect(relay.contains("func acceptChangedHostKey()"))
+        let body = relay[try #require(relay.range(of: "func acceptChangedHostKey()")).lowerBound...]
+        let end = try #require(body.range(of: "\n    }"))
+        let scope = String(body[..<end.lowerBound])
+        #expect(!scope.contains("connectToHost"), "accepting must not open a connection by itself")
+    }
+
     // MARK: - Helpers
+
+    private func endpoint(_ port: UInt16) -> NWEndpoint {
+        .hostPort(host: NWEndpoint.Host("127.0.0.1"), port: NWEndpoint.Port(rawValue: port)!)
+    }
 
     private func makeIsolatedDefaults() -> UserDefaults {
         let suite = "com.bonk.tests.teamPin.\(UUID().uuidString)"
