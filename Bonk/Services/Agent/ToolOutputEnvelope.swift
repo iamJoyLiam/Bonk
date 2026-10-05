@@ -113,13 +113,46 @@ enum ToolOutputEnvelope {
         // decorated form. Strip any line that contains the distinctive
         // keyword pair, whatever decoration surrounds it.
         text = text.components(separatedBy: .newlines).map { line -> String in
-            let upper = line.uppercased()
-            let hasBegin = upper.contains("BEGIN UNTRUSTED TOOL OUTPUT")
-            let hasEnd = upper.contains("END UNTRUSTED TOOL OUTPUT")
-            if hasBegin || hasEnd { return "[removed-marker]" }
+            if carriesMarkerKeyword(line) { return "[removed-marker]" }
             return line
         }.joined(separator: "\n")
+
+        // Per-line inspection misses a marker whose keywords straddle a line
+        // break, which is the cheapest way past the loop above: the payload
+        // ships `END UNTRUSTED TOOL` at the end of one line and `OUTPUT ---` at
+        // the start of the next, and neither line contains the pair. So the
+        // text is also examined with line breaks removed — if the keywords only
+        // appear once breaks are collapsed, they were split on purpose.
+        let collapsed = text.components(separatedBy: .newlines).joined()
+        if carriesMarkerKeyword(collapsed) != carriesMarkerKeyword(text) {
+            return removeSplitMarkers(text)
+        }
         return text
+    }
+
+    /// True when the text contains either envelope keyword pair.
+    private static func carriesMarkerKeyword(_ text: String) -> Bool {
+        let upper = text.uppercased()
+        return upper.contains("BEGIN UNTRUSTED TOOL OUTPUT")
+            || upper.contains("END UNTRUSTED TOOL OUTPUT")
+    }
+
+    /// Neutralise every line that takes part in a break-split marker.
+    ///
+    /// Whole lines are replaced rather than rejoined text, because the split
+    /// point is not the only suspicious thing in those lines and the safe move
+    /// is to drop them entirely rather than guess at the author's intent.
+    private static func removeSplitMarkers(_ text: String) -> String {
+        var lines = text.components(separatedBy: .newlines)
+        for index in lines.indices {
+            // This line plus the one after it, and plus the one before it: a
+            // marker can start on any of the three and the check is cheap.
+            let neighbours = lines[max(0, index - 1) ... min(lines.count - 1, index + 1)].joined()
+            if carriesMarkerKeyword(neighbours) {
+                lines[index] = "[removed-marker]"
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// True when `text` is already wrapped. Used by the compactor so it does

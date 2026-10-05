@@ -179,11 +179,16 @@ final class AgentEngine {
             return nil
         }
 
-        var basePrompt = systemPromptOverride ?? mode.systemPrompt
-        if let ctx = buildContextString(snapshotForLog) ?? buildContextString(context) {
-            basePrompt += "\n\n## Terminal Context\n\(ctx)"
-        }
-        let systemPrompt = CustomInstructions.buildSystemPrompt(base: basePrompt)
+        // Remote terminal state does not go here. `system` is the authority
+        // role, so any remote byte interpolated into this prompt speaks in the
+        // product's voice — which is the vulnerability, not a formatting
+        // detail. The prompt states the rule; the data rides as a separate
+        // user-role message below.
+        let systemPrompt = CustomInstructions.buildSystemPrompt(
+            base: (systemPromptOverride ?? mode.systemPrompt) + "\n\n" + RemoteTerminalState.trustPolicy
+        )
+        let remoteState = RemoteTerminalState(context: context)
+        let untrustedContext = remoteState.untrustedBlock()
         let label = mode.rawValue
 
         // swiftlint:disable:next line_length
@@ -200,15 +205,24 @@ final class AgentEngine {
                 streamingResponse = ""
             }
             do {
+                // Remote state rides as its own user-role message so the
+                // system prompt stays entirely app-authored. Ordering puts it
+                // before the user's request: it is context for the request,
+                // and a trailing untrusted block would be the last thing read
+                // before the model answers.
                 let response: String = if mode == .agent {
                     try await executeNonStreaming(
                         provider: llmProvider,
-                        systemPrompt: systemPrompt, userPrompt: input
+                        systemPrompt: systemPrompt,
+                        userPrompt: input,
+                        untrustedContext: untrustedContext
                     )
                 } else {
                     try await executeStreaming(
                         provider: llmProvider,
-                        systemPrompt: systemPrompt, userPrompt: input
+                        systemPrompt: systemPrompt,
+                        userPrompt: input,
+                        untrustedContext: untrustedContext
                     )
                 }
 
@@ -262,14 +276,16 @@ final class AgentEngine {
     private func executeStreaming(
         provider: any LLMProvider,
         systemPrompt: String,
-        userPrompt: String
+        userPrompt: String,
+        untrustedContext: String? = nil
     ) async throws -> String {
         var lastUIUpdate = Date.distantPast
         var result = ""
-        let messages: [LLMMessage] = [
-            .system(systemPrompt),
-            .user(userPrompt),
-        ]
+        let messages = Self.chatMessages(
+            systemPrompt: systemPrompt,
+            userPrompt: userPrompt,
+            untrustedContext: untrustedContext
+        )
         for try await event in provider.stream(
             messages: messages,
             maxTokens: nil,
@@ -314,17 +330,39 @@ final class AgentEngine {
     private func executeNonStreaming(
         provider: any LLMProvider,
         systemPrompt: String,
-        userPrompt: String
+        userPrompt: String,
+        untrustedContext: String? = nil
     ) async throws -> String {
         let response = try await provider.chat(
-            messages: [
-                .system(systemPrompt),
-                .user(userPrompt),
-            ],
+            messages: Self.chatMessages(
+                systemPrompt: systemPrompt,
+                userPrompt: userPrompt,
+                untrustedContext: untrustedContext
+            ),
             maxTokens: nil,
             disableReasoning: false
         )
         return response.text
+    }
+
+    /// Assemble the message list, keeping remote state out of the system role.
+    ///
+    /// One function builds the conversation for both streaming and
+    /// non-streaming, so there is a single place where the trust boundary
+    /// holds. If the untrusted block were folded into `userPrompt` the result
+    /// would look identical to a model and lose the separation; as its own
+    /// message the boundary is visible in the transcript and testable here.
+    nonisolated static func chatMessages(
+        systemPrompt: String,
+        userPrompt: String,
+        untrustedContext: String?
+    ) -> [LLMMessage] {
+        var messages: [LLMMessage] = [.system(systemPrompt)]
+        if let untrustedContext, !untrustedContext.isEmpty {
+            messages.append(.user(untrustedContext))
+        }
+        messages.append(.user(userPrompt))
+        return messages
     }
 
     // MARK: - Agent Mode (Plan → Approve → Execute)
@@ -363,30 +401,25 @@ final class AgentEngine {
         }
     }
 
-    /// Build context string from terminal state.
+    /// Terminal state as an untrusted block for a **user-role** message.
+    ///
+    /// Deliberately not a system-prompt string. `system` is the authority
+    /// role, so remote bytes placed there speak with the product's voice; the
+    /// fix is that they never reach that role, not that they are escaped
+    /// inside it. Routing both snapshot shapes through one renderer means a new
+    /// remote field has exactly one place to be added, and that place is not
+    /// the system prompt.
     private func buildContextString(_ context: TerminalContext) -> String? {
-        var parts: [String] = []
-        if let cwd = context.currentDirectory { parts.append("Working directory: `\(cwd)`") }
-        if let shell = context.shell { parts.append("Shell: \(shell)") }
-        if !context.recentCommands.isEmpty {
-            let cmds = context.recentCommands.suffix(5).joined(separator: ", ")
-            parts.append("Recent commands: \(cmds)")
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: "\n")
+        RemoteTerminalState(context: context).untrustedBlock()
     }
 
     private func buildContextString(_ snapshot: CommandContextSnapshot) -> String? {
-        var parts: [String] = []
-        if let cwd = snapshot.currentDirectory { parts.append("Working directory: `\(cwd)`") }
-        if let shell = snapshot.shell { parts.append("Shell: \(shell)") }
-        if !snapshot.recentCommands.isEmpty {
-            let cmds = snapshot.recentCommands.suffix(5).joined(separator: ", ")
-            parts.append("Recent commands: \(cmds)")
-        }
-        if !snapshot.recentOutput.isEmpty {
-            parts.append("Recent output: \(snapshot.recentOutput.prefix(600))")
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: "\n")
+        RemoteTerminalState(
+            currentDirectory: snapshot.currentDirectory,
+            shell: snapshot.shell,
+            recentCommands: snapshot.recentCommands,
+            recentOutput: snapshot.recentOutput
+        ).untrustedBlock()
     }
 
     func buildAgentMessages() -> [[String: String]] {

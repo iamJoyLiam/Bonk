@@ -89,10 +89,22 @@ extension SessionManager {
         }
     }
 
+    /// Extract a working directory from the terminal title.
+    ///
+    /// The title is set by the remote host over OSC, so it is remote input that
+    /// lands in `tab.currentDirectory` — and that value reaches the AI system
+    /// prompt. A title may legally contain newlines, and `components(separatedBy:
+    /// " ")` does not stop one, so a host could put a second line into a value
+    /// every consumer assumes is a single path. Collapse to one line first, and
+    /// refuse anything that still looks like more than a path.
     func parseCWD(from title: String, username: String) -> String? {
+        // A remote host may put a newline in an OSC title; everything below
+        // assumes one line, and this value ends up in a prompt.
+        let singleLine = title.components(separatedBy: .newlines).joined(separator: " ")
+
         // Pattern: "user@host:/absolute/path" or "user@host:~/path"
-        if let colonRange = title.range(of: ": ") {
-            let afterColon = String(title[colonRange.upperBound...])
+        if let colonRange = singleLine.range(of: ": ") {
+            let afterColon = String(singleLine[colonRange.upperBound...])
             let path = afterColon.components(separatedBy: " ").first ?? afterColon
             if path.hasPrefix("/") { return path }
             // Handle ~ paths — expand to the actual user's home directory
@@ -107,8 +119,8 @@ extension SessionManager {
             }
         }
         // Pattern: "/absolute/path" as title
-        if title.hasPrefix("/") {
-            return title.components(separatedBy: " ").first ?? title
+        if singleLine.hasPrefix("/") {
+            return singleLine.components(separatedBy: " ").first ?? singleLine
         }
         return nil
     }
