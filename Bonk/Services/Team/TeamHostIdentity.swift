@@ -68,40 +68,109 @@ struct TeamHostIdentity: Codable, Sendable, Equatable {
     }
 }
 
-/// Per-install storage for the hosting identity and the last host we paired
-/// with, so both survive restarts (a rotating identity would raise a false
-/// "host changed" alarm on every launch).
-enum TeamIdentityStore {
+/// `UserDefaults` is thread-safe but not `Sendable`, so nothing here can cross
+/// an isolation boundary while holding one directly. The box exists only to
+/// carry the reference; it adds no state of its own.
+private struct DefaultsBox: @unchecked Sendable {
+    let defaults: UserDefaults
+}
+
+/// Per-install storage for the hosting identity and the trust decisions a guest
+/// makes about a host, so all three survive restarts (a rotating identity would
+/// raise a false "host changed" alarm on every launch).
+///
+/// Injected rather than reading `UserDefaults.standard` inline, for the same
+/// reason `TeamSSHGuest` takes its pin as a parameter: a trust decision that
+/// reaches into process-wide storage for its own input cannot be tested against
+/// a chosen trust state, and two relays in one process cannot hold independent
+/// opinions about their hosts. Follows `TeamHostKeyStore`.
+struct TeamIdentityStore: @unchecked Sendable {
     private static let hostSeedKey = "team.hostIdentity.seed"
-    private static let pinnedHostKey = "team.pinnedHostFingerprint"
+    /// Unchanged key: this slot has always held the *identity* fingerprint.
+    /// It was only ever wrong because a reader treated it as an SSH host key.
+    private static let pinnedTeamIdentityKey = "team.pinnedHostFingerprint"
+    private static let pinnedSSHHostKey = "team.pinnedSSHHostKeyFingerprint"
+
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
 
     /// This machine's identity as a host, created on first use.
-    static func hostIdentity() -> TeamHostIdentity {
-        if let seed = UserDefaults.standard.string(forKey: hostSeedKey), !seed.isEmpty {
+    func hostIdentity() -> TeamHostIdentity {
+        if let seed = defaults.string(forKey: Self.hostSeedKey), !seed.isEmpty {
             return TeamHostIdentity(fingerprint: TeamHostIdentity.fingerprint(forSeed: seed), seed: seed)
         }
         let identity = TeamHostIdentity.generate()
-        UserDefaults.standard.set(identity.seed, forKey: hostSeedKey)
+        defaults.set(identity.seed, forKey: Self.hostSeedKey)
         return identity
     }
 
     /// Regenerate the hosting identity, e.g. after the user asks to be
     /// unreachable by previous pairings.
-    static func resetHostIdentity() -> TeamHostIdentity {
+    func resetHostIdentity() -> TeamHostIdentity {
         let identity = TeamHostIdentity.generate()
-        UserDefaults.standard.set(identity.seed, forKey: hostSeedKey)
+        defaults.set(identity.seed, forKey: Self.hostSeedKey)
         return identity
     }
 
-    static func pinnedHostFingerprint() -> String? {
-        UserDefaults.standard.string(forKey: pinnedHostKey)
+    // MARK: - Two trust surfaces, two slots
+
+    /// The Team identity we paired with: `SHA256` of that host's identity seed.
+    ///
+    /// Read by `PairingGate` and written from `pairingAccepted`. This is *not*
+    /// the SSH host key, and the two used to share one slot — which let a
+    /// seed-derived value be handed to the host-key validator as though it were
+    /// a public-key fingerprint. They are separate objects and are now stored
+    /// separately.
+    func pinnedTeamIdentityFingerprint() -> String? {
+        defaults.string(forKey: Self.pinnedTeamIdentityKey)
     }
 
-    static func pinHostFingerprint(_ fingerprint: String) {
-        UserDefaults.standard.set(fingerprint, forKey: pinnedHostKey)
+    /// The SSH host key we paired with: `SHA256` of the peer's NIOSSH
+    /// public-key wire bytes, as reported by `HostKeyValidator`.
+    ///
+    /// This is the value the transport layer must compare against, and the only
+    /// value that may be wrapped in an `SSHHostFingerprint`.
+    func pinnedSSHHostKeyFingerprint() -> String? {
+        defaults.string(forKey: Self.pinnedSSHHostKey)
     }
 
-    static func forgetPinnedHost() {
-        UserDefaults.standard.removeObject(forKey: pinnedHostKey)
+    func pinTeamIdentityFingerprint(_ fingerprint: String) {
+        defaults.set(fingerprint, forKey: Self.pinnedTeamIdentityKey)
+    }
+
+    /// Record a host key the handshake just accepted.
+    ///
+    /// Only ever called with a value the validator derived from the key the
+    /// server actually presented — never with a Team identity fingerprint.
+    func pinSSHHostKeyFingerprint(_ fingerprint: String) {
+        defaults.set(fingerprint, forKey: Self.pinnedSSHHostKey)
+    }
+
+    /// The one closure that records a learned host key.
+    ///
+    /// Production passes this straight to `TeamSSHGuest.onHostKey`, and the
+    /// tests take theirs from here too. That sharing is the point: a test that
+    /// built its own closure would still pass with the production wiring
+    /// deleted, which is precisely the failure this surface keeps producing.
+    func pinLearnedSSHHostKey() -> @Sendable (String) -> Void {
+        let box = DefaultsBox(defaults: defaults)
+        return { fingerprint in
+            box.defaults.set(fingerprint, forKey: Self.pinnedSSHHostKey)
+        }
+    }
+
+    /// Drop the pinned SSH host key so the next connection learns again.
+    ///
+    /// Needed because a legitimate host key rotation would otherwise be
+    /// indistinguishable from an impostor, leaving the user with no way back:
+    /// every connect would fail before the PIN, with nothing on screen to act.
+    ///
+    /// Only the SSH slot: the identity pin is a different trust decision, and
+    /// forgetting one must not silently discard the other.
+    func forgetPinnedHost() {
+        defaults.removeObject(forKey: Self.pinnedSSHHostKey)
     }
 }

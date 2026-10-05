@@ -63,7 +63,7 @@ final class TeamRelay: ObservableObject {
     var hasPaired = false
 
     /// This machine's identity as a host, stable across restarts.
-    private(set) lazy var hostIdentity: TeamHostIdentity = TeamIdentityStore.hostIdentity()
+    private(set) lazy var hostIdentity: TeamHostIdentity = identityStore.hostIdentity()
 
     var isHostMode = false
     var pairingFailureTimestamps: [Date] = []
@@ -89,8 +89,14 @@ final class TeamRelay: ObservableObject {
         let payload: String
     }
 
-    init(store: TeamStore = TeamStore()) {
+    /// The relay's two trust slots. Injected so a test can drive the real
+    /// connect path against a chosen trust state instead of whatever the last
+    /// run left in `UserDefaults.standard`.
+    let identityStore: TeamIdentityStore
+
+    init(store: TeamStore = TeamStore(), identityStore: TeamIdentityStore = TeamIdentityStore()) {
         self.teamStore = store
+        self.identityStore = identityStore
         // Single isHosting truth: Store owns listener, Relay mirrors published value
         teamStore.$isHosting.receive(on: DispatchQueue.main).sink { [weak self] value in
             guard let self else { return }
@@ -233,7 +239,12 @@ final class TeamRelay: ObservableObject {
             port: target.port,
             displayName: peer.displayName,
             pin: pin,
-            pinnedHostFingerprint: TeamIdentityStore.pinnedHostFingerprint()
+            pinnedHostFingerprint: identityStore.pinnedSSHHostKeyFingerprint(),
+            // Learn the key the server actually presented, on first use, and
+            // remember it. Without this the SSH host key was never pinned at all:
+            // every connection re-ran TOFU, and the pin slot held a Team
+            // identity fingerprint the validator could never match.
+            onHostKey: identityStore.pinLearnedSSHHostKey()
         )
         Task { [weak self] in
             guard let self else { return }

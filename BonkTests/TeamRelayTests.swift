@@ -21,11 +21,11 @@ final class TeamRelayTests: XCTestCase {
         //
         // Clearing it means each test starts from trust-on-first-use, which is
         // the state a user is in the first time they pair.
-        TeamIdentityStore.forgetPinnedHost()
+        TeamIdentityStore().forgetPinnedHost()
     }
     override func tearDown() async throws {
         UserDefaults.standard.removeObject(forKey: "team_max_guests")
-        TeamIdentityStore.forgetPinnedHost()
+        TeamIdentityStore().forgetPinnedHost()
     }
 
     func testHostGuestPairingPropagatesGuestIdentity() async throws {

@@ -195,11 +195,11 @@ extension TeamRelay {
             nonce: nonce,
             expectedNonce: guestPairingNonce,
             presentedFingerprint: hostFingerprint,
-            pinnedFingerprint: TeamIdentityStore.pinnedHostFingerprint()
+            pinnedFingerprint: identityStore.pinnedTeamIdentityFingerprint()
         )
         switch outcome {
         case .acceptAndPinFirstUse:
-            TeamIdentityStore.pinHostFingerprint(hostFingerprint)
+            identityStore.pinTeamIdentityFingerprint(hostFingerprint)
             logger.info("Pinned first-seen host identity")
         case .acceptAlreadyPinned:
             break

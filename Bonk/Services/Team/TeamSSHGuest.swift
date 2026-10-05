@@ -34,6 +34,14 @@ struct TeamSSHGuest {
     /// that reached into process-wide `UserDefaults` for its own trust input
     /// could not be tested against a chosen identity, and two relays in one
     /// process would silently share a trust decision.
+    /// The SSH host key we trust for this peer, as `SHA256` of the peer's
+    /// NIOSSH public-key wire bytes.
+    ///
+    /// Explicitly *not* a Team identity fingerprint. The two share an encoding
+    /// and nothing else, and this value is compared against a hash of the key
+    /// the server presents, so a seed-derived value here can never match —
+    /// which is exactly what used to happen: production read the pairing pin
+    /// and handed it to the validator.
     let pinnedHostFingerprint: String?
     /// Reports the host key the handshake actually presented, so a caller can
     /// pin it. Values come from the wire rather than being derived locally,
@@ -85,6 +93,10 @@ struct TeamSSHGuest {
         // A pinned identity must be presented to the validator, not merely
         // compared afterwards: post-hoc comparison is too late, the PIN has
         // already been sent.
+        // Re-labelling is unavoidable at this boundary — the pin is persisted as
+        // a string — so the invariant is enforced where the string enters, not
+        // here: only a value the validator itself derived may be written back
+        // through `onHostKey`. See `TeamRelay`'s wiring.
         let pinnedHash = pinnedHostFingerprint
         let pinned = pinnedHash.map { SSHHostFingerprint(hash: $0) }
         let presented = NIOLockedValueBox<SSHHostFingerprint?>(nil)
