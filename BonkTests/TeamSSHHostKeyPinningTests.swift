@@ -140,7 +140,7 @@ struct TeamSSHHostKeyPinningTests {
         // --- First use: nothing pinned, TOFU accepts, and the key is learned.
         let firstGuest = TeamRelay(store: TeamStore(), identityStore: identityStore)
         firstGuest.connectToHost(endpoint: endpoint, displayName: "First", pin: host.pairingPin!)
-        try await waitUntilOrThrow { firstGuest.isConnected }
+        try await waitUntilOrThrow(label: "PIN-00 firstGuest.isConnected") { firstGuest.isConnected }
         let learned = try #require(identityStore.pinnedSSHHostKeyFingerprint(),
                                    "the first connection must pin the host key it accepted")
         #expect(learned.hasPrefix("SHA256:"))
@@ -155,7 +155,7 @@ struct TeamSSHHostKeyPinningTests {
         // every single time after the first.
         let secondGuest = TeamRelay(store: TeamStore(), identityStore: identityStore)
         secondGuest.connectToHost(endpoint: endpoint, displayName: "Second", pin: host.pairingPin!)
-        try await waitUntilOrThrow {
+        try await waitUntilOrThrow(label: "PIN-01 second connect reports an error") {
             if secondGuest.lastError != nil { Issue.record("second connection failed: \(secondGuest.lastError!)") }
             return secondGuest.isConnected
         }
@@ -188,7 +188,7 @@ struct TeamSSHHostKeyPinningTests {
             displayName: "First",
             pin: honest.pairingPin!
         )
-        try await waitUntilOrThrow { guest.isConnected }
+        try await waitUntilOrThrow(label: "PIN-02 guest.isConnected") { guest.isConnected }
         let pinned = try #require(identityStore.pinnedSSHHostKeyFingerprint())
         guest.disconnectGuest()
 
@@ -209,7 +209,7 @@ struct TeamSSHHostKeyPinningTests {
             displayName: "Second",
             pin: honest.pairingPin!
         )
-        try await waitUntilOrThrow { refused.lastError != nil }
+        try await waitUntilOrThrow(label: "PIN-03 refused.lastError != nil") { refused.lastError != nil }
         #expect(!refused.isConnected, "a host presenting an unpinned key must not be connected to")
         #expect(identityStore.pinnedSSHHostKeyFingerprint() == pinned,
                 "a refused key must not replace the stored pin")
@@ -238,7 +238,7 @@ struct TeamSSHHostKeyPinningTests {
             displayName: "First",
             pin: honest.pairingPin!
         )
-        try await waitUntilOrThrow { guest.isConnected }
+        try await waitUntilOrThrow(label: "PIN-04 guest.isConnected") { guest.isConnected }
         let firstKey = try #require(identityStore.pinnedSSHHostKeyFingerprint())
         guest.disconnectGuest()
 
@@ -255,7 +255,7 @@ struct TeamSSHHostKeyPinningTests {
             displayName: "Second",
             pin: honest.pairingPin!
         )
-        try await waitUntilOrThrow { refused.lastError != nil }
+        try await waitUntilOrThrow(label: "PIN-05 refused.lastError != nil") { refused.lastError != nil }
         #expect(identityStore.pinnedSSHHostKeyFingerprint() == firstKey)
 
         // The user acts: forget, then retry.
@@ -267,7 +267,7 @@ struct TeamSSHHostKeyPinningTests {
             displayName: "Third",
             pin: honest.pairingPin!
         )
-        try await waitUntilOrThrow { recovered.lastError != nil || recovered.isConnected }
+        try await waitUntilOrThrow(label: "PIN-06 recovered.lastError != nil || reco") { recovered.lastError != nil || recovered.isConnected }
         #expect(recovered.isConnected, "after an explicit forget the new key must be learnable")
         let newKey = try #require(identityStore.pinnedSSHHostKeyFingerprint())
         #expect(newKey != firstKey, "the rotated host must present a different key")
@@ -364,7 +364,7 @@ struct TeamSSHHostKeyPinningTests {
 
         let guest = TeamRelay(store: TeamStore(), identityStore: identityStore)
         guest.connectToHost(endpoint: endpoint(honestPort), displayName: "First", pin: honest.pairingPin!)
-        try await waitUntilOrThrow { guest.isConnected }
+        try await waitUntilOrThrow(label: "PIN-07 guest.isConnected") { guest.isConnected }
         let pinned = try #require(identityStore.pinnedSSHHostKeyFingerprint())
         guest.disconnectGuest()
 
@@ -375,7 +375,7 @@ struct TeamSSHHostKeyPinningTests {
 
         let refused = TeamRelay(store: TeamStore(), identityStore: identityStore)
         refused.connectToHost(endpoint: endpoint(rotatedPort), displayName: "Second", pin: honest.pairingPin!)
-        try await waitUntilOrThrow { refused.hostKeyMismatch != nil }
+        try await waitUntilOrThrow(label: "PIN-08 refused.hostKeyMismatch != nil") { refused.hostKeyMismatch != nil }
 
         let mismatch = try #require(refused.hostKeyMismatch)
         #expect(mismatch.pinned == pinned, "the refusal must name what we trusted")
@@ -399,7 +399,7 @@ struct TeamSSHHostKeyPinningTests {
 
         let guest = TeamRelay(store: TeamStore(), identityStore: identityStore)
         guest.connectToHost(endpoint: endpoint(honestPort), displayName: "First", pin: honest.pairingPin!)
-        try await waitUntilOrThrow { guest.isConnected }
+        try await waitUntilOrThrow(label: "PIN-09 guest.isConnected") { guest.isConnected }
         let pinned = try #require(identityStore.pinnedSSHHostKeyFingerprint())
         guest.disconnectGuest()
 
@@ -410,7 +410,7 @@ struct TeamSSHHostKeyPinningTests {
 
         let refused = TeamRelay(store: TeamStore(), identityStore: identityStore)
         refused.connectToHost(endpoint: endpoint(rotatedPort), displayName: "Second", pin: honest.pairingPin!)
-        try await waitUntilOrThrow { refused.hostKeyMismatch != nil }
+        try await waitUntilOrThrow(label: "PIN-10 refused.hostKeyMismatch != nil") { refused.hostKeyMismatch != nil }
 
         // Accept, then start the retry the user asked for.
         refused.acceptChangedHostKey()
@@ -419,7 +419,7 @@ struct TeamSSHHostKeyPinningTests {
 
         // And the recovery has to actually work, not just clear state.
         refused.connectToHost(endpoint: endpoint(rotatedPort), displayName: "Third", pin: honest.pairingPin!)
-        try await waitUntilOrThrow {
+        try await waitUntilOrThrow(label: "PIN-11 post-deadline connect resolves") {
             if refused.lastError != nil { Issue.record("recovery connect failed: \(refused.lastError!)") }
             return refused.isConnected
         }
@@ -545,7 +545,11 @@ struct TeamSSHHostKeyPinningTests {
         return port
     }
 
+    /// `label` is mandatory. A bare "condition not met within 8.0 seconds"
+    /// cannot say *which* wait failed, and this suite has more than one per
+    /// test — an unidentified timeout is not diagnosable evidence.
     private func waitUntilOrThrow(
+        label: String,
         timeout: Duration = .seconds(8),
         _ condition: @MainActor () -> Bool
     ) async throws {
@@ -554,7 +558,7 @@ struct TeamSSHHostKeyPinningTests {
             if condition() { return }
             try await Task.sleep(for: .milliseconds(25))
         }
-        Issue.record("condition not met within \(timeout)")
+        Issue.record(Comment(rawValue: "\(label): condition not met within \(timeout)"))
         throw CancellationError()
     }
 }

@@ -36,15 +36,90 @@ import os
 import Testing
 @testable import Bonk
 
-/// Shared, reference-typed list of spawned pids.
+/// Deterministic port allocation for real-SSH test fixtures.
+///
+/// Two things forced this, both learned the hard way:
+///
+/// `TeamPortPicker.availablePort()` binds to find a free port and *releases it*
+/// before returning, so two fixtures starting concurrently can be handed the
+/// same one. That is a TOCTOU race, and the fixture code worked around it with
+/// a retry that could not actually detect the collision.
+///
+/// The retry could not detect it because Citadel's `SSHServer.host` sets
+/// `SO_REUSEADDR` unconditionally and never exposes the port it actually bound.
+/// So a second bind on a "taken" port *succeeds* rather than failing, two
+/// fixtures believe they own it, and the client connects to whichever one wins.
+/// That is the whole explanation for tests that passed alone and failed under
+/// load.
+///
+/// Binding port 0 would be the clean fix, but Citadel gives no way to read the
+/// bound port back, so a port-0 fixture could not be connected to. Hence
+/// deterministic ranges: a suite is assigned a base, and fixtures within it take
+/// successive offsets. No scanning, so no window for anything to change between
+/// choosing a port and binding it.
+enum SSHFixturePort {
+    /// Base ports, one per suite. Chosen far from the ports production picks and
+    /// from each other so a fixture cannot collide with a live relay.
+    static let cancellation: ClosedRange<UInt16> = 25_100 ... 25_179
+    static let deadline: ClosedRange<UInt16> = 25_200 ... 25_279
+
+    private static let claimed = NIOLockedValueBox<[UInt16]>([])
+
+    /// Claim the next unused port in a suite's range, or nil if exhausted.
+    static func claim(in range: ClosedRange<UInt16>) -> UInt16? {
+        claimed.withLockedValue { taken in
+            for port in range where !taken.contains(port) {
+                taken.append(port)
+                return port
+            }
+            return nil
+        }
+    }
+}
+
+
+
+
+
+/// Which execution a spawned process belongs to.
+///
+/// Role, not ordinal. Positional access (`spawnedPIDs.first` / `.last`) has
+/// already produced two false failures in this suite: a completed fixture probe
+/// was observed as if it were the command under test, and a wait polled the
+/// liveness of a process that had already exited. Both looked exactly like
+/// production defects. A test names the role it means.
+enum ExecRole: Sendable, CustomStringConvertible {
+    case probe, runner, deadline
+
+    var description: String {
+        switch self {
+        case .probe: "probe"
+        case .runner: "runner"
+        case .deadline: "deadline"
+        }
+    }
+}
+
+/// Shared, reference-typed map of role to pid.
 ///
 /// A class and not `NIOLockedValueBox`: the box is a struct, so handing it to
 /// the exec delegate would copy it and the host would never see a pid — the
 /// test would then "prove" termination by observing nothing at all.
 final class SpawnedProcesses: @unchecked Sendable {
-    private let pids = NIOLockedValueBox<[Int32]>([])
-    var all: [Int32] { pids.withLockedValue { $0 } }
-    func record(_ pid: Int32) { pids.withLockedValue { $0.append(pid) } }
+    private let byRole = NIOLockedValueBox<[(ExecRole, Int32)]>([])
+
+    /// Spawn order, for tests that genuinely only need "all of them".
+    var all: [Int32] { byRole.withLockedValue { $0.map(\.1) } }
+
+    func record(_ pid: Int32, role: ExecRole) {
+        byRole.withLockedValue { $0.append((role, pid)) }
+    }
+
+    func pid(for role: ExecRole) -> Int32? {
+        byRole.withLockedValue { entries in
+            entries.last { $0.0 == role }?.1
+        }
+    }
 }
 
 /// A real SSH server that runs exec requests as real local subprocesses.
@@ -56,8 +131,21 @@ final class ExecCapableSSHHost {
     private(set) var server: SSHServer?
     private(set) var port: Int?
     /// Every subprocess this host has spawned, so a test can check liveness.
-    private let spawned = SpawnedProcesses()
-    private let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+    let spawned = SpawnedProcesses()
+    private var group: MultiThreadedEventLoopGroup?
+    /// Commands the test has labelled, matched by substring in declaration order.
+    private var roleRules: [(needle: String, role: ExecRole)] = []
+
+    /// Label every future exec whose command contains `needle`.
+    ///
+    /// First match wins, so a more specific rule must be declared first.
+    func label(needle: String, as role: ExecRole) {
+        roleRules.append((needle, role))
+    }
+
+    private func resolveRole(for command: String) -> ExecRole {
+        roleRules.first { command.contains($0.needle) }?.role ?? .probe
+    }
 
     var spawnedPIDs: [Int32] { spawned.all }
 
@@ -66,36 +154,53 @@ final class ExecCapableSSHHost {
     }
 
     @discardableResult
-    func start(hostKey: NIOSSHPrivateKey, password: String) async -> Bool {
+    func start(
+        hostKey: NIOSSHPrivateKey,
+        password: String,
+        ports: ClosedRange<UInt16> = SSHFixturePort.cancellation
+    ) async -> Bool {
         let authDelegate = TestPasswordAuthDelegate(password: password)
-        let delegate = SubprocessExecDelegate(spawned: spawned)
-        // Ask for a specific free port rather than 0: Citadel does not report the
-        // bound port back, so a port-0 fixture could not be connected to.
-        guard let requested = TeamPortPicker.availablePort() else { return false }
+        // Rules are read on the main actor but consulted from Citadel's exec
+        // thread, so they are snapshotted into a value first: the mapping is
+        // fixed for the life of the host and never mutated mid-test.
+        let rules = roleRules
+        let resolve: @Sendable (String) -> ExecRole = { command in
+            rules.first { command.contains($0.needle) }?.role ?? .probe
+        }
+        let delegate = SubprocessExecDelegate(spawned: spawned, roleFor: resolve)
+        // Deterministic, not scanned: see `SSHFixturePort`. A fresh event loop
+        // group per attempt, because reusing one after a failed bind would make
+        // the retry depend on state the failed attempt left behind.
+        guard let requested = SSHFixturePort.claim(in: ports) else { return false }
+        let candidate = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         do {
             let server = try await SSHServer.host(
                 host: "127.0.0.1",
                 port: Int(requested),
                 hostKeys: [hostKey],
                 authenticationDelegate: authDelegate,
-                group: group
+                group: candidate
             )
             server.enableExec(withDelegate: delegate)
             self.server = server
             self.port = Int(requested)
+            self.group = candidate
             return true
         } catch {
+            try? await candidate.shutdownGracefully()
             return false
         }
     }
 
     func stop() {
         let server = server
+        let group = group
         self.server = nil
+        self.group = nil
         let handle = server.map(UncheckedSendable.init)
-        Task { [group] in
+        Task {
             try? await handle?.value.close()
-            try? await group.shutdownGracefully()
+            try? await group?.shutdownGracefully()
         }
     }
 
@@ -104,9 +209,18 @@ final class ExecCapableSSHHost {
 /// Executes each request as a real `/bin/sh -c` subprocess.
 final class SubprocessExecDelegate: ExecDelegate, @unchecked Sendable {
     private let spawned: SpawnedProcesses
+    /// Which role a given command belongs to.
+    ///
+    /// Resolved per command rather than fixed per host: one host serves every
+    /// exec on a connection, and Citadel's `ExecDelegate` has no role parameter.
+    private let roleFor: @Sendable (String) -> ExecRole
 
-    init(spawned: SpawnedProcesses) {
+    init(
+        spawned: SpawnedProcesses,
+        roleFor: @escaping @Sendable (String) -> ExecRole = { _ in .probe }
+    ) {
         self.spawned = spawned
+        self.roleFor = roleFor
     }
 
     func start(command: String, outputHandler: ExecOutputHandler) async throws -> ExecCommandContext {
@@ -117,29 +231,34 @@ final class SubprocessExecDelegate: ExecDelegate, @unchecked Sendable {
         let stderr = Pipe()
         process.standardOutput = stdout
         process.standardError = stderr
-        // Citadel hands us the pipes it reads from; feeding it is our job.
-        outputHandler.stdoutPipe.fileHandleForWriting.closeFile()
-        outputHandler.stderrPipe.fileHandleForWriting.closeFile()
+        process.standardInput = Pipe()
 
+        let role = roleFor(command)
         try process.run()
         // `processIdentifier` is the only pid Foundation exposes here.
         let pid = Int32(process.processIdentifier)
         if pid > 0 {
-            spawned.record(pid)
+            spawned.record(pid, role: role)
         }
 
-        let stdoutReader = outputHandler.stdoutPipe.fileHandleForReading
-        let stderrReader = outputHandler.stderrPipe.fileHandleForReading
-
-        // Pump both pipes on a background queue so the command is a real
-        // streaming command, not a buffered one.
+        // Citadel *reads* `outputHandler.stdoutPipe` (it hands the read end to
+        // `NIOPipeBootstrap`) and parks a readability handler on
+        // `stderrPipe`. So the delegate's job is to **write** into the write
+        // ends, not to read them. Getting this backwards produces an empty
+        // command result rather than an error, which is exactly the kind of
+        // silent fixture bug that makes a test prove nothing.
         let group = DispatchGroup()
-        for (reader, sink) in [(stdoutReader, outputHandler.stdoutPipe), (stderrReader, outputHandler.stderrPipe)] {
+        let pumps: [(Pipe, FileHandle)] = [
+            (stdout, outputHandler.stdoutPipe.fileHandleForWriting),
+            (stderr, outputHandler.stderrPipe.fileHandleForWriting),
+        ]
+        for (source, sink) in pumps {
             group.enter()
             DispatchQueue.global().async {
-                let data = reader.readDataToEndOfFile()
-                if !data.isEmpty { sink.fileHandleForWriting.write(data) }
-                sink.fileHandleForWriting.closeFile()
+                let data = source.fileHandleForReading.readDataToEndOfFile()
+                if !data.isEmpty { sink.write(data) }
+                // Closing is what lets Citadel's reader see EOF.
+                sink.closeFile()
                 group.leave()
             }
         }
@@ -168,14 +287,20 @@ final class SubprocessExecContext: ExecCommandContext, @unchecked Sendable {
     var wasTerminated: Bool { terminated.withLockedValue { $0 } }
 
     /// Called by Citadel's `ExecHandler.channelInactive` when the channel goes.
+    ///
+    /// Per-process, and each context owns its own, so two concurrent execs on
+    /// one connection are terminated independently. That binding is the point:
+    /// an assertion about termination is only evidence if it names the process
+    /// it started, and twice in this suite's history a test observed a different
+    /// process than the one under test.
     func terminate() async throws {
+        let pid = Int32(process.processIdentifier)
         let first = terminated.withLockedValue { seen -> Bool in
             let already = seen
             seen = true
             return !already
         }
         guard first else { return }
-        let pid = Int32(process.processIdentifier)
         if pid > 0 {
             // SIGKILL, so a shell that traps signals cannot outlive the cancel.
             kill(pid, SIGKILL)
@@ -213,7 +338,13 @@ final class TestPasswordAuthDelegate: NIOSSHServerUserAuthenticationDelegate {
     }
 }
 
-@Suite("Native SSH Cancellation Authority Tests")
+/// Serialized: each test binds a real TCP port and spawns real subprocesses, so
+/// running these in parallel with the other SSH-fixture suites makes port and
+/// scheduling contention show up as behavioural failures that have nothing to do
+/// with what is being tested. Verified: every test here passes when the three
+/// that used to fail are run together in isolation, and only failed when the
+/// whole suite ran.
+@Suite("Native SSH Cancellation Authority Tests", .serialized)
 @MainActor
 struct NativeSSHCancellationAuthorityTests {
 

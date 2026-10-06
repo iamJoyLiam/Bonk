@@ -94,6 +94,78 @@ final class NativeSSHSession: SSHSession, @unchecked Sendable {
     }
 }
 
+// MARK: - Deadline
+
+/// How long one command may run before it is terminated for its own sake.
+///
+/// Three different things get confused when a timeout is added to a command
+/// path, and they have different right answers:
+///
+/// - **Connection establishment** — already bounded, by the existing connect
+///   timeout. Not this type's job.
+/// - **User cancellation** — the Stop button. Already handled by
+///   `NativeExecCancellationHandle`, and the user decides when.
+/// - **A command that never finishes** — the case here. Nothing in the system
+///   will ever notice; the loop is parked inside a non-cooperative future and the
+///   run's own wall-clock budget cannot fire because it is only checked between
+///   iterations.
+///
+/// The bound is derived rather than picked: `AgentBudgetController` allows a run
+/// 10 minutes of wall clock, so a single command is capped at the same figure.
+/// A command cannot therefore consume more than the run containing it, and this
+/// bound can never fire before the budget would have halted the run anyway.
+/// That is deliberately *not* the 30s the OpenSSH transport uses — 30s is a
+/// reasonable figure for an interactive probe and far too short for
+/// `npm install`, which the agent legitimately runs.
+///
+/// Note what is **not** enforced here: an idle or no-output timeout. Citadel's
+/// `executeCommand` buffers until completion and exposes no progress signal, so
+/// "no output yet" is indistinguishable from "no output ever". Inventing a
+/// progress signal would mean pretending to observe something unobservable.
+/// Silently-running commands are caught by the lifetime bound instead.
+enum AgentCommandDeadline {
+    /// Matches `AgentBudgetController`'s default wall-clock budget.
+    static let maxLifetime = Duration.seconds(600)
+
+    enum Outcome: Equatable {
+        case withinBudget
+        case exceeded
+    }
+
+    /// Pure, so the boundary is testable without waiting ten minutes.
+    static func evaluate(elapsed: Duration, limit: Duration = maxLifetime) -> Outcome {
+        elapsed >= limit ? .exceeded : .withinBudget
+    }
+
+    /// Build the error for a breach of `limit`.
+    ///
+    /// A function, not a stored constant: the error has to name the bound that
+    /// was actually applied. A single pre-built value carrying the default would
+    /// report "exceeded its 600 seconds" for a run bounded at 0.6s, which is
+    /// worse than no detail — it is confidently wrong.
+    static func exceededError(limit: Duration = maxLifetime) -> CommandDeadlineExceeded {
+        CommandDeadlineExceeded(maxLifetime: limit)
+    }
+}
+
+/// One-shot flag shared between a task group and its parent.
+///
+/// A class because `NIOLockedValueBox` is a struct: capturing one in a child
+/// task captures a copy, and the parent's write never lands.
+private final class DeadlineLatch: @unchecked Sendable {
+    private let state = NIOLockedValueBox<Bool>(false)
+    func fire() { state.withLockedValue { $0 = true } }
+    var didFire: Bool { state.withLockedValue { $0 } }
+}
+
+struct CommandDeadlineExceeded: Error, LocalizedError {
+    let maxLifetime: Duration
+
+    var errorDescription: String? {
+        "Command exceeded its \(maxLifetime) time limit and was terminated."
+    }
+}
+
 // MARK: - Cancellation
 
 /// Cancellation authority for a command running on a Citadel-backed session.
@@ -133,7 +205,7 @@ final class NativeExecCancellationHandle: CommandExecutionHandle, @unchecked Sen
     /// alone leaves it running: the `withTaskCancellationHandler` closes the
     /// connection, which fails the underlying promise, which is what actually
     /// unblocks the await. Without that, cancelling the task would be cosmetic.
-    func run(_ command: String) async throws -> ByteBuffer {
+    func run(_ command: String, deadline: Duration = AgentCommandDeadline.maxLifetime) async throws -> ByteBuffer {
         // `SSHClient` is not `Sendable`, but this handle is `@unchecked
         // Sendable` and every use here is on the session that owns the client:
         // `run` from the caller's task, and `close` from the cancellation
@@ -141,10 +213,72 @@ final class NativeExecCancellationHandle: CommandExecutionHandle, @unchecked Sen
         // here — `close` is idempotent and latched above. Marking the capture
         // non-Sendable would push the same unsafety somewhere less visible.
         nonisolated(unsafe) let client = client
-        return try await withTaskCancellationHandler {
-            try await client.executeCommand(command)
-        } onCancel: {
-            Task { await self.close() }
+
+        let started = ContinuousClock.now
+        // Set by the watchdog the moment the deadline is judged breached. It has
+        // to be read on the error path too: closing the connection makes
+        // `executeCommand` throw, and that throw races the watchdog's own
+        // completion. Without this flag the caller would see a transport error
+        // and never learn the command was actually a timeout.
+        //
+        // Reference-typed on purpose. `NIOLockedValueBox` is a struct, so
+        // capturing it in the watchdog task captures a copy and the write is
+        // invisible to this function — the flag would silently always read
+        // `false` and every timeout would be reported as a transport error.
+        let deadlineFired = DeadlineLatch()
+
+        return try await withThrowingTaskGroup(of: ByteBuffer?.self) { group in
+            group.addTask {
+                try await withTaskCancellationHandler {
+                    try await client.executeCommand(command)
+                } onCancel: {
+                    Task { await self.close() }
+                }
+            }
+            group.addTask { [self] in
+                // Must NOT be `try?`. Leaving the group scope cancels this task,
+                // and a swallowed CancellationError would fall through to the
+                // body below — firing the deadline and closing the connection
+                // after a command that had already succeeded. That is what made
+                // fast commands fail while long ones passed.
+                do {
+                    try await Task.sleep(for: deadline)
+                } catch {
+                    return nil
+                }
+                // The command outlived its budget. Closing is what actually
+                // stops it — the future above is not cancellation-cooperative,
+                // so without this the timeout would only stop *waiting*, and the
+                // remote command would keep running exactly as before.
+                // Flag first: `close()` tears the connection down, which makes
+                // the command task throw, and that throw can win the race against
+                // this task's own completion. Firing after the close would let
+                // the transport error surface first and every timeout would be
+                // reported as a lost connection.
+                deadlineFired.fire()
+                await close()
+                return nil
+            }
+            defer { group.cancelAll() }
+
+            do {
+                guard let result = try await group.next(), let buffer = result else {
+                    throw CancellationError()
+                }
+                return buffer
+            } catch {
+                // The watchdog fired: report the timeout, not the transport error
+                // it produced on the way down. Falling through to `error` would
+                // tell the agent "connection lost" for a command that simply ran
+                // too long.
+                if deadlineFired.didFire,
+                   AgentCommandDeadline.evaluate(
+                       elapsed: ContinuousClock.now - started, limit: deadline
+                   ) == .exceeded {
+                    throw AgentCommandDeadline.exceededError(limit: deadline)
+                }
+                throw error
+            }
         }
     }
 
