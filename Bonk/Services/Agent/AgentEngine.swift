@@ -52,6 +52,7 @@ final class AgentEngine {
     private let conversationStore: AIConversationStore
     let sanitizer = AIOutputSanitizer.self
     let executionManager: AgentExecutionManager
+    private let providerResolver: any LLMProviderResolving
 
     // Plan approval state
     var currentPlan: AgentPlan?
@@ -60,11 +61,13 @@ final class AgentEngine {
     init(
         providerStore: AIProviderStore = .shared,
         conversationStore: AIConversationStore = .shared,
-        executionManager: AgentExecutionManager = .shared
+        executionManager: AgentExecutionManager = .shared,
+        providerResolver: any LLMProviderResolving = DefaultLLMProviderResolver()
     ) {
         self.providerStore = providerStore
         self.conversationStore = conversationStore
         self.executionManager = executionManager
+        self.providerResolver = providerResolver
     }
 
     // MARK: - Provider Resolution
@@ -179,21 +182,16 @@ final class AgentEngine {
             return nil
         }
 
-        // Remote terminal state does not go here. `system` is the authority
-        // role, so any remote byte interpolated into this prompt speaks in the
-        // product's voice — which is the vulnerability, not a formatting
-        // detail. The prompt states the rule; the data rides as a separate
-        // user-role message below.
-        let systemPrompt = CustomInstructions.buildSystemPrompt(
-            base: (systemPromptOverride ?? mode.systemPrompt) + "\n\n" + RemoteTerminalState.trustPolicy
+        let composed = SystemPromptComposer.compose(
+            mode: mode, override: systemPromptOverride, context: context
         )
-        let remoteState = RemoteTerminalState(context: context)
-        let untrustedContext = remoteState.untrustedBlock()
+        let systemPrompt = composed.systemPrompt
+        let untrustedContext = composed.untrustedContext
         let label = mode.rawValue
 
         // swiftlint:disable:next line_length
         Log.ai.info("\(label, privacy: .public): provider=\(provider.name, privacy: .public) model=\(provider.model, privacy: .public)")
-        let llmProvider = LLMProviderFactory.provider(
+        let llmProvider = providerResolver.provider(
             for: provider, apiKey: apiKey, workload: .chat
         )
 
@@ -312,6 +310,12 @@ final class AgentEngine {
 
     // MARK: - Non-Streaming Execution (Agent)
 
+    /// This overload intentionally carries no untrusted context.
+    ///
+    /// Dropping remote data fails safe: the boundary is that remote bytes never
+    /// reach the system role, and sending none satisfies it. Do not "restore
+    /// consistency" by concatenating remote state into `systemPrompt` at a call
+    /// site — that is the Finding 5 defect, and a test now fails if it happens.
     func executeNonStreaming(
         provider: AIProviderConfig,
         apiKey: String,
@@ -319,7 +323,7 @@ final class AgentEngine {
         userPrompt: String
     ) async throws -> String {
         try await executeNonStreaming(
-            provider: LLMProviderFactory.provider(
+            provider: providerResolver.provider(
                 for: provider, apiKey: apiKey, workload: .chat
             ),
             systemPrompt: systemPrompt,
@@ -507,6 +511,48 @@ final class AgentEngine {
             group.cancelAll()
             return result
         }
+    }
+}
+
+// MARK: - System Prompt Composition
+
+/// The two halves of an agent request, kept apart by type.
+///
+/// The split is structural on purpose. Handing callers a finished system string
+/// and asking them not to append remote bytes to it is a convention; returning
+/// `systemPrompt` and `untrustedContext` as separate fields means the only way
+/// to get remote data into the authority role is to rebuild the string by hand,
+/// which is visible in a diff.
+struct ComposedAgentRequest: Sendable {
+    /// App-authored: mode policy, optional override, and the fixed trust rule.
+    /// Nothing here is derived from a `TerminalContext`.
+    let systemPrompt: String
+    /// Remote-derived. Rides as its own user-role message.
+    let untrustedContext: String?
+}
+
+/// The single place a system prompt is composed.
+///
+/// Remote terminal state does not enter here. `system` is the authority role, so
+/// any remote byte interpolated into it speaks in the product's voice — the
+/// vulnerability itself, not a formatting detail. The prompt states the rule; the
+/// data rides as a separate user-role message.
+enum SystemPromptComposer {
+    /// `@MainActor` because `RemoteTerminalState.init` is. The composition used
+    /// to be inline in `execute`, which is main-actor isolated, so this carries
+    /// the same context rather than introducing a new one.
+    @MainActor
+    static func compose(
+        mode: AIMode,
+        override: String?,
+        context: TerminalContext
+    ) -> ComposedAgentRequest {
+        ComposedAgentRequest(
+            systemPrompt: CustomInstructions.buildSystemPrompt(
+                base: (override ?? mode.systemPrompt) + "\n\n" + RemoteTerminalState.trustPolicy
+            ),
+            untrustedContext: RemoteTerminalState(context: context).untrustedBlock()
+        )
     }
 }
 
