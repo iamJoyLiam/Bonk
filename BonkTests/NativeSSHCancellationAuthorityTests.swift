@@ -489,17 +489,65 @@ struct NativeSSHCancellationAuthorityTests {
         }
 
         // Wait for a real subprocess to exist and be running.
-        try await waitUntil { !host.spawnedPIDs.isEmpty }
+        try await waitUntil(label: "W00 !host.spawnedPIDs.isEmpty") { !host.spawnedPIDs.isEmpty }
         let pid = try #require(host.spawnedPIDs.first)
-        try await waitUntil { host.isAlive(pid) }
+        try await waitUntil(label: "W01 host.isAlive(pid)") { host.isAlive(pid) }
         #expect(host.isAlive(pid), "the remote command must actually be running before Stop")
 
         await manager.cancelActive()
 
-        try await waitUntil { !host.isAlive(pid) }
+        try await waitUntil(label: "W02 !host.isAlive(pid)") { !host.isAlive(pid) }
         #expect(!host.isAlive(pid),
                 "Stop must terminate the remote process, not merely stop waiting for it")
         runner.cancel()
+    }
+
+    /// The wiring guard for the cancellation entry point production actually uses.
+    ///
+    /// `AgentRuntime.cancel` cancels the Swift `Task`; it does not reach for a
+    /// registered handle. So the path that has to work is
+    /// `Task.cancel()` -> `withTaskCancellationHandler.onCancel` -> `close()`,
+    /// and the Citadel await above it is not cancellation-cooperative. If that
+    /// wiring is removed the task never unblocks and the remote process keeps
+    /// running, which is the original Finding 3 defect.
+    ///
+    /// The other cancellation tests drive `close()` directly through the manager,
+    /// so they stay green when this wiring is deleted. Measured, not assumed:
+    /// replacing the `onCancel` body with a no-op left all of them passing. This
+    /// test is what makes that mutation observable.
+    @Test("Cancelling the task itself stops the remote process")
+    func taskCancellationTerminatesTheRemoteProcess() async throws {
+        let hostKeyStore = makeHostKeyStore()
+        let host = ExecCapableSSHHost()
+        #expect(await host.start(hostKey: try key(hostKeyStore), password: Self.password))
+        defer { host.stop() }
+        guard let port = await resolvePort(host) else {
+            Issue.record("the exec-capable host must bind")
+            return
+        }
+        let fixture = try await makeSession(port: port, hostKeyStore: hostKeyStore)
+        defer { dispose(fixture) }
+
+        let handle = NativeExecCancellationHandle(client: fixture.session.client)
+        let runner = Task {
+            _ = try? await handle.run(Self.foreverCommand)
+        }
+
+        try await waitUntil(label: "TASK-CANCEL-WAIT-PID") { !host.spawnedPIDs.isEmpty }
+        let pid = try #require(host.spawnedPIDs.first)
+        try await waitUntil(label: "TASK-CANCEL-WAIT-ALIVE") { host.isAlive(pid) }
+        #expect(host.isAlive(pid), "the remote command must actually be running before cancel")
+
+        // No manager and no registered handle on purpose: cancel the Task itself,
+        // which is the call `AgentRuntime.cancel` makes.
+        runner.cancel()
+
+        try await waitUntil(label: "TASK-CANCEL-WAIT-DEAD") { !host.isAlive(pid) }
+        #expect(!host.isAlive(pid),
+                """
+                cancelling the task must close the connection and terminate the \
+                remote process; pid \(pid) is still \(processDisposition(pid))
+                """)
     }
 
     // MARK: - 3. Negative: running before Stop, silent after
@@ -534,9 +582,9 @@ struct NativeSSHCancellationAuthorityTests {
         // Negative case 1: it is genuinely running, and the runner has NOT
         // returned. A command that had already failed would look identical to a
         // cancelled one when only the end state is checked.
-        try await waitUntil { !host.spawnedPIDs.isEmpty }
+        try await waitUntil(label: "W06 !host.spawnedPIDs.isEmpty") { !host.spawnedPIDs.isEmpty }
         let pid = try #require(host.spawnedPIDs.first)
-        try await waitUntil { host.isAlive(pid) }
+        try await waitUntil(label: "W07 host.isAlive(pid)") { host.isAlive(pid) }
         try await Task.sleep(for: .milliseconds(300))
         #expect(host.isAlive(pid), "the command must still be running before Stop")
         #expect(runner.isCancelled == false)
@@ -546,7 +594,7 @@ struct NativeSSHCancellationAuthorityTests {
 
         // Negative case 2: after Stop, the process is gone and the awaiting task
         // has finished rather than lingering.
-        try await waitUntil { !host.isAlive(pid) }
+        try await waitUntil(label: "W08 !host.isAlive(pid)") { !host.isAlive(pid) }
         #expect(!host.isAlive(pid))
         // The awaiting task must *finish*, not merely be cancelled: a loop that
         // parks forever still owns its turn, and the run never reaches a
@@ -587,13 +635,13 @@ struct NativeSSHCancellationAuthorityTests {
             })
         }
 
-        try await waitUntil { !host.spawnedPIDs.isEmpty }
+        try await waitUntil(label: "W09 !host.spawnedPIDs.isEmpty") { !host.spawnedPIDs.isEmpty }
         let pid = try #require(host.spawnedPIDs.first)
-        try await waitUntil { host.isAlive(pid) }
+        try await waitUntil(label: "W10 host.isAlive(pid)") { host.isAlive(pid) }
         #expect(await manager.hasActiveHandle)
 
         await manager.cancelActive()
-        try await waitUntil { !host.isAlive(pid) }
+        try await waitUntil(label: "W11 !host.isAlive(pid)") { !host.isAlive(pid) }
 
         // Terminal: the manager no longer believes anything is running.
         #expect(await manager.hasActiveHandle == false,
@@ -667,7 +715,10 @@ struct NativeSSHCancellationAuthorityTests {
         await host.port
     }
 
+    /// `label` is mandatory. A bare "condition not met within 10.0 seconds" does
+    /// not say *which* wait failed, and a file this size has many per test.
     private func waitUntil(
+        label: String,
         timeout: Duration = .seconds(10),
         _ condition: @MainActor () -> Bool
     ) async throws {
@@ -676,7 +727,33 @@ struct NativeSSHCancellationAuthorityTests {
             if condition() { return }
             try await Task.sleep(for: .milliseconds(20))
         }
-        Issue.record("condition not met within \(timeout)")
+        // Recorded, not thrown: execution continues so the caller can also report
+        // the underlying state. A timeout and a violated assertion are different
+        /// failures and a guard has to be able to tell them apart.
+        Issue.record("\(label): condition not met within \(timeout)")
+    }
+
+    /// Whether a pid is running, an exited-but-unreaped zombie, or gone.
+    ///
+    /// `isAlive` asks `kill(pid, 0)`, which succeeds for a zombie: an exited
+    /// child remains in the process table until it is waited on. So "the pid is
+    /// still present" and "the process is still running" are different claims,
+    /// and a termination assertion built on the first alone cannot distinguish a
+    /// failure to kill from a failure to reap.
+    private func processDisposition(_ pid: Int32) -> String {
+        guard kill(pid, 0) == 0 else { return "gone" }
+        let ps = Process()
+        ps.executableURL = URL(fileURLWithPath: "/bin/ps")
+        ps.arguments = ["-o", "stat=", "-p", "\(pid)"]
+        let pipe = Pipe()
+        ps.standardOutput = pipe
+        try? ps.run()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        ps.waitUntilExit()
+        let stat = String(decoding: data, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if stat.isEmpty { return "present-ps-silent" }
+        return stat.hasPrefix("Z") ? "ZOMBIE(\(stat))" : "RUNNING(\(stat))"
     }
 
     /// Await a task with a deadline, reporting instead of hanging.
