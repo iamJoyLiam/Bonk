@@ -184,6 +184,63 @@ Applies to security boundaries, trust boundaries, authorization gates,
 lifecycle safety, sensitive-data handling, and any other invariant whose
 accidental removal could silently reintroduce a vulnerability.
 
+## Production Decision Boundary First
+
+Before adding or validating a security gate, identify the exact production
+function or process that makes the security-sensitive decision, and trace the
+data to that boundary.
+
+Do not infer the decision boundary from:
+
+- a test helper, or a reconstructed expected value,
+- a function name or a file name,
+- a nearby `Process()` / subprocess site,
+- the presence of a security-related parameter,
+- a type name appearing somewhere in a test,
+- a static marker or regex match.
+
+The gate must observe the real production decision, or its immediate production
+input, at the actual boundary.
+
+### Verification order
+
+1. Trace the production call path to the decision boundary.
+2. Identify the exact input, output, or side effect that is the security decision.
+3. Build the smallest gate that observes that real boundary.
+4. Prove the gate executes: `requested == executed`, `skipped == 0`.
+5. Mutate the production decision and require the designated gate to fail.
+6. Restore from a saved pristine copy — never `git checkout --` over uncommitted
+   work — and re-run the baseline.
+
+A passing test at the wrong layer is not evidence for the production boundary it
+appears to cover.
+
+### Why this is a rule and not advice
+
+Every serious misdiagnosis during the Finding 3/4/5 and P1 work was an
+asserted shape rather than a read one, and each looked plausible:
+
+- `RemoteTerminalStateTrustBoundaryTests` passed `systemPrompt:` in as an
+  argument, so it could not see who assembled it. Appending remote state to the
+  composed prompt passed all nine tests.
+- The cancellation tests drove `close()` through the manager and stayed green
+  when `withTaskCancellationHandler.onCancel` was deleted — the entry point
+  `AgentRuntime.cancel` actually uses.
+- `ssh-keygen -y -P X` succeeds against an *unencrypted* key, so "opened with
+  the requested passphrase" could not distinguish encryption from no encryption,
+  and the fail-closed test passed on a fully downgraded generator.
+- `ExecutionBoundary.swift` was assumed live on the strength of its type names;
+  it has zero production callers.
+- Four `Process()` sites were counted as the connection launcher; all four were
+  `pkill` cleanup, and the real argv left the backend as an `arguments:` field.
+- An automated reachability pass marked 23 files "dead", including the Team
+  guest path — because `final nonisolated class` and `Foo+Bar.swift` extensions
+  defeated a line-anchored declaration regex.
+
+In every case the defect was located by grepping the real shape or by a
+mutation, never by reading the code carefully. Assume the location is wrong
+until it has been traced.
+
 ## Test Execution Evidence
 
 A test that did not run is not a passing test. `TEST SUCCEEDED` with zero
