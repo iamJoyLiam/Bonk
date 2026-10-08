@@ -202,6 +202,38 @@ Verification scripts MUST fail closed when the requested test count is non-zero
 and the executed test count is zero, or when requested and executed counts
 differ.
 
+### Skipped is not executed
+
+For any security finding, "green" is not a valid verification result unless
+all four hold:
+
+    requested == executed    failed == 0    skipped == 0    crash == 0
+
+A skipped designated gate is **NOT VERIFIED**, and the skip condition must be
+named in the finding's status. `10 skipped` alongside a green suite does not
+mean the suite is fine; it means ten tests proved nothing, and if any of them
+is a security gate then the finding it guards is unverified.
+
+This bit during the B-02 review. Its designated gate was
+`SFTPMatrixLocalTests.testServiceHostKeyMismatchDoesNotFallBack`, which opens
+with `try XCTSkipUnless(tcpOpen(port: 2222), "bench-linux absent")`. With no
+server on :2222 the test never ran — so the gate had never executed, while
+every full-target report carried `skipped=10` that was being read as ordinary
+baseline noise. The assertion had been inverted correctly all along; the test
+simply never ran. Correct-but-unrun is not weaker than no test, because it
+discharges the obligation to look.
+
+A skipped gate blocks **verification**, not **commits**. Work that does not
+touch the gated boundary may still be committed, provided the finding's status
+records the gate as NOT VERIFIED with its skip condition. Conflating the two
+turns a missing integration environment into a lock on unrelated work; keeping
+them apart lets the gap stay visible without blocking everything.
+
+Report the split explicitly, in this shape:
+
+    B-02 policy    VERIFIED      mutation-proven, runnable, 0 skips
+    B-02 end-to-end NOT VERIFIED  bench-linux absent (tcp:2222 closed)
+
 ### Why this is a rule and not advice
 
 Adopted 2026-10-05 after this exact failure occurred twice in one session while
