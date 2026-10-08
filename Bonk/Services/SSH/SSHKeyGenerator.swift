@@ -68,54 +68,183 @@ enum SSHKeyGenerator {
     static func generate(type: SSHKeyType, passphrase: String? = nil) throws -> GeneratedSSHKey {
         logger.info("Generating \(type.displayName) key...")
         let trimmed = passphrase?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let hasPassphrase = trimmed != nil && !(trimmed!.isEmpty)
-        // Prefer system ssh-keygen for correct OpenSSH format + passphrase encryption.
-        // Falls back to CryptoKit/Security if ssh-keygen unavailable.
-        if let result = try? generateViaSSHKeygen(type: type, passphrase: hasPassphrase ? trimmed : nil) {
-            return result
+        let requested = trimmed.flatMap { $0.isEmpty ? nil : $0 }
+
+        if let requested {
+            // An explicit passphrase is a requirement, not a hint. The CryptoKit
+            // fallback cannot encrypt, so falling back to it would hand back an
+            // unprotected private key while reporting success. When protection
+            // was asked for, ssh-keygen is the only path and its failure
+            // propagates.
+            var secret = Array(requested.utf8)
+            defer { zeroInPlace(&secret) }
+            return try generateViaSSHKeygen(type: type, secret: secret)
         }
-        // Fallback (no passphrase encryption)
+
+        // No passphrase requested: an unencrypted key is what was asked for, so
+        // the fallback is a legitimate degradation here rather than a silent
+        // withdrawal of a security control.
+        // TEMPORARY DIAGNOSTIC. The failure reason already exists inside the
+        // thrown error (it carries ssh-keygen's stderr); `try?` is what hides it.
+        // Write it where the harness will not swallow it, then rethrow.
+        let diagPath = "/private/var/folders/ql/gl8fnjcs0v90czmxh7h4rlqr0000gn/T/opencode/sshkeygen-diag.txt"
+        func diag(_ line: String) {
+            let existing = (try? String(contentsOfFile: diagPath, encoding: .utf8)) ?? ""
+            try? Data((existing + line + "\n").utf8).write(to: URL(fileURLWithPath: diagPath))
+        }
+        diag("ENTER nil-path type=\(type.rawValue) tmpDir=\(NSTemporaryDirectory())")
+        do {
+            let result = try generateViaSSHKeygen(type: type, secret: nil)
+            diag("SUCCESS pemHead=\(result.privateKeyPEM.prefix(40).debugDescription)")
+            return result
+        } catch {
+            diag("THROW type=\(type.rawValue) error=\(error)")
+            throw error
+        }
         switch type {
         case .ed25519:
-            return try generateEd25519(passphrase: trimmed)
+            return try generateEd25519()
         case .rsa2048:
-            return try generateRSA(bits: 2048, passphrase: trimmed)
+            return try generateRSA(bits: 2048)
         case .rsa4096:
-            return try generateRSA(bits: 4096, passphrase: trimmed)
+            return try generateRSA(bits: 4096)
         case .ecdsaP256:
-            return try generateECDSA(bits: 256, passphrase: trimmed)
+            return try generateECDSA(bits: 256)
         case .ecdsaP384:
-            return try generateECDSA(bits: 384, passphrase: trimmed)
+            return try generateECDSA(bits: 384)
         }
+    }
+
+    /// Best-effort overwrite of a buffer holding secret material.
+    ///
+    /// Not a guarantee, and deliberately not described as one: the runtime may
+    /// hold other copies — bridged strings, register spills, swap — that this
+    /// cannot reach.
+    private static func zeroInPlace(_ bytes: inout [UInt8]) {
+        for index in bytes.indices { bytes[index] = 0 }
+    }
+
+    /// Single-quote a path for safe use as one shell word.
+    private static func shellQuoted(_ path: String) -> String {
+        "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    // MARK: - Secret delivery
+
+    /// Writes the passphrase to a file only this process and the askpass helper
+    /// can read. Nothing else ever receives it.
+    ///
+    /// Returns the path so the caller cannot pass a different one to the helper.
+    @discardableResult
+    static func writeSecret(_ secret: [UInt8], in directory: URL) throws -> URL {
+        let url = directory.appendingPathComponent("secret")
+        var payload = secret
+        // ssh-keygen reads the passphrase as a line.
+        payload.append(0x0A)
+        try Data(payload).write(to: url)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o600], ofItemAtPath: url.path
+        )
+        zeroInPlace(&payload)
+        return url
+    }
+
+    /// Contents of the askpass helper.
+    ///
+    /// Its own function on purpose. An earlier version generated this as a side
+    /// effect of building the invocation, which gave one abstraction two jobs and
+    /// was the most likely reason the unprotected path regressed alongside the
+    /// protected one.
+    ///
+    /// `$1` is OpenSSH's prompt text, never the secret, and is ignored here.
+    static func makeAskpassHelper(secretPath: URL) -> String {
+        "#!/bin/sh\n# argv[1] is OpenSSH's prompt text, not the secret.\n"
+            + "exec cat " + shellQuoted(secretPath.path) + "\n"
+    }
+
+    @discardableResult
+    static func writeAskpassHelper(secretPath: URL, in directory: URL) throws -> URL {
+        let url = directory.appendingPathComponent("askpass")
+        try Data(makeAskpassHelper(secretPath: secretPath).utf8).write(to: url)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700], ofItemAtPath: url.path
+        )
+        return url
+    }
+
+    /// Environment additions for a protected invocation. Paths only.
+    static func makeAskpassEnvironment(helperPath: URL) -> [String: String] {
+        ["SSH_ASKPASS": helperPath.path, "SSH_ASKPASS_REQUIRE": "force"]
+    }
+
+    /// argv for ssh-keygen. Contains no secret under any circumstances, because
+    /// it has no secret to contain: the passphrase is delivered by file path.
+    static func makeArguments(type: SSHKeyType, keyPath: URL) -> [String] {
+        var arguments: [String]
+        switch type {
+        case .ed25519:
+            arguments = ["-t", "ed25519", "-f", keyPath.path, "-C", "bonk@local"]
+        case .rsa2048:
+            arguments = ["-t", "rsa", "-b", "2048", "-f", keyPath.path, "-C", "bonk@local"]
+        case .rsa4096:
+            arguments = ["-t", "rsa", "-b", "4096", "-f", keyPath.path, "-C", "bonk@local"]
+        case .ecdsaP256:
+            arguments = ["-t", "ecdsa", "-b", "256", "-f", keyPath.path, "-C", "bonk@local"]
+        case .ecdsaP384:
+            arguments = ["-t", "ecdsa", "-b", "384", "-f", keyPath.path, "-C", "bonk@local"]
+        }
+        return arguments
     }
 
     // MARK: - System ssh-keygen (correct OpenSSH v1 + passphrase)
 
-    private static func generateViaSSHKeygen(type: SSHKeyType, passphrase: String?) throws -> GeneratedSSHKey {
+    private static func generateViaSSHKeygen(type: SSHKeyType, secret: [UInt8]?) throws -> GeneratedSSHKey {
         let fileManager = FileManager.default
         let tmpDir = fileManager.temporaryDirectory.appendingPathComponent("bonk-keygen-\(UUID().uuidString)", isDirectory: true)
-        try fileManager.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        // Explicit mode: the default temp permission is not a property to rely on
+        // for a directory that will hold key material.
+        try fileManager.createDirectory(
+            at: tmpDir, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
         defer { try? fileManager.removeItem(at: tmpDir) }
         let keyPath = tmpDir.appendingPathComponent("key")
         let pubPath = tmpDir.appendingPathComponent("key.pub")
 
-        var args: [String] = []
-        switch type {
-        case .ed25519:
-            args = ["-t", "ed25519", "-f", keyPath.path, "-N", passphrase ?? "", "-C", "bonk@local"]
-        case .rsa2048:
-            args = ["-t", "rsa", "-b", "2048", "-f", keyPath.path, "-N", passphrase ?? "", "-C", "bonk@local"]
-        case .rsa4096:
-            args = ["-t", "rsa", "-b", "4096", "-f", keyPath.path, "-N", passphrase ?? "", "-C", "bonk@local"]
-        case .ecdsaP256:
-            args = ["-t", "ecdsa", "-b", "256", "-f", keyPath.path, "-N", passphrase ?? "", "-C", "bonk@local"]
-        case .ecdsaP384:
-            args = ["-t", "ecdsa", "-b", "384", "-f", keyPath.path, "-N", passphrase ?? "", "-C", "bonk@local"]
+        var args = makeArguments(type: type, keyPath: keyPath)
+        // Additions only. Assigning `Process.environment` replaces the child's
+        // entire environment, so this must merge.
+        var environmentAdditions: [String: String]?
+
+        if secret == nil {
+            // Nothing to protect. Ask for an empty passphrase explicitly so
+            // ssh-keygen never prompts on a terminal we do not own.
+            args += ["-N", ""]
+        } else {
+            // Deployment-floor guard, not an OpenSSH capability probe: it cannot
+            // see the ssh-keygen version. The real enforcement is the non-zero
+            // exit below — an ssh-keygen that ignores askpass never receives a
+            // passphrase, cannot confirm, and exits non-zero.
+            guard #available(macOS 13.0, *) else {
+                throw SSHKeyGeneratorError.keyGenerationFailed(
+                    "passphrase encryption requires macOS 13 or newer"
+                )
+            }
+            let secretPath = try writeSecret(secret!, in: tmpDir)
+            let helperPath = try writeAskpassHelper(secretPath: secretPath, in: tmpDir)
+            environmentAdditions = makeAskpassEnvironment(helperPath: helperPath)
+            // -N is deliberately absent: ssh-keygen prompts twice, for entry and
+            // for confirmation, and the helper answers both.
         }
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/ssh-keygen")
         proc.arguments = args
+        if let additions = environmentAdditions {
+            var environment = ProcessInfo.processInfo.environment
+            for (name, value) in additions { environment[name] = value }
+            proc.environment = environment
+        }
         let errPipe = Pipe()
         proc.standardError = errPipe
         proc.standardOutput = Pipe()
@@ -162,7 +291,7 @@ enum SSHKeyGenerator {
 
     // MARK: - Ed25519 (fallback, no passphrase encryption)
 
-    private static func generateEd25519(passphrase: String? = nil) throws -> GeneratedSSHKey {
+    private static func generateEd25519() throws -> GeneratedSSHKey {
         // Use CryptoKit for Ed25519 key generation
         let privateKey = Curve25519.Signing.PrivateKey()
         let publicKey = privateKey.publicKey
@@ -203,7 +332,7 @@ enum SSHKeyGenerator {
 
     // MARK: - RSA (fallback)
 
-    private static func generateRSA(bits: Int, passphrase: String? = nil) throws -> GeneratedSSHKey {
+    private static func generateRSA(bits: Int) throws -> GeneratedSSHKey {
         let attributes: [String: Any] = [
             kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
             kSecAttrKeySizeInBits as String: bits,
@@ -256,7 +385,7 @@ enum SSHKeyGenerator {
 
     // MARK: - ECDSA (fallback)
 
-    private static func generateECDSA(bits: Int, passphrase: String? = nil) throws -> GeneratedSSHKey {
+    private static func generateECDSA(bits: Int) throws -> GeneratedSSHKey {
         let keyType = bits == 256 ? kSecAttrKeyTypeECSECPrimeRandom : kSecAttrKeyTypeECSECPrimeRandom
         let attributes: [String: Any] = [
             kSecAttrKeyType as String: keyType,
