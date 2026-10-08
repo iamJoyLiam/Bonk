@@ -42,7 +42,13 @@ final class OpenSSHBackend: @unchecked Sendable {
     /// the server accepted it (stored credential was wrong or missing).
     var onManualPasswordVerified: (@Sendable (String) -> Void)?
 
-    init(config: SSHConnectionConfig) throws {
+    private let spawner: any OpenSSHProcessSpawning
+
+    init(
+        config: SSHConnectionConfig,
+        spawner: any OpenSSHProcessSpawning = DefaultOpenSSHProcessSpawner()
+    ) throws {
+        self.spawner = spawner
         self.config = config
         self.generation = config.generation ?? UUID()
         if config.bypassControlMaster {
@@ -104,7 +110,7 @@ final class OpenSSHBackend: @unchecked Sendable {
             additionalOptions: [],
             attemptID: attemptID
         )
-        let process = try OpenSSHProcessTransport.spawn(
+        let process = try spawner.spawn(
             executable: "/usr/bin/ssh",
             arguments: arguments,
             cols: cols,
@@ -237,10 +243,10 @@ final class OpenSSHBackend: @unchecked Sendable {
     ) async throws -> String {
         let attemptID = UUID().uuidString
         let arguments = sshArguments(pty: false, command: command, additionalOptions: [], attemptID: attemptID)
-        let process = try OpenSSHProcessTransport.spawn(
+        let process = try spawner.spawn(
             executable: "/usr/bin/ssh",
             arguments: arguments,
-            cols: 160, rows: 50, termType: "xterm-256color"
+            cols: 160, rows: 50, termType: "xterm-256color", environment: [:]
         )
         defer { process.close() }
         let session = PTYSession()
@@ -273,10 +279,10 @@ final class OpenSSHBackend: @unchecked Sendable {
     ) async throws -> String {
         guard !commands.isEmpty else { throw SSHServiceError.connectionFailed("OpenSSH SFTP command list is empty.") }
 
-        let process = try OpenSSHProcessTransport.spawn(
+        let process = try spawner.spawn(
             executable: "/usr/bin/sftp",
             arguments: sftpArguments(attemptID: UUID().uuidString),
-            cols: 160, rows: 50, termType: "xterm-256color"
+            cols: 160, rows: 50, termType: "xterm-256color", environment: [:]
         )
         let session = PTYSession()
         let rawStream = session.makeRawOutputStream()
@@ -355,7 +361,7 @@ final class OpenSSHBackend: @unchecked Sendable {
         case .dynamic: forwardOption = "-D\(forward.localHost):\(forward.localPort)"
         }
         let arguments = sshArguments(pty: false, command: nil, additionalOptions: ["-N", "-o", "ExitOnForwardFailure=yes", forwardOption], attemptID: UUID().uuidString)
-        let process = try OpenSSHProcessTransport.spawn(executable: "/usr/bin/ssh", arguments: arguments, cols: 120, rows: 40, termType: "xterm-256color")
+        let process = try spawner.spawn(executable: "/usr/bin/ssh", arguments: arguments, cols: 120, rows: 40, termType: "xterm-256color", environment: [:])
         let session = PTYSession()
         let responder = makeAuthResponder(process: process, allowInteractivePrompt: true)
         session.startProcess(fileDescriptor: process.masterFD, onExit: onExit, onOutput: responder.observe)

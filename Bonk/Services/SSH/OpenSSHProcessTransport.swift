@@ -18,6 +18,44 @@ private func rawfork() -> pid_t
 ///
 /// PTY is required for OpenSSH password and keyboard-interactive prompts.
 /// Transport owns fd/process; `PTYSession` only reads, writes, and resizes it.
+/// The process-launch boundary for the OpenSSH backend.
+///
+/// Every connection, command, SFTP and port-forward launch goes through this,
+/// so it is the one place where the argv production hands to `ssh` can be
+/// observed. The default implementation *is* the original
+/// `OpenSSHProcessTransport.spawn` call — there is no second code path and no
+/// test-only branch in production.
+protocol OpenSSHProcessSpawning: Sendable {
+    func spawn(
+        executable: String,
+        arguments: [String],
+        cols: Int,
+        rows: Int,
+        termType: String,
+        environment: [String: String]
+    ) throws -> OpenSSHProcessTransport
+}
+
+struct DefaultOpenSSHProcessSpawner: OpenSSHProcessSpawning {
+    func spawn(
+        executable: String,
+        arguments: [String],
+        cols: Int = 120,
+        rows: Int = 40,
+        termType: String = "xterm-256color",
+        environment: [String: String] = [:]
+    ) throws -> OpenSSHProcessTransport {
+        try OpenSSHProcessTransport.spawn(
+            executable: executable,
+            arguments: arguments,
+            cols: cols,
+            rows: rows,
+            termType: termType,
+            environment: environment
+        )
+    }
+}
+
 final class OpenSSHProcessTransport: @unchecked Sendable {
     private let lock = NSLock()
     private var _masterFD: Int32

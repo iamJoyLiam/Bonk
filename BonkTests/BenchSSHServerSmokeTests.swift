@@ -19,7 +19,7 @@ import NIOPosix
 ///   `SSH_ASKPASS`                        password supplied without a tty
 @Suite("Bench SSH server — fixture smoke test")
 struct BenchSSHServerSmokeTests {
-    private static let password = "bench-fixture-password"
+    static let password = "bench-fixture-password"
 
     private func makeDir() throws -> URL {
         let dir = FileManager.default.temporaryDirectory
