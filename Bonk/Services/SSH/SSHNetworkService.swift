@@ -103,6 +103,33 @@ public actor SSHNetworkService {
     /// VNext — forced backend for Hybrid routing (T2.2). When set, overrides shouldUseOpenSSH.
     var vnextForcedBackend: SSHBackendType?
 
+    /// Where the compatibility transport records and checks host keys, for this
+    /// service only. `nil` — the production default — is the app-support file
+    /// `OpenSSHBackend.prepareKnownHostsPath()` resolves, and nothing else
+    /// changes.
+    ///
+    /// It exists because B-02's gate has to observe the *fallback* transport
+    /// declining to run, and the only way to observe that convincingly is to let
+    /// it be capable of succeeding. When the gate is mutated to permit the
+    /// fallback, `/usr/bin/sftp` really connects under `accept-new` and writes
+    /// the key the native leg just rejected. Left pointed at the real file,
+    /// proving the gate works would mean manufacturing trust state on whatever
+    /// machine the suite runs on; the file is exactly the state AUDIT-FIND-001
+    /// is about, so a test that wrote to it would be evidence about the machine
+    /// rather than about the product.
+    ///
+    /// Test-only. Like `vnextForcedBackend`, it is set by the caller rather than
+    /// by configuration, and production never assigns it.
+    var openSSHKnownHostsPathOverride: String?
+
+    /// Setter for `openSSHKnownHostsPathOverride`, so the cross-actor boundary
+    /// is crossed through a deliberately named method the way
+    /// `setVNextPreferredBackend` does, rather than by assigning the stored
+    /// property from outside.
+    func setOpenSSHKnownHostsPathOverride(_ path: String?) {
+        openSSHKnownHostsPathOverride = path
+    }
+
     public init(hostKeyStore: some SSHHostKeyStore) {
         self.hostKeyStore = hostKeyStore
         var cont: AsyncStream<SSHConnectionState>.Continuation!
@@ -180,7 +207,10 @@ public actor SSHNetworkService {
         do {
             #if os(macOS)
                 if shouldUseOpenSSH(config.authMethod) {
-                    let backend = try OpenSSHBackend(config: config)
+                    let backend = try OpenSSHBackend(
+                        config: config,
+                        knownHostsPathOverride: openSSHKnownHostsPathOverride
+                    )
                     openSSHBackend = backend
                     usesOpenSSHTransport = true
                     // No optimistic connected; ready after PTY gate
