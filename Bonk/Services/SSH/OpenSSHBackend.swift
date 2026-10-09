@@ -44,9 +44,18 @@ final class OpenSSHBackend: @unchecked Sendable {
 
     private let spawner: any OpenSSHProcessSpawning
 
+    /// - Parameter knownHostsPathOverride: Where ssh records and checks host keys
+    ///   on this transport. `nil` keeps production behaviour exactly as it was:
+    ///   the app-support file created by `prepareKnownHostsPath()`. It exists as a
+    ///   parameter so a test can point the trust store at a temporary file and
+    ///   observe the real trust decision, rather than writing host keys into a
+    ///   real, persistent, user-visible file. It changes no other behaviour — the
+    ///   argv is still built by `Arguments.swift` and still launched through the
+    ///   spawn seam.
     init(
         config: SSHConnectionConfig,
-        spawner: any OpenSSHProcessSpawning = DefaultOpenSSHProcessSpawner()
+        spawner: any OpenSSHProcessSpawning = DefaultOpenSSHProcessSpawner(),
+        knownHostsPathOverride: String? = nil
     ) throws {
         self.spawner = spawner
         self.config = config
@@ -58,7 +67,7 @@ final class OpenSSHBackend: @unchecked Sendable {
         } else {
             controlPath = SocketNaming.controlPath(host: config.host, port: config.port, username: config.username)
         }
-        knownHostsPath = try Self.prepareKnownHostsPath()
+        knownHostsPath = try knownHostsPathOverride ?? Self.prepareKnownHostsPath()
         try prepareIdentityFiles()
     }
 
