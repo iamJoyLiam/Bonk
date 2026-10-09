@@ -88,10 +88,20 @@ releases/
 CLAUDE.md
 
 # Documents (keep windows adaptation docs)
-docs/
+#
+# `docs/*` rather than `docs/`: git cannot re-include a file whose parent
+# directory is excluded, so the negations below were dead weight under
+# `docs/` — the three tracked windows docs only escaped it because they were
+# already in the index. `docs/*` still ignores everything under docs/, but lets
+# an explicit negation actually take effect.
+docs/*
 !docs/windows-adaptation-standard.md
 !docs/windows-p0-impl.md
 !docs/windows-ui-blueprint.md
+# Security audit ledger: open findings/observations for the SSH host-key trust
+# audit. Tracked so an unfixed defect is recorded in the repository rather than
+# only in a conversation, which is how it gets lost.
+!docs/security-audit.md
 
 # Web
 docs/FEATURE_ROADMAP.md
