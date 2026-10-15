@@ -18,7 +18,101 @@ final class SFTPService {
     var entries: [SFTPFileEntry] = []
     var isLoading: Bool = false
     var errorMessage: String?
-    var transfers: [SFTPTransfer] = []
+    /// Active transfers.
+    ///
+    /// ## Computed so every mutation is observable
+    ///
+    /// The toolbar ring observes `transferTick`, not this array, and that is
+    /// deliberate. Progress ticks mutate *elements* — `transfers[idx].fraction`,
+    /// `transfers[idx].transferredBytes` — which leave the array property itself
+    /// untouched, so an observer reading `transfers` saw the initial `append` and
+    /// then nothing: the ring froze at the start of every transfer and the popover
+    /// rebuilt itself from a stale snapshot.
+    ///
+    /// Routing the array through a computed property fixes that structurally
+    /// rather than by convention. An in-place subscript write performs
+    /// get → modify → set, so the setter — and therefore the tick — runs on every
+    /// path: appends, removals, element writes, and writes from outside this type.
+    /// Nothing has to remember to announce itself, which is the only way the
+    /// invariant survives the next person editing a transfer method.
+    var transfers: [SFTPTransfer] {
+        get { storedTransfers }
+        set {
+            storedTransfers = newValue
+            yieldTransferTick()
+        }
+    }
+
+    private var storedTransfers: [SFTPTransfer] = []
+
+    /// Update one transfer in place, by replacement.
+    ///
+    /// ## Why not `transfers[idx].fraction = x`
+    ///
+    /// That form mutates an element of a computed property. It is *supposed* to
+    /// route through the setter, and with `@Observable` wrapping the storage it
+    /// does not reliably: the tick stayed put and the toolbar ring froze. The
+    /// element was still updated — so nothing looked wrong in the service, only in
+    /// the one place that watches it.
+    ///
+    /// Copying the element out, mutating the copy and writing it back always
+    /// assigns through the setter, on every call, regardless of what the macro
+    /// generates. Every production update site goes through here.
+    func updateTransfer(_ id: UUID, _ mutate: (inout SFTPTransfer) -> Void) {
+        guard let index = transfers.firstIndex(where: { $0.id == id }) else { return }
+        var copy = transfers[index]
+        mutate(&copy)
+        transfers[index] = copy
+    }
+
+    /// Monotonic counter bumped on every `transfers` mutation.
+    ///
+    /// One `Int` is a reliable signal even when the change is an element write
+    /// rather than a whole-array replacement.
+    private(set) var transferTick: Int = 0
+
+    /// One yield per `transfers` mutation, for observers.
+    ///
+    /// ## Why a stream and not `withObservationTracking`
+    ///
+    /// The toolbar used to watch `transferTick` with `withObservationTracking`. Its
+    /// callback closure is **nonisolated**, while this service is `@MainActor` —
+    /// so the observation was registered from a context that does not own the
+    /// state. It fired unreliably, which showed up as a toolbar item that froze the
+    /// moment a transfer started and never recovered.
+    ///
+    /// A stream yields *into* the actor, so the observer's continuation resumes on
+    /// the main actor with the state already valid. No cross-actor registration and
+    /// no one-shot re-arming.
+    ///
+    /// Built once, on first use, and kept. Building it per subscriber meant the most
+    /// recent caller silently replaced the previous one's continuation, and any tick
+    /// yielded before a subscriber arrived was discarded — including, for a transfer
+    /// that finishes quickly, the tick that says it finished.
+    ///
+    /// Unbounded buffering is deliberate: a *dropping* stream would lose the final
+    /// "finished" signal, which is the one that must never be dropped. The volume is
+    /// bounded by coalescing in the consumer, not here.
+    /// `@ObservationIgnored` because the channel is plumbing, not observed state —
+    /// and because `@Observable` rewrites stored properties into computed ones,
+    /// which cannot be `lazy`.
+    @ObservationIgnored
+    private var storedTransferChannel: (stream: AsyncStream<Void>, continuation: AsyncStream<Void>.Continuation)?
+
+    private var transferChannel: (stream: AsyncStream<Void>, continuation: AsyncStream<Void>.Continuation) {
+        if let storedTransferChannel { return storedTransferChannel }
+        let channel = AsyncStream<Void>.makeStream(bufferingPolicy: .unbounded)
+        storedTransferChannel = channel
+        return channel
+    }
+
+    /// Ticks from every `transfers` mutation.
+    var transferUpdates: AsyncStream<Void> { transferChannel.stream }
+
+    private func yieldTransferTick() {
+        transferTick &+= 1
+        transferChannel.continuation.yield()
+    }
 
     // Unified seam — one channel for all backends (Citadel/OpenSSH/VNext).
     // Deep SFTPStore will own this; SFTPService currently bridges.
@@ -43,9 +137,27 @@ final class SFTPService {
     private var listRequestSequence = 0
 
     /// Claim the next list request id.
-    private func beginListRequest() -> Int {
+    /// Start a list request.
+    ///
+    /// A foreground request advances `listRequestSequence`, which is what makes
+    /// older foreground results drop out. A background refresh deliberately does
+    /// **not**: it must never be able to invalidate a navigation the user started,
+    /// however late it arrives. See `listDirectory`.
+    private func beginListRequest(isBackground: Bool = false) -> Int {
+        if isBackground { return listRequestSequence }
         listRequestSequence += 1
         return listRequestSequence
+    }
+
+    /// Whether a completed list result is still the one the user should see.
+    ///
+    /// Foreground: superseded if any later foreground request started.
+    /// Background: additionally superseded if the user has navigated away, since a
+    /// refresh of a directory nobody is looking at must not yank them back.
+    private func isListResultCurrent(_ requestID: Int, isBackground: Bool, path: String) -> Bool {
+        guard requestID == listRequestSequence else { return false }
+        if isBackground, currentPath != path { return false }
+        return true
     }
 
     init() {}
@@ -244,6 +356,26 @@ final class SFTPService {
     }
 
     /// List files in the current directory.
+    ///
+    /// `showLoading: false` marks a **background refresh** — one that must never
+    /// cancel user navigation.
+    ///
+    /// ## Why background refreshes do not advance the sequence
+    ///
+    /// `listDirectory` used to guard every result against `listRequestSequence`,
+    /// and a background refresh advanced that sequence like any other request.
+    /// That made this sequence: the user double-clicks a folder, and 600ms after
+    /// an unrelated `.shellCommandDidEnd` the auto-refresh starts. The refresh
+    /// bumps the sequence, so when the navigation's own result arrives its guard
+    /// fails and it returns **without applying anything**. The refresh then
+    /// re-lists the directory the user was already in, so the list never changes
+    /// and the double-click appears to do nothing — intermittently, depending on
+    /// whether a shell command had just finished.
+    ///
+    /// A background refresh now takes a ticket but does not advance the sequence.
+    /// It applies its result only if nothing newer started *and* the user has not
+    /// navigated away since. Two foreground requests still supersede each other,
+    /// which is what the sequence was actually for.
     func listDirectory(_ path: String? = nil, showLoading: Bool = true) async throws {
         guard let character = channel ?? vnextChannel else {
             Log.sftp.error("listDirectory failed: not connected")
@@ -253,16 +385,27 @@ final class SFTPService {
         self.errorMessage = nil
         defer { if showLoading { self.isLoading = false } }
         let targetPath = path ?? self.currentPath
-        let requestID = self.beginListRequest()
+        let isBackground = !showLoading
+        let requestID = self.beginListRequest(isBackground: isBackground)
         var result = try await character.listDirectory(at: targetPath)
-        guard requestID == self.listRequestSequence else { return }
+        guard self.isListResultCurrent(requestID, isBackground: isBackground, path: targetPath) else {
+            if isBackground {
+                Log.sftp.debug("[LIST] background refresh for \(targetPath, privacy: .public) superseded; discarded")
+            }
+            return
+        }
         let sorted = await Task.detached(priority: .userInitiated) {
             result.sorted {
                 if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
                 return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
             }
         }.value
-        guard requestID == self.listRequestSequence else { return }
+        guard self.isListResultCurrent(requestID, isBackground: isBackground, path: targetPath) else {
+            if isBackground {
+                Log.sftp.debug("[LIST] background refresh for \(targetPath, privacy: .public) superseded while sorting; discarded")
+            }
+            return
+        }
         entries = sorted
         currentPath = targetPath
     }
@@ -302,7 +445,7 @@ final class SFTPService {
             guard !entry.isDirectory else { return }
             Log.sftp.debug("[DOWNLOAD] start \(entry.name, privacy: .public) size=\(entry.size)")
             let transferID = UUID()
-            transfers.append(SFTPTransfer(id: transferID, filename: entry.name, totalBytes: entry.size, transferredBytes: 0, isComplete: false, error: nil))
+            transfers.append(SFTPTransfer(id: transferID, filename: entry.name, direction: .download, totalBytes: entry.size, transferredBytes: 0, isComplete: false, error: nil))
             do {
                 Log.sftp.debug("[DOWNLOAD] unified character.download call for \(entry.name, privacy: .public)")
                 try await character.download(entry.path, to: localURL, operationID: transferID, onProgress: { [weak self] progress in
@@ -333,16 +476,15 @@ final class SFTPService {
                     }
                 })
                 if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                    transfers[idx].fraction = 1.0
+                    updateTransfer(transferID) { t in t.fraction = 1.0 }
                     // Unknown size: entry.size==0, use actual file size on disk
                     if let total = transfers[idx].totalBytes, total > 0 {
-                        transfers[idx].transferredBytes = entry.size
+                        updateTransfer(transferID) { t in t.transferredBytes = entry.size }
                     } else if let attrs = try? FileManager.default.attributesOfItem(atPath: localURL.path),
                               let size = attrs[.size] as? UInt64 {
-                        transfers[idx].transferredBytes = size
+                        updateTransfer(transferID) { t in t.transferredBytes = size }
                     }
-                    transfers[idx].isComplete = true
-                    transfers[idx] = transfers[idx]
+                    updateTransfer(transferID) { t in t.isComplete = true }
                 }
                 SFTPProgressThrottler.shared.remove(id: transferID)
                 scheduleTransferRemoval(transferID, after: 3)
@@ -387,13 +529,13 @@ final class SFTPService {
                             guard let self else { return }
                             let clamped = min(max(progress, 0), 1)
                             if let idx = self.transfers.firstIndex(where: { $0.id == transferID }) {
-                                self.transfers[idx].transferredBytes = UInt64(Double(entry.size) * clamped)
+                                self.updateTransfer(transferID) { t in t.transferredBytes = UInt64(Double(entry.size) * clamped) }
                             }
                         }
                     }
                 )
                 if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                    transfers[idx].transferredBytes = entry.size
+                    updateTransfer(transferID) { t in t.transferredBytes = entry.size }
                 }
                 return
             } catch is CancellationError {
@@ -472,7 +614,7 @@ final class SFTPService {
                     updateCounter += 1
                     if updateCounter % 10 == 0 {
                         if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                            transfers[idx].transferredBytes = nextWriteOffset
+                            updateTransfer(transferID) { t in t.transferredBytes = nextWriteOffset }
                         }
                     }
                 }
@@ -482,21 +624,21 @@ final class SFTPService {
 
         // Final progress update
         if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-            transfers[idx].transferredBytes = nextWriteOffset
+            updateTransfer(transferID) { t in t.transferredBytes = nextWriteOffset }
         }
     }
 
     /// Mark a transfer as complete.
     private func markTransferComplete(_ transferID: UUID) {
         if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-            transfers[idx].isComplete = true
+            updateTransfer(transferID) { t in t.isComplete = true }
         }
     }
 
     /// Mark a transfer as failed.
     private func markTransferError(_ transferID: UUID, error: Error) {
         if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-            transfers[idx].error = error.localizedDescription
+            updateTransfer(transferID) { t in t.error = error.localizedDescription }
         }
     }
 
@@ -511,7 +653,12 @@ final class SFTPService {
     /// Cancel a specific transfer.
     func cancelTransfer(_ transferID: UUID) {
         if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-            transfers[idx].isCancelled = true
+            updateTransfer(transferID) { t in t.isCancelled = true }
+            // Removal was only ever scheduled on the success and error paths, so a
+            // cancelled transfer stayed in the list forever at whatever fraction it
+            // had reached — most visibly as a row stuck at 100% that never went
+            // away. Cancellation is an outcome and gets the same treatment.
+            scheduleTransferRemoval(transferID, after: 3)
         }
         #if os(macOS)
             openSSHSFTPClient?.cancel(operationID: transferID)
@@ -551,7 +698,7 @@ final class SFTPService {
             let attrs = try? FileManager.default.attributesOfItem(atPath: localURL.path)
             let total = (attrs?[.size] as? UInt64) ?? 0
             let transferID = UUID()
-            transfers.append(SFTPTransfer(id: transferID, filename: filename, totalBytes: total, transferredBytes: 0, isComplete: false, error: nil))
+            transfers.append(SFTPTransfer(id: transferID, filename: filename, direction: .upload, totalBytes: total, transferredBytes: 0, isComplete: false, error: nil))
             do {
                 try await character.upload(localURL, to: targetPath, operationID: transferID, onProgress: { [weak self] progress in
                     let clamped = min(max(progress, 0), 1)
@@ -575,10 +722,9 @@ final class SFTPService {
                     }
                 })
                 if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                    transfers[idx].fraction = 1.0
-                    transfers[idx].transferredBytes = total
-                    transfers[idx].isComplete = true
-                    transfers[idx] = transfers[idx]
+                    updateTransfer(transferID) { t in t.fraction = 1.0 }
+                    updateTransfer(transferID) { t in t.transferredBytes = total }
+                    updateTransfer(transferID) { t in t.isComplete = true }
                 }
                 SFTPProgressThrottler.shared.remove(id: transferID)
                 continuation.yield(1.0)
@@ -629,7 +775,7 @@ final class SFTPService {
                             guard let self else { return }
                             let clamped = min(max(progress, 0), 1)
                             if let idx = self.transfers.firstIndex(where: { $0.id == transferID }) {
-                                self.transfers[idx].transferredBytes = UInt64(Double(totalBytes) * clamped)
+                                self.updateTransfer(transferID) { t in t.transferredBytes = UInt64(Double(totalBytes) * clamped) }
                             }
                             continuation.yield(clamped)
                         }
@@ -688,7 +834,7 @@ final class SFTPService {
 
                     if updateCounter % 10 == 0 || completedBytes == totalBytes {
                         if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
-                            transfers[idx].transferredBytes = completedBytes
+                            updateTransfer(transferID) { t in t.transferredBytes = completedBytes }
                         }
                         let progress = totalBytes > 0 ? Double(completedBytes) / Double(totalBytes) : 1.0
                         if progress - lastReportedProgress >= 0.01 || completedBytes == totalBytes {
@@ -733,7 +879,7 @@ final class SFTPService {
         sftpClient = nil
         entries = []
         for transfer in transfers where !transfer.isComplete {
-            if let idx = transfers.firstIndex(where: { $0.id == transfer.id }) { transfers[idx].isCancelled = true }
+            updateTransfer(transfer.id) { t in t.isCancelled = true }
         }
     }
 

@@ -103,18 +103,36 @@ struct OpenSSHTrustDecisionConvergenceTests {
 
         // Claim one port and reuse it: a host key only counts as "changed" from
         // ssh's point of view when the same host:port presents a different one.
-        guard let claimed = SSHFixturePort.claim(in: BenchSSHServer.ports) else {
-            throw ConvergenceFixtureError.noFreePort
+        //
+        // Claiming is not enough on its own. `SSHFixturePort.claim` stops two
+        // *claimants* from choosing the same port, but other suites start their
+        // servers with the fire-and-forget `stop()`, so a port claimed here can
+        // still be bound by a neighbour's server that has not finished shutting
+        // down. That is what produced `EADDRINUSE` on a 9-suite parallel run
+        // after the phase-A/phase-B race had already been fixed.
+        //
+        // So: claim, and if the bind loses, release and try another.
+        var port: Int?
+        var serverA: BenchSSHServer.Instance?
+        for _ in 0 ..< 4 {
+            guard let candidate = SSHFixturePort.claim(in: BenchSSHServer.ports) else { break }
+            do {
+                let started = try await BenchSSHServer.start(
+                    hostKeySeed: 0x5A,
+                    password: BenchSSHServerSmokeTests.password,
+                    port: Int(candidate),
+                    sftpDelegate: BenchSFTPDelegate()
+                )
+                serverA = started
+                port = Int(candidate)
+                break
+            } catch {
+                // Port still held by a previous suite; try the next one.
+                continue
+            }
         }
-        let port = Int(claimed)
+        guard let port, let serverA else { throw ConvergenceFixtureError.noFreePort }
 
-        // --- Phase A: the trusted key. Seed the canonical store with it. ---
-        let serverA = try await BenchSSHServer.start(
-            hostKeySeed: 0x5A,
-            password: BenchSSHServerSmokeTests.password,
-            port: port,
-            sftpDelegate: BenchSFTPDelegate()
-        )
         let trusted = try await scannedKey(port: UInt16(port))
         // Must wait for the listener to be released: phase B binds the same port
         // with a different key, and binding it while phase A's socket is still
@@ -141,13 +159,31 @@ struct OpenSSHTrustDecisionConvergenceTests {
         let realBefore = (try? Data(contentsOf: productionStoreURL)) ?? Data()
 
         // --- Phase B: the same port, a different key. ---
-        let serverB = try await BenchSSHServer.start(
-            hostKeySeed: 0x7C,
-            password: BenchSSHServerSmokeTests.password,
-            port: port,
-            execDelegate: SubprocessExecDelegate(spawned: SpawnedProcesses()),
-            sftpDelegate: BenchSFTPDelegate()
-        )
+        // Phase B rebinds the port just released. `stopAndWait()` waits for the
+        // listener to close, but the socket can still sit in `TIME_WAIT` for a
+        // moment, so a bind immediately afterwards can lose the race to another
+        // suite. Retry briefly rather than treating a scheduling artefact as a
+        // trust-decision failure.
+        var serverB: BenchSSHServer.Instance?
+        var lastError: Error?
+        for attempt in 0 ..< 6 {
+            do {
+                serverB = try await BenchSSHServer.start(
+                    hostKeySeed: 0x7C,
+                    password: BenchSSHServerSmokeTests.password,
+                    port: port,
+                    execDelegate: SubprocessExecDelegate(spawned: SpawnedProcesses()),
+                    sftpDelegate: BenchSFTPDelegate()
+                )
+                break
+            } catch {
+                lastError = error
+                try? await Task.sleep(for: .milliseconds(150 * (attempt + 1)))
+            }
+        }
+        guard let serverB else {
+            throw lastError ?? ConvergenceFixtureError.noFreePort
+        }
         defer { serverB.stop() }
 
         // --- modern leg: native/Citadel, pinned to A, server presents B. ---

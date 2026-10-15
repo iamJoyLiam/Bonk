@@ -9,6 +9,52 @@ enum AppStyle {
     static let cornerRadiusLarge: CGFloat = 14
     static let cornerRadiusCapsule: CGFloat = 20
 
+    // MARK: - Toolbar rings
+
+    /// Size of the circular progress rings in the main toolbar (server CPU /
+    /// memory / disk, and SFTP transfers).
+    ///
+    /// One token for all of them, deliberately. They were sized independently —
+    /// 32×30 for the server rings, 38×34 for SFTP — and the mismatch read as one
+    /// item being broken rather than as two designs. Sharing the value is what
+    /// keeps them equal when either side is adjusted.
+    ///
+    /// **Square, and that is deliberate.** Each ring draws its circle on the
+    /// *shortest* edge, so a 42×34 item rendered a 29pt circle (34 − 2×2.5 inset)
+    /// and left 6.5pt of dead space on each side. The toolbar then added its own
+    /// item spacing on top, so four rings in a row read as four small circles
+    /// separated by wide voids — visibly looser than the team and serial icons
+    /// beside them, which are plain `item.image` items on a standard compact
+    /// footprint. The width was the dead space, not the toolbar's spacing.
+    ///
+    /// Matching width to height removes it: the item is now exactly as wide as the
+    /// ring it draws, and the only inset left is the stroke.
+    static let toolbarRingSize = NSSize(width: 34, height: 34)
+
+    /// Inset applied to the ring's square before the circle is drawn.
+    ///
+    /// Exactly half the stroke width, and that is the whole point: the stroke
+    /// straddles the path, so an inset of `lineWidth / 2` puts the stroke's **outer**
+    /// edge on the item's boundary. Anything larger is dead space the toolbar
+    /// reserves but nothing paints in, which is what made four rings in a row read
+    /// as further apart than the image items beside them — the toolbar's own spacing
+    /// applies to both, so the difference could only be this.
+    ///
+    /// Shared by both ring controls so they cannot drift apart, which is the same
+    /// mistake that had the SFTP and server rings at different sizes in the first
+    /// place.
+    static let ringStrokeInset: CGFloat = 1.5
+
+    /// Stroke width of a toolbar ring's track and progress arc.
+    static let ringLineWidth: CGFloat = 3
+
+    /// Point size for text drawn inside a toolbar ring.
+    ///
+    /// Stepped down for wider strings so `100%` still fits the ring's inner
+    /// width; see `ServerResourceRingControl.drawText`.
+    static let ringTextFontSize: CGFloat = 10
+    static let ringTextFontSizeNarrow: CGFloat = 8.5
+
     // MARK: - Spacing
 
     static let spacingXXS: CGFloat = 2

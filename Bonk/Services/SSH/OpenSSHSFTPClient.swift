@@ -36,7 +36,7 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
     }
 
     func realPath() async throws -> String {
-        let output = try await run(["pwd"])
+        let output = try await runControl(["pwd"])
         for rawLine in output.components(separatedBy: .newlines) {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
             if let marker = line.range(of: "Remote working directory:") {
@@ -54,7 +54,7 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
     }
 
     func listDirectory(at path: String) async throws -> [SFTPFileEntry] {
-        let output = try await run(["ls -l \(quote(path))"])
+        let output = try await runControl(["ls -l \(quote(path))"])
         let directory = normalizedPath(path)
 
         return output
@@ -63,11 +63,11 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
     }
 
     func createDirectory(at path: String) async throws {
-        _ = try await run(["mkdir \(quote(path))"])
+        _ = try await runControl(["mkdir \(quote(path))"])
     }
 
     func remove(at path: String, isDirectory: Bool) async throws {
-        _ = try await run(["\(isDirectory ? "rmdir" : "rm") \(quote(path))"])
+        _ = try await runControl(["\(isDirectory ? "rmdir" : "rm") \(quote(path))"])
     }
 
     func upload(
@@ -103,7 +103,7 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
                     }
                 }
             }
-            _ = try await run(["rename \(quote(tempRemotePath)) \(quote(remotePath))"])
+            _ = try await runControl(["rename \(quote(tempRemotePath)) \(quote(remotePath))"])
         } catch {
             try? await remove(at: tempRemotePath, isDirectory: false)
             throw error
@@ -164,7 +164,7 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
 
     func fileExists(at path: String) async -> Bool {
         do {
-            _ = try await run(["ls -l \(quote(path))"])
+            _ = try await runControl(["ls -l \(quote(path))"])
             return true
         } catch {
             return false
@@ -188,6 +188,16 @@ final class OpenSSHSFTPClient: @unchecked Sendable {
             return state.activeProcesses.removeValue(forKey: operationID)
         }
         process?.close()
+    }
+
+    /// Short control command via the backend's pooled `sftp` process.
+    ///
+    /// `ls` alone was one full SSH connection per folder opened. Control commands
+    /// are cheap and idempotent, so they share one process; transfers still call
+    /// `run` directly because they need their own process for progress and
+    /// cancellation.
+    private func runControl(_ commands: [String]) async throws -> String {
+        try await backend.runSFTPControlCommands(commands)
     }
 
     private func run(

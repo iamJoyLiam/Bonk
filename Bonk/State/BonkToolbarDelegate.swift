@@ -47,6 +47,9 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
     /// AppKit may keep displaying an earlier instance after the panel closes.
     /// Releasing an active controller leaves a dead target and a frozen ring.
     private var ringItemControllers: [ServerResourceRingItemController] = []
+    /// Same reasoning as the server rings: releasing the controller strands the
+    /// toolbar item with a dead target and a frozen ring.
+    private var sftpTransferController: SFTPTransferRingItemController?
 
     init(coordinator: ToolbarCoordinator) {
         self.coordinator = coordinator
@@ -59,6 +62,7 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
          .toggleSidebar,
          .sidebarTrackingSeparator,
          .serverCPU, .serverMemory, .serverDisk,   // Server resources: spherical progress
+         SFTPTransferRingItemController.identifier,
          .space,
          .broadcast, .sftp, .workspaces,    // Common: broadcast, SFTP, workspaces
          .flexibleSpace,
@@ -70,6 +74,7 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [.addHost, .toggleSidebar,
          .serverCPU, .serverMemory, .serverDisk,
+         SFTPTransferRingItemController.identifier,
          .broadcast, .sftp, .workspaces, .recording, .jumpHosts,
          .serialPort, .portForward,         // Uncommon: keep in customize
          .keyGenerator, .importSessions, .triggers, .team,
@@ -203,6 +208,11 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
             ) { [weak self] in
                 self?.coordinator.showTeam = true
             }
+
+        case SFTPTransferRingItemController.identifier:
+            let controller = SFTPTransferRingItemController(coordinator: coordinator)
+            sftpTransferController = controller
+            return controller.item
 
         case .sftp:
             return makeItem(

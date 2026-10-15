@@ -244,21 +244,6 @@ struct SFTPWindowView: View {
             .onChange(of: localFiles.map(\.id)) { _, newIDs in
                 localSelection.formIntersection(newIDs)
             }
-            // AppKit-native double-click: single clicks stay with the table
-            // (instant selection, no gestures on rows); double-clicks arrive
-            // here with the clicked row index. List order matches localFiles order.
-            .background(
-                TableDoubleClickHost { row in
-                    guard localFiles.indices.contains(row) else { return }
-                    let file = localFiles[row]
-                    if file.isDirectory {
-                        localPath = file.path
-                        loadLocalFiles()
-                    } else {
-                        pendingDoubleClickUpload = file
-                    }
-                }
-            )
             .onKeyPress(.return) {
                 guard localSelection.count == 1,
                       let id = localSelection.first,

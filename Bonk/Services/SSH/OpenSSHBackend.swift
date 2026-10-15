@@ -70,6 +70,47 @@ final class OpenSSHBackend: @unchecked Sendable {
     /// backend resolves one per attempt.
     private var ownedTrustFiles: [ResolvedKnownHostsFile] = []
 
+    /// Trust files already resolved for this backend, keyed by `host:port`.
+    ///
+    /// `OpenSSHSFTPClient` spawns a fresh `/usr/bin/sftp` for **every** command
+    /// batch, and each one goes through `runSFTP`, which resolves trust first.
+    /// Without this cache a single folder listing costs an extra temp directory,
+    /// file write and `chmod` — and the owned-file list grew for the life of the
+    /// session, one entry per operation, cleaned up only at `close()`.
+    ///
+    /// Caching the *rendered file* is safe and does not weaken verification: the
+    /// file is static, and `ssh` still checks the presented key against it on every
+    /// connection. A substituted key still fails exactly as it would against a
+    /// freshly rendered file. What the cache removes is redundant work, not a check.
+    ///
+    /// Known limitation: if the canonical record for a host changes while this
+    /// backend is alive, the cached file is stale until `close()`. Nothing can
+    /// currently change it — the re-trust/pin-removal path is still AUDIT-OBS-003
+    /// — but that is the condition under which this cache would need invalidating.
+    private var resolvedTrustCache: [String: ResolvedKnownHostsFile] = [:]
+
+    /// Reusable `sftp` process for short control commands (`ls`, `mkdir`, …).
+    ///
+    /// Without it every folder open costs a full SSH connection. Only control
+    /// commands use it — transfers keep a dedicated process so cancellation and
+    /// progress parsing are unaffected. See `OpenSSFTSession`.
+    private var pooledSFTPSession: OpenSSFTSession?
+
+    /// Resolve a trust file, reusing this backend's earlier result for the host.
+    private func resolvedTrustFile(
+        host: String, port: UInt16
+    ) async throws -> ResolvedKnownHostsFile {
+        let key = "\(host):\(port)"
+        if let cached = resolvedTrustCache[key] { return cached }
+        let resolved = try await knownHostsResolver.resolveKnownHostsFile(
+            for: host, port: port,
+            explicitOverride: knownHostsPathOverride
+        )
+        adopt(resolved)
+        resolvedTrustCache[key] = resolved
+        return resolved
+    }
+
     /// Take ownership of a generated trust file so `close()` removes it.
     private func adopt(_ resolved: ResolvedKnownHostsFile) {
         guard resolved.temporaryDirectory != nil else { return }
@@ -83,6 +124,7 @@ final class OpenSSHBackend: @unchecked Sendable {
     private func cleanUpOwnedTrustFiles() {
         for file in ownedTrustFiles { file.cleanUp() }
         ownedTrustFiles.removeAll()
+        resolvedTrustCache.removeAll()
     }
 
     /// - Parameter knownHostsPathOverride: Where ssh records and checks host keys
@@ -155,11 +197,7 @@ final class OpenSSHBackend: @unchecked Sendable {
         // Resolve the trust file before any credential-bearing work begins.
         // A host we cannot vouch for must fail closed here, not after a
         // password has already been offered.
-        let resolvedKnownHosts = try await knownHostsResolver.resolveKnownHostsFile(
-            for: config.host, port: config.port,
-            explicitOverride: knownHostsPathOverride
-        )
-        adopt(resolvedKnownHosts)
+        let resolvedKnownHosts = try await resolvedTrustFile(host: config.host, port: config.port)
         // Explicit if-let rather than `Optional.map`: the closure both throws and
         // awaits, and `map` can carry neither without erasing the error.
         //
@@ -175,12 +213,9 @@ final class OpenSSHBackend: @unchecked Sendable {
             // target's override straight through. An override is a test/debug
             // affordance for a single-host connection; it has no meaning for a
             // second host it was never written about.
-            let jumpTrust = try await knownHostsResolver.resolveKnownHostsFile(
-                for: jump.host, port: jump.port,
-                explicitOverride: nil
+            resolvedJumpKnownHosts = try await resolvedTrustFile(
+                host: jump.host, port: jump.port
             )
-            adopt(jumpTrust)
-            resolvedJumpKnownHosts = jumpTrust
         }
 
         var environment: [String: String] = [:]
@@ -356,11 +391,7 @@ final class OpenSSHBackend: @unchecked Sendable {
         registerHandle: CommandHandleRegistration? = nil
     ) async throws -> String {
         let attemptID = UUID().uuidString
-        let resolvedKnownHosts = try await knownHostsResolver.resolveKnownHostsFile(
-            for: config.host, port: config.port,
-            explicitOverride: knownHostsPathOverride
-        )
-        adopt(resolvedKnownHosts)
+        let resolvedKnownHosts = try await resolvedTrustFile(host: config.host, port: config.port)
         // Explicit if-let rather than `Optional.map`: the closure both throws and
         // awaits, and `map` can carry neither without erasing the error.
         //
@@ -376,12 +407,9 @@ final class OpenSSHBackend: @unchecked Sendable {
             // target's override straight through. An override is a test/debug
             // affordance for a single-host connection; it has no meaning for a
             // second host it was never written about.
-            let jumpTrust = try await knownHostsResolver.resolveKnownHostsFile(
-                for: jump.host, port: jump.port,
-                explicitOverride: nil
+            resolvedJumpKnownHosts = try await resolvedTrustFile(
+                host: jump.host, port: jump.port
             )
-            adopt(jumpTrust)
-            resolvedJumpKnownHosts = jumpTrust
         }
         let arguments = sshArguments(
             pty: false, command: command, additionalOptions: [], attemptID: attemptID,
@@ -417,6 +445,74 @@ final class OpenSSHBackend: @unchecked Sendable {
 
     // MARK: - SFTP
 
+    /// Run short control commands on a shared `sftp` process.
+    ///
+    /// Falls back to `runSFTP` (its own process) for anything that is not a
+    /// control command, and whenever the pooled session is unavailable. The
+    /// fallback is deliberate: a pooling failure must degrade to the old, slower,
+    /// correct behaviour rather than fail the operation.
+    func runSFTPControlCommands(_ commands: [String]) async throws -> String {
+        guard !commands.isEmpty else { return "" }
+        guard Self.isControlCommand(commands) else {
+            return try await runSFTP(commands: commands)
+        }
+
+        if let pooled = pooledSFTPSession {
+            do {
+                return try await pooled.run(commands)
+            } catch {
+                // The pooled process is suspect; drop it and retry once on a
+                // fresh one, so a single hiccup does not fail a directory listing.
+                pooled.terminate()
+                pooledSFTPSession = nil
+            }
+        }
+
+        let resolvedKnownHosts = try await resolvedTrustFile(host: config.host, port: config.port)
+        var resolvedJumpKnownHosts: ResolvedKnownHostsFile?
+        if let jump = config.jumpHost {
+            resolvedJumpKnownHosts = try await resolvedTrustFile(host: jump.host, port: jump.port)
+        }
+        let arguments = sftpArguments(
+            attemptID: UUID().uuidString,
+            knownHostsPath: resolvedKnownHosts.path,
+            jumpKnownHostsPath: resolvedJumpKnownHosts?.path
+        )
+        // The auth responder is what types the password when `sftp` prompts on
+        // its PTY. Without it the session sits at the prompt forever and every
+        // listing times out. It is built here because it needs the transport, and
+        // the transport does not exist until the session spawns it.
+        let session = try await OpenSSFTSession.start(
+            spawner: spawner,
+            arguments: arguments,
+            makeOutputObserver: { [weak self] transport in
+                guard let self else { return { _ in } }
+                let responder = self.makeAuthResponder(
+                    process: transport, allowInteractivePrompt: true
+                )
+                return { data in responder.observe(data) }
+            }
+        )
+        let output = try await session.run(commands)
+        pooledSFTPSession = session
+        return output
+    }
+
+    /// Whether a batch is safe to share one long-lived process for.
+    ///
+    /// Deliberately conservative. `get`/`put` are excluded because a transfer can
+    /// run for minutes and would block every other operation behind it, and its
+    /// progress output and cancellation are tied to its own process.
+    private static func isControlCommand(_ commands: [String]) -> Bool {
+        let controlPrefixes = ["pwd", "ls", "cd", "mkdir", "rm ", "rmdir", "rename", "reget "]
+        return commands.allSatisfy { command in
+            let trimmed = command.trimmingCharacters(in: .whitespaces)
+            // `reget` resumes a transfer, so it is treated as a transfer.
+            if trimmed.hasPrefix("get") || trimmed.hasPrefix("put") { return false }
+            return controlPrefixes.contains { trimmed.hasPrefix($0) }
+        }
+    }
+
     func runSFTP(
         commands: [String],
         onOutput: (@Sendable (Data) -> Void)? = nil,
@@ -424,11 +520,7 @@ final class OpenSSHBackend: @unchecked Sendable {
     ) async throws -> String {
         guard !commands.isEmpty else { throw SSHServiceError.connectionFailed("OpenSSH SFTP command list is empty.") }
 
-        let resolvedKnownHosts = try await knownHostsResolver.resolveKnownHostsFile(
-            for: config.host, port: config.port,
-            explicitOverride: knownHostsPathOverride
-        )
-        adopt(resolvedKnownHosts)
+        let resolvedKnownHosts = try await resolvedTrustFile(host: config.host, port: config.port)
         // Explicit if-let rather than `Optional.map`: the closure both throws and
         // awaits, and `map` can carry neither without erasing the error.
         //
@@ -444,12 +536,9 @@ final class OpenSSHBackend: @unchecked Sendable {
             // target's override straight through. An override is a test/debug
             // affordance for a single-host connection; it has no meaning for a
             // second host it was never written about.
-            let jumpTrust = try await knownHostsResolver.resolveKnownHostsFile(
-                for: jump.host, port: jump.port,
-                explicitOverride: nil
+            resolvedJumpKnownHosts = try await resolvedTrustFile(
+                host: jump.host, port: jump.port
             )
-            adopt(jumpTrust)
-            resolvedJumpKnownHosts = jumpTrust
         }
 
         let process = try spawner.spawn(
@@ -537,11 +626,7 @@ final class OpenSSHBackend: @unchecked Sendable {
         case .remote: forwardOption = "-R\(forward.remoteHost):\(forward.remotePort):\(forward.localHost):\(forward.localPort)"
         case .dynamic: forwardOption = "-D\(forward.localHost):\(forward.localPort)"
         }
-        let resolvedKnownHosts = try await knownHostsResolver.resolveKnownHostsFile(
-            for: config.host, port: config.port,
-            explicitOverride: knownHostsPathOverride
-        )
-        adopt(resolvedKnownHosts)
+        let resolvedKnownHosts = try await resolvedTrustFile(host: config.host, port: config.port)
         // Explicit if-let rather than `Optional.map`: the closure both throws and
         // awaits, and `map` can carry neither without erasing the error.
         //
@@ -557,12 +642,9 @@ final class OpenSSHBackend: @unchecked Sendable {
             // target's override straight through. An override is a test/debug
             // affordance for a single-host connection; it has no meaning for a
             // second host it was never written about.
-            let jumpTrust = try await knownHostsResolver.resolveKnownHostsFile(
-                for: jump.host, port: jump.port,
-                explicitOverride: nil
+            resolvedJumpKnownHosts = try await resolvedTrustFile(
+                host: jump.host, port: jump.port
             )
-            adopt(jumpTrust)
-            resolvedJumpKnownHosts = jumpTrust
         }
         let arguments = sshArguments(
             pty: false, command: nil,
@@ -612,6 +694,8 @@ final class OpenSSHBackend: @unchecked Sendable {
         targetIdentityFile = nil; targetCertificateFile = nil; jumpIdentityFile = nil; jumpCertificateFile = nil
         jumpAskpassPath = nil; targetAskpassPath = nil
         cleanUpOwnedTrustFiles()
+        pooledSFTPSession?.terminate()
+        pooledSFTPSession = nil
     }
 
     // MARK: - Helpers (kept here; arguments/identity/askpass/control in extensions)

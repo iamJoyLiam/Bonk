@@ -33,7 +33,7 @@ final class ServerResourceRingControl: NSButton {
         label: String
     ) {
         self.kind = kind
-        super.init(frame: NSRect(x: 0, y: 0, width: 32, height: 30))
+        super.init(frame: NSRect(origin: .zero, size: AppStyle.toolbarRingSize))
         isBordered = false
         imagePosition = .imageOnly
         setButtonType(.momentaryPushIn)
@@ -45,9 +45,7 @@ final class ServerResourceRingControl: NSButton {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override var intrinsicContentSize: NSSize {
-        NSSize(width: 32, height: 30)
-    }
+    override var intrinsicContentSize: NSSize { AppStyle.toolbarRingSize }
 
     func refresh(snapshot: ServerResourceSnapshot?) {
         percent = Self.percent(kind: kind, snapshot: snapshot)
@@ -73,14 +71,16 @@ final class ServerResourceRingControl: NSButton {
             width: side,
             height: side
         )
-        let rect = square.insetBy(dx: 2.5, dy: 2.5)
+        // Shared inset/width: these two controls must stay pixel-identical, and a
+        // literal here is how they stopped matching before.
+        let rect = square.insetBy(dx: AppStyle.ringStrokeInset, dy: AppStyle.ringStrokeInset)
         let center = NSPoint(x: rect.midX, y: rect.midY)
         let radius = rect.width / 2
         let color = Self.color(percent: percent)
 
         // Track
         let track = NSBezierPath(ovalIn: rect)
-        track.lineWidth = 3
+        track.lineWidth = AppStyle.ringLineWidth
         NSColor.separatorColor.withAlphaComponent(0.35).setStroke()
         track.stroke()
 
@@ -94,16 +94,21 @@ final class ServerResourceRingControl: NSButton {
                 endAngle: 90 - 360 * min(max(percent / 100, 0), 1),
                 clockwise: true
             )
-            progress.lineWidth = 3
+            progress.lineWidth = AppStyle.ringLineWidth
             progress.lineCapStyle = .round
             color.setStroke()
             progress.stroke()
         }
 
-        // Percentage
+        // Percentage.
+        // Stepped down for wider strings so `100%` still fits inside the ring at
+        // the shared toolbar size.
         let text = percent.map { "\(Int($0.rounded()))%" } ?? "--"
+        let size = text.count >= 4
+            ? AppStyle.ringTextFontSizeNarrow
+            : AppStyle.ringTextFontSize
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: Self.ringFont,
+            .font: NSFont.systemFont(ofSize: size, weight: .medium),
             .foregroundColor: NSColor.labelColor,
         ]
         let string = NSAttributedString(string: text, attributes: attributes)
@@ -178,6 +183,11 @@ final class ServerResourceRingItemController {
         item.paletteLabel = label
         item.toolTip = label
         item.view = control
+        // Pinned for the same reason as the SFTP ring: an unpinned custom-view
+        // toolbar item reserves its intrinsic size *plus* item spacing, so the four
+        // rings read as further apart than the image items beside them.
+        item.minSize = AppStyle.toolbarRingSize
+        item.maxSize = AppStyle.toolbarRingSize
 
         self.item = item
         self.control = control

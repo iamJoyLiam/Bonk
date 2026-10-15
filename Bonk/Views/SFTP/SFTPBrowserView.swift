@@ -42,10 +42,22 @@ struct SFTPBrowserView: View {
 
             // File list
             if let service = sftpService {
-                if service.isLoading {
+                // The spinner is only for "there is nothing to show yet".
+                //
+                // It used to swap in for the whole list on every `isLoading`, so
+                // entering a folder blanked the pane and flashed a spinner even
+                // when the previous directory's rows were perfectly good to look
+                // at while the next one loaded. Navigation replaced visible content
+                // with a spinner to show something that was about to be replaced by
+                // better content.
+                //
+                // Now the previous listing stays put, and a small inline indicator
+                // in the path bar reports progress. A full-pane spinner appears
+                // only on the very first load, when there is genuinely nothing.
+                if service.isLoading, service.entries.isEmpty {
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = service.errorMessage {
+                } else if let error = service.errorMessage, service.entries.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle")
                             .font(.title)
@@ -132,8 +144,24 @@ struct SFTPBrowserView: View {
             Button(i18n.t(.cancel), role: .cancel) { newFolderName = "" }
         }
         .task(id: tab.id) {
-            if tab.session?.sshService != nil, tab.session?.sftpService == nil {
+            guard tab.session?.sshService != nil else { return }
+            if tab.session?.sftpService == nil {
                 await connectSFTP()
+            } else if let service = sftpService {
+                // Reopening a window that was closed with the traffic light.
+                //
+                // `ContentView.openSFTPWindow` builds a fresh `NSHostingView`
+                // each time, so `.task` does run again — but the `SFTPService`
+                // lives on the session and survives the close, so the old
+                // "connect only if there's no service" condition skipped it and
+                // the remote pane kept whatever it listed when the window first
+                // opened. The local pane looked fine because `onAppear` calls
+                // `loadLocalFiles()` unconditionally, which made the failure look
+                // like it was on the SSH side.
+                //
+                // Refresh explicitly instead. `showLoading: false` because this is
+                // a background catch-up, not a navigation the user is waiting on.
+                try? await service.listDirectory(showLoading: false)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .shellCommandDidEnd)) { _ in
@@ -279,6 +307,8 @@ struct SFTPBrowserView: View {
                 .disabled(!isEditingPath)
                 .onChange(of: sftpService?.currentPath ?? "/") { _, newPath in if !isEditingPath { editingPath = newPath } }
                 .onAppear { editingPath = sftpService?.currentPath ?? "/" }
+
+            inlineLoadingIndicator
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture { guard !isEditingPath else { return }; editingPath = sftpService?.currentPath ?? "/"; isEditingPath = true; isPathFocused = true }
@@ -298,6 +328,21 @@ struct SFTPBrowserView: View {
         .padding(.horizontal, AppStyle.spacingL)
         .padding(.vertical, AppStyle.spacingS)
         .background(.quaternary.opacity(AppStyle.opacityOverlay))
+    }
+
+    /// Small inline busy indicator shown beside the path while a listing is in
+    /// flight.
+    ///
+    /// Replaces the full-pane spinner that used to blank the file list on every
+    /// folder entry. The list now stays visible and this reports progress, so a
+    /// fast remote listing does not read as a flash of emptiness.
+    @ViewBuilder
+    private var inlineLoadingIndicator: some View {
+        if sftpService?.isLoading == true {
+            ProgressView()
+                .controlSize(.small)
+                .help(i18n.t(.refresh))
+        }
     }
 
     private func commitPath() {
@@ -365,24 +410,6 @@ struct SFTPBrowserView: View {
         .onChange(of: service.entries.map(\.id)) { _, newIDs in
             selection.formIntersection(newIDs)
         }
-        // AppKit-native double-click: single clicks stay with the table
-        // (instant selection, no gestures on rows); double-clicks arrive here
-        // with the clicked row index. List order matches entries order.
-        .background(
-            TableDoubleClickHost { row in
-                guard service.entries.indices.contains(row) else { return }
-                let entry = service.entries[row]
-                if entry.isDirectory {
-                    Task {
-                        do { try await service.enterDirectory(entry) } catch {
-                            service.errorMessage = error.localizedDescription
-                        }
-                    }
-                } else {
-                    download(entry, via: service)
-                }
-            }
-        )
         .onKeyPress(.return) {
             guard selection.count == 1,
                   let id = selection.first,

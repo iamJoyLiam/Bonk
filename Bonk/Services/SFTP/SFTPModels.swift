@@ -90,6 +90,8 @@ final class SFTPProgressThrottler: @unchecked Sendable {
 final class SFTPTransfer: Identifiable {
     let id: UUID
     let filename: String
+    /// Fixed at creation: a transfer never changes direction.
+    let direction: SFTPTransferDirection
     var totalBytes: UInt64? // nil = unknown (e.g. SFTP attrs.size == 0)
     var transferredBytes: UInt64
     var isComplete: Bool
@@ -99,8 +101,8 @@ final class SFTPTransfer: Identifiable {
     var fraction: Double = 0
     @ObservationIgnored var lastUIUpdate = Date.distantPast
 
-    init(id: UUID, filename: String, totalBytes: UInt64?, transferredBytes: UInt64, isComplete: Bool, isCancelled: Bool = false, error: String? = nil) {
-        self.id = id; self.filename = filename; self.totalBytes = totalBytes
+    init(id: UUID, filename: String, direction: SFTPTransferDirection = .download, totalBytes: UInt64?, transferredBytes: UInt64, isComplete: Bool, isCancelled: Bool = false, error: String? = nil) {
+        self.id = id; self.filename = filename; self.direction = direction; self.totalBytes = totalBytes
         self.transferredBytes = transferredBytes; self.isComplete = isComplete
         self.isCancelled = isCancelled; self.error = error
     }
@@ -116,4 +118,15 @@ final class SFTPTransfer: Identifiable {
     }
 
     var isActive: Bool { !isComplete && !isCancelled }
+
+
+}
+/// Which way bytes are moving.
+///
+/// The toolbar ring draws one arc per direction. A single combined arc is a lie
+/// when the two are running at different speeds — the ring would appear to stall
+/// or race for reasons that belong to one direction only.
+enum SFTPTransferDirection: Sendable {
+    case upload
+    case download
 }
