@@ -29,6 +29,16 @@ final class OpenSSHBackend: @unchecked Sendable {
     // Exposed to extensions (+ControlMaster/+Arguments/+Identity/+Askpass)
     let controlPath: String
     let knownHostsPath: String
+
+    /// An explicit `known_hosts` file that short-circuits the canonical
+    /// resolver entirely.
+    ///
+    /// Test and debug only; production never sets it. When nil — the production
+    /// case — every argv path resolves through `knownHostsResolver`, which is
+    /// the single place trust is decided. When set, the resolver is bypassed so a
+    /// test can point the real OpenSSH path at a file it controls and observe the
+    /// actual trust decision rather than a reconstruction of it.
+    let knownHostsPathOverride: String?
     var targetIdentityFile: URL?
     var targetCertificateFile: URL?
     var jumpIdentityFile: URL?
@@ -44,6 +54,37 @@ final class OpenSSHBackend: @unchecked Sendable {
 
     private let spawner: any OpenSSHProcessSpawning
 
+    /// Resolves the `known_hosts` file for a host from the canonical store.
+    ///
+    /// Injected rather than constructed so a test can supply a store backed by a
+    /// temp directory. Production passes the real canonical store.
+    let knownHostsResolver: OpenSSHKnownHostsResolver
+
+    /// Scratch trust files this backend created and must remove when it closes.
+    ///
+    /// ssh reads `UserKnownHostsFile` asynchronously, some time after the
+    /// connection returns, so the file has to outlive the resolve call. That
+    /// makes the resolver unable to clean up after itself, and hands ownership
+    /// here — which is why this is a list rather than a single optional: a
+    /// connection with a jump host resolves two files, and a reconnecting
+    /// backend resolves one per attempt.
+    private var ownedTrustFiles: [ResolvedKnownHostsFile] = []
+
+    /// Take ownership of a generated trust file so `close()` removes it.
+    private func adopt(_ resolved: ResolvedKnownHostsFile) {
+        guard resolved.temporaryDirectory != nil else { return }
+        ownedTrustFiles.append(resolved)
+    }
+
+    /// Remove every scratch trust file this backend created.
+    ///
+    /// Only ever removes directories the resolver created; an override is not
+    /// tracked, so a user-supplied file cannot be deleted from here.
+    private func cleanUpOwnedTrustFiles() {
+        for file in ownedTrustFiles { file.cleanUp() }
+        ownedTrustFiles.removeAll()
+    }
+
     /// - Parameter knownHostsPathOverride: Where ssh records and checks host keys
     ///   on this transport. `nil` keeps production behaviour exactly as it was:
     ///   the app-support file created by `prepareKnownHostsPath()`. It exists as a
@@ -52,10 +93,15 @@ final class OpenSSHBackend: @unchecked Sendable {
     ///   real, persistent, user-visible file. It changes no other behaviour — the
     ///   argv is still built by `Arguments.swift` and still launched through the
     ///   spawn seam.
+    /// - Parameter knownHostsResolver: Required, and required to be named. Pass
+    ///   `OpenSSHKnownHostsResolver.production()` in production, or one built over
+    ///   a temporary `CanonicalHostKeyStore` in a test. See `production()` for why
+    ///   there is no default.
     init(
         config: SSHConnectionConfig,
         spawner: any OpenSSHProcessSpawning = DefaultOpenSSHProcessSpawner(),
-        knownHostsPathOverride: String? = nil
+        knownHostsPathOverride: String? = nil,
+        knownHostsResolver: OpenSSHKnownHostsResolver
     ) throws {
         self.spawner = spawner
         self.config = config
@@ -67,8 +113,29 @@ final class OpenSSHBackend: @unchecked Sendable {
         } else {
             controlPath = SocketNaming.controlPath(host: config.host, port: config.port, username: config.username)
         }
+        // The resolver is always present; the override only short-circuits it.
+        // A backend without a resolver could not establish trust at all, which
+        // is the fail-closed behaviour AUDIT-FIND-001 requires.
+        //
+        // There is no default. It used to be `knownHostsResolver ?? <production
+        // store>`, which meant any construction site that forgot to pass one —
+        // including test fixtures — silently resolved against the user's real
+        // host-key records in Application Support. Two suites did exactly that,
+        // and the first-contact branch wrote the test server's key into the user's
+        // trust store. A default here is a loaded gun pointed at user data, so the
+        // production store must now be named explicitly via
+        // `OpenSSHKnownHostsResolver.production()`.
+        self.knownHostsResolver = try knownHostsResolver
+        self.knownHostsPathOverride = knownHostsPathOverride
         knownHostsPath = try knownHostsPathOverride ?? Self.prepareKnownHostsPath()
         try prepareIdentityFiles()
+    }
+
+    /// The default location of the canonical host-key store.
+    ///
+    /// Reachable only through `OpenSSHKnownHostsResolver.production()`.
+    fileprivate static func defaultStoreURL() throws -> URL {
+        try CanonicalHostKeyStore.defaultFileURL()
     }
 
     // MARK: - Terminal
@@ -82,8 +149,40 @@ final class OpenSSHBackend: @unchecked Sendable {
         onExit: @escaping @Sendable () -> Void,
         onError: (@Sendable (String) -> Void)? = nil,
         onFailure: (@Sendable (SSHFailure) -> Void)? = nil
-    ) throws -> PTYSession {
+    ) async throws -> PTYSession {
         let attemptID = UUID().uuidString
+
+        // Resolve the trust file before any credential-bearing work begins.
+        // A host we cannot vouch for must fail closed here, not after a
+        // password has already been offered.
+        let resolvedKnownHosts = try await knownHostsResolver.resolveKnownHostsFile(
+            for: config.host, port: config.port,
+            explicitOverride: knownHostsPathOverride
+        )
+        adopt(resolvedKnownHosts)
+        // Explicit if-let rather than `Optional.map`: the closure both throws and
+        // awaits, and `map` can carry neither without erasing the error.
+        //
+        // Each hop gets its OWN trust record. Reusing the target's pin for a jump
+        // host is precisely the divergence AUDIT-FIND-001 describes.
+        var resolvedJumpKnownHosts: ResolvedKnownHostsFile?
+        if let jump = config.jumpHost {
+            // No override here, deliberately. An override names one file, and
+            // handing it to the jump hop would point the two hops at the *same*
+            // trust store — so the target's key would be checked against the
+            // jump host's pin and vice versa. The comment above this block used
+            // to claim each hop gets its own record while the code passed the
+            // target's override straight through. An override is a test/debug
+            // affordance for a single-host connection; it has no meaning for a
+            // second host it was never written about.
+            let jumpTrust = try await knownHostsResolver.resolveKnownHostsFile(
+                for: jump.host, port: jump.port,
+                explicitOverride: nil
+            )
+            adopt(jumpTrust)
+            resolvedJumpKnownHosts = jumpTrust
+        }
+
         var environment: [String: String] = [:]
         // PTY  responder TTY hook  +  SUCCESS，askpass  PTY  executeCommand/sftp
         let useAskPassForPTY = false
@@ -113,12 +212,14 @@ final class OpenSSHBackend: @unchecked Sendable {
             Log.ssh.info("[ASKPASS] attempt=\(attemptID) script=\(askpassPath) host=\(self.config.host) username=\(self.config.username) passwordLength=\(targetPassword.count) fp=\(Self.passwordFingerprint(targetPassword)) DISPLAY=:0 SSH_ASKPASS_REQUIRE=force")
         }
 
-        let arguments = sshArguments(
-            pty: true,
-            command: nil,
-            additionalOptions: [],
-            attemptID: attemptID
-        )
+        let arguments = try await sshArguments(
+                pty: true,
+                command: nil,
+                additionalOptions: [],
+                attemptID: attemptID,
+                knownHostsPath: resolvedKnownHosts.path,
+                jumpKnownHostsPath: resolvedJumpKnownHosts?.path
+            )
         let process = try spawner.spawn(
             executable: "/usr/bin/ssh",
             arguments: arguments,
@@ -135,10 +236,14 @@ final class OpenSSHBackend: @unchecked Sendable {
             self?.onManualPasswordVerified?(password)
         }
 
-        lock.lock()
-        activeProcess = process
-        activePTYSession = session
-        lock.unlock()
+        // Scoped rather than bare lock/unlock: the function is now `async`, and a bare
+        // `lock()` in an async body is a diagnostic about holding a mutex across a
+        // suspension point. This region contains no `await`, and scoping it keeps
+        // that true by construction.
+        lock.withLock {
+            activeProcess = process
+            activePTYSession = session
+        }
 
         session.setProcessCleanup { [weak process] in process?.close() }
         session.inputTap = { [weak responder] bytes in responder?.observeInput(bytes) }
@@ -251,7 +356,38 @@ final class OpenSSHBackend: @unchecked Sendable {
         registerHandle: CommandHandleRegistration? = nil
     ) async throws -> String {
         let attemptID = UUID().uuidString
-        let arguments = sshArguments(pty: false, command: command, additionalOptions: [], attemptID: attemptID)
+        let resolvedKnownHosts = try await knownHostsResolver.resolveKnownHostsFile(
+            for: config.host, port: config.port,
+            explicitOverride: knownHostsPathOverride
+        )
+        adopt(resolvedKnownHosts)
+        // Explicit if-let rather than `Optional.map`: the closure both throws and
+        // awaits, and `map` can carry neither without erasing the error.
+        //
+        // Each hop gets its OWN trust record. Reusing the target's pin for a jump
+        // host is precisely the divergence AUDIT-FIND-001 describes.
+        var resolvedJumpKnownHosts: ResolvedKnownHostsFile?
+        if let jump = config.jumpHost {
+            // No override here, deliberately. An override names one file, and
+            // handing it to the jump hop would point the two hops at the *same*
+            // trust store — so the target's key would be checked against the
+            // jump host's pin and vice versa. The comment above this block used
+            // to claim each hop gets its own record while the code passed the
+            // target's override straight through. An override is a test/debug
+            // affordance for a single-host connection; it has no meaning for a
+            // second host it was never written about.
+            let jumpTrust = try await knownHostsResolver.resolveKnownHostsFile(
+                for: jump.host, port: jump.port,
+                explicitOverride: nil
+            )
+            adopt(jumpTrust)
+            resolvedJumpKnownHosts = jumpTrust
+        }
+        let arguments = sshArguments(
+            pty: false, command: command, additionalOptions: [], attemptID: attemptID,
+            knownHostsPath: resolvedKnownHosts.path,
+            jumpKnownHostsPath: resolvedJumpKnownHosts?.path
+        )
         let process = try spawner.spawn(
             executable: "/usr/bin/ssh",
             arguments: arguments,
@@ -288,9 +424,41 @@ final class OpenSSHBackend: @unchecked Sendable {
     ) async throws -> String {
         guard !commands.isEmpty else { throw SSHServiceError.connectionFailed("OpenSSH SFTP command list is empty.") }
 
+        let resolvedKnownHosts = try await knownHostsResolver.resolveKnownHostsFile(
+            for: config.host, port: config.port,
+            explicitOverride: knownHostsPathOverride
+        )
+        adopt(resolvedKnownHosts)
+        // Explicit if-let rather than `Optional.map`: the closure both throws and
+        // awaits, and `map` can carry neither without erasing the error.
+        //
+        // Each hop gets its OWN trust record. Reusing the target's pin for a jump
+        // host is precisely the divergence AUDIT-FIND-001 describes.
+        var resolvedJumpKnownHosts: ResolvedKnownHostsFile?
+        if let jump = config.jumpHost {
+            // No override here, deliberately. An override names one file, and
+            // handing it to the jump hop would point the two hops at the *same*
+            // trust store — so the target's key would be checked against the
+            // jump host's pin and vice versa. The comment above this block used
+            // to claim each hop gets its own record while the code passed the
+            // target's override straight through. An override is a test/debug
+            // affordance for a single-host connection; it has no meaning for a
+            // second host it was never written about.
+            let jumpTrust = try await knownHostsResolver.resolveKnownHostsFile(
+                for: jump.host, port: jump.port,
+                explicitOverride: nil
+            )
+            adopt(jumpTrust)
+            resolvedJumpKnownHosts = jumpTrust
+        }
+
         let process = try spawner.spawn(
             executable: "/usr/bin/sftp",
-            arguments: sftpArguments(attemptID: UUID().uuidString),
+            arguments: sftpArguments(
+                attemptID: UUID().uuidString,
+                knownHostsPath: resolvedKnownHosts.path,
+                jumpKnownHostsPath: resolvedJumpKnownHosts?.path
+            ),
             cols: 160, rows: 50, termType: "xterm-256color", environment: [:]
         )
         let session = PTYSession()
@@ -362,14 +530,47 @@ final class OpenSSHBackend: @unchecked Sendable {
     func startPortForward(
         config forward: SSHPortForwardConfiguration,
         onExit: @escaping @Sendable () -> Void
-    ) throws -> OpenSSHForwardHandle {
+    ) async throws -> OpenSSHForwardHandle {
         let forwardOption: String
         switch forward.type {
         case .local: forwardOption = "-L\(forward.localHost):\(forward.localPort):\(forward.remoteHost):\(forward.remotePort)"
         case .remote: forwardOption = "-R\(forward.remoteHost):\(forward.remotePort):\(forward.localHost):\(forward.localPort)"
         case .dynamic: forwardOption = "-D\(forward.localHost):\(forward.localPort)"
         }
-        let arguments = sshArguments(pty: false, command: nil, additionalOptions: ["-N", "-o", "ExitOnForwardFailure=yes", forwardOption], attemptID: UUID().uuidString)
+        let resolvedKnownHosts = try await knownHostsResolver.resolveKnownHostsFile(
+            for: config.host, port: config.port,
+            explicitOverride: knownHostsPathOverride
+        )
+        adopt(resolvedKnownHosts)
+        // Explicit if-let rather than `Optional.map`: the closure both throws and
+        // awaits, and `map` can carry neither without erasing the error.
+        //
+        // Each hop gets its OWN trust record. Reusing the target's pin for a jump
+        // host is precisely the divergence AUDIT-FIND-001 describes.
+        var resolvedJumpKnownHosts: ResolvedKnownHostsFile?
+        if let jump = config.jumpHost {
+            // No override here, deliberately. An override names one file, and
+            // handing it to the jump hop would point the two hops at the *same*
+            // trust store — so the target's key would be checked against the
+            // jump host's pin and vice versa. The comment above this block used
+            // to claim each hop gets its own record while the code passed the
+            // target's override straight through. An override is a test/debug
+            // affordance for a single-host connection; it has no meaning for a
+            // second host it was never written about.
+            let jumpTrust = try await knownHostsResolver.resolveKnownHostsFile(
+                for: jump.host, port: jump.port,
+                explicitOverride: nil
+            )
+            adopt(jumpTrust)
+            resolvedJumpKnownHosts = jumpTrust
+        }
+        let arguments = sshArguments(
+            pty: false, command: nil,
+            additionalOptions: ["-N", "-o", "ExitOnForwardFailure=yes", forwardOption],
+            attemptID: UUID().uuidString,
+            knownHostsPath: resolvedKnownHosts.path,
+            jumpKnownHostsPath: resolvedJumpKnownHosts?.path
+        )
         let process = try spawner.spawn(executable: "/usr/bin/ssh", arguments: arguments, cols: 120, rows: 40, termType: "xterm-256color", environment: [:])
         let session = PTYSession()
         let responder = makeAuthResponder(process: process, allowInteractivePrompt: true)
@@ -410,6 +611,7 @@ final class OpenSSHBackend: @unchecked Sendable {
         if let askpass = targetAskpassPath { Self.removeAskpassPair(at: askpass) }
         targetIdentityFile = nil; targetCertificateFile = nil; jumpIdentityFile = nil; jumpCertificateFile = nil
         jumpAskpassPath = nil; targetAskpassPath = nil
+        cleanUpOwnedTrustFiles()
     }
 
     // MARK: - Helpers (kept here; arguments/identity/askpass/control in extensions)

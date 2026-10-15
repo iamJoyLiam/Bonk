@@ -22,7 +22,7 @@ final class CompatibilitySSHSession: SSHSession, @unchecked Sendable {
     }
 
     func openPTY(size: TerminalSize) async throws -> any SSHPTYChannel {
-        let pty = try backend.openPTY(cols: size.cols, rows: size.rows, termType: "xterm-256color", onExit: {}, onError: nil)
+        let pty = try await backend.openPTY(cols: size.cols, rows: size.rows, termType: "xterm-256color", onExit: {}, onError: nil)
         return OpenSSHPTYAdapter(pty: pty, backend: backend)
     }
 

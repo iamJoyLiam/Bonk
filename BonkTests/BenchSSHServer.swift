@@ -62,6 +62,31 @@ enum BenchSSHServer {
                 try? await group?.shutdownGracefully()
             }
         }
+
+        /// Stop and wait until the listening socket is actually released.
+        ///
+        /// `stop()` hands ownership to a detached `Task` and returns immediately,
+        /// which is right for teardown and wrong for a test that restarts a server
+        /// on the same port. The two-phase "trusted A, then the server presents B"
+        /// fixture needs the port back, and binding it before the previous listener
+        /// closes fails with `EADDRINUSE` — which surfaced as a full-target
+        /// failure of the AUDIT-FIND-001 convergence gate while that same test
+        /// passed in isolation.
+        ///
+        /// So a caller that reuses the port awaits the close; teardown callers keep
+        /// the fire-and-forget form. Both end in the same state; only the timing
+        /// guarantee differs.
+        func stopAndWait() async {
+            // Same handoff shape as `stop()`: the instance hands its server to a
+            // detached `Task`, which is why it wraps it. Here the await happens in
+            // this frame instead, so the port is genuinely free when it returns.
+            let handle = server.map(UncheckedSendable.init)
+            let groupHandle = group.map(UncheckedSendable.init)
+            self.server = nil
+            self.group = nil
+            try? await handle?.value.close()
+            try? await groupHandle?.value.shutdownGracefully()
+        }
     }
 
     /// Host keys are derived from `hostKeySeed`, so two different byte values give

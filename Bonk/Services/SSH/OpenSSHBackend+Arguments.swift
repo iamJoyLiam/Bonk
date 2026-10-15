@@ -20,11 +20,18 @@
             pty: Bool,
             command: String?,
             additionalOptions: [String],
-            attemptID: String
+            attemptID: String,
+            knownHostsPath: String,
+            jumpKnownHostsPath: String? = nil
         ) -> [String] {
             var args: [String] = []
             args += pty ? ["-tt"] : ["-o", "RequestTTY=no"]
-            args += commonOpenSSHArguments(additionalOptions: additionalOptions, attemptID: attemptID)
+            args += commonOpenSSHArguments(
+                additionalOptions: additionalOptions,
+                attemptID: attemptID,
+                knownHostsPath: knownHostsPath,
+                jumpKnownHostsPath: jumpKnownHostsPath
+            )
             args += ["-p", String(config.port), "\(config.username)@\(config.host)"]
             if let command {
                 args.append(command)
@@ -32,19 +39,30 @@
             return args
         }
 
-        func sftpArguments(attemptID: String) -> [String] {
+        func sftpArguments(
+            attemptID: String,
+            knownHostsPath: String,
+            jumpKnownHostsPath: String? = nil
+        ) -> [String] {
             // -B must stay under sftp-server's 256 KiB message cap (with
             // protocol overhead); 262144 gets the transfer killed with
             // "Outbound message too long". 64K matches the Citadel chunk size.
             var args = commonOpenSSHArguments(
                 additionalOptions: ["-B", "65536", "-R", "64"],
-                attemptID: attemptID
+                attemptID: attemptID,
+                knownHostsPath: knownHostsPath,
+                jumpKnownHostsPath: jumpKnownHostsPath
             )
             args += ["-P", String(config.port), "\(config.username)@\(config.host)"]
             return args
         }
 
-        func commonOpenSSHArguments(additionalOptions: [String], attemptID: String) -> [String] {
+        func commonOpenSSHArguments(
+            additionalOptions: [String],
+            attemptID: String,
+            knownHostsPath: String,
+            jumpKnownHostsPath: String? = nil
+        ) -> [String] {
             var args: [String] = []
             if config.bypassControlMaster {
                 args += ["-o", "ControlMaster=no", "-o", "ControlPath=none"]
@@ -52,7 +70,7 @@
                 args += ["-o", "ControlMaster=auto", "-o", "ControlPersist=300", "-o", "ControlPath=\(controlPath)"]
             }
             args += [
-                "-o", "StrictHostKeyChecking=accept-new",
+                "-o", "StrictHostKeyChecking=yes",
                 "-o", "UserKnownHostsFile=\(sshConfigQuote(knownHostsPath))",
                 "-o", "GlobalKnownHostsFile=/dev/null",
                 "-o", "NumberOfPasswordPrompts=1",
@@ -76,7 +94,9 @@
                 args += algorithmRequirementsArguments(req)
             }
             args += authenticationArguments(for: config.authMethod)
-            if let proxyCommand = jumpProxyCommand(attemptID: attemptID) {
+            if let proxyCommand = jumpProxyCommand(
+                attemptID: attemptID, jumpKnownHostsPath: jumpKnownHostsPath ?? knownHostsPath
+            ) {
                 args += ["-o", "ProxyCommand=\(proxyCommand)"]
             }
             args += identityArguments()
@@ -129,11 +149,11 @@
             }
         }
 
-        func jumpProxyCommand(attemptID: String) -> String? {
+        func jumpProxyCommand(attemptID: String, jumpKnownHostsPath: String) -> String? {
             guard let jumpHost = config.jumpHost else { return nil }
             var args = [
                 "/usr/bin/ssh", "-o", "ControlMaster=no", "-o", "ControlPath=none",
-                "-o", "StrictHostKeyChecking=accept-new", "-o", "UserKnownHostsFile=\(sshConfigQuote(knownHostsPath))",
+                "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=\(sshConfigQuote(jumpKnownHostsPath))",
                 "-o", "GlobalKnownHostsFile=/dev/null", "-o", "NumberOfPasswordPrompts=1",
                 "-o", "ConnectTimeout=10", "-p", String(jumpHost.port),
             ]

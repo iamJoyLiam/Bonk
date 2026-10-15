@@ -54,7 +54,7 @@ extension SSHNetworkService {
                         bypassControlMaster: config.bypassControlMaster,
                         generation: newAttemptID
                     )
-                    backend = try OpenSSHBackend(config: genConfig)
+                    backend = try makeOpenSSHBackend(config: genConfig)
                 } catch {
                     Log.ssh.warning("[RECOVERY_STEP] transportConnected=false reason=\(error.localizedDescription, privacy: .public)")
                     return false
@@ -69,7 +69,7 @@ extension SSHNetworkService {
                 if let ptyConfig = lastPTYConfig {
                     do {
                         let capturedID = newAttemptID
-                        let session = try backend.openPTY(
+                        let session = try await backend.openPTY(
                             cols: ptyConfig.cols, rows: ptyConfig.rows, termType: ptyConfig.termType
                         ) { [weak self] in
                             guard let self, self.attemptIDBox.withLockedValue { $0 } == capturedID else {

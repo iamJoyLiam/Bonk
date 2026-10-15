@@ -29,7 +29,7 @@ extension SSHNetworkService {
                     "OpenSSH port forwarding requires an OpenSSH-backed connection."
                 )
             }
-            return try openSSHBackend.startPortForward(config: forward, onExit: onExit)
+            return try await openSSHBackend.startPortForward(config: forward, onExit: onExit)
         }
     #endif
 

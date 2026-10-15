@@ -17,13 +17,35 @@ final class RecordingOpenSSHProcessSpawner: OpenSSHProcessSpawning, @unchecked S
     private let lock = NSLock()
     private var stored: [Invocation] = []
 
+    /// When true, record the real argv but spawn `/usr/bin/true` instead.
+    ///
+    /// ## Why this exists
+    ///
+    /// The original version recorded *and* really launched `ssh`. That was fine
+    /// for a direct connection — ssh fails fast against a fixture. It is not fine
+    /// for a jump-host argv, whose `ProxyCommand` carries `-W %h:%p`: the inner
+    /// ssh blocks waiting on a forwarding channel the bench fixture never
+    /// services, and the resulting process outlives the test.
+    ///
+    /// The cost was not hypothetical. Those orphans accumulated across runs,
+    /// pinned PTYs, and wedged later runs — `BenchSSHServerSmokeTests`, which
+    /// shares nothing with this code, stopped completing at all until they were
+    /// killed by hand. A test that only reads argv has no reason to make a real
+    /// connection, and a test that makes one has to clean it up.
+    ///
+    /// So argv gates record only. Any gate that genuinely needs a live
+    /// connection must construct the default spawner and close its backend.
+    let recordOnly: Bool
+
+    init(recordOnly: Bool = false) {
+        self.recordOnly = recordOnly
+    }
+
     var recorded: [Invocation] {
         lock.lock()
         defer { lock.unlock() }
         return stored
     }
-
-    private let wrapped: any OpenSSHProcessSpawning = DefaultOpenSSHProcessSpawner()
 
     func spawn(
         executable: String,
@@ -36,7 +58,18 @@ final class RecordingOpenSSHProcessSpawner: OpenSSHProcessSpawning, @unchecked S
         lock.lock()
         stored.append(Invocation(executable: executable, arguments: arguments))
         lock.unlock()
-        return try wrapped.spawn(
+
+        if recordOnly {
+            // A real transport that exits immediately, so the caller gets a
+            // well-formed object without an unkillable network process behind it.
+            return try DefaultOpenSSHProcessSpawner().spawn(
+                executable: "/usr/bin/true",
+                arguments: [],
+                cols: cols, rows: rows, termType: termType, environment: [:]
+            )
+        }
+
+        return try DefaultOpenSSHProcessSpawner().spawn(
             executable: executable, arguments: arguments,
             cols: cols, rows: rows, termType: termType, environment: environment
         )
@@ -75,7 +108,7 @@ struct OpenSSHTrustPolicyArgvTests {
         )
         defer { server.stop() }
 
-        let recorder = RecordingOpenSSHProcessSpawner()
+        let recorder = RecordingOpenSSHProcessSpawner(recordOnly: true)
         // Defaults chosen deliberately: `bypassControlMaster` so the launch is
         // the connection itself rather than a multiplexed reuse, and no algorithm
         // override so the captured argv is the system-default policy.
@@ -86,12 +119,19 @@ struct OpenSSHTrustPolicyArgvTests {
             authMethod: .password(BenchSSHServerSmokeTests.password),
             bypassControlMaster: true
         )
-        let backend = try OpenSSHBackend(config: config, spawner: recorder)
+        // A temp store, always: the default resolver is the user's real
+        // Application Support trust store, and first-contact resolution would
+        // write this fixture server's key into it.
+        let (resolver, resolverDir) = try HostKeyFixtureSupport.tempResolver(label: "argv")
+        defer { try? FileManager.default.removeItem(at: resolverDir) }
+        let backend = try OpenSSHBackend(
+            config: config, spawner: recorder, knownHostsResolver: resolver
+        )
 
         // The launch happens inside openPTY, before any handshake outcome. A
         // connection that later fails still tells us what argv was used, so the
         // failure is deliberately swallowed.
-        _ = try? backend.openPTY(cols: 80, rows: 24, termType: "xterm-256color", onExit: {})
+        _ = try? await backend.openPTY(cols: 80, rows: 24, termType: "xterm-256color", onExit: {})
 
         let invocation = try #require(
             recorder.connectionInvocation(port: server.port),
@@ -103,8 +143,16 @@ struct OpenSSHTrustPolicyArgvTests {
         let arguments = invocation.arguments
 
         #expect(
-            arguments.contains { $0 == "StrictHostKeyChecking=accept-new" },
-            "the connection must carry the current host-key policy; argv: \(arguments)"
+            arguments.contains { $0 == "StrictHostKeyChecking=yes" },
+            """
+            the connection must carry strict host-key checking. The fix is not \
+            the string itself but the chain behind it: canonical CAS -> \
+            generated known_hosts -> strict verification. argv: \(arguments)
+            """
+        )
+        #expect(
+            !arguments.contains { $0.contains("StrictHostKeyChecking=accept-new") },
+            "AUDIT-FIND-001: accept-new must not be reintroduced; argv: \(arguments)"
         )
 
         let knownHosts = arguments.first { $0.hasPrefix("UserKnownHostsFile=") }
@@ -123,6 +171,149 @@ struct OpenSSHTrustPolicyArgvTests {
         #expect(
             arguments.contains("GlobalKnownHostsFile=/dev/null"),
             "system-wide known_hosts must stay disabled for this trust store to be the only one"
+        )
+    }
+
+    /// AUDIT-FIND-001 regression gate.
+    ///
+    /// This suite previously asserted the opposite — that argv carried
+    /// `StrictHostKeyChecking=accept-new` — and was the tier-1 evidence that the
+    /// finding was real. That evidence now lives in commit `889325e1` and in
+    /// `docs/security-audit.md`; what remains here is the assertion that the defect
+    /// cannot come back unnoticed.
+    ///
+    /// `connectionArgvCarriesTrustPolicy` above already fails if `accept-new`
+    /// returns, so restoring the old behaviour turns that gate red too. This test
+    /// exists separately so the intent is unmistakable to a reader who never saw
+    /// the finding, and so the chain is: commit + ledger + this gate.
+    @Test("AUDIT-FIND-001: accept-new is not reintroduced into the connection argv")
+    func auditFind001IsNotReintroduced() async throws {
+        let server = try await BenchSSHServer.start(
+            hostKeySeed: 0x6B,
+            password: BenchSSHServerSmokeTests.password,
+            sftpDelegate: BenchSFTPDelegate()
+        )
+        defer { server.stop() }
+
+        let recorder = RecordingOpenSSHProcessSpawner(recordOnly: true)
+        let config = SSHConnectionConfig(
+            host: "127.0.0.1",
+            port: UInt16(server.port),
+            username: "bench",
+            authMethod: .password(BenchSSHServerSmokeTests.password),
+            bypassControlMaster: true
+        )
+        // A temp store, always: the default resolver is the user's real
+        // Application Support trust store, and first-contact resolution would
+        // write this fixture server's key into it.
+        let (resolver, resolverDir) = try HostKeyFixtureSupport.tempResolver(label: "argv")
+        defer { try? FileManager.default.removeItem(at: resolverDir) }
+        let backend = try OpenSSHBackend(
+            config: config, spawner: recorder, knownHostsResolver: resolver
+        )
+        _ = try? await backend.openPTY(cols: 80, rows: 24, termType: "xterm-256color", onExit: {})
+
+        let invocation = try #require(
+            recorder.connectionInvocation(port: server.port),
+            "no /usr/bin/ssh connection launch was recorded; captured: \(recorder.recorded.map { $0.executable })"
+        )
+        #expect(
+            !invocation.arguments.contains { $0.contains("StrictHostKeyChecking=accept-new") },
+            """
+            AUDIT-FIND-001 has been reintroduced: this connection would accept-new \
+            an unknown key instead of verifying it against the canonical store. \
+            argv: \(invocation.arguments)
+            """
+        )
+    }
+
+    /// The trust file must be a real file, carrying the pinned key, at the moment
+    /// ssh is launched.
+    ///
+    /// This closes the gap that let the convergence gate pass for the wrong
+    /// reason. Asserting that argv *names* a `UserKnownHostsFile` is satisfied by a
+    /// path that does not exist — and with `StrictHostKeyChecking=yes`, a missing
+    /// trust file and a substituted key produce the same refusal. A gate that only
+    /// checks the string cannot tell those two apart, so both a refusal and a
+    /// success look identical to it.
+    ///
+    /// What distinguishes them is the file. This gate reads the exact path
+    /// production handed to ssh and requires it to exist and to contain the key
+    /// the canonical store holds. If the rendered file is missing, or empty, or
+    /// was written and then deleted, this goes red — and the convergence gate can
+    /// no longer be satisfied by a failure for the wrong reason.
+    @Test("the generated trust file exists and carries the canonical key at launch")
+    func resolverGeneratedTrustFileIsUsableAtLaunch() async throws {
+        let server = try await BenchSSHServer.start(
+            hostKeySeed: 0x6B,
+            password: BenchSSHServerSmokeTests.password,
+            sftpDelegate: BenchSFTPDelegate()
+        )
+        defer { server.stop() }
+
+        // Seed a temp canonical store with the key this server really serves, so
+        // resolution takes the "record exists → render" branch. No override: the
+        // resolver must do the work.
+        let dir = try HostKeyFixtureSupport.makeTempDir("argv-realfile")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = try CanonicalHostKeyStore(fileURL: dir.appendingPathComponent("records.json"))
+        let pinned = try HostKeyFixtureSupport.scannedKey(port: UInt16(server.port))
+        #expect(try store.recordIfAbsentOrMatching(
+            host: "127.0.0.1", port: UInt16(server.port), candidate: pinned
+        ) != .persistenceFailure, "seeding the canonical store failed")
+
+        let recorder = RecordingOpenSSHProcessSpawner(recordOnly: true)
+        let config = SSHConnectionConfig(
+            host: "127.0.0.1",
+            port: UInt16(server.port),
+            username: "bench",
+            authMethod: .password(BenchSSHServerSmokeTests.password),
+            bypassControlMaster: true
+        )
+        let backend = try OpenSSHBackend(
+            config: config,
+            spawner: recorder,
+            knownHostsResolver: OpenSSHKnownHostsResolver(store: store)
+        )
+        defer { backend.close() }
+        _ = try? await backend.openPTY(cols: 80, rows: 24, termType: "xterm-256color", onExit: {})
+
+        let invocation = try #require(
+            recorder.connectionInvocation(port: server.port),
+            "no /usr/bin/ssh connection launch was recorded; captured: \(recorder.recorded.map { $0.executable })"
+        )
+        let named = try #require(
+            invocation.arguments.first { $0.hasPrefix("UserKnownHostsFile=") },
+            "no UserKnownHostsFile in argv: \(invocation.arguments)"
+        )
+        let path = try #require(
+            named.replacingOccurrences(of: "UserKnownHostsFile=", with: ""),
+            "could not read the trust file path out of \(named)"
+        )
+
+        // The file must exist. This is the assertion whose absence let a deleted
+        // trust file read as a successful host-key refusal.
+        #expect(
+            FileManager.default.fileExists(atPath: path),
+            """
+            the resolver handed ssh a UserKnownHostsFile that does not exist. With \
+            StrictHostKeyChecking=yes this fails closed, and it is indistinguishable \
+            at the message level from a genuine key mismatch — so any gate that \
+            only checks the refusal will pass for the wrong reason. path: \(path)
+            """
+        )
+
+        guard FileManager.default.fileExists(atPath: path) else { return }
+        let contents = try String(contentsOfFile: path, encoding: .utf8)
+        #expect(!contents.isEmpty, "the generated trust file is empty: \(path)")
+        // It must carry the key the store pinned, not merely exist.
+        let blob = pinned.keyBlob.base64EncodedString()
+        #expect(
+            contents.contains(blob),
+            """
+            the generated trust file does not contain the canonical key. \
+            pinned=\(pinned.fingerprint.hash) contents=<\(contents)>
+            """
         )
     }
 }

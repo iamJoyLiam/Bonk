@@ -130,6 +130,97 @@ public actor SSHNetworkService {
         openSSHKnownHostsPathOverride = path
     }
 
+    /// The host-key resolver every OpenSSH backend in this service is built with.
+    ///
+    /// ## Why this exists
+    ///
+    /// The reconnect path used to call `OpenSSHKnownHostsResolver.production()`
+    /// directly, while the initial connect path went through a different set of
+    /// decisions. Two sites choosing where trust comes from is two places to
+    /// forget, and they had already drifted: a test that pointed the initial
+    /// connect at a temporary store left the reconnect path still reaching for
+    /// the user's real one, with nothing to observe.
+    ///
+    /// Both sites now call this. A test that sets the override gets the same
+    /// resolver on first connect and on every reconnect, which is what makes the
+    /// reconnect path testable without writing to Application Support.
+    ///
+    /// Test-only; production takes the `.production()` branch and never
+    /// assigns the override.
+    var openSSHKnownHostsResolverOverride: OpenSSHKnownHostsResolver?
+
+    /// Setter for `openSSHKnownHostsResolverOverride`.
+    func setOpenSSHKnownHostsResolverOverride(_ resolver: OpenSSHKnownHostsResolver?) {
+        openSSHKnownHostsResolverOverride = resolver
+    }
+
+    /// Replaces the process spawner for every backend this service builds.
+    ///
+    /// Test-only. The reason it exists is the same as the resolver override: the
+    /// reconnect path builds its own backend, so without this a test could only
+    /// observe trust decisions on first connect and would have to take the
+    /// production spawner — and a real `ssh` — on every reconnect.
+    var openSSHProcessSpawnerOverride: (any OpenSSHProcessSpawning)?
+
+    /// Setter for `openSSHProcessSpawnerOverride`.
+    func setOpenSSHProcessSpawnerOverride(_ spawner: (any OpenSSHProcessSpawning)?) {
+        openSSHProcessSpawnerOverride = spawner
+    }
+
+    #if DEBUG
+    /// Test seam: put the service into OpenSSH transport mode without performing
+    /// a first connect.
+    ///
+    /// `performSingleReconnect` builds its own backend rather than reusing the
+    /// stored one, so driving it needs the service to *believe* it is already on
+    /// the OpenSSH transport. That state is otherwise only reachable by
+    /// completing a real connection, which is not something a test should have to
+    /// do to assert on argv.
+    ///
+    /// Deliberately does not touch `openSSHBackend`: the reconnect path replaces
+    /// it, and leaving it nil keeps the gate honest about which backend was used.
+    func prepareForReconnectTest(config: SSHConnectionConfig, ptyConfig: PTYConfig? = nil) {
+        self.config = config
+        usesOpenSSHTransport = true
+        lastPTYConfig = ptyConfig
+        pendingFailure = nil
+    }
+    #endif
+
+    /// The one place that decides which trust store this service connects through.
+    func makeOpenSSHKnownHostsResolver() throws -> OpenSSHKnownHostsResolver {
+        if let openSSHKnownHostsResolverOverride { return openSSHKnownHostsResolverOverride }
+        return try OpenSSHKnownHostsResolver.production()
+    }
+
+    /// The one place that builds an OpenSSH backend for this service.
+    ///
+    /// Three call sites — first connect, reconnect, and the auxiliary connect
+    /// path — each used to assemble the backend themselves. Every one of them had
+    /// to remember the resolver, and they had already drifted: reconnect reached
+    /// for the production store directly while the others honoured the override.
+    ///
+    /// Centralising means the trust decision has exactly one implementation, and
+    /// a test seam for the process spawner has exactly one place to take effect.
+    func makeOpenSSHBackend(config: SSHConnectionConfig) throws -> OpenSSHBackend {
+        var backend: OpenSSHBackend
+        if let openSSHProcessSpawnerOverride {
+            backend = try OpenSSHBackend(
+                config: config,
+                spawner: openSSHProcessSpawnerOverride,
+                knownHostsPathOverride: openSSHKnownHostsPathOverride,
+                knownHostsResolver: try makeOpenSSHKnownHostsResolver()
+            )
+        } else {
+            backend = try OpenSSHBackend(
+                config: config,
+                knownHostsPathOverride: openSSHKnownHostsPathOverride,
+                knownHostsResolver: try makeOpenSSHKnownHostsResolver()
+            )
+        }
+        return backend
+    }
+
     public init(hostKeyStore: some SSHHostKeyStore) {
         self.hostKeyStore = hostKeyStore
         var cont: AsyncStream<SSHConnectionState>.Continuation!
@@ -207,10 +298,7 @@ public actor SSHNetworkService {
         do {
             #if os(macOS)
                 if shouldUseOpenSSH(config.authMethod) {
-                    let backend = try OpenSSHBackend(
-                        config: config,
-                        knownHostsPathOverride: openSSHKnownHostsPathOverride
-                    )
+                    let backend = try makeOpenSSHBackend(config: config)
                     openSSHBackend = backend
                     usesOpenSSHTransport = true
                     // No optimistic connected; ready after PTY gate
@@ -430,7 +518,7 @@ public actor SSHNetworkService {
         #if os(macOS)
             if usesOpenSSHTransport, let openSSHBackend {
                 openSSHBackend.onManualPasswordVerified = onManualPasswordVerified
-                let session = try openSSHBackend.openPTY(
+                let session = try await openSSHBackend.openPTY(
                     cols: cols,
                     rows: rows,
                     termType: termType
@@ -664,7 +752,7 @@ public actor SSHNetworkService {
                 if usesOpenSSHTransport {
                     // Extreme: no sleep for ControlMaster re-create
                     try? await Task.sleep(for: .milliseconds(1))
-                    let backend = try OpenSSHBackend(config: config)
+                    let backend = try makeOpenSSHBackend(config: config)
                     openSSHBackend = backend
                     usesOpenSSHTransport = true
                     connectionState = .connected
@@ -674,7 +762,7 @@ public actor SSHNetworkService {
                     startNetworkMonitor()
                     if let ptyConfig = lastPTYConfig {
                         do {
-                            let session = try backend.openPTY(
+                            let session = try await backend.openPTY(
                                 cols: ptyConfig.cols, rows: ptyConfig.rows, termType: ptyConfig.termType
                             ) { [weak self] in Task { await self?.handleDisconnect() } } onError: { _ in }
                             activePTYSession = session

@@ -21,7 +21,13 @@ on most heavily is explicitly unverified.
 
 | ID | Subject | State |
 |----|---------|-------|
-| AUDIT-FIND-001 | The two transports decide host-key trust differently | established, mutation-proven, **NOT FIXED**; design review complete, not implemented |
+| AUDIT-FIND-001 | The two transports decide host-key trust differently | **implemented**; every gate below green and mutation-proven. Legacy migration landed. Not yet committed |
+| AUDIT-DEF-001 | Resolver deleted the generated trust file before `ssh` read it | fixed; the convergence gate was green while this held |
+| AUDIT-DEF-002 | Jump hop resolved with the target's trust file | fixed; per-hop gate mutation-proven |
+| AUDIT-DEF-003 | Default resolver was the user's real trust store; tests wrote to it | fixed; parameter now required, production store named-only. Residue cleaned by hand |
+| AUDIT-DEF-004 | Argv recorder really launched `ssh`; orphans wedged the machine | fixed; `recordOnly` mode |
+| AUDIT-GATE-001 | `knownHostsPath(in:)` split argv on spaces, truncating quoted paths with spaces | fixed; quote-aware extractor |
+| AUDIT-GATE-002 | Trust-file assertions printed real `known_hosts` contents on failure | fixed; shape-only failure messages |
 | B-02 policy | Host-key trust failure must not reach the second transport | verified, mutation-proven |
 | B-02 E2E | The real production SFTP chain honours that rule | verified, mutation-proven (one step NOT VERIFIED under mutation — see below) |
 | AUDIT-OBS-002 | OpenSSH SFTP fallback blocks on authentication | **observation only** — root cause and production impact undetermined |
@@ -507,3 +513,412 @@ while !Self.sftpPromptAppeared(readyBuffer) {
 The deadline is checked only after a chunk arrives, so a process that goes quiet
 never reaches the check. See AUDIT-OBS-002, where this is why a blocked
 authentication is not bounded in production either.
+## Defects found while closing AUDIT-FIND-001
+
+Four defects surfaced during the remediation. Two were in the fix itself, and two
+were in the gates that were supposed to be watching it — which is the part worth
+recording, because in three of the four cases the gate was green while the
+property was absent or untrue.
+
+### AUDIT-DEF-001 — the generated trust file was deleted before `ssh` read it
+
+`OpenSSHKnownHostsResolver.renderAndWrite` cleaned up its scratch directory with
+`defer`, which runs on return. The caller received a path to a file that had
+already been deleted. With `StrictHostKeyChecking=yes` this fails closed with
+`Host key verification failed.` — **the same message ssh produces for a genuinely
+substituted key.**
+
+Consequences:
+
+- Every resolver-resolved OpenSSH connection failed. The compatibility transport
+  could not connect at all, in either direction: a correct key and an attacker's
+  key produced identical outcomes.
+- The AUDIT-FIND-001 convergence gate was green while the compat leg was
+  rejecting for the wrong reason. It was asserting `compatRejected`, and the
+  compat leg rejected — because it had no trust file to verify against.
+
+Fixed: the resolver now returns `ResolvedKnownHostsFile`, which carries
+`path` plus `temporaryDirectory`. `temporaryDirectory` is `nil` for an explicit
+override, so cleanup ownership is visible in the type and a caller cannot mistake
+a user-owned file for a scratch directory. `OpenSSHBackend` tracks the files it
+owns and removes them in `close()`.
+
+### AUDIT-DEF-002 — both hops were resolved with the target's trust file
+
+Every argv path resolved the jump host with `explicitOverride:
+knownHostsPathOverride` — the *target's* override, three lines below a comment
+asserting that each hop gets its own record. The comment was correct and the code
+was not.
+
+Dormant in production (the override is test-only), but it is the exact bypass the
+remediation exists to prevent, and it meant no jump-host gate could be written
+against the override path. Fixed: the jump hop resolves with `explicitOverride:
+nil` and carries an override has no meaning for a second host.
+
+### AUDIT-DEF-003 — the default resolver was the user's real trust store
+
+`OpenSSHBackend`'s `knownHostsResolver` defaulted to `nil`, and `nil` resolved to
+`CanonicalHostKeyStore.defaultFileURL()` — `~/Library/Application Support/Bonk/host_key_records.json`.
+
+Any construction site that omitted the parameter silently got the user's live
+trust store. Two suites did. On first contact the resolver probes and CAS-writes,
+so those runs **persisted test-server keys into the user's trust store**. Four
+records (`127.0.0.1:25300-25303`, then `25300`/`25303` again) were written and
+removed by hand; the store is now empty and the residue is archived alongside the
+mutation fixtures.
+
+Fixed: the parameter is now non-optional with no default, and the production store
+is reachable only through the named
+`OpenSSHKnownHostsResolver.production()`. Omitting it is a compile error rather
+than a silent fallback.
+
+### AUDIT-DEF-004 — the argv recorder also launched `ssh`
+
+`RecordingOpenSSHProcessSpawner` recorded the argv *and* spawned the real binary.
+Harmless for a direct connection, which fails fast against a fixture. Not
+harmless for a jump-host argv: the inner `ssh` carries `-W %h:%p` and blocks
+waiting on a forwarding channel the bench fixture does not service.
+
+The orphans accumulated across runs, pinned PTYs, and eventually wedged the
+machine badly enough that `BenchSSHServerSmokeTests` — which shares no code with
+any of this — stopped completing at all. Diagnosis cost a 25-minute timeout and a
+manual sweep; the suite then passed in 1.3 seconds.
+
+Fixed: the recorder takes `recordOnly`, which records the real argv and spawns
+`/usr/bin/true`. Gates that need a live connection must use the default spawner
+and close their backend.
+
+### What the gates now require
+
+`OpenSSHTrustDecisionConvergenceTests` no longer accepts any host-key refusal. It
+requires `REMOTE HOST IDENTIFICATION HAS CHANGED`, ssh's message for a key that
+does not match an entry it already had. That is what separates a caught
+substitution from a missing trust file, and it is the assertion whose absence let
+AUDIT-DEF-001 stand behind a green suite.
+
+`ProxyCommandPerHopTrustTests` asserts three layers, because each catches a
+different regression: the outer and `ProxyCommand` trust paths differ; each file
+exists and carries *its own* host's key; and the store is unchanged afterwards.
+Mutation-proven — pointing the jump hop at the target's file produces two
+designated reds, one per file-content assertion.
+
+### Defect → regression gate
+
+Each defect above was found by a gate that did not exist yet, and each is now
+held by a named test plus the mutation that proves the test can fail. The
+"before" column is what the suite looked like while the defect was live — it is
+recorded because "the gate is green" is only meaningful next to "and here is
+what it said when the property was absent".
+
+| Defect | Regression gate | Mutation that turns it red | Before the gate existed |
+|--------|-----------------|-----------------------------|-------------------------|
+| DEF-001 trust file deleted before `ssh` read it | `resolverGeneratedTrustFileIsUsableAtLaunch`; `expectStrictTrustFile` (existence assertion, used by the reconnect and SFTP gates); `REMOTE HOST IDENTIFICATION HAS CHANGED` in the convergence gate | re-add the pre-return `removeItem` | convergence gate **green** while the transport could never connect |
+| DEF-002 jump hop resolved with the target's trust file | `ProxyCommandPerHopTrustTests.proxyCommandCarriesItsOwnTrustFile` — three layers: paths differ, each file carries its own key, store unchanged | point the jump hop at the target's resolved file | per-hop isolation **unasserted**; the code contradicted its own comment |
+| DEF-003 default resolver was the user's real trust store | non-optional `knownHostsResolver` (compile-time), `OpenSSHKnownHostsResolver.production()` as the only production call site, store-integrity assertions in the convergence and reconnect gates | — (compile error, not a runtime mutation) | four test-server keys written to `~/Library/Application Support/Bonk` |
+| DEF-004 argv recorder really launched `ssh` | `RecordingOpenSSHProcessSpawner(recordOnly:)`; leak count asserted after every run in this ledger's evidence | — | orphaned `ssh -W` processes pinned PTYs and wedged unrelated suites |
+
+Two further gate defects were found and fixed while building these, and both are
+worth recording because each produced a *plausible* wrong answer:
+
+- `knownHostsPath(in:)` split argv on spaces. Production quotes the trust path
+  with `sshConfigQuote`, and Application Support contains a space, so the
+  extractor returned a truncated path. The mutation run reported "missing file"
+  — a true conclusion reached for a false reason, in a gate whose whole purpose
+  is to distinguish false reasons. Now quote-aware.
+- Two trust-file assertions embedded the file's contents in their failure
+  message. A mutation run printed the user's real `known_hosts` — their actual
+  host list — into the test log. Failures now report line count, byte count and
+  whether the expected key was present. Size and shape diagnose the failure;
+  the contents are not needed and are real trust state.
+
+### Step 4 gate inventory
+
+| Gate | Property | Verified by mutation |
+|------|----------|---------------------|
+| `OpenSSHTrustPolicyArgvTests.connectionArgvCarriesTrustPolicy` | argv carries `StrictHostKeyChecking=yes`, no `accept-new`, an app-private `UserKnownHostsFile` | restoring `accept-new` |
+| `OpenSSHTrustPolicyArgvTests.auditFind001IsNotReintroduced` | the defect itself cannot return unnoticed | same |
+| `OpenSSHTrustPolicyArgvTests.resolverGeneratedTrustFileIsUsableAtLaunch` | the named trust file exists and carries the canonical key | deleting it |
+| `OpenSSHTrustDecisionConvergenceTests` | both transports refuse the same substituted key, and refuse it for the *substitution* reason | deleting the trust file |
+| `ProxyCommandPerHopTrustTests` | each hop has its own trust file, carrying its own key; store unchanged | jump reusing the target's file |
+| `ReconnectAndSFTPTrustConvergenceTests.reconnectResolvesTrustBeforeSpawning` | reconnect verifies against the canonical store and never writes to it | reconnect falling back to the legacy `known_hosts` |
+| `ReconnectAndSFTPTrustConvergenceTests.sftpResolvesTrustBeforeSpawning` | the SFTP argv — built independently of the PTY argv — carries a strict trust file with the canonical key | same family |
+| `ProbeClassifierProductionWiringTests` | one classifier, the production probe is what the observation suite drives, and failure classifications fail closed | weakening the production classifier |
+| `LegacyHostKeyMigrationTests` | empty/valid/idempotent import; a conflict leaves **both** stores byte-identical; the legacy source is never written | making the legacy pin win a conflict |
+
+The per-hop gate keeps all three responsibilities deliberately, and the
+trust-store-integrity assertion is not optional: several of these defects were
+invisible to argv assertions alone because the argv was correct and the file
+behind it was not.
+
+### Legacy digest-only entries require re-enrollment — an intentional policy
+
+**This is a security policy, not a migration limitation, and it needs stating
+plainly so nobody later reads the migration as "existing trust was preserved".**
+
+What the migration preserves is an **inventory**: the fact that a host was pinned
+before, and to which fingerprint. What it deliberately does **not** create is
+**usable canonical trust**. `records` stays empty for every migrated host.
+
+The distinction is the whole design. A SHA-256 pin is a one-way digest; it
+cannot be inverted into the public key material a connection needs to be
+verified without a round trip. So a migrated entry is recorded as
+`legacyFingerprintOnly`, and `OpenSSHKnownHostsResolver` handles that state with
+one credential-free probe:
+
+- probe presents the live key, with no credential attached
+- `ProbeOutcomeClassifier` must return `keyAcceptedAuthenticationRefused` — ssh
+  positively confirming `is known and matches the … host key`, then refusing
+  auth because the probe offers none
+- only then does `backfillKeyMaterial` write a `records` entry
+- if the presented key does not match the pin, `legacyPinMismatch` throws and
+  nothing is written
+
+**Consequence, stated for the record:** on the first connection to each of the 35
+migrated hosts, the user sees a credential-free probe rather than an immediate
+connection. That is the cost of not trusting a digest, and it is paid once per
+host. The alternative — treating a bare digest as sufficient — would authorise a
+connection on the strength of data that cannot be verified, which is precisely
+the silent-downgrade shape AUDIT-FIND-001 describes.
+
+The migration is therefore **inventory preservation plus mandatory
+re-enrollment**, not trust preservation. Both halves are verified: the inventory
+is carried intact (`LegacyHostKeyMigrationTests.validLegacyPinIsImported`
+asserts the lookup is `legacyFingerprintOnly` and that `lookup.record == nil`),
+and re-enrollment is gated by the probe and the classifier mutation.
+
+### Legacy migration — observed on a real install
+
+The migration ran for real during full-target validation, because a test run
+launches the app and `BonkApp.init` calls `HostKeyTrustMigration.runAtLaunch()`.
+Verified against the machine afterwards:
+
+```
+legacy entries (com.bonk.hostKeys, JoyLiam.Bonk.plist): 35
+parseable host:port with numeric port:                  35
+rejected:                                                0
+carried into canonical legacyFingerprints:              35
+fingerprint mismatches:                                  0
+canonical records created:                               0
+```
+
+Two things worth stating plainly.
+
+**This was not test contamination, and the effect is intended.** Unlike
+AUDIT-DEF-003, where a fixture wrote loopback keys into the trust store, this
+copied the user's own pre-existing pins into the canonical store's inventory
+table and nothing else. Without it, every one of those 35 hosts would have been
+treated as first contact on the next connection — the exact silent
+re-authorisation AUDIT-FIND-001 exists to end.
+
+**What this result is, precisely.** 35 legacy entries parsed, validated against
+their stored digests with zero mismatches, all 35 retained, and zero canonical
+trust records created. That is **successful legacy inventory preservation and
+validation**. It is **not** the migration of 35 usable trust records into the
+canonical store — no usable trust was created, and none was expected to be. See
+the re-enrollment policy above; the empty `records` table is the correct
+outcome, not a shortfall.
+
+**The legacy source is untouched.** `com.bonk.hostKeys` still holds all 35
+entries; `UserDefaultsLegacyHostKeySource` is read-only and the migration never
+deletes. A rollback to the previous build recovers the same inventory it had
+before.
+
+`records` stayed empty. That is correct and is the whole point of the shape: a
+migrated digest is not usable trust. The resolver must complete one
+credential-free probe and confirm the live key matches the pin before the host
+can authorise anything, and `legacyPinMismatch` refuses if it does not.
+
+### Full-target run — NOT ACCEPTED
+
+```
+command: xcodebuild test-without-building -project Bonk.xcodeproj -scheme Bonk \
+           -destination 'platform=macOS' -derivedDataPath /tmp/bonk-dd
+bundle:   Test-Bonk-2026.10.15_09-14-36-+0800.xcresult
+executed: 776    passed: 754    failed: 12    skipped: 10
+```
+
+Against the stated criteria — `requested == executed`, `failed == 0`,
+`skipped == 0` — this run is **NOT ACCEPTED**. Both conditions fail. It is
+recorded here rather than quietly re-run until it looked better.
+
+#### B-02 E2E gate: NOT VERIFIED
+
+`SFTPMatrixLocalTests.testServiceHostKeyMismatchDoesNotFallBack` **skipped**. Its
+skip condition is `XCTSkipUnless(tcpOpen(port: 2222), "bench-linux absent")` and
+no server is listening on :2222. The assertion inside it has therefore never
+executed on this machine. Per the rule that skipped is not executed, B-02
+end-to-end is **NOT VERIFIED** here, and this run does not change that status.
+
+#### One failure was mine, and it was a real defect
+
+`OpenSSHTrustDecisionConvergenceTests` failed with
+`bind(descriptor:ptr:bytes:): Address already in use) (errno: 48)`. It passed in
+isolation every time.
+
+Cause: `BenchSSHServer.Instance.stop()` hands the server to a detached `Task`
+and returns, so the listening socket is still open when the next phase binds the
+same port with a different key. The fixture is documented as supporting exactly
+that two-phase "trusted A, then presents B" pattern, so this was a fixture gap
+that any such test would hit. Fixed by adding `stopAndWait()`, which awaits the
+close, and using it at the restart site. 4/4 in isolation afterwards;
+re-verification under full-target parallelism is the next run's job.
+
+#### Re-run with the port fix, under full parallel load
+
+```
+command:  xcodebuild test-without-building … (same invocation)
+executed: 776   passed: 754   failed: 12   skipped: 10
+EADDRINUSE occurrences in the log: 0
+OpenSSHTrustDecisionConvergenceTests: passed
+```
+
+The port fix held. `EADDRINUSE` appears **zero** times across 776 tests running
+in parallel, and the convergence gate that failed on it in the previous run now
+passes without being isolated. That is the parallel-load verification the
+commit gate required; the earlier 4/4 was isolation only and would not have
+sufficed.
+
+Post-run environment checks, all clean:
+
+```
+leaked ssh/probe processes:                    0
+stray bonk.legacy-migration plists:            0
+canonical records:                             0
+canonical legacyFingerprints (inventory):      35
+```
+
+The convergence test also remains the only place a pass could have come from a
+skip: it is not gated on any fixture, and the suite reports `skipped == 0` for
+itself in every run.
+
+#### A third flake appeared, in Team code
+
+`TeamSSHHostKeyPinningTests.secondConnectionToTheSameHostSucceeds` failed in
+this run and passed in the previous one. 16/16 on three isolated runs of the
+whole suite, so it is parallel-load dependent.
+
+The mechanism is a defect in the assertion, not in the product:
+
+```swift
+#expect(learned != identityStore.pinnedTeamIdentityFingerprint() ?? learned, …)
+```
+
+`??` is `NilCoalescingPrecedence`, which binds **tighter** than `!=`, so this
+parses as `learned != (pin ?? learned)`. When the team identity fingerprint has
+not been written yet — a timing condition under load — the right side becomes
+`learned`, and the assertion compares `learned` against itself and fails. The
+failure message showing both sides equal is the tell: those are not two
+colliding hashes, they are one value.
+
+Nothing in that suite reaches the canonical store, `PersistentHostKeyStore` or
+`com.bonk.hostKeys`; it runs on isolated `UserDefaults` suites. So it is not a
+consequence of the migration, and it is not counted against this change.
+
+#### Eleven failures are outside this change's blast radius — VERIFIED at baseline
+
+An argument, not a verification. Checked against a pristine `HEAD` worktree
+(`git worktree add --detach <tmp> HEAD`, built and run separately, then removed)
+rather than asserted.
+
+```
+pristine HEAD, same six suites:
+  PlanIntelligenceTests/secondFailureAborts, abortTrace
+  BudgetRuntimeTests/loopBoundIntact, shrink, summary
+  InputCriticalPathContractTests/testPassiveTabAccepts, testPassiveEnterPassesThrough
+  AIChatKeyboardAndPresentationContractTests/accessModePropertiesContract
+  CommandNormalizerTests/sameOperationSameKey
+  FoldGateTests/throwing
+                                                    = 10 failures, pre-existing
+```
+
+The eleventh, `BudgetRuntimeTests/haltTrace()`, had passed in the HEAD baseline
+and failed in the full-target run. Rather than write it off as noise, it was run
+repeatedly on both trees in isolation:
+
+```
+haltTrace() on this change, 5 runs:  F P P F P      (2/5 failed)
+haltTrace() at pristine HEAD, 6 runs: F P F F F P    (4/6 failed)
+```
+
+Non-deterministic on both trees. The sample is far too small to rank the two
+flake rates against each other, and **no such ranking is claimed**: 2/5 and 4/6
+are consistent with each other and with a single underlying flake rate. What the
+data does establish is the narrower claim that matters — the test fails at
+pristine `HEAD`, so it cannot have been introduced here. Its appearance in the
+full-target run is attributable to parallel load, not to this change.
+
+Two of the ten look environment-dependent rather than logical:
+`shortName == "完全访问"` returned `"完全"`, and `"ls -la ~/foo"` did not collapse
+to `<home>/foo`. Recorded as observations; neither is in scope here.
+
+**Net: this change introduced zero new failures.** Accounting for the
+full-target run is 10 pre-existing failures + 1 pre-existing flake + 1 real
+defect of mine, since fixed and re-verified in isolation.
+
+
+### Step 4 gate evidence, as committed
+
+```
+xcodebuild test-without-building -project Bonk.xcodeproj -scheme Bonk \
+  -destination 'platform=macOS' -derivedDataPath /tmp/bonk-dd \
+  -only-testing:… (the nine Step 4 suites)
+
+requested == executed == 43
+passed 43    failed 0    skipped 0
+
+  1  AUDIT-FIND-001 probe outcome — observation pass
+  3  AUDIT-FIND-001 tier 1 — trust policy reaches ssh
+  1  AUDIT-FIND-001 tier 2 — the transports converge on one trust decision
+  1  AUDIT-FIND-001 — each hop resolves its own trust record
+  7  AUDIT-FIND-001 — legacy trust migrates, and conflicts stay unresolved
+  2  AUDIT-FIND-001 — reconnect and SFTP resolve trust like first connect
+  6  AUDIT-FIND-001 — the probe calls the production classifier, and there is only one
+ 15  Canonical host-key store — compare-and-set
+  7  known_hosts renderer — canonical record serialization
+```
+
+`requested == executed == 43` with `failed == 0` and `skipped == 0`.
+
+Mutation ledger — each gate was run green, then deliberately broken, then
+restored and re-run green, with the tree hash recorded either side:
+
+| # | Mutation | Gate(s) that went red | Restored hash |
+|---|----------|----------------------|---------------|
+| A | jump hop reuses the target's trust file | `ProxyCommandPerHopTrustTests` ×2 | `e94a2f26…` |
+| B | trust file deleted before `ssh` reads it | `resolverGeneratedTrustFileIsUsableAtLaunch`, convergence ×1 | `3b453627…` |
+| C | reconnect falls back to the legacy `known_hosts` | `reconnectResolvesTrustBeforeSpawning` | `e94a2f26…` |
+| D | production classifier stops reporting a mismatch | `ProbeOutcomeObservationTests`, `unusableTrustFileIsNotARejection` | `4a14ba4b…` |
+| E | legacy pin wins a conflict | `conflictLeavesBothStoresUnchanged` ×2 | `fe23f840…` |
+
+All six restored files verified byte-identical to the pristine copies taken
+before each mutation.
+
+### Acceptance, stated precisely
+
+Step 4 is closed on **its own scope**. It is not a claim that the whole target
+is green, and the ledger should not be read as one.
+
+```
+Step 4's nine suites        VERIFIED    43/43, 0 failed, 0 skipped,
+                                         each gate mutation-proven
+Full target                 NOT GREEN   12 failed, 10 skipped
+  10 failures                          identical set at pristine HEAD — pre-existing
+  1 flake (haltTrace)                  fails at pristine HEAD too
+  1 flake (Team pinning)               Team code, isolated defaults, unreachable
+                                       from this change
+B-02 E2E gate               NOT VERIFIED  skipped; bench-linux absent on :2222
+```
+
+The full target cannot reach `failed == 0` while those 10 pre-existing failures
+remain. They are agent planning, token budgeting, keyboard input, command
+normalisation and i18n strings — none of it touched here, and folding it into
+this change would have meant claiming coverage of work that was not done.
+
+### Observation — test runs litter ~/Library/Preferences
+
+Thousands of `com.bonk.tests.teamPin.<UUID>.plist` and `com.bonk.tests.trace.*`
+files have accumulated in `~/Library/Preferences` from previous test runs. Those
+suites use `UserDefaults(suiteName:)`, which creates a real plist; removing the
+in-memory domain does not reliably remove the file across runs. Not a security
+defect and out of scope here, but it is why a directory listing of that folder is
+now a multi-thousand-line dump, and it will keep growing.

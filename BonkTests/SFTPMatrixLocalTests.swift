@@ -87,7 +87,14 @@ final class SFTPMatrixLocalTests: XCTestCase {
                 let endpoint = SSHEndpoint(host: "127.0.0.1", port: port)
                 switch backend {
                 case .compatibility:
-                    let backend = try OpenSSHBackend(config: cfg)
+                    // Temp trust store: this fixture resolves first contact, and
+                    // the default would be the user's real Application Support
+                    // host-key records.
+                    let (matrixResolver, matrixDir) = try HostKeyFixtureSupport.tempResolver(label: "sftp-matrix")
+                    defer { try? FileManager.default.removeItem(at: matrixDir) }
+                    let backend = try OpenSSHBackend(
+                        config: cfg, knownHostsResolver: matrixResolver
+                    )
                     return CompatibilitySSHSession(backend: backend, endpoint: endpoint) as any SSHSession
                 case .native:
                     let client = try await SSHClient.connect(
@@ -279,7 +286,11 @@ final class SFTPMatrixLocalTests: XCTestCase {
                 switch backend {
                 case .compatibility:
                     let session = CompatibilitySSHSession(
-                        backend: try OpenSSHBackend(config: cfg), endpoint: endpoint
+                        backend: try OpenSSHBackend(
+                            config: cfg,
+                            knownHostsResolver: try HostKeyFixtureSupport.tempResolver(label: "sftp-matrix").0
+                        ),
+                        endpoint: endpoint
                     )
                     return session as any SSHSession
                 case .native:

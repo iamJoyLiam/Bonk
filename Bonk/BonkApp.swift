@@ -33,6 +33,14 @@ struct BonkApp: App {
         _ = Self.sharedModelContainer
         StoreBackupManager.backupIfNeeded()
         StoreHealthGuard.startWatching()
+        // Carry any pre-canonical host-key trust into the canonical store.
+        //
+        // Before the canonical store existed, pins lived in `com.bonk.hostKeys` as
+        // bare fingerprints. Leaving them behind would silently re-authorise first
+        // contact for every host the user had already pinned, which is the exact
+        // downgrade AUDIT-FIND-001 exists to end. Runs here, once, before any
+        // connection can resolve trust.
+        HostKeyTrustMigration.runAtLaunch()
     }
 
     /// The production store. Construction is delegated to `BonkStore` so this
