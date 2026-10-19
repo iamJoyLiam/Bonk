@@ -132,7 +132,7 @@ struct ContentView: View {
                 cursorBlink: themeManager.cursorBlink,
                 showSearch: $showTerminalSearch
             )
-            .background(colorScheme.isTransparent ? Color.clear : Color(nsColor: colorScheme.background.nsColor))
+            .background(Color.clear)
             .clipped()
             // Split from one giant chain into separate checking units (Xcode 27
             // cannot type-check the full chain as a single expression).

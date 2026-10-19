@@ -275,6 +275,7 @@ extension TerminalTabView {
                 emptyState
             }
         }
+        .background { TerminalDeskBackground() }
     }
 
     // MARK: - AI Floating Bubble

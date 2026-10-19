@@ -97,17 +97,10 @@ struct PaneTerminalView: View {
             }
         }
         .background {
-            if showsPaneChrome {
-                RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
-                    .fill(paneSurface)
-            }
+            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusLarge, style: .continuous)
+                .fill(paneSurface)
         }
-        .clipShape(
-            RoundedRectangle(
-                cornerRadius: showsPaneChrome ? AppStyle.cornerRadiusMedium : 0,
-                style: .continuous
-            )
-        )
+        .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusLarge, style: .continuous))
         .onTapGesture {
             focusManager.focus(paneState.id)
             tab.activePaneID = paneState.id
@@ -276,13 +269,10 @@ struct PaneTerminalView: View {
         }
         .padding(.horizontal, AppStyle.spacingML)
         .padding(.vertical, AppStyle.spacingS)
-        .background(showsPaneChrome ? paneSurface : SwiftUI.Color.clear)
+        .background(paneSurface)
     }
 
-    /// Split panes are cards on the window. The one being worked in is the
-    /// lighter surface; the rest sit on the gray.
-    private var showsPaneChrome: Bool { tab.layout.root.paneCount > 1 }
-
+    /// The working card is paper. An idle card is the light gray.
     private var paneSurface: SwiftUI.Color {
         Color(nsColor: PaneChrome.surface(isActive: isActive))
     }
@@ -321,7 +311,6 @@ enum PaneChrome {
     private static let idleShade: CGFloat = 0.14
     /// An idle pane has to be at least this much darker than the window to count as gray.
     private static let minimumContrast: CGFloat = 0.04
-
     static func surface(isActive: Bool) -> NSColor {
         let appearance = NSApp.effectiveAppearance
         var chosen = NSColor.controlBackgroundColor

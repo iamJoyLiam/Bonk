@@ -189,10 +189,10 @@ import SwiftUI
             SwiftUI.Color(nsColor: displayedBackground)
         }
 
-        /// Light split panes use the card color, so the working pane is the
-        /// whiter one and the others are gray. Anything else keeps the theme.
+        /// A light theme adopts the card: paper while this pane is in front,
+        /// light gray otherwise. A dark theme keeps its own background.
         private var displayedBackground: NSColor {
-            guard tab.layout.root.paneCount > 1, PaneChrome.adoptsCardBackground(colorScheme) else {
+            guard PaneChrome.adoptsCardBackground(colorScheme) else {
                 return colorScheme.background.nsColor
             }
             return PaneChrome.surface(isActive: isActive)

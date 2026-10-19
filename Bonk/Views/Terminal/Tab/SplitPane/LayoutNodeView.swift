@@ -66,9 +66,6 @@ struct LayoutNodeView: View {
                     }
                 }
             }
-            .padding(isRoot ? AppStyle.spacingS : 0)
-            .background(isRoot ? Color(nsColor: .windowBackgroundColor) : Color.clear)
-
         case let .vertical(children, weights):
             GeometryReader { geometry in
                 let available = Self.available(geometry.size.height, gaps: children.count - 1)
@@ -100,12 +97,8 @@ struct LayoutNodeView: View {
                     }
                 }
             }
-            .padding(isRoot ? AppStyle.spacingS : 0)
-            .background(isRoot ? Color(nsColor: .windowBackgroundColor) : Color.clear)
         }
     }
-
-    private var isRoot: Bool { node.id == tab.layout.root.id }
 
     /// The child view for a layout node.
     @ViewBuilder
