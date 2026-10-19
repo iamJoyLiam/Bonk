@@ -26,6 +26,11 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var toolbarDelegate: BonkToolbarDelegate?
     private var toolbar: NSToolbar?
     private var toolbarObservation: NSKeyValueObservation?
+    /// Stops a titlebar clear from re-entering layout.
+    private var matchingTitlebar = false
+    /// Liquid glass behind the page and the toolbar. One view, so the bar
+    /// and the gutter are the same material.
+    private var glassBackdrop: NSView?
     var sessionManager: SessionManager?
     var workspace: WorkspaceManager?
     var coordinator: ToolbarCoordinator?
@@ -130,13 +135,124 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let window = mainWindow else { return }
         window.titlebarSeparatorStyle = .none
         window.toolbar?.showsBaselineSeparator = false
-        guard #available(macOS 26.0, *) else { return }
+        hidePrivateTitlebarSeparator(in: window)
+        // The separator view is inserted after the toolbar finishes laying out.
+        Task { @MainActor in
+            self.hidePrivateTitlebarSeparator(in: window)
+        }
         let fullScreen = isFullScreen ?? window.styleMask.contains(.fullScreen)
         let toolbarVisible = window.toolbar?.isVisible ?? false
         // In full screen with the toolbar hidden, the bar that slides down needs
         // its own background. Everywhere else the transparent bar is the one
         // that does not draw a rule.
         window.titlebarAppearsTransparent = fullScreen ? toolbarVisible : true
+        installGlassBackdrop(in: window, fullScreen: fullScreen)
+        if window.titlebarAppearsTransparent {
+            matchTitlebarToPage(in: window)
+        }
+    }
+
+    /// The gutter and the toolbar sample the desktop through one glass view.
+    /// A clear window with nothing behind it is a hole. A painted fill is a
+    /// second color. Regular glass is the material between those.
+    private func installGlassBackdrop(in window: NSWindow, fullScreen: Bool) {
+        guard let content = window.contentView, let theme = content.superview else { return }
+        let backdrop: NSView
+        if let glassBackdrop {
+            backdrop = glassBackdrop
+        } else if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView(frame: theme.bounds)
+            glass.style = .regular
+            glass.cornerRadius = 0
+            glass.autoresizingMask = [.width, .height]
+            let fill = NSView(frame: glass.bounds)
+            fill.autoresizingMask = [.width, .height]
+            glass.contentView = fill
+            theme.addSubview(glass, positioned: .below, relativeTo: content)
+            glassBackdrop = glass
+            backdrop = glass
+        } else {
+            let effect = NSVisualEffectView(frame: theme.bounds)
+            effect.material = .underWindowBackground
+            effect.blendingMode = .behindWindow
+            effect.state = .followsWindowActiveState
+            effect.autoresizingMask = [.width, .height]
+            theme.addSubview(effect, positioned: .below, relativeTo: content)
+            glassBackdrop = effect
+            backdrop = effect
+        }
+        backdrop.frame = theme.bounds
+        if fullScreen {
+            window.isOpaque = true
+            window.backgroundColor = .windowBackgroundColor
+            backdrop.isHidden = true
+        } else {
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            backdrop.isHidden = false
+        }
+    }
+
+    /// The unified toolbar paints its own material on top of the glass. Take
+    /// that off so the bar shows the same glass as the gutter.
+    func matchTitlebarToPage(in window: NSWindow) {
+        guard window.titlebarAppearsTransparent, !matchingTitlebar else { return }
+        guard let titlebar = window.standardWindowButton(.closeButton)?.superview else { return }
+        matchingTitlebar = true
+        defer { matchingTitlebar = false }
+        if let theme = window.contentView?.superview {
+            for subview in theme.subviews where subview is NSVisualEffectView
+                && subview !== glassBackdrop && !subview.isHidden {
+                subview.isHidden = true
+            }
+        }
+        let root = titlebar.superview ?? titlebar
+        func walk(_ view: NSView) {
+            let name = NSStringFromClass(type(of: view))
+            let isChromeFill = name.contains("Backdrop") || name.contains("Decoration")
+                || name.contains("TitlebarSeparator") || name.contains("ToolbarSeparator")
+            if isChromeFill, !view.isHidden {
+                view.isHidden = true
+                view.alphaValue = 0
+            }
+            if let effect = view as? NSVisualEffectView {
+                effect.wantsLayer = true
+                if effect.layer?.backgroundFilters?.isEmpty == false {
+                    effect.layer?.backgroundFilters = []
+                }
+                if effect.layer?.filters?.isEmpty == false {
+                    effect.layer?.filters = []
+                }
+                if effect.layer?.compositingFilter != nil {
+                    effect.layer?.compositingFilter = nil
+                }
+                effect.layer?.backgroundColor = NSColor.clear.cgColor
+                effect.layer?.isOpaque = false
+            }
+            if name.contains("Titlebar") {
+                view.wantsLayer = true
+                view.layer?.backgroundColor = NSColor.clear.cgColor
+                view.layer?.isOpaque = false
+            }
+            view.subviews.forEach(walk)
+        }
+        walk(root)
+    }
+
+    /// macOS 26 still inserts a private separator under the toolbar after
+    /// `titlebarSeparatorStyle` is set. It is the line between the toolbar and
+    /// the page. Hide that view; leave split dividers alone.
+    private func hidePrivateTitlebarSeparator(in window: NSWindow) {
+        guard let frame = window.contentView?.superview else { return }
+        func walk(_ view: NSView) {
+            let name = NSStringFromClass(type(of: view))
+            if name.contains("TitlebarSeparator") || name.contains("ToolbarSeparator") {
+                view.isHidden = true
+                view.alphaValue = 0
+            }
+            view.subviews.forEach(walk)
+        }
+        walk(frame)
     }
 
     func windowWillEnterFullScreen(_ notification: Notification) {

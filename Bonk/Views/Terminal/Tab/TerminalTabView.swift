@@ -127,6 +127,7 @@ struct TerminalTabView: View {
                 searchBar
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var searchBar: some View {
@@ -275,7 +276,6 @@ extension TerminalTabView {
                 emptyState
             }
         }
-        .background { TerminalDeskBackground() }
     }
 
     // MARK: - AI Floating Bubble

@@ -70,6 +70,7 @@ import SwiftUI
                             tabID: tab.id,
                             isActive: isActive,
                             hostFill: displayedBackground,
+                            roundsTopCorners: tab.layout.root.paneCount <= 1,
                             colorScheme: colorScheme,
                             fontSize: fontSize,
                             fontFamily: fontFamily,
@@ -189,13 +190,10 @@ import SwiftUI
             SwiftUI.Color(nsColor: displayedBackground)
         }
 
-        /// A light theme adopts the card: paper while this pane is in front,
-        /// light gray otherwise. A dark theme keeps its own background.
+        /// A light theme paints the paper plate. A dark theme keeps its own
+        /// color, opaque, so the page around the card stays visible.
         private var displayedBackground: NSColor {
-            guard PaneChrome.adoptsCardBackground(colorScheme) else {
-                return colorScheme.background.nsColor
-            }
-            return PaneChrome.surface(isActive: isActive)
+            PaneChrome.terminalFill(isActive: isActive, scheme: colorScheme)
         }
 
         @Environment(I18n.self) var i18n
@@ -229,9 +227,11 @@ import SwiftUI
         /// Whether this pane is the tab's active one. Only a tiebreak in size
         /// arbitration — it never outranks focus.
         let isActive: Bool
-        /// What shows behind the glyphs. The theme, or the split card when a
-        /// light theme can adopt it.
+        /// What shows behind the glyphs. The paper plate, or the theme color
+        /// when the theme is dark.
         let hostFill: NSColor
+        /// False when a title bar owns the card's top corners.
+        let roundsTopCorners: Bool
         let colorScheme: TerminalColorScheme
         let fontSize: Double
         let fontFamily: String
@@ -256,6 +256,8 @@ import SwiftUI
 
         func makeNSView(context: Context) -> TerminalHostView {
             let containerView = TerminalHostView(fill: hostFill)
+            containerView.cornerRadius = AppStyle.cornerRadiusLarge
+            containerView.roundsTopCorners = roundsTopCorners
             containerView.translatesAutoresizingMaskIntoConstraints = false
             setupTerminalView(for: paneID, in: containerView, context: context)
             registerViewportAuthority(for: paneID)
@@ -265,6 +267,8 @@ import SwiftUI
 
         func updateNSView(_ nsView: TerminalHostView, context: Context) {
             nsView.fillColor = hostFill
+            nsView.cornerRadius = AppStyle.cornerRadiusLarge
+            nsView.roundsTopCorners = roundsTopCorners
             let signpostStart = perfSignposter.beginInterval("PaneRebind")
             defer { perfSignposter.endInterval("PaneRebind", signpostStart) }
             guard context.coordinator.lastPaneID != paneID else {
@@ -531,9 +535,9 @@ import SwiftUI
                 applyColorScheme(to: terminal, scheme: colorScheme)
                 coordinator.lastColorSchemeID = colorScheme.id
             }
-            // A light split pane takes the card color. Focus moves without the
+            // A light card takes the paper plate. Focus moves without the
             // theme changing, and the install above would otherwise pin every
-            // pane to the same white. Skip a repeat assignment: the setter
+            // pane to the theme color. Skip a repeat assignment: the setter
             // repaints the whole grid.
             if coordinator.lastAppliedBackground != hostFill {
                 terminal.nativeBackgroundColor = hostFill

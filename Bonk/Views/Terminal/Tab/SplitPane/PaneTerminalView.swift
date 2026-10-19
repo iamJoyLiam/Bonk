@@ -96,11 +96,15 @@ struct PaneTerminalView: View {
                 showOverwriteAlert = false
             }
         }
-        .background {
-            RoundedRectangle(cornerRadius: AppStyle.cornerRadiusLarge, style: .continuous)
-                .fill(paneSurface)
+        .background { cardShape.fill(SwiftUI.Color(nsColor: plateColor)) }
+        .clipShape(cardShape)
+        .overlay {
+            cardShape.strokeBorder(
+                SwiftUI.Color.primary.opacity(AppStyle.opacityStroke),
+                lineWidth: AppStyle.tabHairline
+            )
         }
-        .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadiusLarge, style: .continuous))
+        .background { cardShadow }
         .onTapGesture {
             focusManager.focus(paneState.id)
             tab.activePaneID = paneState.id
@@ -269,12 +273,24 @@ struct PaneTerminalView: View {
         }
         .padding(.horizontal, AppStyle.spacingML)
         .padding(.vertical, AppStyle.spacingS)
-        .background(paneSurface)
     }
 
-    /// The working card is paper. An idle card is the light gray.
-    private var paneSurface: SwiftUI.Color {
-        Color(nsColor: PaneChrome.surface(isActive: isActive))
+    private var cardShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: AppStyle.cornerRadiusLarge, style: .continuous)
+    }
+
+    private var plateColor: NSColor {
+        PaneChrome.terminalFill(isActive: isActive, scheme: colorScheme)
+    }
+
+    /// Shadow is a separate shape behind the plate. Shadowing the terminal
+    /// view itself would snapshot the grid into the blur.
+    private var cardShadow: some View {
+        cardShape
+            .fill(SwiftUI.Color.black.opacity(isActive ? AppStyle.opacityBackgroundHover : AppStyle.opacityBackgroundMute))
+            .blur(radius: AppStyle.spacingS)
+            .offset(y: AppStyle.sizeHairline)
+            .allowsHitTesting(false)
     }
 
     private var paneTitleIcon: String {
@@ -301,46 +317,31 @@ struct PaneTerminalView: View {
     }
 }
 
-/// Which surface a split pane uses.
-///
-/// The working pane is the paper color. An idle pane is the system gray, and
-/// when that token resolves to the same white as the window it is shaded so
-/// the pane cannot disappear into the background.
+/// The plate each card paints. The page behind it is the window's liquid
+/// glass, so a card has to stay opaque or it disappears into that glass.
 enum PaneChrome {
-    /// Blend toward black when the system gray is not actually darker than the window.
-    private static let idleShade: CGFloat = 0.14
-    /// An idle pane has to be at least this much darker than the window to count as gray.
-    private static let minimumContrast: CGFloat = 0.04
-    static func surface(isActive: Bool) -> NSColor {
-        let appearance = NSApp.effectiveAppearance
-        var chosen = NSColor.controlBackgroundColor
-        appearance.performAsCurrentDrawingAppearance {
-            let paper = NSColor.controlBackgroundColor.usingColorSpace(.sRGB) ?? .white
-            if isActive {
-                chosen = paper
-                return
-            }
-            let gray = NSColor.unemphasizedSelectedContentBackgroundColor.usingColorSpace(.sRGB)
-            let window = NSColor.windowBackgroundColor.usingColorSpace(.sRGB)
-            if let gray, let window, luminance(gray) + minimumContrast < luminance(window) {
-                chosen = gray
-            } else if let window {
-                chosen = window.blended(withFraction: idleShade, of: .black) ?? gray ?? paper
-            } else {
-                chosen = gray ?? paper
-            }
-        }
-        return chosen
+    /// Working plate. Opaque white.
+    static let activePlate = NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
+    /// Idle plate. Still paper, one step off white.
+    static let idlePlate = NSColor(srgbRed: 0.988, green: 0.984, blue: 0.973, alpha: 1)
+
+    static func terminalFill(isActive: Bool, scheme: TerminalColorScheme) -> NSColor {
+        guard adoptsCardBackground(scheme) else { return opaque(scheme.background) }
+        return isActive ? activePlate : idlePlate
     }
 
-    /// A light theme can take the card color as its background and stay readable.
-    /// A dark theme cannot: the gray card would sit under light-colored text.
+    /// A light theme takes the paper plate. A dark theme keeps its own color,
+    /// flattened to opaque so the desktop does not show through the grid.
     static func adoptsCardBackground(_ scheme: TerminalColorScheme) -> Bool {
         luminance(scheme.background.nsColor) > 0.5
     }
 
+    static func opaque(_ color: RGBAColor) -> NSColor {
+        NSColor(srgbRed: CGFloat(color.r), green: CGFloat(color.g), blue: CGFloat(color.b), alpha: 1)
+    }
+
     /// Relative luminance, so the comparison does not depend on one appearance.
-    private static func luminance(_ color: NSColor) -> CGFloat {
+    static func luminance(_ color: NSColor) -> CGFloat {
         guard let rgb = color.usingColorSpace(.sRGB) else { return 0 }
         let red = 0.2126 * rgb.redComponent
         let green = 0.7152 * rgb.greenComponent

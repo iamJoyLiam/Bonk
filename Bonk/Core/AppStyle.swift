@@ -117,6 +117,10 @@ enum AppStyle {
     /// Painted thickness of a split divider. The mouse target is wider.
     static let splitDividerThickness: CGFloat = 1
 
+    /// Gap around a terminal card and between split cards.
+    /// The desktop shows through this gap.
+    static let cardGutter: CGFloat = spacingS
+
     // MARK: - Button Sizes
 
     static let buttonSmall: CGFloat = 24

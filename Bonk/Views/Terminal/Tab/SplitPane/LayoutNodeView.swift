@@ -60,7 +60,7 @@ struct LayoutNodeView: View {
                             }, onEqualize: {
                                 sessionManager.equalizeSplit(containerID: node.id, in: tab)
                             })
-                            .frame(width: AppStyle.spacingML)
+                            .frame(width: AppStyle.cardGutter)
                             .frame(maxHeight: .infinity)
                         }
                     }
@@ -91,7 +91,7 @@ struct LayoutNodeView: View {
                             }, onEqualize: {
                                 sessionManager.equalizeSplit(containerID: node.id, in: tab)
                             })
-                            .frame(height: AppStyle.spacingML)
+                            .frame(height: AppStyle.cardGutter)
                             .frame(maxWidth: .infinity)
                         }
                     }
@@ -117,7 +117,7 @@ struct LayoutNodeView: View {
 
     /// Room left for panes after the gaps between them.
     private static func available(_ total: CGFloat, gaps: Int) -> CGFloat {
-        max(total - CGFloat(max(gaps, 0)) * AppStyle.spacingML, 0)
+        max(total - CGFloat(max(gaps, 0)) * AppStyle.cardGutter, 0)
     }
 
     /// Size for the child at `index`: its share of the total is

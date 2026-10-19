@@ -55,6 +55,12 @@ final class MainSplitViewController: NSSplitViewController {
 
         splitView.isVertical = true
         splitView.dividerStyle = .thin
+        // The detail page and the toolbar have to be one surface. An opaque
+        // hosting view here draws a second fill, and its top edge is the line
+        // under the toolbar.
+        splitView.wantsLayer = true
+        splitView.layer?.isOpaque = false
+        splitView.layer?.backgroundColor = NSColor.clear.cgColor
         let locale = Locale(identifier: i18n.lang)
 
         // Sidebar
@@ -81,6 +87,8 @@ final class MainSplitViewController: NSSplitViewController {
                 .modelContainer(modelContainer)
         )
         detailHosting.sizingOptions = []
+        detailHosting.view.wantsLayer = true
+        detailHosting.view.layer?.backgroundColor = NSColor.clear.cgColor
         let detailItem = NSSplitViewItem(viewController: detailHosting)
         detailItem.minimumThickness = 400
         detailItem.holdingPriority = .defaultLow
@@ -116,6 +124,28 @@ final class MainSplitViewController: NSSplitViewController {
         // restored, so the inspector never starts open but empty.
         updateInspectorVisibility(animated: false)
         hideTitlebarSeparators()
+        clearDetailBackground()
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        // The detail page is drawn by SwiftUI inside this hosting view. The
+        // layer itself stays clear so a system fill cannot flatten the page
+        // and the cards into one rectangle.
+        clearDetailBackground()
+        // AppKit puts the toolbar's own material back on layout, on top of
+        // the shared glass. Clear it again so the bar stays that glass.
+        if let window = view.window {
+            BonkAppDelegate.shared?.matchTitlebarToPage(in: window)
+        }
+    }
+
+    private func clearDetailBackground() {
+        guard splitViewItems.count > 1 else { return }
+        let detail = splitViewItems[1].viewController.view
+        detail.wantsLayer = true
+        detail.layer?.isOpaque = false
+        detail.layer?.backgroundColor = NSColor.clear.cgColor
     }
 
     /// The inspector's titlebar grows its own rule when the pane opens. Clear

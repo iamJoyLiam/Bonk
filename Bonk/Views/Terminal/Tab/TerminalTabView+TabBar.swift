@@ -18,7 +18,7 @@ extension TerminalTabView {
         }
         .padding(.horizontal, AppStyle.tabStripInset)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: AppStyle.tabBandHeight, alignment: .top)
+        .frame(height: AppStyle.tabTrackHeight)
         .sheet(isPresented: $showQuickConnect) {
             QuickConnectView(
                 sessionManager: sessionManager,

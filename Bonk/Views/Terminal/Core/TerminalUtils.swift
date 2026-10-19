@@ -72,6 +72,18 @@ func applyColorScheme(to view: SwiftTerm.TerminalView, scheme: TerminalColorSche
             didSet { applyFill() }
         }
 
+        /// Matches the SwiftUI card. Zero leaves this host square, which is
+        /// what the non-card containers (the Quake panel) still want.
+        var cornerRadius: CGFloat = 0 {
+            didSet { applyFill() }
+        }
+
+        /// A title bar occupies the card's top, so only the bottom of this
+        /// host is an outer corner.
+        var roundsTopCorners = true {
+            didSet { applyFill() }
+        }
+
         init(fill: NSColor) {
             fillColor = fill
             super.init(frame: .zero)
@@ -95,9 +107,25 @@ func applyColorScheme(to view: SwiftTerm.TerminalView, scheme: TerminalColorSche
         }
 
         private func applyFill() {
+            wantsLayer = true
+            clipsToBounds = cornerRadius > 0
+            layer?.isOpaque = fillColor.cgColor.alpha >= 1 && cornerRadius == 0
             layer?.backgroundColor = fillColor.cgColor
+            layer?.cornerRadius = cornerRadius
+            layer?.cornerCurve = .continuous
+            layer?.masksToBounds = cornerRadius > 0
+            layer?.maskedCorners = roundsTopCorners
+                ? [
+                    .layerMinXMinYCorner, .layerMaxXMinYCorner,
+                    .layerMinXMaxYCorner, .layerMaxXMaxYCorner,
+                ]
+                : [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+            // SwiftUI's clip does not mask this AppKit view. The rounded
+            // layer is what keeps the grid inside the card.
+            // The superview used to be painted too, which put a square slab
+            // over the card corners. It only needs to stop being black.
             superview?.wantsLayer = true
-            superview?.layer?.backgroundColor = fillColor.cgColor
+            superview?.layer?.backgroundColor = NSColor.clear.cgColor
         }
     }
 
