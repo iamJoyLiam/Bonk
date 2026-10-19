@@ -6,6 +6,39 @@
     <channel>
         <title>Bonk</title>
         <item>
+        <title>2026.5.0</title>
+        <pubDate>Mon, 19 Oct 2026 14:48:17 +0800</pubDate>
+        <sparkle:version>20265000</sparkle:version>
+        <sparkle:shortVersionString>2026.5.0</sparkle:shortVersionString>
+        <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+        <description><![CDATA[
+## Changes
+
+- Terminal: split panes and drag-to-drop rebuilt on SwiftTerm 1.99, panes drawn as Liquid Glass cards, server stats survive closing a split, and PTY sizing is now shared correctly across multiple terminal views.
+- SFTP: double-click enters a folder without rebuilding the list, directory listings reuse one session instead of opening a connection per command, and the toolbar transfer ring distinguishes finished and failed transfers from idle.
+- Fixed the SFTP toolbar freezing during large uploads, and fixed the authentication retry sheet re-sending the last rejected password instead of the one being typed.
+- Security: SSH host keys are now verified before authentication through a single durable trust store, so a changed key is refused on every transport instead of being re-pinned by the fallback path; SSH key passphrases no longer appear in process arguments; Team guest terminal links are restricted to the same http/https allowlist as the main terminal.
+- Fixed a store fault that could drop saved hosts, and confined store construction to a single audited entry point with a schema contract.
+- Removed 27 stale entries from the in-app update feed and added a feed audit to the release pipeline.
+        ]]></description>
+        <enclosure
+            url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.5.0/Bonk-2026.5.0-arm64.dmg"
+            length="26140341"
+            type="application/octet-stream"
+            sparkle:edSignature="NueRRq+z5O0UL7Pe3+uGDouRyOsRJkRjZ5R+KC1TYXXrrv3JRyl13AYPol5Ny/AAGTP2MaKRxwi7Ojc6I2FyCQ=="
+            sparkle:os="macos"
+            sparkle:cpuAffinity="arm64"
+        />
+        <enclosure
+            url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.5.0/Bonk-2026.5.0-x86_64.dmg"
+            length="27116799"
+            type="application/octet-stream"
+            sparkle:edSignature="8IiqtlrTBmPqLr2rmSqgCBbOcG7q0pGKDP5cUHKzFYl7HeCuAzmgZDHZRz5BmFIaz5YV7rGROtncpVA5xqmJCQ=="
+            sparkle:os="macos"
+            sparkle:cpuAffinity="x86_64"
+        />
+    </item>
+    <item>
         <title>2026.4.5</title>
         <pubDate>Tue, 29 Sep 2026 11:03:26 +0800</pubDate>
         <sparkle:version>20264005</sparkle:version>
@@ -120,7 +153,7 @@
                 sparkle:cpuAffinity="arm64"
             />
             <enclosure
-                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.4.2/Bonk-2026.4.2-x86_64.dmg"
+                url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.4.2/Bonk-2026.4.2-x64.dmg"
                 length="25328791"
                 type="application/octet-stream"
                 sparkle:edSignature="CtSju/oJ/FKoNkHm92gRkzXj/Z7mT98mItFmkKPdJCFAoADkkJGsch6+d5wwDjChR9nsGnKgUDP9tVd2vpl+Aw=="

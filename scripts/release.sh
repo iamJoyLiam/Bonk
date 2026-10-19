@@ -102,14 +102,20 @@ for tool in xcodebuild hdiutil gh swift python3 curl; do
 done
 gh auth status >/dev/null 2>&1 || die "gh not authenticated"
 
+# A Sparkle checkout ships a `sign_update/` SOURCE DIRECTORY next to the
+# compiled tools, and `-x` is true for a directory — so an `-x`-only test picks
+# the directory and signing dies with "is a directory". Require a regular file,
+# and prefer the artifacts copy this build just produced over any stale one.
 SIGN_UPDATE=""
 for cand in "${SIGN_UPDATE_BIN:-}" \
+    "$ROOT/build/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update" \
     "$(dirname "$(xcode-select -p)")/usr/local/bin/sign_update" \
-    $HOME/Library/Developer/Xcode/DerivedData/Bonk-*/SourcePackages/checkouts/Sparkle/sign_update \
-    /tmp/BonkBuild-*/SourcePackages/checkouts/Sparkle/sign_update; do
-    [[ -x "$cand" ]] && { SIGN_UPDATE="$cand"; break; }
+    $HOME/Library/Developer/Xcode/DerivedData/Bonk-*/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update \
+    $HOME/Library/Developer/Xcode/DerivedData/Bonk-*/SourcePackages/checkouts/Sparkle/bin/sign_update \
+    /tmp/BonkBuild-*/SourcePackages/checkouts/Sparkle/bin/sign_update; do
+    [[ -f "$cand" && -x "$cand" ]] && { SIGN_UPDATE="$cand"; break; }
 done
-[[ -n "$SIGN_UPDATE" ]] || die "sign_update binary not found (build it: make -C <Sparkle checkout>)"
+[[ -n "$SIGN_UPDATE" ]] || die "sign_update binary not found (it ships in the Sparkle artifact: <derivedDataPath>/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update; or set SIGN_UPDATE_BIN)"
 echo "    sign_update: $SIGN_UPDATE"
 
 REPO="$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null)" \
