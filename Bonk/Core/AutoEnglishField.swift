@@ -90,6 +90,11 @@ struct AutoEnglishSecureField: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: AutoEnglishSecureTextField, context: Context) {
+        context.coordinator.parent = self
+        // While the field editor is up, stringValue and the binding disagree
+        // for a frame. Writing the binding back then throws away the keystroke
+        // the user just made — a retry sheet then submits the previous password.
+        guard nsView.currentEditor() == nil else { return }
         if nsView.stringValue != text { nsView.stringValue = text }
         let placeholderString = placeholder.isEmpty ? nil : placeholder
         if nsView.placeholderString != placeholderString {
@@ -102,9 +107,19 @@ struct AutoEnglishSecureField: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: AutoEnglishSecureField
         init(_ parent: AutoEnglishSecureField) { self.parent = parent }
+
         func controlTextDidChange(_ obj: Notification) {
+            commit(obj)
+        }
+
+        func controlTextDidEndEditing(_ obj: Notification) {
+            commit(obj)
+        }
+
+        private func commit(_ obj: Notification) {
             guard let field = obj.object as? NSTextField else { return }
-            if parent.text != field.stringValue { parent.text = field.stringValue }
+            let value = (field.currentEditor() as? NSTextView)?.string ?? field.stringValue
+            if parent.text != value { parent.text = value }
         }
     }
 }
@@ -129,6 +144,8 @@ struct AutoEnglishPlainField: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: AutoEnglishTextField, context: Context) {
+        context.coordinator.parent = self
+        guard nsView.currentEditor() == nil else { return }
         if nsView.stringValue != text { nsView.stringValue = text }
         let placeholderString = placeholder.isEmpty ? nil : placeholder
         if nsView.placeholderString != placeholderString {
@@ -141,9 +158,19 @@ struct AutoEnglishPlainField: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: AutoEnglishPlainField
         init(_ parent: AutoEnglishPlainField) { self.parent = parent }
+
         func controlTextDidChange(_ obj: Notification) {
+            commit(obj)
+        }
+
+        func controlTextDidEndEditing(_ obj: Notification) {
+            commit(obj)
+        }
+
+        private func commit(_ obj: Notification) {
             guard let field = obj.object as? NSTextField else { return }
-            if parent.text != field.stringValue { parent.text = field.stringValue }
+            let value = (field.currentEditor() as? NSTextView)?.string ?? field.stringValue
+            if parent.text != value { parent.text = value }
         }
     }
 }

@@ -133,6 +133,10 @@ struct AuthRetrySheet: View {
                     .keyboardShortcut(.cancelAction)
                 Spacer()
                 Button(i18n.t(.retry)) {
+                    // Resign first. A secure field keeps the latest keystrokes
+                    // in its editor until editing ends; reading the model before
+                    // that submits the password from the previous attempt.
+                    NSApp.keyWindow?.makeFirstResponder(nil)
                     let retryResult = buildRetryResult()
                     Log.session.info("[AUTH_RETRY_SHEET] retry tapped pwLen=\(retryResult.password.count) valid=\(viewModel.isValid)")
                     onRetry(retryResult)
