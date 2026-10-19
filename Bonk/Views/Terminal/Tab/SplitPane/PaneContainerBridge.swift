@@ -69,6 +69,7 @@ import SwiftUI
                             paneID: paneState.id,
                             tabID: tab.id,
                             isActive: isActive,
+                            hostFill: displayedBackground,
                             colorScheme: colorScheme,
                             fontSize: fontSize,
                             fontFamily: fontFamily,
@@ -185,7 +186,16 @@ import SwiftUI
         }
 
         private var terminalBackground: SwiftUI.Color {
-            SwiftUI.Color(nsColor: colorScheme.background.nsColor)
+            SwiftUI.Color(nsColor: displayedBackground)
+        }
+
+        /// Light split panes use the card color, so the working pane is the
+        /// whiter one and the others are gray. Anything else keeps the theme.
+        private var displayedBackground: NSColor {
+            guard tab.layout.root.paneCount > 1, PaneChrome.adoptsCardBackground(colorScheme) else {
+                return colorScheme.background.nsColor
+            }
+            return PaneChrome.surface(isActive: isActive)
         }
 
         @Environment(I18n.self) var i18n
@@ -219,6 +229,9 @@ import SwiftUI
         /// Whether this pane is the tab's active one. Only a tiebreak in size
         /// arbitration — it never outranks focus.
         let isActive: Bool
+        /// What shows behind the glyphs. The theme, or the split card when a
+        /// light theme can adopt it.
+        let hostFill: NSColor
         let colorScheme: TerminalColorScheme
         let fontSize: Double
         let fontFamily: String
@@ -241,8 +254,8 @@ import SwiftUI
             PaneCoordinator(tabID: tabID)
         }
 
-        func makeNSView(context: Context) -> NSView {
-            let containerView = NSView()
+        func makeNSView(context: Context) -> TerminalHostView {
+            let containerView = TerminalHostView(fill: hostFill)
             containerView.translatesAutoresizingMaskIntoConstraints = false
             setupTerminalView(for: paneID, in: containerView, context: context)
             registerViewportAuthority(for: paneID)
@@ -250,7 +263,8 @@ import SwiftUI
             return containerView
         }
 
-        func updateNSView(_ nsView: NSView, context: Context) {
+        func updateNSView(_ nsView: TerminalHostView, context: Context) {
+            nsView.fillColor = hostFill
             let signpostStart = perfSignposter.beginInterval("PaneRebind")
             defer { perfSignposter.endInterval("PaneRebind", signpostStart) }
             guard context.coordinator.lastPaneID != paneID else {
@@ -517,6 +531,14 @@ import SwiftUI
                 applyColorScheme(to: terminal, scheme: colorScheme)
                 coordinator.lastColorSchemeID = colorScheme.id
             }
+            // A light split pane takes the card color. Focus moves without the
+            // theme changing, and the install above would otherwise pin every
+            // pane to the same white. Skip a repeat assignment: the setter
+            // repaints the whole grid.
+            if coordinator.lastAppliedBackground != hostFill {
+                terminal.nativeBackgroundColor = hostFill
+                coordinator.lastAppliedBackground = hostFill
+            }
         }
     }
 
@@ -526,6 +548,9 @@ import SwiftUI
         let tabID: UUID
         var lastPaneID: UUID?
         var lastColorSchemeID: String?
+        /// Last background actually pushed to the terminal, so a SwiftUI
+        /// refresh does not repaint the grid with the same color.
+        var lastAppliedBackground: NSColor?
 
         init(tabID: UUID) {
             self.tabID = tabID

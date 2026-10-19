@@ -188,6 +188,10 @@ import SwiftTerm
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            // Re-assert before the first draw. A connection swaps the connecting
+            // placeholder for this view, and the uncovered strip under the last
+            // row composites as black until the layer color is actually on screen.
+            layer?.backgroundColor = nativeBackgroundColor.cgColor
             // Switching tabs moves the view between containers, which fires
             // this repeatedly for the SAME window. Tearing down and rebuilding
             // the observers (and the right-click monitor) on every move is pure

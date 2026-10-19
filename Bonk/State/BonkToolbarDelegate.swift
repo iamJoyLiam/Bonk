@@ -66,7 +66,8 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
          .space,
          .broadcast, .sftp, .workspaces,    // Common: broadcast, SFTP, workspaces
          .flexibleSpace,
-         .ai, .snippets]
+         .ai, .snippets,
+         .inspectorTrackingSeparator]
     }
 
     // MARK: - Allowed Items (all items user can add)
@@ -79,6 +80,7 @@ final class BonkToolbarDelegate: NSObject, NSToolbarDelegate {
          .serialPort, .portForward,         // Uncommon: keep in customize
          .keyGenerator, .importSessions, .triggers, .team,
          .ai, .snippets,
+         .inspectorTrackingSeparator,
          .space, .flexibleSpace]
     }
 

@@ -78,6 +78,7 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.setFrameAutosaveName("BonkMainWindow")
         window.toolbarStyle = .unified
         window.titleVisibility = .visible
+        window.titlebarSeparatorStyle = .none
 
         // Read the saved frame up front: once the contentViewController is
         // installed, SwiftUI layout constraints squeeze the window to its
@@ -122,6 +123,30 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: - Window Closing
 
+    /// From macOS 26 the line under the toolbar ignores `titlebarSeparatorStyle`.
+    /// A transparent titlebar is what removes it, including the extra rule that
+    /// appears over the inspector once that pane opens.
+    func applyTitlebarPolicy(isFullScreen: Bool? = nil) {
+        guard let window = mainWindow else { return }
+        window.titlebarSeparatorStyle = .none
+        window.toolbar?.showsBaselineSeparator = false
+        guard #available(macOS 26.0, *) else { return }
+        let fullScreen = isFullScreen ?? window.styleMask.contains(.fullScreen)
+        let toolbarVisible = window.toolbar?.isVisible ?? false
+        // In full screen with the toolbar hidden, the bar that slides down needs
+        // its own background. Everywhere else the transparent bar is the one
+        // that does not draw a rule.
+        window.titlebarAppearsTransparent = fullScreen ? toolbarVisible : true
+    }
+
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        applyTitlebarPolicy(isFullScreen: true)
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        applyTitlebarPolicy(isFullScreen: false)
+    }
+
     func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow,
               window === mainWindow else { return }
@@ -136,11 +161,14 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // Older builds shipped a stale autosaved toolbar layout (before the
         // server-resource items existed). Clear it once, then let AppKit
         // persist user customizations from now on.
-        if !UserDefaults.standard.bool(forKey: "toolbar_config_migrated_v2") {
+        // v3 adds the inspector-tracking separator. A saved layout from before
+        // that item exists keeps the trailing buttons pinned to the window edge,
+        // so they sit on top of the inspector instead of moving left with it.
+        if !UserDefaults.standard.bool(forKey: "toolbar_config_migrated_v3") {
             UserDefaults.standard.removeObject(
                 forKey: "NSToolbar Configuration com.bonk.mainWindowToolbar"
             )
-            UserDefaults.standard.set(true, forKey: "toolbar_config_migrated_v2")
+            UserDefaults.standard.set(true, forKey: "toolbar_config_migrated_v3")
         }
 
         let toolbar = NSToolbar(identifier: "com.bonk.mainWindowToolbar")
@@ -148,8 +176,10 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         toolbar.allowsUserCustomization = true
         toolbar.autosavesConfiguration = true
         toolbar.displayMode = .iconOnly
+        toolbar.showsBaselineSeparator = false
         self.toolbar = toolbar
         window.toolbar = toolbar
+        applyTitlebarPolicy()
         window.toolbar?.validateVisibleItems()
         Log.ui.info("Main window toolbar installed: \(toolbar.identifier, privacy: .public), items=\(toolbar.items.count, privacy: .public)")
     }
@@ -167,6 +197,7 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 Log.ui.warning("Window toolbar was replaced (delegate=\(String(describing: current.delegate.map { String(describing: type(of: $0)) }), privacy: .public)); restoring ours")
                 guard let window = self.mainWindow, window.toolbar !== self.toolbar else { return }
                 window.toolbar = self.toolbar
+                self.applyTitlebarPolicy()
                 window.toolbar?.validateVisibleItems()
             }
         }

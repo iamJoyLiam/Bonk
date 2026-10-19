@@ -69,6 +69,7 @@ final class MainSplitViewController: NSSplitViewController {
         sidebarItem.canCollapse = true
         sidebarItem.minimumThickness = 200
         sidebarItem.maximumThickness = 320
+        sidebarItem.titlebarSeparatorStyle = .none
         addSplitViewItem(sidebarItem)
 
         // Detail
@@ -83,6 +84,7 @@ final class MainSplitViewController: NSSplitViewController {
         let detailItem = NSSplitViewItem(viewController: detailHosting)
         detailItem.minimumThickness = 400
         detailItem.holdingPriority = .defaultLow
+        detailItem.titlebarSeparatorStyle = .none
         addSplitViewItem(detailItem)
 
         // Inspector
@@ -97,6 +99,7 @@ final class MainSplitViewController: NSSplitViewController {
         inspectorSplitItem = NSSplitViewItem(inspectorWithViewController: inspectorHosting)
         inspectorSplitItem.canCollapse = true
         inspectorSplitItem.minimumThickness = 280
+        inspectorSplitItem.titlebarSeparatorStyle = .none
         inspectorSplitItem.maximumThickness = NSSplitViewItem.unspecifiedDimension
         inspectorSplitItem.isCollapsed = true
         addSplitViewItem(inspectorSplitItem)
@@ -112,6 +115,17 @@ final class MainSplitViewController: NSSplitViewController {
         // Re-assert after the split view's autosaved collapse state is
         // restored, so the inspector never starts open but empty.
         updateInspectorVisibility(animated: false)
+        hideTitlebarSeparators()
+    }
+
+    /// The inspector's titlebar grows its own rule when the pane opens. Clear
+    /// it again there; setting it once at load does not survive that.
+    private func hideTitlebarSeparators() {
+        for item in splitViewItems {
+            item.titlebarSeparatorStyle = .none
+        }
+        view.window?.titlebarSeparatorStyle = .none
+        BonkAppDelegate.shared?.applyTitlebarPolicy()
     }
 
     /// macOS 26's sidebar glass draws its shadow once with square corners when
@@ -226,6 +240,7 @@ final class MainSplitViewController: NSSplitViewController {
         } else {
             inspectorSplitItem.isCollapsed = !shouldShow
         }
+        hideTitlebarSeparators()
     }
 }
 

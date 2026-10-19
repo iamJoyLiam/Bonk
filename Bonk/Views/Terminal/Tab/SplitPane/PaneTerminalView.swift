@@ -5,6 +5,7 @@
 //  A single pane in the layout, supporting independent and linked modes.
 //
 
+import AppKit
 import SwiftTerm
 import SwiftUI
 
@@ -96,27 +97,17 @@ struct PaneTerminalView: View {
             }
         }
         .background {
-            if tab.layout.root.paneCount > 1 {
+            if showsPaneChrome {
                 RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
-                    .fill(Color(nsColor: .controlBackgroundColor))
+                    .fill(paneSurface)
             }
         }
         .clipShape(
             RoundedRectangle(
-                cornerRadius: tab.layout.root.paneCount > 1 ? AppStyle.cornerRadiusMedium : 0,
+                cornerRadius: showsPaneChrome ? AppStyle.cornerRadiusMedium : 0,
                 style: .continuous
             )
         )
-        .overlay {
-            if tab.layout.root.paneCount > 1 {
-                RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
-                    .strokeBorder(
-                        isActive ? Color.accentColor.opacity(0.85) : Color(nsColor: .separatorColor),
-                        lineWidth: isActive ? AppStyle.indicatorThin : AppStyle.splitDividerThickness
-                    )
-                    .allowsHitTesting(false)
-            }
-        }
         .onTapGesture {
             focusManager.focus(paneState.id)
             tab.activePaneID = paneState.id
@@ -285,11 +276,15 @@ struct PaneTerminalView: View {
         }
         .padding(.horizontal, AppStyle.spacingML)
         .padding(.vertical, AppStyle.spacingS)
-        .background {
-            if tab.layout.root.paneCount > 1 {
-                Color(nsColor: .windowBackgroundColor).opacity(isActive ? 0.55 : 0.35)
-            }
-        }
+        .background(showsPaneChrome ? paneSurface : SwiftUI.Color.clear)
+    }
+
+    /// Split panes are cards on the window. The one being worked in is the
+    /// lighter surface; the rest sit on the gray.
+    private var showsPaneChrome: Bool { tab.layout.root.paneCount > 1 }
+
+    private var paneSurface: SwiftUI.Color {
+        Color(nsColor: PaneChrome.surface(isActive: isActive))
     }
 
     private var paneTitleIcon: String {
@@ -313,5 +308,54 @@ struct PaneTerminalView: View {
         } else {
             coordinator.updateTeamSubscription(sessionID: nil)
         }
+    }
+}
+
+/// Which surface a split pane uses.
+///
+/// The working pane is the paper color. An idle pane is the system gray, and
+/// when that token resolves to the same white as the window it is shaded so
+/// the pane cannot disappear into the background.
+enum PaneChrome {
+    /// Blend toward black when the system gray is not actually darker than the window.
+    private static let idleShade: CGFloat = 0.14
+    /// An idle pane has to be at least this much darker than the window to count as gray.
+    private static let minimumContrast: CGFloat = 0.04
+
+    static func surface(isActive: Bool) -> NSColor {
+        let appearance = NSApp.effectiveAppearance
+        var chosen = NSColor.controlBackgroundColor
+        appearance.performAsCurrentDrawingAppearance {
+            let paper = NSColor.controlBackgroundColor.usingColorSpace(.sRGB) ?? .white
+            if isActive {
+                chosen = paper
+                return
+            }
+            let gray = NSColor.unemphasizedSelectedContentBackgroundColor.usingColorSpace(.sRGB)
+            let window = NSColor.windowBackgroundColor.usingColorSpace(.sRGB)
+            if let gray, let window, luminance(gray) + minimumContrast < luminance(window) {
+                chosen = gray
+            } else if let window {
+                chosen = window.blended(withFraction: idleShade, of: .black) ?? gray ?? paper
+            } else {
+                chosen = gray ?? paper
+            }
+        }
+        return chosen
+    }
+
+    /// A light theme can take the card color as its background and stay readable.
+    /// A dark theme cannot: the gray card would sit under light-colored text.
+    static func adoptsCardBackground(_ scheme: TerminalColorScheme) -> Bool {
+        luminance(scheme.background.nsColor) > 0.5
+    }
+
+    /// Relative luminance, so the comparison does not depend on one appearance.
+    private static func luminance(_ color: NSColor) -> CGFloat {
+        guard let rgb = color.usingColorSpace(.sRGB) else { return 0 }
+        let red = 0.2126 * rgb.redComponent
+        let green = 0.7152 * rgb.greenComponent
+        let blue = 0.0722 * rgb.blueComponent
+        return red + green + blue
     }
 }

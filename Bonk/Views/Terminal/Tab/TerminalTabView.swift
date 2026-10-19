@@ -44,6 +44,7 @@ struct TerminalTabView: View {
     @State var showQuickConnect = false
     @State private var copyMessage: String?
     @State var isHoverPlus = false
+    @State var hoveredTabID: UUID?
     @Namespace var tabNamespace
 
     var body: some View {

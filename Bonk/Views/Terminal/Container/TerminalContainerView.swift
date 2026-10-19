@@ -179,8 +179,8 @@ import SwiftUI
             ContainerCoordinator()
         }
 
-        func makeNSView(context: Context) -> NSView {
-            let containerView = NSView()
+        func makeNSView(context: Context) -> TerminalHostView {
+            let containerView = TerminalHostView(fill: colorScheme.background.nsColor)
             containerView.translatesAutoresizingMaskIntoConstraints = false
             // Mount consults the cache exactly as update does. Creating
             // unconditionally meant a second mount for the same tab always
@@ -199,7 +199,8 @@ import SwiftUI
             return containerView
         }
 
-        func updateNSView(_ nsView: NSView, context: Context) {
+        func updateNSView(_ nsView: TerminalHostView, context: Context) {
+            nsView.fillColor = colorScheme.background.nsColor
             let key = TerminalViewCacheKey(tabID: activeTabID, owner: owner)
             let previousKey = context.coordinator.lastKey
             guard previousKey != key else {

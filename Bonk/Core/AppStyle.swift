@@ -201,18 +201,34 @@ enum AppStyle {
         Color(red: 1.0, green: 0.0, blue: 0.4),
     ]
 
-    // MARK: - Tab Bar (Ghostty-style capsule)
+    // MARK: - Tab Bar
+    //
+    // The system window tab bar, which is also how TablePro draws the tabs
+    // for an open table: a 36pt band holding a 28pt track, 24pt tabs inset
+    // 2pt inside it, and the new-tab button outside the track.
 
-    static let tabHPadding: CGFloat = spacingM // 8
-    static let tabVPadding: CGFloat = spacingXS // 4
-    static let tabMinWidth: CGFloat = 72
-    static let tabMaxWidth: CGFloat = 148
-    static let tabSpacing: CGFloat = spacingS // 6
-    static let tabBarHeight: CGFloat = 44
-    static let tabBarHPadding: CGFloat = spacingM // 8
+    static let tabBandHeight: CGFloat = 36
+    static let tabTrackHeight: CGFloat = 28
+    static let tabHeight: CGFloat = 24
+    static let tabTrackPadding: CGFloat = spacingXXS // 2
+    static let tabStripInset: CGFloat = spacingM // 8
+    static let tabTrackSpacing: CGFloat = spacingXS // 4
+    static let tabNewButtonSize: CGFloat = buttonMedium // 28
+    static let tabMinWidth: CGFloat = 120
+    static let tabSeparatorHeight: CGFloat = 16
+    static let tabAccessoryWidth: CGFloat = 16
+    static let tabAccessoryInset: CGFloat = 5
+    static let tabHairline: CGFloat = 0.5
+    static let tabBarHeight: CGFloat = tabBandHeight
+    static let tabIconClose: CGFloat = fontSmallest // 9
+    /// Quake panel corner. Kept under the old name so that clip does not move.
     static let tabCornerRadius: CGFloat = 16
-    static let tabCloseSize: CGFloat = 16
-    static let tabIconClose: CGFloat = 8
+
+    /// Equal share of the track, but never narrower than a readable title.
+    static func tabWidth(forTrack usable: CGFloat, count: Int) -> CGFloat {
+        let divisor = CGFloat(max(count, 1))
+        return max(usable / divisor, tabMinWidth)
+    }
 
     // MARK: - Code Block
 

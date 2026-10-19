@@ -2,7 +2,8 @@
 //  TerminalTabView+TabBar.swift
 //  Bonk
 //
-//  Capsule-style tab bar with dark-mode design.
+//  Editor-style tab strip: a filled track, the selected tab raised inside it,
+//  and the new-tab button outside the track.
 //
 
 import SwiftUI
@@ -10,66 +11,14 @@ import UniformTypeIdentifiers
 
 extension TerminalTabView {
     var tabBar: some View {
-        ViewThatFits(in: .horizontal) {
-            // Fits: tabs + plus inline — leading, not centered
-            HStack(spacing: AppStyle.tabSpacing) {
-                ForEach(sessionManager.tabs) { tab in
-                    tabCapsule(tab)
-                        .matchedGeometryEffect(id: tab.id, in: tabNamespace)
-                        .contextMenu { tabContextMenu(tab) }
-                }
-                plusButton
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .animation(AppStyle.animationTab, value: sessionManager.tabs.count)
-            .animation(AppStyle.animationTab, value: sessionManager.activeTabID)
-            .padding(.horizontal, AppStyle.spacingL)
-            .padding(.vertical, AppStyle.tabBarHPadding)
-
-            // Overflow: scroll tabs, plus pinned
-            HStack(spacing: 0) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: AppStyle.tabSpacing) {
-                        ForEach(sessionManager.tabs) { tab in
-                            tabCapsule(tab)
-                                .matchedGeometryEffect(id: tab.id, in: tabNamespace)
-                                .contextMenu { tabContextMenu(tab) }
-                        }
-                        if sessionManager.tabs.count > 1 {
-                            Color.clear
-                                .frame(width: sessionManager.draggingTabID != nil ? AppStyle.spacingL : 0, height: AppStyle.buttonSmall)
-                                .contentShape(Rectangle())
-                                .dropDestination(for: String.self) { items, _ in
-                                    guard let draggedIDString = items.first,
-                                          let draggedID = UUID(uuidString: draggedIDString),
-                                          let sourceIndex = sessionManager.tabs.firstIndex(where: { $0.id == draggedID })
-                                    else { return false }
-                                    let targetIndex = sessionManager.tabs.count - 1
-                                    if sourceIndex != targetIndex {
-                                        let tab = sessionManager.tabs.remove(at: sourceIndex)
-                                        sessionManager.tabs.append(tab)
-                                    }
-                                    return true
-                                }
-                        }
-                    }
-                    .animation(AppStyle.animationTab, value: sessionManager.tabs.count)
-                    .animation(AppStyle.animationTab, value: sessionManager.activeTabID)
-                    .padding(.horizontal, AppStyle.tabBarHPadding)
-                    .padding(.vertical, AppStyle.tabBarHPadding)
-                }
-                Divider().frame(height: AppStyle.buttonSmall).padding(.horizontal, AppStyle.spacingXS)
-                plusButton
-                    .padding(.trailing, AppStyle.spacingS)
-            }
+        HStack(alignment: .top, spacing: AppStyle.tabTrackSpacing) {
+            tabTrack
+            plusButton
+                .frame(width: AppStyle.tabNewButtonSize, height: AppStyle.tabTrackHeight)
         }
+        .padding(.horizontal, AppStyle.tabStripInset)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: AppStyle.tabBarHeight)
-        .background {
-            Rectangle()
-                .fill(.bar)
-                .overlay(alignment: .bottom) { Divider() }
-        }
+        .frame(height: AppStyle.tabBandHeight, alignment: .top)
         .sheet(isPresented: $showQuickConnect) {
             QuickConnectView(
                 sessionManager: sessionManager,
@@ -80,47 +29,77 @@ extension TerminalTabView {
         }
     }
 
-    private var plusButton: some View {
-        Button {
-            showQuickConnect = true
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: AppStyle.fontBody, weight: .medium))
-                .foregroundStyle(isHoverPlus ? .primary : .secondary)
-                .frame(width: AppStyle.buttonMedium, height: AppStyle.buttonMedium)
-                .background {
-                    if isHoverPlus {
-                        Circle().fill(Color.primary.opacity(AppStyle.opacityBackgroundHover))
-                    } else {
-                        Circle().fill(Color.primary.opacity(AppStyle.opacityBackgroundSubtle))
+    /// Tabs share the track. They stop shrinking at a width that still fits a
+    /// name, and the rest scrolls instead of collapsing into slivers.
+    private var tabTrack: some View {
+        GeometryReader { proxy in
+            let tabs = sessionManager.tabs
+            let usable = max(proxy.size.width - AppStyle.tabTrackPadding * 2, 0)
+            let tabWidth = AppStyle.tabWidth(forTrack: usable, count: tabs.count)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 0) {
+                    ForEach(Array(tabs.enumerated()), id: \.element.id) { index, tab in
+                        tabCapsule(tab, showsLeadingSeparator: showsSeparator(before: index, in: tabs))
+                            .matchedGeometryEffect(id: tab.id, in: tabNamespace)
+                            .contextMenu { tabContextMenu(tab) }
+                            .frame(width: tabWidth, height: AppStyle.tabHeight)
                     }
                 }
-                .contentShape(Circle())
+                .padding(AppStyle.tabTrackPadding)
+            }
+            .contentMargins(0, for: .scrollContent)
+            .frame(width: proxy.size.width, height: AppStyle.tabTrackHeight)
         }
-        .buttonStyle(.plain)
-        .help("New Tab")
+        .frame(maxWidth: .infinity)
+        .frame(height: AppStyle.tabTrackHeight)
+        .background {
+            Capsule(style: .continuous)
+                .fill(Color(nsColor: .unemphasizedSelectedContentBackgroundColor))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(Color(nsColor: .quinaryLabel), lineWidth: AppStyle.tabHairline)
+                )
+        }
+        .clipShape(Capsule(style: .continuous))
+        .animation(AppStyle.animationTab, value: sessionManager.tabs.count)
+        .animation(AppStyle.animationTab, value: sessionManager.activeTabID)
+    }
+
+    /// A hairline sits between two plain tabs. One against the raised capsule
+    /// reads as a seam in it, so a selected tab suppresses both of its edges.
+    private func showsSeparator(before index: Int, in tabs: [TerminalTab]) -> Bool {
+        guard index > 0, tabs.indices.contains(index) else { return false }
+        let leading = tabs[index - 1].id
+        let trailing = tabs[index].id
+        let selected = sessionManager.activeTabID
+        guard leading != selected, trailing != selected else { return false }
+        return leading != hoveredTabID && trailing != hoveredTabID
+    }
+
+    private var plusButton: some View {
+        EditorNewTabButton(isHovering: isHoverPlus) {
+            showQuickConnect = true
+        }
         .onHover { isHoverPlus = $0 }
     }
 
-    // MARK: - Tab Capsule
-
     @ViewBuilder
-    private func tabCapsule(_ tab: TerminalTab) -> some View {
+    private func tabCapsule(_ tab: TerminalTab, showsLeadingSeparator: Bool) -> some View {
         let isActive = sessionManager.activeTabID == tab.id
-        let state = tab.session?.connectionState ?? .disconnected
 
         DraggableTabCapsule(
             tab: tab,
             isActive: isActive,
-            state: state,
+            showsLeadingSeparator: showsLeadingSeparator,
             sessionManager: sessionManager,
             isDragEnabled: sessionManager.tabs.count > 1,
             onSelect: { sessionManager.selectTab(tab.id) },
-            onClose: { Task { await sessionManager.closeTab(tab.id) } }
+            onClose: { Task { await sessionManager.closeTab(tab.id) } },
+            onHoverChange: { hovering in
+                hoveredTabID = hovering ? tab.id : (hoveredTabID == tab.id ? nil : hoveredTabID)
+            }
         )
     }
-
-    // MARK: - Context Menu
 
     // MARK: - Context Menu
 
@@ -164,5 +143,35 @@ extension TerminalTabView {
         } label: {
             Label(i18n.t(.close), systemImage: "xmark")
         }
+    }
+}
+
+/// Sits outside the track. A light appearance gets the same soft rim the
+/// system tab bar uses; in dark the fill alone is the edge.
+private struct EditorNewTabButton: View {
+    let isHovering: Bool
+    let action: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "plus")
+                .font(.system(size: AppStyle.fontBody, weight: .medium))
+                .foregroundStyle(Color(nsColor: isHovering ? .labelColor : .secondaryLabelColor))
+                .frame(width: AppStyle.tabNewButtonSize, height: AppStyle.tabNewButtonSize)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .background {
+            Circle()
+                .fill(Color(nsColor: .controlColor))
+                .shadow(
+                    color: Color(nsColor: .shadowColor).opacity(colorScheme == .light ? AppStyle.opacityBackgroundStrong : 0),
+                    radius: colorScheme == .light ? AppStyle.sizeHairline : 0,
+                    y: colorScheme == .light ? AppStyle.tabHairline : 0
+                )
+        }
+        .help("New Tab")
     }
 }

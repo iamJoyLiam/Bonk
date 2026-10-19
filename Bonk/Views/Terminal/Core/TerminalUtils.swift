@@ -60,6 +60,47 @@ func applyColorScheme(to view: SwiftTerm.TerminalView, scheme: TerminalColorSche
     /// the inset no longer appears as a contrasting "box".
     let terminalViewInsets = NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
 
+    /// The view `NSViewRepresentable` returns for a terminal.
+    ///
+    /// SwiftUI's representable wrapper is opaque black for the first frames
+    /// after a connection replaces the connecting placeholder with this host.
+    /// The terminal grid does not cover the leftover strip under the last row,
+    /// and the 4pt inset is the wrapper, so that black reads as a bar along
+    /// the bottom and then vanishes once the real background composites.
+    final class TerminalHostView: NSView {
+        var fillColor: NSColor {
+            didSet { applyFill() }
+        }
+
+        init(fill: NSColor) {
+            fillColor = fill
+            super.init(frame: .zero)
+            wantsLayer = true
+            applyFill()
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func viewDidMoveToSuperview() {
+            super.viewDidMoveToSuperview()
+            applyFill()
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            applyFill()
+        }
+
+        private func applyFill() {
+            layer?.backgroundColor = fillColor.cgColor
+            superview?.wantsLayer = true
+            superview?.layer?.backgroundColor = fillColor.cgColor
+        }
+    }
+
     /// Create a monospaced font, falling back to the system font when the
     /// requested family is unavailable.
     func createSafeFont(family: String, size: CGFloat) -> NSFont {

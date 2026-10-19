@@ -39,7 +39,7 @@ struct SplitDivider: View {
                 // It is not the drag state: a hover flag that survives a
                 // re-render leaves a blue bar stuck in the gap.
                 Rectangle()
-                    .fill(Color(nsColor: .separatorColor).opacity(isHovering ? 1 : 0.45))
+                    .fill(Color.clear)
                     .frame(
                         width: direction == .horizontal ? AppStyle.splitDividerThickness : nil,
                         height: direction == .vertical ? AppStyle.splitDividerThickness : nil
