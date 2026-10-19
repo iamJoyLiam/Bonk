@@ -98,7 +98,7 @@ struct RecordingPlaybackView: View {
                             nextIndex = 0
                             lastEventTime = 0
                             progress = 0
-                            terminalView?.terminal.resetToInitialState()
+                            terminalView?.resetToInitialState()
                             terminalView?.clearScrollback()
                         }
                         play()
@@ -236,7 +236,7 @@ struct RecordingPlaybackView: View {
         let shouldReset = nextIndex == 0 && progress == 0
         if shouldReset {
             progress = 0
-            targetTerminal.terminal.resetToInitialState()
+            targetTerminal.resetToInitialState()
             targetTerminal.clearScrollback()
         }
 

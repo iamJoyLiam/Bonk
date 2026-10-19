@@ -31,73 +31,81 @@ struct LayoutNodeView: View {
                 cursorStyle: cursorStyle,
                 cursorBlink: cursorBlink
             )
-            .transition(.asymmetric(
-                insertion: .scale(scale: 0.95).combined(with: .opacity),
-                removal: .opacity
-            ))
             .onTapGesture {
                 sessionManager.selectPane(paneState.id)
             }
 
         case let .horizontal(children, weights):
             GeometryReader { geometry in
+                let available = Self.available(geometry.size.width, gaps: children.count - 1)
                 HStack(spacing: 0) {
                     ForEach(Array(children.enumerated()), id: \.element.id) { index, child in
                         paneView(for: child)
                             .frame(
                                 width: childSize(
-                                    total: geometry.size.width,
+                                    total: available,
                                     index: index,
                                     weights: weights
                                 )
                             )
                             .frame(minWidth: AppStyle.size100)
                         if index < children.count - 1 {
-                            SplitDivider(direction: .horizontal) { delta in
+                            SplitDivider(direction: .horizontal, onResize: { delta in
                                 sessionManager.setSplitFraction(
-                                    delta / max(geometry.size.width, 1),
+                                    delta / max(available, 1),
                                     containerID: node.id,
                                     dividerIndex: index,
                                     in: tab
                                 )
-                            }
-                            .frame(width: AppStyle.statusDotMedium)
+                            }, onEqualize: {
+                                sessionManager.equalizeSplit(containerID: node.id, in: tab)
+                            })
+                            .frame(width: AppStyle.spacingML)
                             .frame(maxHeight: .infinity)
                         }
                     }
                 }
             }
+            .padding(isRoot ? AppStyle.spacingS : 0)
+            .background(isRoot ? Color(nsColor: .windowBackgroundColor) : Color.clear)
 
         case let .vertical(children, weights):
             GeometryReader { geometry in
+                let available = Self.available(geometry.size.height, gaps: children.count - 1)
                 VStack(spacing: 0) {
                     ForEach(Array(children.enumerated()), id: \.element.id) { index, child in
                         paneView(for: child)
                             .frame(
                                 height: childSize(
-                                    total: geometry.size.height,
+                                    total: available,
                                     index: index,
                                     weights: weights
                                 )
                             )
-                            .frame(minHeight: 100)
+                            .frame(minHeight: AppStyle.size100)
                         if index < children.count - 1 {
-                            SplitDivider(direction: .vertical) { delta in
+                            SplitDivider(direction: .vertical, onResize: { delta in
                                 sessionManager.setSplitFraction(
-                                    delta / max(geometry.size.height, 1),
+                                    delta / max(available, 1),
                                     containerID: node.id,
                                     dividerIndex: index,
                                     in: tab
                                 )
-                            }
-                            .frame(height: AppStyle.statusDotMedium)
+                            }, onEqualize: {
+                                sessionManager.equalizeSplit(containerID: node.id, in: tab)
+                            })
+                            .frame(height: AppStyle.spacingML)
                             .frame(maxWidth: .infinity)
                         }
                     }
                 }
             }
+            .padding(isRoot ? AppStyle.spacingS : 0)
+            .background(isRoot ? Color(nsColor: .windowBackgroundColor) : Color.clear)
         }
     }
+
+    private var isRoot: Bool { node.id == tab.layout.root.id }
 
     /// The child view for a layout node.
     @ViewBuilder
@@ -112,6 +120,11 @@ struct LayoutNodeView: View {
             cursorStyle: cursorStyle,
             cursorBlink: cursorBlink
         )
+    }
+
+    /// Room left for panes after the gaps between them.
+    private static func available(_ total: CGFloat, gaps: Int) -> CGFloat {
+        max(total - CGFloat(max(gaps, 0)) * AppStyle.spacingML, 0)
     }
 
     /// Size for the child at `index`: its share of the total is

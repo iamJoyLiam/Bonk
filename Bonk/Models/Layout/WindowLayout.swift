@@ -87,6 +87,11 @@ final class TabLayout {
 
     // MARK: - Resize Operations
 
+    /// Reset one container's children to equal shares. Double-click on its divider.
+    func equalize(containerID: UUID) {
+        root = equalized(root, containerID: containerID)
+    }
+
     /// Adjust the split proportion of a container. Called while the user
     /// drags the divider at `dividerIndex` (between children at that index
     /// and index+1). ONLY those two children change — panes beyond the
@@ -100,6 +105,35 @@ final class TabLayout {
             dividerIndex: dividerIndex,
             normalizedDelta: normalizedDelta
         )
+    }
+
+    private func equalized(_ node: LayoutNode, containerID: UUID) -> LayoutNode {
+        switch node {
+        case .pane:
+            return node
+        case let .horizontal(children, weights):
+            if node.id == containerID {
+                return .horizontal(
+                    children: children,
+                    weights: Array(repeating: LayoutNode.defaultWeight, count: children.count)
+                )
+            }
+            return .horizontal(
+                children: children.map { equalized($0, containerID: containerID) },
+                weights: weights
+            )
+        case let .vertical(children, weights):
+            if node.id == containerID {
+                return .vertical(
+                    children: children,
+                    weights: Array(repeating: LayoutNode.defaultWeight, count: children.count)
+                )
+            }
+            return .vertical(
+                children: children.map { equalized($0, containerID: containerID) },
+                weights: weights
+            )
+        }
     }
 
     /// Recursively find the container matching `containerID` and adjust the

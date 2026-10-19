@@ -36,7 +36,7 @@ final class AppKitTerminalConsumer: TerminalConsumer {
             return
         }
         // Tier 1b — Alternate screen (vim/less/top/fzf) is terminal control, never regex-color.
-        if let terminalViewForCheck = terminalView, terminalViewForCheck.terminal.isCurrentBufferAlternate {
+        if let terminalViewForCheck = terminalView, terminalViewForCheck.isAlternateScreen {
             terminalViewForCheck.feed(text: text)
             onBytesConsumed?(text.utf8.count)
             return

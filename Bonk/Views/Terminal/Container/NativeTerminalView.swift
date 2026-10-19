@@ -43,10 +43,8 @@ import SwiftTerm
                     }
                     if let s = sug {
                         let textToDisplay: String
-                        let (_, cursorY) = self.terminal.getCursorLocation()
-                        if cursorY >= 0, cursorY < self.terminal.rows,
-                           let line = self.terminal.getLine(row: cursorY) {
-                            let raw = line.translateToString(trimRight: true)
+                        let screen = self.screenCursorLine()
+                        if screen.y >= 0, screen.y < screen.rows, let raw = screen.line {
                             textToDisplay = CommandEditor.alignedAcceptSuffix(suggestion: s.displayText, rawLine: raw) ?? s.displayText
                         } else {
                             textToDisplay = s.displayText
@@ -157,8 +155,9 @@ import SwiftTerm
         override func layout() {
             super.layout()
 
-            let cols = self.terminal.cols
-            let rows = self.terminal.rows
+            let dimensions = terminalDimensions
+            let cols = dimensions.cols
+            let rows = dimensions.rows
 
             // Block invalid zero-value sizes (e.g., when tab is hidden)
             guard cols > 0, rows > 0 else { return }
@@ -452,21 +451,12 @@ import SwiftTerm
             // falls back to deterministic ordering when unconfigured.
             guard aiSettings.inlineSuggestionsEnabled else { return }
             guard aiSettings.ghostSuggestionsEnabled || aiSettings.candidatePopupEnabled else { return }
-            guard !terminal.isCurrentBufferAlternate else { return }
-            let (cursorX, cursorY) = terminal.getCursorLocation()
-            let yDisp = terminal.getTopVisibleRow()
-            guard cursorY >= 0, cursorY < terminal.rows,
-                  let line = terminal.getLine(row: cursorY) else { return }
-            let isPromptRow: Bool? = {
-                if let kind = terminal.semanticRowKind(at: yDisp + cursorY) {
-                    return kind == .initial || kind == .continuation
-                }
-                return nil
-            }()
-            let lineLen = line.getTrimmedLength()
-            guard CommandEditor.isCompletable(cursorX: cursorX, cursorY: cursorY, rows: terminal.rows, yDisp: yDisp, scrollPosition: scrollPosition, isAlternate: terminal.isCurrentBufferAlternate, lineTrimmedLength: lineLen, isPromptRow: isPromptRow) else { return }
+            guard !isAlternateScreen else { return }
+            let screen = screenCursorLine()
+            guard screen.y >= 0, screen.y < screen.rows, let raw = screen.line else { return }
+            let lineLen = raw.count
+            guard CommandEditor.isCompletable(cursorX: screen.x, cursorY: screen.y, rows: screen.rows, yDisp: screen.viewportRow, scrollPosition: scrollPosition, isAlternate: false, lineTrimmedLength: lineLen, isPromptRow: nil) else { return }
             let base = snapshotProvider()
-            let raw = line.translateToString(trimRight: true)
             guard let typedSnap = CommandEditor.typedSnapshot(base: base, rawLine: raw) else { return }
             pipeline.request(snapshot: typedSnap)
         }
@@ -490,13 +480,11 @@ import SwiftTerm
                 // edit rejects the stale ghost before anything is inserted.
                 var currentTyped: String? = nil
                 var currentAtLineEnd = true
-                let (cursorX, acceptCursorY) = self.terminal.getCursorLocation()
-                if acceptCursorY >= 0, acceptCursorY < self.terminal.rows,
-                   let line = self.terminal.getLine(row: acceptCursorY),
+                let screen = self.screenCursorLine()
+                if screen.y >= 0, screen.y < screen.rows, let raw = screen.line,
                    let provider = self.commandSnapshotProvider {
-                    let raw = line.translateToString(trimRight: true)
                     currentTyped = CommandEditor.resolveTypedText(rawLine: raw, inputBuffer: provider().inputBuffer)
-                    currentAtLineEnd = cursorX >= raw.count - 3
+                    currentAtLineEnd = screen.x >= raw.count - 3
                 }
                 let text = p.accept(currentTyped: currentTyped, currentAtLineEnd: currentAtLineEnd)
                 self.hideGhost(reason: "accept")
@@ -504,10 +492,8 @@ import SwiftTerm
                 // suggestion may be stale (generated for an earlier typed
                 // prefix mid-LLM-stream). Never duplicate what the user typed.
                 let payloadText: String
-                let (_, cursorY) = self.terminal.getCursorLocation()
-                if cursorY >= 0, cursorY < self.terminal.rows,
-                   let line = self.terminal.getLine(row: cursorY) {
-                    let raw = line.translateToString(trimRight: true)
+                let aligned = self.screenCursorLine()
+                if aligned.y >= 0, aligned.y < aligned.rows, let raw = aligned.line {
                     payloadText = CommandEditor.alignedAcceptSuffix(suggestion: text, rawLine: raw) ?? ""
                 } else {
                     payloadText = text
@@ -515,7 +501,7 @@ import SwiftTerm
                 guard !payloadText.isEmpty else { return }
                 // Respect bracketed paste mode when inserting accepted ghost text (bypass for replacement backspaces)
                 let payload: String
-                if self.terminal.bracketedPasteMode && !payloadText.contains("\u{7F}") {
+                if self.bracketedPasteEnabled && !payloadText.contains("\u{7F}") {
                     payload = "\u{1B}[200~" + payloadText + "\u{1B}[201~"
                 } else {
                     payload = payloadText

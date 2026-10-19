@@ -90,19 +90,16 @@ actor SessionRecordingService {
         // Capture initial prompt line only — previous 4000-char tail caused huge blank gap + duplicated prompts
         let snapshot: String? = await MainActor.run {
             guard let cached = TerminalViewCache.shared.retrieveForPane(paneID: paneID, tabID: tabID) else { return nil }
-            guard let terminal = cached.view.terminal, terminal.cols > 0, terminal.rows > 0 else { return nil }
-            // Prefer the current cursor line (the prompt) — trimRight false keeps "[root@...]# " spacing
-            let (cursorX, cursorY) = terminal.getCursorLocation()
-            if cursorY >= 0, cursorY < terminal.rows, let line = terminal.getLine(row: cursorY) {
-                let str = line.translateToString(trimRight: false)
+            let dimensions = cached.view.terminalDimensions
+            guard dimensions.cols > 0, dimensions.rows > 0 else { return nil }
+            let screen = cached.view.screenCursorLine()
+            if screen.y >= 0, screen.y < screen.rows, let str = screen.line {
                 let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty {
-                    // Return the prompt line as-is (no extra blank lines)
                     return str
                 }
             }
-            // Fallback: last non-empty line of buffer
-            let data = terminal.getBufferAsData()
+            let data = cached.view.getBufferAsData()
             guard let str = String(data: data, encoding: .utf8) else { return nil }
             let lines = str.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
             for line in lines.reversed() where !line.trimmingCharacters(in: .whitespaces).isEmpty {

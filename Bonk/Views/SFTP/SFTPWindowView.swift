@@ -211,9 +211,7 @@ struct SFTPWindowView: View {
             // File list — uses LocalFileRow matching SFTPFileRow, supports Shift multi-select
             List(localFiles, id: \.id, selection: $localSelection) { file in
                 LocalFileRow(file: file) {
-                    guard file.isDirectory else { return }
-                    localPath = file.path
-                    loadLocalFiles()
+                    openLocal(file)
                 }
                 .environment(i18n)
                 .tag(file.id)
@@ -247,13 +245,28 @@ struct SFTPWindowView: View {
             .onKeyPress(.return) {
                 guard localSelection.count == 1,
                       let id = localSelection.first,
-                      let file = localFiles.first(where: { $0.id == id }),
-                      file.isDirectory
+                      let file = localFiles.first(where: { $0.id == id })
                 else { return .ignored }
-                localPath = file.path
-                loadLocalFiles()
+                openLocal(file)
                 return .handled
             }
+            .background {
+                TableDoubleClickInstaller { row in
+                    guard localFiles.indices.contains(row) else { return }
+                    openLocal(localFiles[row])
+                }
+            }
+        }
+    }
+
+    /// Directories navigate. Files confirm an upload — the dialog already
+    /// existed, but nothing ever assigned `pendingDoubleClickUpload`.
+    private func openLocal(_ file: LocalFileEntry) {
+        if file.isDirectory {
+            localPath = file.path
+            loadLocalFiles()
+        } else {
+            pendingDoubleClickUpload = file
         }
     }
 
@@ -299,6 +312,10 @@ struct SFTPWindowView: View {
         @State private var speeds = TransferSpeedTracker()
 
         var body: some View {
+            // `transferTick` is the signal element writes actually happened.
+            // Reading `transfers` alone missed in-place updates, so a finished
+            // upload kept its bar.
+            let _ = sftp.transferTick
             if !sftp.transfers.isEmpty {
                 Divider()
                 VStack(spacing: 4) {
@@ -306,7 +323,9 @@ struct SFTPWindowView: View {
                         HStack(spacing: 8) {
                             let iconName = transfer.isCancelled
                                 ? "xmark.circle.fill"
-                                : (transfer.isComplete ? "checkmark.circle.fill" : "arrow.down.circle")
+                                : (transfer.isComplete
+                                    ? "checkmark.circle.fill"
+                                    : (transfer.direction == .upload ? "arrow.up.circle" : "arrow.down.circle"))
                             Image(systemName: iconName)
                                 .font(.system(size: AppStyle.fontBody))
                                 .foregroundStyle(
@@ -321,7 +340,6 @@ struct SFTPWindowView: View {
                                 if let progress = transfer.progress {
                                     ProgressView(value: progress)
                                         .progressViewStyle(.linear)
-                                        // Elegant: 1:1 model + 60 FPS display + 0.5s interpolation for 10Gbps bursts
                                         .animation(.easeOut(duration: 0.5), value: progress)
                                         .transaction { transaction in transaction.animation = .easeOut(duration: 0.5) }
                                 } else {

@@ -22,6 +22,8 @@ struct PaneTerminalView: View {
     @State var focusManager = FocusManager.shared
     @State var isDragOver = false
     @State var dropPosition: DropPosition = .right
+    /// Survives the body refresh that the drop indicator itself causes.
+    @State private var dropSession = PaneDropDelegate.Session()
     /// Pane size, so a drop position can be resolved from the pointer location.
     @State private var paneSize: CGSize = .zero
     @State var terminalNSView: NSView?
@@ -91,6 +93,28 @@ struct PaneTerminalView: View {
             Button(i18n.t(.cancel), role: .cancel) {
                 pendingUploadURL = nil; pendingUploadTab = nil
                 showOverwriteAlert = false
+            }
+        }
+        .background {
+            if tab.layout.root.paneCount > 1 {
+                RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+            }
+        }
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: tab.layout.root.paneCount > 1 ? AppStyle.cornerRadiusMedium : 0,
+                style: .continuous
+            )
+        )
+        .overlay {
+            if tab.layout.root.paneCount > 1 {
+                RoundedRectangle(cornerRadius: AppStyle.cornerRadiusMedium, style: .continuous)
+                    .strokeBorder(
+                        isActive ? Color.accentColor.opacity(0.85) : Color(nsColor: .separatorColor),
+                        lineWidth: isActive ? AppStyle.indicatorThin : AppStyle.splitDividerThickness
+                    )
+                    .allowsHitTesting(false)
             }
         }
         .onTapGesture {
@@ -181,7 +205,8 @@ struct PaneTerminalView: View {
                 sizeProvider: { paneSize },
                 onTabDrop: handleTabDrop,
                 onFileDrop: handleFileDrop,
-                onDragStateChange: handleDragStateChange
+                onDragStateChange: handleDragStateChange,
+                session: dropSession
             )
         )
         .overlay(alignment: .topTrailing) {
@@ -259,8 +284,12 @@ struct PaneTerminalView: View {
             .help(i18n.t(.closePane))
         }
         .padding(.horizontal, AppStyle.spacingML)
-        .padding(.vertical, AppStyle.spacingXS)
-        .background(isActive ? Color(nsColor: .controlBackgroundColor).opacity(AppStyle.opacityDisabled) : Color.clear)
+        .padding(.vertical, AppStyle.spacingS)
+        .background {
+            if tab.layout.root.paneCount > 1 {
+                Color(nsColor: .windowBackgroundColor).opacity(isActive ? 0.55 : 0.35)
+            }
+        }
     }
 
     private var paneTitleIcon: String {

@@ -89,12 +89,12 @@ final class QuakeTerminalLifecycleTests: XCTestCase {
         let mainView = mount(mainKey)
         mainView.feed(text: "scrollback that must survive\r\n")
         mainView.feed(text: "\u{1B}[?1049h") // vim enters the alternate screen
-        XCTAssertTrue(mainView.terminal.isCurrentBufferAlternate, "precondition: alt screen")
+        XCTAssertTrue(mainView.isAlternateScreen, "precondition: alt screen")
         let mainIdentity = ObjectIdentifier(mainView)
 
         // The panel opens: its own owner mounts its own view.
         _ = mount(quakeKey)
-        XCTAssertTrue(cache.retrieve(mainKey)?.view.terminal.isCurrentBufferAlternate ?? false,
+        XCTAssertTrue(cache.retrieve(mainKey)?.view.isAlternateScreen ?? false,
                       "opening the panel must not disturb the main window's alternate screen")
 
         // The panel closes: its entry is released, the main window's is not.
@@ -103,7 +103,7 @@ final class QuakeTerminalLifecycleTests: XCTestCase {
         let afterClose = try XCTUnwrap(cache.retrieve(mainKey))
         XCTAssertEqual(ObjectIdentifier(afterClose.view), mainIdentity,
                        "the main window must still own the same view instance")
-        XCTAssertTrue(afterClose.view.terminal.isCurrentBufferAlternate,
+        XCTAssertTrue(afterClose.view.isAlternateScreen,
                       "the alternate-screen buffer must survive a Quake round trip")
 
         // The panel opens again — the main window must be untouched again.

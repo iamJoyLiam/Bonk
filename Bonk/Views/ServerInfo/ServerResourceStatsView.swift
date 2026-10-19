@@ -47,6 +47,12 @@ final class ServerResourceRingControl: NSButton {
 
     override var intrinsicContentSize: NSSize { AppStyle.toolbarRingSize }
 
+    override var isOpaque: Bool { false }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        bounds.contains(point) ? self : nil
+    }
+
     func refresh(snapshot: ServerResourceSnapshot?) {
         percent = Self.percent(kind: kind, snapshot: snapshot)
         needsDisplay = true

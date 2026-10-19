@@ -253,9 +253,8 @@ import SwiftUI
         private func registerViewportAuthority(_ cached: CachedTerminalView) {
             guard let paneID = activePaneID else { return }
             let key = TerminalViewportRegistry.PTYKey(tabID: activeTabID, paneID: paneID)
-            let size = cached.view.terminal.map {
-                TerminalViewportSize(cols: $0.cols, rows: $0.rows)
-            }
+            let dimensions = cached.view.terminalDimensions
+            let size = TerminalViewportSize(cols: dimensions.cols, rows: dimensions.rows)
             TerminalViewportRegistry.shared.register(
                 owner,
                 for: key,
@@ -333,8 +332,8 @@ import SwiftUI
             }
 
             applyColorScheme(to: terminal, scheme: colorScheme)
-            terminal.terminal.changeScrollback(scrollbackLines)
-            terminal.terminal.setCursorStyle(mapCursorStyle(cursorStyle, blink: cursorBlink))
+            terminal.applyScrollbackLines(scrollbackLines)
+            terminal.setCursorStyle(mapCursorStyle(cursorStyle, blink: cursorBlink))
             // Set scroll sensitivity for native scrolling (SwiftTerm 1.15.0+)
             terminal.scrollSensitivityMultiplier = CGFloat(self.scrollSensitivity)
 
@@ -370,10 +369,8 @@ import SwiftUI
 
             terminal.font = newFont
 
-            terminal.terminal.setCursorStyle(mapCursorStyle(cursorStyle, blink: cursorBlink))
-            if terminal.terminal.options.scrollback != scrollbackLines {
-                terminal.terminal.changeScrollback(scrollbackLines)
-            }
+            terminal.setCursorStyle(mapCursorStyle(cursorStyle, blink: cursorBlink))
+            terminal.applyScrollbackLines(scrollbackLines)
             // Update color scheme when theme changes
             applyColorScheme(to: terminal, scheme: colorScheme)
         }
@@ -543,10 +540,15 @@ import SwiftUI
         }
 
         deinit {
-            removeThemeObserver()
-            removeCopyOnSelectMonitor()
-            removeInlineCompletionMonitor()
-            feedTask?.cancel()
+            // The delegate protocol is main-actor isolated in SwiftTerm 2.0, so
+            // this teardown has to hop explicitly. The view hierarchy drops the
+            // coordinator on the main thread.
+            MainActor.assumeIsolated {
+                removeThemeObserver()
+                removeCopyOnSelectMonitor()
+                removeInlineCompletionMonitor()
+                feedTask?.cancel()
+            }
         }
 
         // MARK: - Copy on Select

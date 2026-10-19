@@ -45,14 +45,20 @@ struct PaneDropDelegate: DropDelegate {
     /// plain text. So the payload is resolved once and cached for the drag's
     /// duration, and the indicator follows the resolved value rather than
     /// guessing from the type.
-    private final class State {
+    /// Owned by the pane view, not by this struct.
+    ///
+    /// `onDrop` builds a new delegate every time the pane's body runs. The
+    /// indicator sets `isDragOver`, which is exactly such a run. A delegate that
+    /// kept its own state would forget the payload mid-drag: the blue box stays
+    /// up, and the drop that should create the split arrives with nothing to split.
+    final class Session {
         var payload: PaneDropPayload?
         var loadTask: Task<Void, Never>?
         var lastPosition: DropPosition = .right
         var indicatorVisible = false
     }
 
-    private let state = State()
+    let session: Session
 
     // MARK: - DropDelegate
 
@@ -62,33 +68,33 @@ struct PaneDropDelegate: DropDelegate {
 
     func dropEntered(info: DropInfo) {
         let position = currentPosition(from: info)
-        state.loadTask?.cancel()
-        state.loadTask = Task { [self] in
+        session.loadTask?.cancel()
+        session.loadTask = Task { [self] in
             let payload = await Self.resolvePayload(from: info.itemProviders(for: Self.acceptedTypes))
-            state.payload = payload
-            state.lastPosition = position
+            session.payload = payload
+            session.lastPosition = position
             updateIndicator(payload: payload, position: position)
         }
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         let position = currentPosition(from: info)
-        state.lastPosition = position
-        if state.indicatorVisible {
+        session.lastPosition = position
+        if session.indicatorVisible {
             // Only move an indicator that is already showing; a payload that is
             // not a tab drag must never raise one.
             onDragStateChange(true, position)
         } else {
-            updateIndicator(payload: state.payload, position: position)
+            updateIndicator(payload: session.payload, position: position)
         }
         return DropProposal(operation: .copy)
     }
 
     func performDrop(info: DropInfo) -> Bool {
         let position = currentPosition(from: info)
-        let payload = state.payload
+        let payload = session.payload
         hideIndicator()
-        state.payload = nil
+        session.payload = nil
 
         switch PaneDropRouter.route(payload: payload, currentTabID: currentTabID, position: position) {
         case let .moveTab(source, dropPosition):
@@ -103,9 +109,9 @@ struct PaneDropDelegate: DropDelegate {
     }
 
     func dropExited(info: DropInfo) {
-        state.loadTask?.cancel()
-        state.loadTask = nil
-        state.payload = nil
+        session.loadTask?.cancel()
+        session.loadTask = nil
+        session.payload = nil
         hideIndicator()
     }
 
@@ -117,15 +123,14 @@ struct PaneDropDelegate: DropDelegate {
 
     private func updateIndicator(payload: PaneDropPayload?, position: DropPosition) {
         let shouldShow = PaneDropRouter.showsIndicator(for: payload, currentTabID: currentTabID)
-        guard shouldShow != state.indicatorVisible else { return }
-        state.indicatorVisible = shouldShow
+        guard shouldShow != session.indicatorVisible else { return }
+        session.indicatorVisible = shouldShow
         onDragStateChange(shouldShow, position)
     }
 
     private func hideIndicator() {
-        guard state.indicatorVisible else { return }
-        state.indicatorVisible = false
-        onDragStateChange(false, state.lastPosition)
+        session.indicatorVisible = false
+        onDragStateChange(false, session.lastPosition)
     }
 
     // MARK: - Payload resolution

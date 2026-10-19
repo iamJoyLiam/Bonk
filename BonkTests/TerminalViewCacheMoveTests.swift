@@ -65,12 +65,12 @@ final class TerminalViewCacheMoveTests: XCTestCase {
         cache.store(TerminalViewCacheKey.pane(oldID, in: tabID), view: view, coordinator: coordinator)
         // Simulate vim entering the alternate screen.
         view.feed(text: "\u{1B}[?1049h")
-        XCTAssertTrue(view.terminal.isCurrentBufferAlternate, "precondition: vim is on the alt screen")
+        XCTAssertTrue(view.isAlternateScreen, "precondition: vim is on the alt screen")
 
         let moved = cache.move(from: TerminalViewCacheKey.pane(oldID, in: tabID), to: TerminalViewCacheKey.pane(newID, in: tabID))
 
         XCTAssertTrue(
-            moved?.view.terminal.isCurrentBufferAlternate ?? false,
+            moved?.view.isAlternateScreen ?? false,
             "alternate-screen state must survive the move, else vim repaints as raw escapes"
         )
     }
@@ -114,16 +114,16 @@ final class TerminalViewCacheMoveTests: XCTestCase {
         let view = makeView()
 
         // Prime the cached geometry the way a normal layout pass would.
-        view.terminal.resize(cols: 200, rows: 50)
+        view.resize(cols: 200, rows: 50)
         view.layout()
-        let primedCols = view.terminal.cols
+        let primedCols = view.terminalDimensions.cols
 
         view.invalidateSyncedSize()
         view.layout()
 
-        XCTAssertEqual(view.terminal.cols, primedCols)
+        XCTAssertEqual(view.terminalDimensions.cols, primedCols)
         XCTAssertTrue(
-            view.terminal.cols > 0,
+            view.terminalDimensions.cols > 0,
             "geometry must still be valid after invalidation"
         )
     }
@@ -139,7 +139,7 @@ final class TerminalViewCacheMoveTests: XCTestCase {
             published.withLockedValue { $0.append((cols, rows)) }
         }
 
-        view.terminal.resize(cols: 120, rows: 40)
+        view.resize(cols: 120, rows: 40)
         view.layout()
         try? await Task.sleep(for: .milliseconds(60)) // resize debounce
         let afterFirst = published.withLockedValue { $0.count }
@@ -163,10 +163,10 @@ final class TerminalViewCacheMoveTests: XCTestCase {
             published.withLockedValue { $0.append((cols, rows)) }
         }
 
-        view.terminal.resize(cols: 200, rows: 50)
+        view.resize(cols: 200, rows: 50)
         view.layout()
         try? await Task.sleep(for: .milliseconds(60))
-        view.terminal.resize(cols: 90, rows: 30)
+        view.resize(cols: 90, rows: 30)
         view.layout()
         try? await Task.sleep(for: .milliseconds(60))
 
@@ -187,7 +187,7 @@ final class TerminalViewCacheMoveTests: XCTestCase {
             published.withLockedValue { $0.append((cols, rows)) }
         }
 
-        view.terminal.resize(cols: 120, rows: 40)
+        view.resize(cols: 120, rows: 40)
         view.layout()
         try? await Task.sleep(for: .milliseconds(60))
         let baseline = published.withLockedValue { $0.count }

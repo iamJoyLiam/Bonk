@@ -334,7 +334,7 @@ final class TerminalViewCache {
         connectOutputStream(result.stream, onBytesProcessed: result.onBytesProcessed, to: key)
 
         // Full reset — the old scrollback belongs to the dead session.
-        cached.view.terminal.resetToInitialState()
+        cached.view.resetToInitialState()
         // The new PTY starts at its own default size while the view is already
         // laid out, and the view's cached geometry would otherwise suppress the
         // resize — leaving the fresh session at the wrong column count.
@@ -409,7 +409,7 @@ final class TerminalViewCache {
     func isAnyPaneAlternate(paneIDs: [UUID], in tabID: UUID) -> Bool {
         for paneID in paneIDs {
             let key = TerminalViewCacheKey.pane(paneID, in: tabID)
-            if let cached = cache[key], cached.view.terminal.isCurrentBufferAlternate { return true }
+            if let cached = cache[key], cached.view.isAlternateScreen { return true }
         }
         return false
     }

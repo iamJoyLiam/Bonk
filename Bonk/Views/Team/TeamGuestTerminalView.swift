@@ -126,7 +126,7 @@ private struct TeamGuestFullTerminalBridge: NSViewRepresentable {
         terminalView.bellStyle = .none
         let scheme = TerminalThemeManager.shared.resolve()
         applyColorScheme(to: terminalView, scheme: scheme)
-        terminalView.terminal.changeScrollback(10000)
+        terminalView.applyScrollbackLines(10000)
         // Match host scrollbar: small overlay, hidden until scroll
         for subview in terminalView.subviews {
             if let scroller = subview as? NSScroller {
@@ -198,7 +198,7 @@ private struct TeamGuestFullTerminalBridge: NSViewRepresentable {
             pendingWorkItem?.cancel()
             pendingWorkItem = nil
             pendingBuffer.removeAll(keepingCapacity: true)
-            terminalView?.terminal.resetToInitialState()
+            terminalView?.resetToInitialState()
             let snapshot = relay.guestOutputSnapshot()
             lastOutputRevision = snapshot.revision
             if !snapshot.payload.isEmpty {

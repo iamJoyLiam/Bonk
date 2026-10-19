@@ -49,7 +49,7 @@ final class TerminalSelectionResponderTests: XCTestCase {
             frame: NSRect(x: 0, y: 0, width: 800, height: 600),
             font: .monospacedSystemFont(ofSize: 12, weight: .regular)
         )
-        view.terminal.feed(byteArray: Array(text.utf8))
+        view.feed(byteArray: ArraySlice(text.utf8))
         view.selectAll()
         return view
     }

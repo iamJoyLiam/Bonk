@@ -114,6 +114,9 @@ enum AppStyle {
     static let indicatorThin: CGFloat = 2
     static let indicatorMedium: CGFloat = 3
 
+    /// Painted thickness of a split divider. The mouse target is wider.
+    static let splitDividerThickness: CGFloat = 1
+
     // MARK: - Button Sizes
 
     static let buttonSmall: CGFloat = 24

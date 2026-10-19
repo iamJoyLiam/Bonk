@@ -54,10 +54,7 @@ struct SFTPBrowserView: View {
                 // Now the previous listing stays put, and a small inline indicator
                 // in the path bar reports progress. A full-pane spinner appears
                 // only on the very first load, when there is genuinely nothing.
-                if service.isLoading, service.entries.isEmpty {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = service.errorMessage, service.entries.isEmpty {
+                if let error = service.errorMessage, service.entries.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle")
                             .font(.title)
@@ -79,6 +76,9 @@ struct SFTPBrowserView: View {
                     .padding()
                 } else {
                     fileList(service)
+                        .overlay {
+                            EmptyListingSpinner(service: service)
+                        }
                 }
             } else if tab.session?.isSFTPConnecting == true {
                 ProgressView()
@@ -308,7 +308,7 @@ struct SFTPBrowserView: View {
                 .onChange(of: sftpService?.currentPath ?? "/") { _, newPath in if !isEditingPath { editingPath = newPath } }
                 .onAppear { editingPath = sftpService?.currentPath ?? "/" }
 
-            inlineLoadingIndicator
+            PathSpinner(service: sftpService)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture { guard !isEditingPath else { return }; editingPath = sftpService?.currentPath ?? "/"; isEditingPath = true; isPathFocused = true }
@@ -330,18 +330,25 @@ struct SFTPBrowserView: View {
         .background(.quaternary.opacity(AppStyle.opacityOverlay))
     }
 
-    /// Small inline busy indicator shown beside the path while a listing is in
-    /// flight.
-    ///
-    /// Replaces the full-pane spinner that used to blank the file list on every
-    /// folder entry. The list now stays visible and this reports progress, so a
-    /// fast remote listing does not read as a flash of emptiness.
-    @ViewBuilder
-    private var inlineLoadingIndicator: some View {
-        if sftpService?.isLoading == true {
-            ProgressView()
-                .controlSize(.small)
-                .help(i18n.t(.refresh))
+    /// Reads `isLoading` by itself, so a folder change does not rebuild the file list
+    /// underneath the spinner. That rebuild is what made the indicator stutter.
+    private struct PathSpinner: View {
+        var service: SFTPService?
+        var body: some View {
+            if service?.isLoading == true {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+    }
+
+    private struct EmptyListingSpinner: View {
+        var service: SFTPService
+        var body: some View {
+            if service.isLoading, service.entries.isEmpty {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
     }
 
@@ -368,12 +375,7 @@ struct SFTPBrowserView: View {
     private func fileList(_ service: SFTPService) -> some View {
         List(service.entries, id: \.id, selection: $selection) { entry in
             SFTPFileRow(entry: entry) {
-                guard entry.isDirectory else { return }
-                Task {
-                    do { try await service.enterDirectory(entry) } catch {
-                        service.errorMessage = error.localizedDescription
-                    }
-                }
+                open(entry, via: service)
             }
                 .tag(entry.id)
                 .contextMenu {
@@ -413,14 +415,9 @@ struct SFTPBrowserView: View {
         .onKeyPress(.return) {
             guard selection.count == 1,
                   let id = selection.first,
-                  let entry = service.entries.first(where: { $0.id == id }),
-                  entry.isDirectory
+                  let entry = service.entries.first(where: { $0.id == id })
             else { return .ignored }
-            Task {
-                do { try await service.enterDirectory(entry) } catch {
-                    service.errorMessage = error.localizedDescription
-                }
-            }
+            open(entry, via: service)
             return .handled
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
@@ -443,9 +440,27 @@ struct SFTPBrowserView: View {
             }
             return true
         }
+        .background {
+            TableDoubleClickInstaller { row in
+                guard service.entries.indices.contains(row) else { return }
+                open(service.entries[row], via: service)
+            }
+        }
     }
 
     // MARK: - Actions
+
+    private func open(_ entry: SFTPFileEntry, via service: SFTPService) {
+        if entry.isDirectory {
+            Task {
+                do { try await service.enterDirectory(entry) } catch {
+                    service.errorMessage = error.localizedDescription
+                }
+            }
+        } else {
+            download(entry, via: service)
+        }
+    }
 
     /// Save-panel download flow, shared by the context menu and double-click.
     private func download(_ entry: SFTPFileEntry, via service: SFTPService) {

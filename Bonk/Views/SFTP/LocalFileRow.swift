@@ -25,12 +25,11 @@ struct LocalFileEntry: Identifiable, Hashable {
 struct LocalFileRow: View {
     @Environment(I18n.self) var i18n
     let file: LocalFileEntry
-    /// Open action: double-click, hover chevron, Return key, context menu.
+    /// Open action for the hover chevron, Return key, and context menu.
     ///
-    /// Native SwiftUI, for the same reason as `SFTPFileRow`: the AppKit
-    /// recogniser route needed an attachment step that could happen too late,
-    /// and the symptom — a first double-click that did nothing — was worse than
-    /// any single-click latency a built-in gesture has.
+    /// Double-click lives on the list, not on this row. A two-click tap gesture
+    /// holds the single click until the double-click interval expires, so
+    /// selection feels late. See `SFTPFileRow`.
     var onOpen: (() -> Void)?
     @State private var isHover = false
 
@@ -87,7 +86,6 @@ struct LocalFileRow: View {
         .padding(.vertical, AppStyle.spacingXXS)
         .onHover { isHover = $0 }
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { onOpen?() }
     }
 
     private var icon: String {

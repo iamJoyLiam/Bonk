@@ -23,6 +23,11 @@ extension SessionManager {
         tab.layout.setFraction(normalizedDelta, containerID: containerID, dividerIndex: dividerIndex)
     }
 
+    /// Double-click a divider: that container's panes go back to equal shares.
+    func equalizeSplit(containerID: UUID, in tab: TerminalTab) {
+        tab.layout.equalize(containerID: containerID)
+    }
+
     // MARK: - Sidebar Activation
 
     /// Single click on a sidebar host: select + focus its tab if one is open.

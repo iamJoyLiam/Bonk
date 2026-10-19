@@ -20,10 +20,12 @@ struct SplitDivider: View {
     /// change. Increments (not cumulative translation) keep the math correct
     /// when the container re-renders mid-drag with a fresh fraction snapshot.
     var onResize: (CGFloat) -> Void = { _ in }
-
-    private var hitDimension: CGFloat { 8 }
+    /// Double-click resets this divider's two sides to equal shares.
+    var onEqualize: () -> Void = {}
 
     @State private var lastOffset: CGFloat = 0
+    @State private var isHovering = false
+    @State private var lastClick = Date.distantPast
 
     var body: some View {
         Rectangle()
@@ -33,14 +35,18 @@ struct SplitDivider: View {
                 // A horizontal split (left-right) needs a VERTICAL line
                 // spanning the full height; a vertical split (top-bottom)
                 // needs a HORIZONTAL line spanning the full width.
+                // The line only emphasizes while the pointer is on the gap.
+                // It is not the drag state: a hover flag that survives a
+                // re-render leaves a blue bar stuck in the gap.
                 Rectangle()
-                    .fill(Color(nsColor: .separatorColor))
+                    .fill(Color(nsColor: .separatorColor).opacity(isHovering ? 1 : 0.45))
                     .frame(
-                        width: direction == .horizontal ? 1 : nil,
-                        height: direction == .vertical ? 1 : nil
+                        width: direction == .horizontal ? AppStyle.splitDividerThickness : nil,
+                        height: direction == .vertical ? AppStyle.splitDividerThickness : nil
                     )
             }
             .onHover { inside in
+                isHovering = inside
                 let cursor: NSCursor = direction == .horizontal
                     ? .resizeLeftRight
                     : .resizeUpDown
@@ -50,18 +56,30 @@ struct SplitDivider: View {
                     NSCursor.pop()
                 }
             }
-.gesture(
-            DragGesture(minimumDistance: 1)
+            .highPriorityGesture(
+            DragGesture(minimumDistance: 0)
                 .onChanged { value in
                     let current = direction == .horizontal
                         ? value.translation.width
                         : value.translation.height
+                    // A click has no movement. Resizing it would shove the panes.
+                    guard abs(current) >= 1 else { return }
                     let delta = current - lastOffset
                     lastOffset = current
                     onResize(delta)
                 }
-                .onEnded { _ in
+                .onEnded { value in
+                    let moved = abs(direction == .horizontal ? value.translation.width : value.translation.height)
                     lastOffset = 0
+                    isHovering = false
+                    guard moved < 3 else { return }
+                    let now = Date()
+                    if now.timeIntervalSince(lastClick) < NSEvent.doubleClickInterval {
+                        lastClick = .distantPast
+                        onEqualize()
+                    } else {
+                        lastClick = now
+                    }
                 }
         )
     }

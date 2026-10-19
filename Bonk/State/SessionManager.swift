@@ -767,8 +767,8 @@ final class SessionManager {
                   let cached = TerminalViewCache.shared.retrieveForPane(
                       paneID: paneID, tabID: tab.id
                   ) else { return }
-            let cols = cached.view.terminal.cols
-            let rows = cached.view.terminal.rows
+            let cols = cached.view.terminalDimensions.cols
+            let rows = cached.view.terminalDimensions.rows
             guard cols > 0, rows > 0 else { return }
             Log.session.info("[PTY] Post-setup sync: \(cols)x\(rows)")
             // Through the gated path, naming the view the size was read from.
@@ -814,8 +814,8 @@ final class SessionManager {
             guard let cached = TerminalViewCache.shared.retrieveForPane(
                 paneID: paneID, tabID: tab.id
             ) else { return }
-            let cols = cached.view.terminal.cols
-            let rows = cached.view.terminal.rows
+            let cols = cached.view.terminalDimensions.cols
+            let rows = cached.view.terminalDimensions.rows
             guard cols > 0, rows > 0 else { return }
             Log.session.info("[PTY] Post-setup sync: \(cols)x\(rows)")
             // Gated, as above: this size belongs to the pane's view, so that view

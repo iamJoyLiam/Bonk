@@ -388,8 +388,8 @@ import SwiftUI
             }
 
             applyColorScheme(to: terminal, scheme: colorScheme)
-            terminal.terminal.changeScrollback(scrollbackLines)
-            terminal.terminal.setCursorStyle(mapCursorStyle(cursorStyle, blink: cursorBlink))
+            terminal.applyScrollbackLines(scrollbackLines)
+            terminal.setCursorStyle(mapCursorStyle(cursorStyle, blink: cursorBlink))
 
             let coordinator = ContainerTerminalCoordinator(
                 onSend: onSend,
@@ -436,7 +436,7 @@ import SwiftUI
             var size: TerminalViewportSize?
             if let cached = TerminalViewCache.shared.retrieveForPane(paneID: paneID, tabID: tabID) {
                 size = TerminalViewportSize(
-                    cols: cached.view.terminal.cols, rows: cached.view.terminal.rows
+                    cols: cached.view.terminalDimensions.cols, rows: cached.view.terminalDimensions.rows
                 )
             }
             TerminalViewportRegistry.shared.register(
@@ -510,10 +510,8 @@ import SwiftUI
             if !terminal.font.isEqual(newFont) {
                 terminal.font = newFont
             }
-            terminal.terminal.setCursorStyle(mapCursorStyle(cursorStyle, blink: cursorBlink))
-            if terminal.terminal.options.scrollback != scrollbackLines {
-                terminal.terminal.changeScrollback(scrollbackLines)
-            }
+            terminal.setCursorStyle(mapCursorStyle(cursorStyle, blink: cursorBlink))
+            terminal.applyScrollbackLines(scrollbackLines)
             // Update color scheme only when it actually changed.
             if coordinator.lastColorSchemeID != colorScheme.id {
                 applyColorScheme(to: terminal, scheme: colorScheme)

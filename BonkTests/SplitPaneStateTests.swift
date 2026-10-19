@@ -35,6 +35,25 @@ final class SplitPaneStateTests: XCTestCase {
 
     // MARK: - Bug 3: unsplit must restore the moved pane's own host
 
+    func testEqualizeRestoresEvenSharesOnTheClickedDivider() {
+        let tab = TerminalTab(hostItem: makeHost("pane"))
+        XCTAssertNotNil(tab.layout.splitHorizontal())
+        let containerID = tab.layout.root.id
+        tab.layout.setFraction(0.25, containerID: containerID, dividerIndex: 0)
+        guard case let .horizontal(_, dragged) = tab.layout.root else {
+            return XCTFail("split should be horizontal")
+        }
+        XCTAssertNotEqual(dragged[0], dragged[1])
+
+        tab.layout.equalize(containerID: containerID)
+
+        guard case let .horizontal(_, even) = tab.layout.root else {
+            return XCTFail("split should stay horizontal")
+        }
+        XCTAssertEqual(even[0], even[1])
+        XCTAssertEqual(even[0], LayoutNode.defaultWeight)
+    }
+
     func testUnsplitRestoresMovedPaneOwnHostNotSourceTab() {
         let sm = SessionManager()
         let (tabA, tabB, paneA, paneB) = makeTwoHostTabs(sm)
@@ -211,7 +230,7 @@ final class SplitPaneStateTests: XCTestCase {
             font: .monospacedSystemFont(ofSize: 12, weight: .regular)
         )
         view.feed(text: "\u{1B}[?1049h")
-        XCTAssertTrue(view.terminal.isCurrentBufferAlternate, "precondition: vim is on alt screen")
+        XCTAssertTrue(view.isAlternateScreen, "precondition: vim is on alt screen")
         cache.store(
             TerminalViewCacheKey.pane(movedPane.id, in: merged.id),
             view: view,
@@ -235,7 +254,7 @@ final class SplitPaneStateTests: XCTestCase {
             "the SAME view instance must follow the PTY (a fresh view loses vim's alt screen)"
         )
         XCTAssertTrue(
-            cached?.view.terminal.isCurrentBufferAlternate ?? false,
+            cached?.view.isAlternateScreen ?? false,
             "alternate-screen state must survive, else vim repaints as raw escape text"
         )
     }
@@ -251,7 +270,7 @@ final class SplitPaneStateTests: XCTestCase {
             font: .monospacedSystemFont(ofSize: 12, weight: .regular)
         )
         view.feed(text: "\u{1B}[?1049h")
-        XCTAssertTrue(view.terminal.isCurrentBufferAlternate, "precondition: vim is on alt screen")
+        XCTAssertTrue(view.isAlternateScreen, "precondition: vim is on alt screen")
         cache.store(
             TerminalViewCacheKey.pane(paneA.id, in: tabA.id),
             view: view,
@@ -279,7 +298,7 @@ final class SplitPaneStateTests: XCTestCase {
             "drag-to-split must carry the same view, not rebuild it"
         )
         XCTAssertTrue(
-            cache.retrieve(TerminalViewCacheKey.pane(movedPane.id, in: merged.id))?.view.terminal.isCurrentBufferAlternate ?? false,
+            cache.retrieve(TerminalViewCacheKey.pane(movedPane.id, in: merged.id))?.view.isAlternateScreen ?? false,
             "alternate-screen state must survive a drag-to-split"
         )
     }

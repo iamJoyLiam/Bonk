@@ -52,6 +52,16 @@ final class SFTPTransferRingControl: NSButton {
 
     override var intrinsicContentSize: NSSize { Self.size }
 
+    /// The toolbar hit-tests the drawn pixels of a custom view. A cleared
+    /// context makes the ring transparent, so the click falls through and the
+    /// arc never composites. Declaring the view non-opaque lets AppKit clear
+    /// the previous frame without punching that hole.
+    override var isOpaque: Bool { false }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        bounds.contains(point) ? self : nil
+    }
+
     func refresh(aggregate: SFTPTransferAggregate) {
         self.aggregate = aggregate
         needsDisplay = true

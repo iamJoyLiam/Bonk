@@ -487,7 +487,7 @@ final class SFTPService {
                     updateTransfer(transferID) { t in t.isComplete = true }
                 }
                 SFTPProgressThrottler.shared.remove(id: transferID)
-                scheduleTransferRemoval(transferID, after: 3)
+                scheduleTransferRemoval(transferID, after: Self.successDismissDelay)
             } catch {
                 markTransferError(transferID, error: error)
                 scheduleTransferRemoval(transferID, after: 5)
@@ -642,6 +642,10 @@ final class SFTPService {
         }
     }
 
+    /// How long a finished transfer stays visible as a checkmark before the
+    /// ring and the browser return to their idle state.
+    static let successDismissDelay: TimeInterval = 3
+
     /// Schedule automatic removal of a transfer after a delay.
     private func scheduleTransferRemoval(_ transferID: UUID, after seconds: TimeInterval) {
         Task { @MainActor [weak self] in
@@ -658,7 +662,7 @@ final class SFTPService {
             // cancelled transfer stayed in the list forever at whatever fraction it
             // had reached — most visibly as a row stuck at 100% that never went
             // away. Cancellation is an outcome and gets the same treatment.
-            scheduleTransferRemoval(transferID, after: 3)
+            scheduleTransferRemoval(transferID, after: Self.successDismissDelay)
         }
         #if os(macOS)
             openSSHSFTPClient?.cancel(operationID: transferID)
@@ -728,7 +732,7 @@ final class SFTPService {
                 }
                 SFTPProgressThrottler.shared.remove(id: transferID)
                 continuation.yield(1.0)
-                scheduleTransferRemoval(transferID, after: 3)
+                scheduleTransferRemoval(transferID, after: Self.successDismissDelay)
             } catch {
                 markTransferError(transferID, error: error)
                 scheduleTransferRemoval(transferID, after: 5)

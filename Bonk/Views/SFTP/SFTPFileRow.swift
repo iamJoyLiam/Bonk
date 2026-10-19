@@ -8,21 +8,13 @@ import SwiftUI
 /// A single file/directory row in the SFTP browser.
 struct SFTPFileRow: View {
     let entry: SFTPFileEntry
-    /// Open action: double-click, hover chevron, Return key, context menu.
+    /// Open action for the hover chevron, Return key, and context menu.
     ///
-    /// ## Native, and that is the whole point
-    ///
-    /// This used to be an `NSClickGestureRecognizer` installed on the enclosing
-    /// `NSTableView` from a hidden background view, to avoid
-    /// `TapGesture(count: 2)` delaying single-click selection. That approach
-    /// needed the table to be discovered and the recogniser attached, and both
-    /// could happen too late — the symptom being that the *first* double-click in
-    /// a freshly opened pane did nothing while later ones worked, because the
-    /// first click was what triggered the update that finally attached it.
-    ///
-    /// It took three attempts to fix that race, and the user was right each time
-    /// that the mechanism was the problem rather than the timing. A plain SwiftUI
-    /// tap gesture has no attachment step to get wrong.
+    /// Double-click is NOT handled here. `TapGesture(count: 2)` waits out the
+    /// system double-click interval before a single click is allowed to finish,
+    /// which is the sticky highlight on a remote file row. The list counts
+    /// single clicks itself, the same way the host sidebar does, and the table
+    /// owns selection.
     var onOpen: (() -> Void)?
     @State private var isHover = false
 
@@ -74,7 +66,6 @@ struct SFTPFileRow: View {
         .padding(.vertical, AppStyle.spacingXXS)
         .onHover { isHover = $0 }
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { onOpen?() }
     }
 
     private var icon: String {

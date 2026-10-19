@@ -150,14 +150,16 @@ extension NativeTerminalView {
               !overlay.text.isEmpty || overlay.waiting
         else { return }
         let cell = Self.cellSize(for: font, backingScale: window?.backingScaleFactor ?? 2)
-        let (cursorX, cursorY) = terminal.getCursorLocation()
-        let yDisp = terminal.getTopVisibleRow()
+        let screen = screenCursorLine()
+        let cursorX = screen.x
+        let cursorY = screen.y
+        let yDisp = screen.viewportRow
 
         // Same bottom-of-buffer gate as requestCompletion: at the bottom the
         // cursor row equals the screen row; otherwise skip (off-screen).
         let atBottom = scrollPosition >= 1.0 || yDisp == 0
         let isFocused = window?.isKeyWindow == true && window?.firstResponder === self
-        guard atBottom, isFocused, cursorY >= 0, cursorY < terminal.rows else {
+        guard atBottom, isFocused, cursorY >= 0, cursorY < screen.rows else {
             let position = self.scrollPosition
             let posLog = "hideGhost reason=offscreen pos=\(position) yDisp=\(yDisp)"
             Self.inlineLogger.debug("\(posLog, privacy: .public)")
@@ -189,7 +191,9 @@ extension NativeTerminalView {
     func positionCandidateListOverlay() {
         guard let list = candidateListOverlay, !list.isHidden, list.visibleRowCount > 0, list.rowHeight > 0 else { return }
         let cell = Self.cellSize(for: font, backingScale: window?.backingScaleFactor ?? 2)
-        let (cursorX, cursorY) = terminal.getCursorLocation()
+        let screen = screenCursorLine()
+        let cursorX = screen.x
+        let cursorY = screen.y
         let originX = CGFloat(cursorX) * cell.width
 
         let listHeight = list.totalHeight()
