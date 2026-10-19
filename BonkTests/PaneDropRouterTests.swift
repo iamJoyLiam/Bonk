@@ -27,13 +27,18 @@ struct PaneDropRouterTests {
     func positionIsNearestEdge() {
         let nearLeft = PaneDropRouter.position(for: CGPoint(x: 10, y: 150), in: size)
         let nearRight = PaneDropRouter.position(for: CGPoint(x: 390, y: 150), in: size)
-        let nearTop = PaneDropRouter.position(for: CGPoint(x: 200, y: 290), in: size)
-        let nearBottom = PaneDropRouter.position(for: CGPoint(x: 200, y: 10), in: size)
+        let nearTop = PaneDropRouter.position(for: CGPoint(x: 200, y: 10), in: size)
+        let nearBottom = PaneDropRouter.position(for: CGPoint(x: 200, y: 290), in: size)
 
         #expect(nearLeft == .left)
         #expect(nearRight == .right)
         #expect(nearTop == .top)
         #expect(nearBottom == .bottom)
+
+        // Upper-left, closer to the top edge than the left: split upward.
+        #expect(PaneDropRouter.position(for: CGPoint(x: 80, y: 20), in: size) == .top)
+        // Upper-left, closer to the left edge: split left.
+        #expect(PaneDropRouter.position(for: CGPoint(x: 20, y: 80), in: size) == .left)
     }
 
     /// A degenerate size must not divide by zero or trap.

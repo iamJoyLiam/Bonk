@@ -39,6 +39,13 @@ public actor SSHNetworkService {
     private var sftpNativeClient: SSHClient?
     var config: SSHConnectionConfig?
     var activePTYSession: PTYSession?
+    /// Every PTY opened on this connection, including split panes.
+    ///
+    /// The liveness probe used to follow only `activePTYSession`. Opening a
+    /// split replaced that pointer, and closing the split pane then reported
+    /// the whole connection dead — so CPU, memory and disk collection stopped
+    /// and did not resume after the split was gone.
+    private var trackedPTYs: [PTYSession] = []
     /// Called with a manually typed password the server accepted, so the
     /// saved credential can be refreshed.
     private var onManualPasswordVerified: (@Sendable (String) -> Void)?
@@ -539,7 +546,7 @@ public actor SSHNetworkService {
                     Task { @MainActor in onError?(failure.message) }
                 }
                 lastPTYConfig = PTYConfig(cols: cols, rows: rows, termType: termType)
-                activePTYSession = session
+                registerPTY(session)
                 lastSuccessfulConnectionAt = Date()
                 session.onWriteFailed = { [weak self] in
                     guard let self, self.attemptIDBox.withLockedValue { $0 } == capturedAttemptID else { return }
@@ -560,8 +567,35 @@ public actor SSHNetworkService {
             Task { await self.handlePTYWriteFailed() }
         }
         session.start(client: client, cols: cols, rows: rows, termType: termType)
-        activePTYSession = session
+        registerPTY(session)
         return session
+    }
+
+    /// Record a PTY opened on this connection.
+    ///
+    /// `replaceAll` is for reconnect, which starts a new connection. An extra
+    /// split pane passes false so the original shell stays the one the liveness
+    /// probe trusts.
+    private func registerPTY(_ session: PTYSession, replaceAll: Bool = false) {
+        if replaceAll {
+            trackedPTYs = [session]
+        } else {
+            trackedPTYs.removeAll { $0.isClosed || $0 === session }
+            trackedPTYs.append(session)
+        }
+        activePTYSession = trackedPTYs.first { !$0.isClosed } ?? session
+    }
+
+    /// Transport is up. The connection is dead only when every PTY we opened
+    /// has closed. No PTY yet means the transport check is enough.
+    private func livePTYRemains() -> Bool {
+        let hadTracked = !trackedPTYs.isEmpty
+        trackedPTYs.removeAll { $0.isClosed }
+        activePTYSession = trackedPTYs.first
+        if trackedPTYs.isEmpty {
+            return !hadTracked
+        }
+        return true
     }
 
     /// Resize the active PTY session.
@@ -710,6 +744,10 @@ public actor SSHNetworkService {
         reconnectTask = nil
 
         activePTYSession?.close()
+        for pty in trackedPTYs where pty !== activePTYSession {
+            pty.close()
+        }
+        trackedPTYs = []
         activePTYSession = nil
 
         #if os(macOS)
@@ -766,6 +804,7 @@ public actor SSHNetworkService {
                                 cols: ptyConfig.cols, rows: ptyConfig.rows, termType: ptyConfig.termType
                             ) { [weak self] in Task { await self?.handleDisconnect() } } onError: { _ in }
                             activePTYSession = session
+                            registerPTY(session, replaceAll: true)
                             pendingPTYSession = session
                             Log.ssh.info("[RECONNECT] OpenSSH PTY re-created \(ptyConfig.cols)x\(ptyConfig.rows)")
                         } catch {
@@ -789,7 +828,7 @@ public actor SSHNetworkService {
                     if let ptyConfig = lastPTYConfig, let client {
                         let session = PTYSession()
                         session.start(client: client, cols: ptyConfig.cols, rows: ptyConfig.rows, termType: ptyConfig.termType)
-                        activePTYSession = session
+                        registerPTY(session, replaceAll: true)
                         pendingPTYSession = session
                     }
                 }
@@ -970,15 +1009,14 @@ public actor SSHNetworkService {
                 Log.ssh.warning("[PROBE] openssh transport dead")
                 return false
             }
-            // Transport alive -> validate Session/PTY (hard constraint 1)
-            if let pty = activePTYSession {
-                let closed = pty.isClosed
-                if closed {
-                    Log.ssh.warning("[PROBE] openssh transport alive but PTY closed")
-                }
-                return !closed
+            // A split pane is another PTY on this same connection. Closing that
+            // pane used to be reported as the connection dying, because the
+            // probe only remembered the newest PTY.
+            guard livePTYRemains() else {
+                Log.ssh.warning("[PROBE] openssh transport alive but every PTY closed")
+                return false
             }
-            return true // no PTY yet, transport alive is enough
+            return true
         } else {
             guard let client else {
                 Log.ssh.warning("[PROBE] citadel no client -> dead")
@@ -994,12 +1032,9 @@ public actor SSHNetworkService {
                 Log.ssh.warning("[PROBE] citadel transport silent (half-open?)")
                 return false
             }
-            if let pty = activePTYSession {
-                let closed = pty.isClosed
-                if closed {
-                    Log.ssh.warning("[PROBE] citadel transport alive but PTY closed")
-                }
-                return !closed
+            guard livePTYRemains() else {
+                Log.ssh.warning("[PROBE] citadel transport alive but every PTY closed")
+                return false
             }
             return true
         }

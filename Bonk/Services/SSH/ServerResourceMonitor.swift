@@ -113,7 +113,13 @@ final class ServerResourceMonitor {
 
         // P0:  ready  3s  command， auth  Server info fetch  PTY  password responder
         let candidates: [(tab: TerminalTab, service: SSHNetworkService)] = tabs.compactMap { tab in
-            guard let session = tab.session, session.isReady, let svc = session.sshService else { return nil }
+            guard let session = tab.session, let svc = session.sshService else { return nil }
+            // A split pane keeps its own PTY. The tab session's pointer can be
+            // nil after an unsplit moves that PTY, while the connection is fine.
+            let paneAlive = tab.layout.root.allPaneIDs.contains {
+                tab.layout.findPane(id: $0)?.ptySession != nil
+            }
+            guard session.phase.isReady, session.ptySession != nil || paneAlive else { return nil }
             // ready  3s ， PTY
             if let atValue = session.connectedAt, Date().timeIntervalSince(atValue) < 3 { return nil }
             return (tab, svc)

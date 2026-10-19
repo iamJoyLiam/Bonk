@@ -50,13 +50,20 @@ enum PaneDropAction: Equatable, Sendable {
 /// before a tab, so a drag carrying both uploads the files.
 enum PaneDropRouter {
 
-    /// The edge nearest the pointer. A degenerate size falls back to `.right`,
-    /// matching the original.
+    /// The edge nearest the pointer.
+    ///
+    /// `point` is in the drop view's top-left coordinate space: `y == 0` is the
+    /// top edge. That is what `DropInfo.location` reports. Treating a large `y`
+    /// as the top made a pointer in the upper-left split downward.
+    ///
+    /// The pane is four regions, one per edge. The boundary is the set of
+    /// points equally far from two edges, so the upper-left corner splits left
+    /// when it is closer to the left edge and upward when it is closer to the top.
     static func position(for point: CGPoint, in size: CGSize) -> DropPosition {
         let distLeft = point.x
         let distRight = size.width - point.x
-        let distTop = size.height - point.y
-        let distBottom = point.y
+        let distTop = point.y
+        let distBottom = size.height - point.y
 
         guard size.width > 0, size.height > 0 else { return .right }
 

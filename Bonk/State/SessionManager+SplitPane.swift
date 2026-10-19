@@ -214,6 +214,15 @@ extension SessionManager {
         newSession.sshService = tab.session?.sshService
         newSession.ownsSSHService = false // Shared SSH connection — don't disconnect on teardown
         newSession.connectionState = .connected
+        // The rings poll `phase.isReady` plus a session PTY. Copying both is
+        // what keeps CPU, memory and disk updating on the tab this pane becomes.
+        newSession.phase = tab.session?.phase ?? .ready
+        if !newSession.phase.isReady {
+            newSession.phase = .ready
+        }
+        newSession.ptySession = ptySession
+        newSession.connectedAt = tab.session?.connectedAt
+        newSession.serverInfo = tab.session?.serverInfo
         newTab.session = newSession
 
         // Move the PTY session to the new tab (preserves history)
