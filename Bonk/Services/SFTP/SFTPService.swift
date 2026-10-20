@@ -126,6 +126,16 @@ final class SFTPService {
     /// Citadel-first: automatic and citadelExperimental try Citadel, then
     /// fall back to OpenSSH. openSSH forces OpenSSH only (no Citadel).
     var preferredBackend: SFTPBackend = .automatic
+    /// The terminal transport. OpenSSH terminals never start on Citadel.
+    private var transportIsOpenSSH = false
+    /// True once this service's channel is an OpenSSH client.
+    private var usingOpenSSH = false
+    /// Kept so a Citadel transfer can degrade to OpenSSH without replacing the terminal.
+    private var networkService: SSHNetworkService?
+    #if os(macOS)
+        /// Owns the ControlPath for a transfer-time OpenSSH fallback.
+        private var fallbackOpenSSHBackend: OpenSSHBackend?
+    #endif
     /// Session RTT snapshot for the planner (Commit-2). Reset on every
     /// fresh connection, probed once after connect, reused by all
     /// transfers in the session. Stays nil when unmeasured or when the
@@ -201,15 +211,23 @@ final class SFTPService {
         defer { isLoading = false }
 
         #if os(macOS)
-            // Forced OpenSSH only: Citadel is never attempted here.
-            if preferredBackend == .openSSH,
-               let client = try await sshService.openOpenSSHSFTPClient()
-            {
+            networkService = sshService
+            transportIsOpenSSH = await sshService.usesOpenSSHTransport
+            // OpenSSH terminal, or an explicit OpenSSH preference: SFTP is OpenSSH.
+            // Citadel experimental is the only setting that still starts Citadel
+            // beside an OpenSSH terminal.
+            let sftpFollowsOpenSSH = preferredBackend == .openSSH
+                || (transportIsOpenSSH && preferredBackend != .citadelExperimental)
+            if sftpFollowsOpenSSH {
+                guard let client = try await sshService.openOpenSSHSFTPClient() else {
+                    throw SFTPServiceError.operationFailed("OpenSSH SFTP is unavailable for this connection.")
+                }
                 do {
                     let path = try await client.realPath()
                     openSSHSFTPClient = client
                     channel = OpenSSHSFTPChannelAdapter(client: client)
                     vnextChannel = channel
+                    usingOpenSSH = true
                     currentPath = path
                     Log.sftp.info("OpenSSH SFTP connected, initial path: \(self.currentPath)")
                     try await listDirectory()
@@ -222,9 +240,6 @@ final class SFTPService {
                     vnextChannel = nil
                     throw error
                 }
-            }
-            if preferredBackend == .openSSH {
-                throw SFTPServiceError.operationFailed("OpenSSH SFTP is unavailable for this connection.")
             }
         #endif
 
@@ -297,6 +312,7 @@ final class SFTPService {
             openSSHSFTPClient = fallback
             channel = OpenSSHSFTPChannelAdapter(client: fallback)
             vnextChannel = channel
+            usingOpenSSH = true
             currentPath = path
             Log.sftp.info("OpenSSH SFTP connected, initial path: \(self.currentPath)")
             try await listDirectory()
@@ -328,7 +344,11 @@ final class SFTPService {
     }
 
     /// VNext — connect via unified SSHSession (single-connection multiplex, T5)
-    func connect(using session: any SSHSession) async throws {
+    func connect(using session: any SSHSession, network: SSHNetworkService? = nil) async throws {
+        networkService = network
+        #if os(macOS)
+            transportIsOpenSSH = session is CompatibilitySSHSession
+        #endif
         if let channel {
             if entries.isEmpty { try await listDirectory() }
             return
@@ -349,6 +369,9 @@ final class SFTPService {
         let path = try await character.realPath()
         vnextChannel = character
         channel = character
+        #if os(macOS)
+            usingOpenSSH = session is CompatibilitySSHSession
+        #endif
         currentPath = path
         Log.sftp.info("VNext SFTP connected, initial path: \(self.currentPath)")
         try await listDirectory()
@@ -438,43 +461,109 @@ final class SFTPService {
         try await listDirectory()
     }
 
+    /// Run a transfer, and on a Citadel failure try the same transfer once on OpenSSH.
+    ///
+    /// Parallel and the single stream already ran inside the Citadel channel.
+    /// This is the last step, and only when the policy allows it. The original
+    /// error is what escapes if OpenSSH cannot be opened or itself fails.
+    private func transferring(_ body: () async throws -> Void) async throws {
+        do {
+            try await body()
+        } catch {
+            let original = error
+            guard SFTPDegradation.shouldRetryOnOpenSSH(
+                backend: preferredBackend,
+                transportIsOpenSSH: transportIsOpenSSH,
+                alreadyOpenSSH: usingOpenSSH,
+                error: original
+            ) else { throw original }
+            Log.sftp.warning("[SFTP] Citadel transfer failed, falling back to OpenSSH")
+            do {
+                guard try await adoptOpenSSH() else { throw original }
+                try await body()
+            } catch {
+                throw original
+            }
+        }
+    }
+
+    /// Point this service at an OpenSSH SFTP client without touching the terminal.
+    ///
+    /// An OpenSSH terminal already has one. A Citadel terminal gets a separate
+    /// OpenSSH process from the same host config. `false` means there is nothing
+    /// to switch to; the caller keeps the Citadel error.
+    private func adoptOpenSSH() async throws -> Bool {
+        #if os(macOS)
+            guard let networkService else { return false }
+            if let existing = try await networkService.openOpenSSHSFTPClient() {
+                installOpenSSH(existing)
+                return true
+            }
+            guard let config = await networkService.config else { return false }
+            let backend = try await networkService.makeOpenSSHBackend(config: config)
+            let client = backend.makeSFTPClient()
+            do {
+                _ = try await client.realPath()
+            } catch {
+                client.close()
+                throw error
+            }
+            fallbackOpenSSHBackend = backend
+            installOpenSSH(client)
+            return true
+        #else
+            return false
+        #endif
+    }
+
+    #if os(macOS)
+        private func installOpenSSH(_ client: OpenSSHSFTPClient) {
+            openSSHSFTPClient = client
+            channel = OpenSSHSFTPChannelAdapter(client: client)
+            vnextChannel = channel
+            usingOpenSSH = true
+        }
+    #endif
+
     /// Download a file to local disk.
     func download(_ entry: SFTPFileEntry, to localURL: URL) async throws {
         // Unified — single channel handles all backends (parallel inside adapter)
-        if let character = channel ?? vnextChannel {
+        if (channel ?? vnextChannel) != nil {
             guard !entry.isDirectory else { return }
             Log.sftp.debug("[DOWNLOAD] start \(entry.name, privacy: .public) size=\(entry.size)")
             let transferID = UUID()
             transfers.append(SFTPTransfer(id: transferID, filename: entry.name, direction: .download, totalBytes: entry.size, transferredBytes: 0, isComplete: false, error: nil))
             do {
                 Log.sftp.debug("[DOWNLOAD] unified character.download call for \(entry.name, privacy: .public)")
-                try await character.download(entry.path, to: localURL, operationID: transferID, onProgress: { [weak self] progress in
+                try await transferring {
+                    guard let current = self.channel ?? self.vnextChannel else {
+                        throw SFTPServiceError.notConnected
+                    }
+                    try await current.download(entry.path, to: localURL, operationID: transferID, onProgress: { [weak self] progress in
                     let clamped = min(max(progress, 0), 1)
                     guard SFTPProgressThrottler.shared.shouldEmit(id: transferID, progress: clamped) else { return }
                     Task { @MainActor [weak self] in
-                        guard let self, let idx = self.transfers.firstIndex(where: { $0.id == transferID }) else { return }
-                        let transfer = self.transfers[idx]
-                        transfer.lastUIUpdate = Date()
-                        transfer.fraction = clamped
-                        if let total = transfer.totalBytes, total > 0 {
-                            let newBytes = UInt64(Double(total) * clamped)
-                            if newBytes >= transfer.transferredBytes || clamped >= 1.0 {
-                                transfer.transferredBytes = newBytes
-                            }
-                        } else {
-                            // Unknown size: totalBytes==nil — don'text fake %. Poll local file size for MB.
-                            if let attrs = try? FileManager.default.attributesOfItem(atPath: localURL.path),
-                               let size = attrs[.size] as? UInt64, size > transfer.transferredBytes {
-                                transfer.transferredBytes = size
-                            } else if clamped >= 1.0, let attrs = try? FileManager.default.attributesOfItem(atPath: localURL.path),
-                                      let size = attrs[.size] as? UInt64 {
+                        guard let self else { return }
+                        // Copy-and-assign through `updateTransfer`. A subscript write
+                        // on the `@Observable` array does not bump `transferTick`, so
+                        // the toolbar ring stayed idle for the whole transfer.
+                        self.updateTransfer(transferID) { transfer in
+                            transfer.lastUIUpdate = Date()
+                            transfer.fraction = clamped
+                            if let total = transfer.totalBytes, total > 0 {
+                                let newBytes = UInt64(Double(total) * clamped)
+                                if newBytes >= transfer.transferredBytes || clamped >= 1.0 {
+                                    transfer.transferredBytes = newBytes
+                                }
+                            } else if let attrs = try? FileManager.default.attributesOfItem(atPath: localURL.path),
+                                      let size = attrs[.size] as? UInt64,
+                                      size > transfer.transferredBytes || clamped >= 1.0 {
                                 transfer.transferredBytes = size
                             }
                         }
-                        // Force Observation refresh for ForEach row (class mutation alone doesn'text always re-evaluate)
-                        self.transfers[idx] = transfer
                     }
                 })
+                }
                 if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
                     updateTransfer(transferID) { t in t.fraction = 1.0 }
                     // Unknown size: entry.size==0, use actual file size on disk
@@ -696,7 +785,7 @@ final class SFTPService {
         continuation: AsyncThrowingStream<Double, Error>.Continuation
     ) async throws {
         // Unified — single channel seam
-        if let character = channel ?? vnextChannel {
+        if (channel ?? vnextChannel) != nil {
             let targetPath = remotePath ?? pathJoin(currentPath, localURL.lastPathComponent)
             let filename = localURL.lastPathComponent
             let attrs = try? FileManager.default.attributesOfItem(atPath: localURL.path)
@@ -704,27 +793,26 @@ final class SFTPService {
             let transferID = UUID()
             transfers.append(SFTPTransfer(id: transferID, filename: filename, direction: .upload, totalBytes: total, transferredBytes: 0, isComplete: false, error: nil))
             do {
-                try await character.upload(localURL, to: targetPath, operationID: transferID, onProgress: { [weak self] progress in
+                try await transferring {
+                    guard let current = self.channel ?? self.vnextChannel else {
+                        throw SFTPServiceError.notConnected
+                    }
+                    try await current.upload(localURL, to: targetPath, operationID: transferID, onProgress: { [weak self] progress in
                     let clamped = min(max(progress, 0), 1)
                     guard SFTPProgressThrottler.shared.shouldEmit(id: transferID, progress: clamped) else { return }
                     Task { @MainActor in
                         guard let self else { return }
-                        if let idx = self.transfers.firstIndex(where: { $0.id == transferID }) {
-                            let text = self.transfers[idx]
+                        self.updateTransfer(transferID) { text in
                             text.lastUIUpdate = Date()
                             text.fraction = clamped
                             if let totalUnwrapped = text.totalBytes, totalUnwrapped > 0 {
                                 text.transferredBytes = UInt64(Double(totalUnwrapped) * clamped)
-                            } else {
-                                // Unknown size: don'text fake percentage; update bytes via fraction is meaningless
-                                // Keep transferredBytes as-is (updated by channel's byte-level callback if available)
-                                // Fallback: estimate bytes from progress only if total == 0, skip
                             }
-                            self.transfers[idx] = text
                         }
                         continuation.yield(clamped)
                     }
                 })
+                }
                 if let idx = transfers.firstIndex(where: { $0.id == transferID }) {
                     updateTransfer(transferID) { t in t.fraction = 1.0 }
                     updateTransfer(transferID) { t in t.transferredBytes = total }

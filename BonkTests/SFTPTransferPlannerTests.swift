@@ -158,3 +158,11 @@ final class SFTPTransferPlannerTests: XCTestCase {
         )
     }
 }
+
+final class SFTPParallelGateTests: XCTestCase {
+    func testLargeUploadsStillUseParallelSessions() {
+        let mb: UInt64 = 1024 * 1024
+        XCTAssertFalse(SFTPParallelStrategy.shouldUseParallel(totalBytes: 19 * mb))
+        XCTAssertTrue(SFTPParallelStrategy.shouldUseParallel(totalBytes: 100 * mb))
+    }
+}

@@ -146,35 +146,33 @@ final class SFTPTransferRingControl: NSButton {
         }
     }
 
-    /// A tick inside the ring, for "finished".
+    /// Finished state. The same symbol the transfer list draws:
+    /// `checkmark.circle.fill` in green, with the check knocked out in white.
     ///
-    /// ## Sizing
-    ///
-    /// The first version drew a tick spanning about 8×7pt inside a 29pt circle —
-    /// measured, not estimated; `SFTPRingRenderTests` prints the ink grid. At that
-    /// size it was not readable as a check, just a small asymmetric squiggle near
-    /// the centre, and a squiggle that small is exactly what gets reported as
-    /// looking mirrored. It now spans ~0.9 of the radius so the long arm and the
-    /// dip are both unambiguous.
-    ///
-    /// ## Orientation
-    ///
-    /// The view is not flipped, so +y is up and these offsets are y-up: start
-    /// upper-left, dip below centre, rise to the upper-right. That is asserted
-    /// against rendered pixels rather than trusted, because reading the
-    /// coordinates could not settle the "it looks mirrored" report.
+    /// Drawn at the symbol's own point size. Putting that bitmap into a
+    /// different rectangle resamples it, which is why the toolbar copy looked
+    /// soft next to the sharp one in the SFTP window.
     private func drawCompletedGlyph(in rect: NSRect) {
-        let centre = NSPoint(x: rect.midX, y: rect.midY)
-        let radius = rect.width / 2
-        let tick = NSBezierPath()
-        tick.move(to: NSPoint(x: centre.x - radius * 0.45, y: centre.y + radius * 0.05))
-        tick.line(to: NSPoint(x: centre.x - radius * 0.15, y: centre.y - radius * 0.32))
-        tick.line(to: NSPoint(x: centre.x + radius * 0.45, y: centre.y + radius * 0.42))
-        tick.lineWidth = 2.5
-        tick.lineCapStyle = .round
-        tick.lineJoinStyle = .round
-        NSColor.systemGreen.setStroke()
-        tick.stroke()
+        let pointSize = min(rect.width, rect.height)
+        let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [.white, .systemGreen]))
+        guard let image = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(config) else { return }
+        let symbolSize = image.size
+        let box = NSRect(
+            x: rect.midX - symbolSize.width / 2,
+            y: rect.midY - symbolSize.height / 2,
+            width: symbolSize.width,
+            height: symbolSize.height
+        )
+        image.draw(
+            in: box,
+            from: NSRect(origin: .zero, size: symbolSize),
+            operation: .sourceOver,
+            fraction: 1,
+            respectFlipped: true,
+            hints: nil
+        )
     }
 
     /// Direction arrow and percentage inside the ring.

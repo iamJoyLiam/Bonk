@@ -201,3 +201,55 @@ struct SFTPBackendFallbackTests {
     }
 
 }
+
+@Suite("SFTP degradation order")
+struct SFTPDegradationTests {
+    @Test("an OpenSSH terminal stays on OpenSSH")
+    func openSSHTerminal() {
+        #expect(SFTPDegradation.steps(
+            transportIsOpenSSH: true, backend: .automatic, parallelEligible: true
+        ) == [.openSSH])
+    }
+
+    @Test("a Citadel terminal tries parallel, then one stream, then OpenSSH")
+    func citadelLadder() {
+        let mb: UInt64 = 1024 * 1024
+        #expect(SFTPDegradation.steps(
+            transportIsOpenSSH: false, backend: .automatic,
+            parallelEligible: SFTPParallelStrategy.shouldUseParallel(totalBytes: 100 * mb)
+        ) == [.parallel, .singleStream, .openSSH])
+        #expect(SFTPDegradation.steps(
+            transportIsOpenSSH: false, backend: .automatic,
+            parallelEligible: SFTPParallelStrategy.shouldUseParallel(totalBytes: 19 * mb)
+        ) == [.singleStream, .openSSH])
+    }
+
+    @Test("experimental Citadel does not step down to OpenSSH")
+    func experimentalStops() {
+        #expect(!SFTPDegradation.shouldRetryOnOpenSSH(
+            backend: .citadelExperimental, transportIsOpenSSH: false,
+            alreadyOpenSSH: false, error: SFTPServiceError.notConnected
+        ))
+    }
+
+    @Test("a host-key failure does not step down to OpenSSH")
+    func hostKeyDoesNotDegrade() {
+        let mismatch = SSHServiceError.hostKeyMismatch(expected: "a", received: "b")
+        #expect(!SFTPDegradation.shouldRetryOnOpenSSH(
+            backend: .automatic, transportIsOpenSSH: false,
+            alreadyOpenSSH: false, error: mismatch
+        ))
+    }
+
+    @Test("a Citadel transfer failure does step down to OpenSSH")
+    func transferFailureDegrades() {
+        #expect(SFTPDegradation.shouldRetryOnOpenSSH(
+            backend: .automatic, transportIsOpenSSH: false,
+            alreadyOpenSSH: false, error: SFTPServiceError.notConnected
+        ))
+        #expect(!SFTPDegradation.shouldRetryOnOpenSSH(
+            backend: .automatic, transportIsOpenSSH: false,
+            alreadyOpenSSH: true, error: SFTPServiceError.notConnected
+        ))
+    }
+}

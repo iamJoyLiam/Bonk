@@ -173,7 +173,7 @@ final class TerminalSession {
                 let task = Task { @MainActor in
                     let service = SFTPService()
                     service.preferredBackend = preferredSFTPBackend
-                    try await service.connect(using: vnextSession)
+                    try await service.connect(using: vnextSession, network: sshService)
                     return service
                 }
                 sftpConnectionTask = task

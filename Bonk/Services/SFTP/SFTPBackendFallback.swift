@@ -102,3 +102,49 @@ enum SFTPBackendFallback {
         }
     }
 }
+
+/// Which transport a transfer may use, and in which order.
+///
+/// An OpenSSH terminal stays on OpenSSH. A Citadel terminal tries parallel
+/// sessions first, then the single stream on the original channel, then
+/// OpenSSH. `citadelExperimental` never takes the OpenSSH step. A host-key
+/// failure never takes it either — that gate is `SFTPBackendFallback`.
+enum SFTPDegradation {
+    enum Step: Equatable {
+        case parallel
+        case singleStream
+        case openSSH
+    }
+
+    static func steps(
+        transportIsOpenSSH: Bool,
+        backend: SFTPBackend,
+        parallelEligible: Bool
+    ) -> [Step] {
+        if transportIsOpenSSH || backend == .openSSH {
+            return [.openSSH]
+        }
+        var plan: [Step] = []
+        if parallelEligible { plan.append(.parallel) }
+        plan.append(.singleStream)
+        if backend == .automatic { plan.append(.openSSH) }
+        return plan
+    }
+
+    static func shouldRetryOnOpenSSH(
+        backend: SFTPBackend,
+        transportIsOpenSSH: Bool,
+        alreadyOpenSSH: Bool,
+        error: Error
+    ) -> Bool {
+        guard !alreadyOpenSSH else { return false }
+        guard steps(
+            transportIsOpenSSH: transportIsOpenSSH,
+            backend: backend,
+            parallelEligible: false
+        ).contains(.openSSH) else { return false }
+        if error is CancellationError { return false }
+        if let service = error as? SFTPServiceError, service == .transferCancelled { return false }
+        return SFTPBackendFallback.permitsFallback(error)
+    }
+}

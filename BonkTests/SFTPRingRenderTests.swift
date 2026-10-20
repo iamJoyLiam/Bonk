@@ -97,48 +97,22 @@ struct SFTPRingRenderTests {
         return ink
     }
 
-    @Test("the completion tick is an upright checkmark, not a mirror of one")
+    @Test("the completion mark is the filled green circle, not a scaled check")
     func completionTickIsUpright() throws {
         let ink = try renderTick()
         let trace = "total=\(ink.pixels.count) box=\(ink.boundingWidth)x\(ink.boundingHeight)"
-            + " topBandCentroid=\(ink.bandCentroidX(fromTopFraction: 0.0, toTopFraction: 0.30))"
-            + " bottomBandCentroid=\(ink.bandCentroidX(fromTopFraction: 0.70, toTopFraction: 1.0))"
-            + " (width \(ink.width), centre \(Double(ink.width) / 2))"
+            + " (width \(ink.width))"
         try trace.write(toFile: "/tmp/bonk-ring-ink.txt", atomically: true, encoding: .utf8)
 
-        #expect(ink.pixels.count > 0, "the tick drew no green pixels at all")
+        #expect(ink.pixels.count > 0, "the completion mark drew no green pixels")
 
-        // Big enough to read as a check rather than as a squiggle.
-        #expect(ink.boundingWidth >= 12,
-                """
-                the tick is only \\(ink.boundingWidth)pt wide inside a \\
-                \\(Int(SFTPTransferRingControl.innerTextWidth(for: NSRect(origin: .zero, size: SFTPTransferRingControl.size))))pt \
-                circle. At that size it reads as a small asymmetric squiggle, which is \
-                what gets perceived as a mirrored tick.
-                """)
-
-        // Bands are fractions of the ink's own height measured from the TOP, so
-        // 0.0-0.30 is the upper band. Reading them the other way round silently
-        // inverts both assertions below, which is what happened the first time.
-        //
-        // For an upright checkmark the topmost ink is the tip of the long arm,
-        // right of centre. A horizontal mirror moves it to the left; a vertical
-        // flip leaves it near the middle.
-        let topBand = ink.bandCentroidX(fromTopFraction: 0.0, toTopFraction: 0.30)
-        #expect(topBand > Double(ink.width) / 2 + 1.5,
-                """
-                the topmost ink sits at column \(String(format: "%.1f", topBand)) on a
-                \(ink.width)pt control — not right of centre. A horizontal mirror puts
-                it on the left, and a vertical flip puts it near the middle.
-                """)
-
-        // The V dips below centre, slightly left of it.
-        let bottomBand = ink.bandCentroidX(fromTopFraction: 0.70, toTopFraction: 1.0)
-        #expect(bottomBand < Double(ink.width) / 2,
-                """
-                the lowest ink sits at column \(String(format: "%.1f", bottomBand)), not
-                left of centre. The dip of the V has moved or the tick is flipped.
-                """)
+        // checkmark.circle.fill fills the ring. A bare check scaled into the
+        // slot is both smaller and soft; its box stays well under this.
+        let minimum = Int(Double(ink.width) * 0.7)
+        #expect(ink.boundingWidth >= minimum,
+                "green ink is only \(ink.boundingWidth)pt wide in a \(ink.width)pt ring")
+        #expect(ink.boundingHeight >= minimum,
+                "green ink is only \(ink.boundingHeight)pt tall in a \(ink.height)pt ring")
     }
 
     @Test("the arrow and percentage fit inside the ring at every shown value")

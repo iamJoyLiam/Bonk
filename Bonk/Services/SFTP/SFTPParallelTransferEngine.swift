@@ -41,10 +41,6 @@ enum SFTPParallelStrategy {
         return 8
     }
 
-    static func shouldUseParallel(totalBytes: UInt64) -> Bool {
-        totalBytes > parallelThreshold
-    }
-
     /// Pipeline depth per shard — tuned for 64K chunk, BDP 6-12MB, keep 32-64MB in flight for max speed
     static func pipelinePerShard(shards: Int, totalBytes: UInt64) -> Int {
         switch shards {
@@ -56,6 +52,16 @@ enum SFTPParallelStrategy {
         case 8: return 64  // 8×64×64K=32MB
         default: return 64
         }
+    }
+
+    /// Extra TCP sessions, not sharded writes on the live channel.
+    ///
+    /// The live channel is what the file list is using. Sharded writes there
+    /// fail fast and leave the single-stream fallback with a dead session.
+    /// Parallel traffic stays on its own connections; a failure falls through
+    /// to the single stream on the channel that was never touched.
+    static func shouldUseParallel(totalBytes: UInt64) -> Bool {
+        totalBytes > parallelThreshold
     }
 }
 

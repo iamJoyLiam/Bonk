@@ -113,39 +113,6 @@ final class CitadelSFTPAdapter: SFTPChannel {
                     try? await sftp.remove(at: tempRemotePath)
                 }
             }
-            if SFTPParallelStrategy.shouldUseParallel(totalBytes: total) {
-                Log.sftp.info("[P2] Citadel upload multi-channel total=\(total)")
-                do {
-                    try await SFTPParallelTransferEngine.parallelUploadMultiChannel(
-                        sftp: sftp, remotePath: tempRemotePath, localURL: localURL,
-                        totalBytes: total, isCancelled: { false }, onProgress: onProgress
-                    )
-                    try await verifyAndRenameRemote(tempPath: tempRemotePath, finalPath: remotePath, expectedBytes: total, sftp: sftp)
-                    if total == 0 { onProgress(1.0) }
-                    return
-                } catch {
-                    Log.sftp.warning("[P2] multiChannel upload failed, fallback: \(error)")
-                    try? await sftp.remove(at: tempRemotePath)
-                    let file = try await sftp.openFile(filePath: tempRemotePath, flags: [.write, .create, .truncate])
-                    let remoteFile = SendableSFTPFile(file)
-                    do {
-                        try await SFTPParallelTransferEngine.parallelUpload(
-                            localURL: localURL, remoteFile: remoteFile,
-                            totalBytes: total, isCancelled: { false }, onProgress: onProgress
-                        )
-                        try? await file.close()
-                        try await verifyAndRenameRemote(tempPath: tempRemotePath, finalPath: remotePath, expectedBytes: total, sftp: sftp)
-                    } catch {
-                        Log.sftp.warning("[P2] single-handle parallel failed, fallback: \(error)")
-                        try? await sftp.remove(at: tempRemotePath)
-                        try await singleStreamUpload(localURL: localURL, total: total, remoteFile: remoteFile, onProgress: onProgress)
-                        try? await file.close()
-                        try await verifyAndRenameRemote(tempPath: tempRemotePath, finalPath: remotePath, expectedBytes: total, sftp: sftp)
-                    }
-                    if total == 0 { onProgress(1.0) }
-                    return
-                }
-            }
             let file = try await sftp.openFile(filePath: tempRemotePath, flags: [.write, .create, .truncate])
             let remoteFile = SendableSFTPFile(file)
             do {
@@ -251,39 +218,6 @@ final class CitadelSFTPAdapter: SFTPChannel {
                     await closePool(pool)
                     Log.sftp.warning("[POOL] N×TCP download failed, fallback: \(error)")
                     try? FileManager.default.removeItem(at: tempURL)
-                }
-            }
-            if total > 0, SFTPParallelStrategy.shouldUseParallel(totalBytes: total) {
-                Log.sftp.info("[P2] Citadel download multi-channel total=\(total)")
-                do {
-                    try await SFTPParallelTransferEngine.parallelDownloadMultiChannel(
-                        sftp: sftp, remotePath: remotePath, localURL: tempURL,
-                        totalBytes: total, isCancelled: { false }, onProgress: onProgress
-                    )
-                    try await verifyAndMove(tempURL: tempURL, finalURL: localURL, expectedBytes: total)
-                    if total == 0 { onProgress(1.0) }
-                    return
-                } catch {
-                    Log.sftp.warning("[P2] multiChannel download failed, fallback: \(error)")
-                    try? FileManager.default.removeItem(at: tempURL)
-                    let file = try await sftp.openFile(filePath: remotePath, flags: [.read])
-                    let remoteFile = SendableSFTPFile(file)
-                    do {
-                        try await SFTPParallelTransferEngine.parallelDownload(
-                            remoteFile: remoteFile, localURL: tempURL,
-                            totalBytes: total, isCancelled: { false }, onProgress: onProgress
-                        )
-                        try? await file.close()
-                        try await verifyAndMove(tempURL: tempURL, finalURL: localURL, expectedBytes: total)
-                    } catch {
-                        Log.sftp.warning("[P2] single-handle parallel failed, fallback: \(error)")
-                        try? FileManager.default.removeItem(at: tempURL)
-                        try await singleStreamDownload(total: total, remoteFile: remoteFile, localURL: tempURL, onProgress: onProgress)
-                        try? await file.close()
-                        try await verifyAndMove(tempURL: tempURL, finalURL: localURL, expectedBytes: total)
-                    }
-                    if total == 0 { onProgress(1.0) }
-                    return
                 }
             }
             let file = try await sftp.openFile(filePath: remotePath, flags: [.read])

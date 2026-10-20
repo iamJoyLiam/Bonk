@@ -380,14 +380,15 @@ private final class CitadelSFTPChannel: SFTPChannel {
         let tempRemotePath = remotePath + ".bonk.part"
         try? await sftp.remove(at: tempRemotePath)
         do {
-            if SFTPParallelStrategy.shouldUseParallel(totalBytes: total) {
-                // 1 N×TCP  SSH+TCP， TCP
-                if let cfg = pooledConfig, let store = pooledHostKeyStore {
-                    let shards = SFTPParallelStrategy.shardCount(for: total)
-                    Log.sftp.info("[POOL] try N×TCP upload total=\(total) shards=\(shards)")
+            // Parallel runs on its own TCP sessions. It does not write through
+            // `sftp`, so a failure leaves the live channel for the single stream.
+            if SFTPParallelStrategy.shouldUseParallel(totalBytes: total),
+               let cfg = pooledConfig, let store = pooledHostKeyStore {
+                let shards = SFTPParallelStrategy.shardCount(for: total)
+                Log.sftp.info("[POOL] try N×TCP upload total=\(total) shards=\(shards)")
+                do {
+                    let pool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
                     do {
-                        let pool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
-                        defer { let profile = pool; Task { [profile] in for handle in profile { await handle.close() } } }
                         try await SFTPParallelTransferEngine.parallelUploadMultiTCP(
                             handles: pool,
                             remotePath: tempRemotePath,
@@ -396,32 +397,15 @@ private final class CitadelSFTPChannel: SFTPChannel {
                             isCancelled: { false },
                             onProgress: onProgress
                         )
+                        // Release every pooled session before rename. A file another
+                        // session still has open is renamed as SSH_FX_FAILURE, and a
+                        // deferred Task closes them only after that failure.
+                        for handle in pool { await handle.close() }
                         try await verifyAndRenameRemote(tempPath: tempRemotePath, finalPath: remotePath, expectedBytes: total, sftp: sftp)
-                        if total == 0 { onProgress(1.0) }
-                        return
-                    } catch is CancellationError {
-                        try? await sftp.remove(at: tempRemotePath)
-                        throw SFTPServiceError.transferCancelled
-                    } catch let err as SFTPServiceError where err == .transferCancelled {
-                        try? await sftp.remove(at: tempRemotePath)
-                        throw err
                     } catch {
-                        Log.sftp.warning("[POOL] N×TCP upload failed, fallback to multi-channel: \(String(describing: error))")
-                        try? await sftp.remove(at: tempRemotePath)
+                        for handle in pool { await handle.close() }
+                        throw error
                     }
-                }
-                // 2  Channel  TCP
-                Log.sftp.info("[P2] Native upload multi-channel total=\(total)")
-                do {
-                    try await SFTPParallelTransferEngine.parallelUploadMultiChannel(
-                        sftp: sftp,
-                        remotePath: tempRemotePath,
-                        localURL: localURL,
-                        totalBytes: total,
-                        isCancelled: { false },
-                        onProgress: onProgress
-                    )
-                    try await verifyAndRenameRemote(tempPath: tempRemotePath, finalPath: remotePath, expectedBytes: total, sftp: sftp)
                     if total == 0 { onProgress(1.0) }
                     return
                 } catch is CancellationError {
@@ -431,35 +415,8 @@ private final class CitadelSFTPChannel: SFTPChannel {
                     try? await sftp.remove(at: tempRemotePath)
                     throw err
                 } catch {
-                    Log.sftp.warning("[P2] multiChannel upload failed, fallback to single-handle parallel: \(String(describing: error))")
+                    Log.sftp.warning("[POOL] N×TCP upload failed, fallback to single stream: \(String(describing: error))")
                     try? await sftp.remove(at: tempRemotePath)
-                    let file = try await sftp.openFile(filePath: tempRemotePath, flags: [.write, .create, .truncate])
-                    let remoteFile = SendableSFTPFile(file)
-                    do {
-                        try await SFTPParallelTransferEngine.parallelUpload(
-                            localURL: localURL,
-                            remoteFile: remoteFile,
-                            totalBytes: total,
-                            isCancelled: { false },
-                            onProgress: onProgress
-                        )
-                        try? await file.close()
-                        try await verifyAndRenameRemote(tempPath: tempRemotePath, finalPath: remotePath, expectedBytes: total, sftp: sftp)
-                    } catch {
-                        Log.sftp.warning("[P2] single-handle parallel failed, fallback to single stream: \(String(describing: error))")
-                        try? await sftp.remove(at: tempRemotePath)
-                        do {
-                            try await singleStreamUpload(localURL: localURL, total: total, remoteFile: remoteFile, onProgress: onProgress)
-                            try? await file.close()
-                            try await verifyAndRenameRemote(tempPath: tempRemotePath, finalPath: remotePath, expectedBytes: total, sftp: sftp)
-                        } catch {
-                            try? await file.close()
-                            try? await sftp.remove(at: tempRemotePath)
-                            throw error
-                        }
-                    }
-                    if total == 0 { onProgress(1.0) }
-                    return
                 }
             }
             //  
@@ -490,6 +447,12 @@ private final class CitadelSFTPChannel: SFTPChannel {
                 throw SFTPServiceError.operationFailed("Upload incomplete: expected \(expectedBytes) got \(got)")
             }
         }
+        // v3 rename does not replace an existing file; it returns
+        // SSH_FX_FAILURE. The UI then shows that as
+        // "Citadel.SFTPMessage.Status error 1" because Status is a struct.
+        // Remove the destination first. The verified temp file stays if rename
+        // itself fails.
+        try? await sftp.remove(at: finalPath)
         try await sftp.rename(at: tempPath, to: finalPath, flags: 0)
     }
 
@@ -537,14 +500,13 @@ private final class CitadelSFTPChannel: SFTPChannel {
         let tempURL = URL(fileURLWithPath: localURL.path + ".bonk.part")
         try? FileManager.default.removeItem(at: tempURL)
         do {
-            if total > 0, SFTPParallelStrategy.shouldUseParallel(totalBytes: total) {
-                // 1 N×TCP  -> temp
-                if let cfg = pooledConfig, let store = pooledHostKeyStore {
-                    let shards = SFTPParallelStrategy.shardCount(for: total)
-                    Log.sftp.info("[POOL] try N×TCP download total=\(total) shards=\(shards)")
+            if total > 0, SFTPParallelStrategy.shouldUseParallel(totalBytes: total),
+               let cfg = pooledConfig, let store = pooledHostKeyStore {
+                let shards = SFTPParallelStrategy.shardCount(for: total)
+                Log.sftp.info("[POOL] try N×TCP download total=\(total) shards=\(shards)")
+                do {
+                    let pool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
                     do {
-                        let pool = try await SFTPMultiTCPPool.makePool(config: cfg, hostKeyStore: store, count: shards)
-                        defer { let profile = pool; Task { [profile] in for handle in profile { await handle.close() } } }
                         try await SFTPParallelTransferEngine.parallelDownloadMultiTCP(
                             handles: pool,
                             remotePath: remotePath,
@@ -553,31 +515,11 @@ private final class CitadelSFTPChannel: SFTPChannel {
                             isCancelled: { false },
                             onProgress: onProgress
                         )
-                        try await verifyAndMove(tempURL: tempURL, finalURL: localURL, expectedBytes: total)
-                        if total == 0 { onProgress(1.0) }
-                        return
-                    } catch is CancellationError {
-                        try? FileManager.default.removeItem(at: tempURL)
-                        throw SFTPServiceError.transferCancelled
-                    } catch let err as SFTPServiceError where err == .transferCancelled {
-                        try? FileManager.default.removeItem(at: tempURL)
-                        throw err
+                        for handle in pool { await handle.close() }
                     } catch {
-                        Log.sftp.warning("[POOL] N×TCP download failed, fallback to multi-channel: \(String(describing: error))")
-                        try? FileManager.default.removeItem(at: tempURL)
+                        for handle in pool { await handle.close() }
+                        throw error
                     }
-                }
-                // 2  Channel  TCP -> temp
-                Log.sftp.info("[P2] Native download multi-channel total=\(total)")
-                do {
-                    try await SFTPParallelTransferEngine.parallelDownloadMultiChannel(
-                        sftp: sftp,
-                        remotePath: remotePath,
-                        localURL: tempURL,
-                        totalBytes: total,
-                        isCancelled: { false },
-                        onProgress: onProgress
-                    )
                     try await verifyAndMove(tempURL: tempURL, finalURL: localURL, expectedBytes: total)
                     if total == 0 { onProgress(1.0) }
                     return
@@ -588,35 +530,8 @@ private final class CitadelSFTPChannel: SFTPChannel {
                     try? FileManager.default.removeItem(at: tempURL)
                     throw err
                 } catch {
-                    Log.sftp.warning("[P2] multiChannel download failed, fallback to single-handle: \(String(describing: error))")
+                    Log.sftp.warning("[POOL] N×TCP download failed, fallback to single stream: \(String(describing: error))")
                     try? FileManager.default.removeItem(at: tempURL)
-                    let file = try await sftp.openFile(filePath: remotePath, flags: [.read])
-                    let remoteFile = SendableSFTPFile(file)
-                    do {
-                        try await SFTPParallelTransferEngine.parallelDownload(
-                            remoteFile: remoteFile,
-                            localURL: tempURL,
-                            totalBytes: total,
-                            isCancelled: { false },
-                            onProgress: onProgress
-                        )
-                        try? await file.close()
-                        try await verifyAndMove(tempURL: tempURL, finalURL: localURL, expectedBytes: total)
-                    } catch {
-                        Log.sftp.warning("[P2] single-handle parallel failed, fallback to single stream: \(String(describing: error))")
-                        try? FileManager.default.removeItem(at: tempURL)
-                        do {
-                            try await singleStreamDownload(total: total, remoteFile: remoteFile, localURL: tempURL, onProgress: onProgress)
-                            try? await file.close()
-                            try await verifyAndMove(tempURL: tempURL, finalURL: localURL, expectedBytes: total)
-                        } catch {
-                            try? await file.close()
-                            try? FileManager.default.removeItem(at: tempURL)
-                            throw error
-                        }
-                    }
-                    if total == 0 { onProgress(1.0) }
-                    return
                 }
             }
             // -> temp

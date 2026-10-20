@@ -132,15 +132,60 @@ enum SFTPMultiTCPPool {
     ) async throws -> PooledSFTPHandle {
         let tag = "\(poolID.uuidString.prefix(8)):\(index)"
         Log.sftp.debug("[POOL] handle connect start \(tag)")
-        let sshClient = try await makeNativeClient(config: config, hostKeyStore: hostKeyStore)
-        let sftpClient = try await sshClient.openSFTP()
-        return PooledSFTPHandle(sshClient: sshClient, sftpClient: sftpClient, poolID: poolID, index: index)
+        do {
+            return try await openHandle(
+                config: config, hostKeyStore: hostKeyStore,
+                poolID: poolID, index: index, wideWindow: true
+            )
+        } catch {
+            // 8MB window is also the advertised max packet. Some servers answer
+            // that channel with SFTPError.unsupportedVersion (NSError code 8)
+            // and the parallel upload dies before a byte moves. The primary
+            // session, which uses the default window, already spoke SFTP v3,
+            // so the same host on the default window is the parallel retry.
+            guard isCitadelSFTPRejection(error) else { throw error }
+            Log.sftp.warning("[POOL] wide window rejected, retrying default window idx=\(index)")
+            return try await openHandle(
+                config: config, hostKeyStore: hostKeyStore,
+                poolID: poolID, index: index, wideWindow: false
+            )
+        }
+    }
+
+    private static func isCitadelSFTPRejection(_ error: Error) -> Bool {
+        (error as NSError).domain == "Citadel.SFTPError"
+    }
+
+    private static func openHandle(
+        config: SSHConnectionConfig,
+        hostKeyStore: any SSHHostKeyStore,
+        poolID: UUID,
+        index: Int,
+        wideWindow: Bool
+    ) async throws -> PooledSFTPHandle {
+        let options: Set<SSHProtocolOption> = wideWindow
+            ? [.maximumPacketSize(SFTPChannelTuning.windowBytes)]
+            : []
+        let sshClient = try await makeNativeClient(
+            config: config, hostKeyStore: hostKeyStore, protocolOptions: options
+        )
+        do {
+            let sftpClient = try await sshClient.openSFTP()
+            return PooledSFTPHandle(sshClient: sshClient, sftpClient: sftpClient, poolID: poolID, index: index)
+        } catch {
+            try? await sshClient.close()
+            throw error
+        }
     }
 
     // Replicate TOFU — trust decision happens inside the handshake
     // callback (pre-auth); post-connect block below only persists
     // first-seen fingerprints and re-verifies as defense in depth.
-    private static func makeNativeClient(config: SSHConnectionConfig, hostKeyStore: any SSHHostKeyStore) async throws -> SSHClient {
+    private static func makeNativeClient(
+        config: SSHConnectionConfig,
+        hostKeyStore: any SSHHostKeyStore,
+        protocolOptions: Set<SSHProtocolOption>
+    ) async throws -> SSHClient {
         let citadelAuth = try mapAuthMethod(config.authMethod, username: config.username)
         let fingerprintBox = NIOLockedValueBox<SSHHostFingerprint?>(nil)
         let expected = await hostKeyStore.knownFingerprint(for: config.host, port: config.port)
@@ -154,7 +199,7 @@ enum SFTPMultiTCPPool {
             hostKeyValidator: .custom(validator),
             reconnect: .never,
             algorithms: .all,
-            protocolOptions: [.maximumPacketSize(SFTPChannelTuning.windowBytes)]
+            protocolOptions: protocolOptions
         )
         // HostKey TOFU
         if let fingerprint = fingerprintBox.withLockedValue({ $0 }) {
