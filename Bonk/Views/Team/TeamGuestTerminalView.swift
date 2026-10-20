@@ -127,14 +127,7 @@ private struct TeamGuestFullTerminalBridge: NSViewRepresentable {
         let scheme = TerminalThemeManager.shared.resolve()
         applyColorScheme(to: terminalView, scheme: scheme)
         terminalView.applyScrollbackLines(10000)
-        // Match host scrollbar: small overlay, hidden until scroll
-        for subview in terminalView.subviews {
-            if let scroller = subview as? NSScroller {
-                scroller.controlSize = .small
-                scroller.scrollerStyle = .overlay
-                scroller.alphaValue = 0.0
-            }
-        }
+        installEdgeScroller(on: terminalView)
         terminalView.terminalDelegate = context.coordinator
         context.coordinator.terminalView = terminalView
         context.coordinator.start()
@@ -142,7 +135,7 @@ private struct TeamGuestFullTerminalBridge: NSViewRepresentable {
         container.addSubview(terminalView)
         NSLayoutConstraint.activate([
             terminalView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            terminalView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            terminalView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -terminalViewInsets.right),
             terminalView.topAnchor.constraint(equalTo: container.topAnchor),
             terminalView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
@@ -233,7 +226,7 @@ private struct TeamGuestFullTerminalBridge: NSViewRepresentable {
             let relay = self.relay
             Task { @MainActor in relay.sendInputFromGuest(str) }
         }
-        func scrolled(source: SwiftTerm.TerminalView, position: Double) {}
+        func scrolled(source _: SwiftTerm.TerminalView, position _: Double) {}
         func setTerminalTitle(source: SwiftTerm.TerminalView, title: String) {}
         func sizeChanged(source: SwiftTerm.TerminalView, newCols: Int, newRows: Int) {
             relay.sendResizeFromGuest(columns: newCols, rows: newRows)

@@ -419,14 +419,7 @@ import SwiftUI
             terminal.configureNativeColors()
             terminal.commandSnapshotProvider = commandSnapshot
             terminal.inlinePipeline = inlinePipeline
-
-            // Scrollbar: hidden initially, show on scroll, small
-            for subview in terminal.subviews {
-                if let scroller = subview as? NSScroller {
-                    scroller.controlSize = .small
-                    scroller.alphaValue = 0.0
-                }
-            }
+            installEdgeScroller(on: terminal)
 
             applyColorScheme(to: terminal, scheme: colorScheme)
             terminal.applyScrollbackLines(scrollbackLines)

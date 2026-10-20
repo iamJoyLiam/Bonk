@@ -54,18 +54,51 @@ func applyColorScheme(to view: SwiftTerm.TerminalView, scheme: TerminalColorSche
 #if os(macOS)
     import AppKit
 
+    /// Width of SwiftTerm's overlay scroller. The text view stops here, and the
+    /// thumb is shifted into this strip so it sits on the card edge instead of
+    /// on the glyphs. Overlay drawing paints only the thumb, not a track.
+    @MainActor
+    var terminalScrollerGutter: CGFloat {
+        NSScroller.scrollerWidth(for: .small, scrollerStyle: .overlay)
+    }
+
     /// Inset of the terminal view within its container.
-    /// Restored to (4, 8) for comfortable padding; container background now matches
-    /// `colorScheme.background` (see TerminalContainerView/PaneContainerBridge) so
-    /// the inset no longer appears as a contrasting "box".
-    let terminalViewInsets = NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
+    ///
+    /// Left, top and bottom keep the text off the card. Right is the scroller
+    /// gutter: the grid ends before the thumb, and `installEdgeScroller` moves
+    /// the thumb across that gutter onto the card edge.
+    @MainActor
+    var terminalViewInsets: NSEdgeInsets {
+        NSEdgeInsets(top: 4, left: 8, bottom: 4, right: terminalScrollerGutter)
+    }
+
+    /// Keep SwiftTerm's overlay scroller (a thumb, no track) and park it in the gutter.
+    ///
+    /// The scroller is a subview pinned to the terminal's trailing edge, so with
+    /// the gutter inset it would sit on the last columns. Shifting its trailing
+    /// constraint by the gutter width puts the thumb on the card edge, outside
+    /// the grid. Nothing else fades or redraws it — SwiftTerm already shows the
+    /// thumb while scrolling and hides it after, and a second show/hide is the flicker.
+    @MainActor
+    func installEdgeScroller(on terminal: SwiftTerm.TerminalView) {
+        terminal.scrollerStyle = .overlay
+        terminal.clipsToBounds = false
+        guard let scroller = terminal.subviews.compactMap({ $0 as? NSScroller }).first else { return }
+        scroller.controlSize = .small
+        scroller.scrollerStyle = .overlay
+        for constraint in terminal.constraints where (constraint.firstItem as? NSView) === scroller {
+            if constraint.firstAttribute == .trailing {
+                constraint.constant = terminalScrollerGutter
+            }
+        }
+    }
 
     /// The view `NSViewRepresentable` returns for a terminal.
     ///
     /// SwiftUI's representable wrapper is opaque black for the first frames
     /// after a connection replaces the connecting placeholder with this host.
     /// The terminal grid does not cover the leftover strip under the last row,
-    /// and the 4pt inset is the wrapper, so that black reads as a bar along
+    /// and the bottom inset is the wrapper, so that black reads as a bar along
     /// the bottom and then vanishes once the real background composites.
     final class TerminalHostView: NSView {
         var fillColor: NSColor {

@@ -27,9 +27,7 @@ import SwiftTerm
         }
 
         func hostCurrentDirectoryUpdate(source _: SwiftTerm.TerminalView, directory _: String?) {}
-        func scrolled(source terminal: SwiftTerm.TerminalView, position: Double) {
-            flashScroller(in: terminal)
-        }
+        func scrolled(source _: SwiftTerm.TerminalView, position _: Double) {}
 
         func requestOpenLink(source _: SwiftTerm.TerminalView, link: String, params _: [String: String]) {
             // SwiftTerm detects OSC 8 links and implicit URLs (linkReporting
@@ -52,36 +50,6 @@ import SwiftTerm
 
         func iTermContent(source _: SwiftTerm.TerminalView, content _: ArraySlice<UInt8>) {}
         func rangeChanged(source _: SwiftTerm.TerminalView, startY _: Int, endY _: Int) {}
-
-        // MARK: - Scrollbar Flash
-
-        /// Overlay scrollbar: show on scroll, hide when idle
-        // / SwiftTerm  NSScroller NSScrollView ， alpha 。
-        private func flashScroller(in terminal: SwiftTerm.TerminalView) {
-            // Delegate callbacks arrive on the main thread.
-            MainActor.assumeIsolated {
-                guard let scroller = terminal.subviews.compactMap({ $0 as? NSScroller }).first else { return }
-
-                // Cancel fade-out
-                scroller.layer?.removeAnimation(forKey: "scrollerFadeOut")
-
-                // Show immediately
-                NSAnimationContext.runAnimationGroup { context in
-                    context.duration = 0.15
-                    scroller.animator().alphaValue = 1.0
-                }
-
-                // Fade out after delay
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    MainActor.assumeIsolated {
-                        NSAnimationContext.runAnimationGroup { context in
-                            context.duration = 0.4
-                            scroller.animator().alphaValue = 0.0
-                        }
-                    }
-                }
-            }
-        }
     }
 
 #endif
