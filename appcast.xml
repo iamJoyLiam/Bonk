@@ -6,6 +6,35 @@
     <channel>
         <title>Bonk</title>
         <item>
+        <title>2026.5.2</title>
+        <pubDate>Tue, 20 Oct 2026 13:17:11 +0800</pubDate>
+        <sparkle:version>20265002</sparkle:version>
+        <sparkle:shortVersionString>2026.5.2</sparkle:shortVersionString>
+        <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+        <description><![CDATA[
+## Changes
+
+- Terminal tabs no longer drift under the overlay scroller, and the thumb no longer draws on the last column of glyphs or flickers between fades.
+- Large SFTP uploads now finish cleanly: the completion mark is sharp, and finished transfers no longer surface as `SSH_FX_FAILURE` from sessions left open across a rename.
+        ]]></description>
+        <enclosure
+            url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.5.2/Bonk-2026.5.2-arm64.dmg"
+            length="26131530"
+            type="application/octet-stream"
+            sparkle:edSignature="/1GfCm/2Fk05Kmg/eyBLBH2EQ+4wWq0v3ZdxptgDJP5hBs9bvDi6TiGHat8TEWWFYYh/oJtYDYEC2Z+0iW0pDQ=="
+            sparkle:os="macos"
+            sparkle:cpuAffinity="arm64"
+        />
+        <enclosure
+            url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.5.2/Bonk-2026.5.2-x86_64.dmg"
+            length="27278642"
+            type="application/octet-stream"
+            sparkle:edSignature="PqzDKnGGuSzSxH9ikB/omQ2RDSbZF4JZV3R7XDJTKdgEe4wT64IzKYjPFnnjXPneml1Y7cS1w0mI5Iv0RIcTAw=="
+            sparkle:os="macos"
+            sparkle:cpuAffinity="x86_64"
+        />
+    </item>
+    <item>
         <title>2026.5.1</title>
         <pubDate>Tue, 20 Oct 2026 10:12:23 +0800</pubDate>
         <sparkle:version>20265001</sparkle:version>
