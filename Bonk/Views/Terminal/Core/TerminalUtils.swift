@@ -77,8 +77,11 @@ func applyColorScheme(to view: SwiftTerm.TerminalView, scheme: TerminalColorSche
     /// The scroller is a subview pinned to the terminal's trailing edge, so with
     /// the gutter inset it would sit on the last columns. Shifting its trailing
     /// constraint by the gutter width puts the thumb on the card edge, outside
-    /// the grid. Nothing else fades or redraws it — SwiftTerm already shows the
-    /// thumb while scrolling and hides it after, and a second show/hide is the flicker.
+    /// the grid — and outside the terminal view. AppKit does not hit-test a
+    /// view past its own bounds, so `TerminalHostView` forwards those clicks
+    /// to the scroller. Nothing else fades or redraws it — SwiftTerm already
+    /// shows the thumb while scrolling and hides it after, and a second
+    /// show/hide is the flicker.
     @MainActor
     func installEdgeScroller(on terminal: SwiftTerm.TerminalView) {
         terminal.scrollerStyle = .overlay
@@ -137,6 +140,33 @@ func applyColorScheme(to view: SwiftTerm.TerminalView, scheme: TerminalColorSche
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             applyFill()
+        }
+
+        /// The overlay thumb is drawn in the gutter, past the terminal view's
+        /// bounds. A click there never reaches the scroller unless this host
+        /// hands it over, so the thumb can be seen and not dragged.
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            let local = convert(point, from: superview)
+            if let scroller = Self.scroller(in: self, containing: local) {
+                return scroller
+            }
+            return super.hitTest(point)
+        }
+
+        /// Front-most enabled scroller whose frame, in `host` coordinates,
+        /// contains `localPoint`. Hidden thumbs stay out of the way.
+        static func scroller(in host: NSView, containing localPoint: NSPoint) -> NSScroller? {
+            var pending = host.subviews
+            while let view = pending.popLast() {
+                if let scroller = view as? NSScroller,
+                   !scroller.isHidden,
+                   scroller.isEnabled,
+                   scroller.convert(scroller.bounds, to: host).contains(localPoint) {
+                    return scroller
+                }
+                pending.append(contentsOf: view.subviews)
+            }
+            return nil
         }
 
         private func applyFill() {
