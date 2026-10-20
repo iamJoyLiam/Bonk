@@ -96,15 +96,27 @@ struct PaneTerminalView: View {
                 showOverwriteAlert = false
             }
         }
-        .background { cardShape.fill(SwiftUI.Color(nsColor: plateColor)) }
+        .background {
+            if glassCard {
+                GlassCardPlate(cornerRadius: AppStyle.cornerRadiusLarge)
+            } else {
+                cardShape.fill(SwiftUI.Color(nsColor: plateColor))
+            }
+        }
         .clipShape(cardShape)
         .overlay {
-            cardShape.strokeBorder(
-                SwiftUI.Color.primary.opacity(AppStyle.opacityStroke),
-                lineWidth: AppStyle.tabHairline
-            )
+            if !glassCard {
+                cardShape.strokeBorder(
+                    SwiftUI.Color.primary.opacity(AppStyle.opacityStroke),
+                    lineWidth: AppStyle.tabHairline
+                )
+            }
         }
-        .background { cardShadow }
+        .background {
+            if !glassCard {
+                cardShadow
+            }
+        }
         .onTapGesture {
             focusManager.focus(paneState.id)
             tab.activePaneID = paneState.id
@@ -137,6 +149,7 @@ struct PaneTerminalView: View {
                     cursorBlink: cursorBlink,
                     copyOnSelect: preferences.copyOnSelect,
                     isActive: isActive,
+                    glassCard: glassCard,
                     onSend: { data in Task { @MainActor in sendInput(data) } },
                     onResize: { cols, rows in Task { @MainActor in resizePTY(cols: cols, rows: rows) } },
                     onTitleChange: { _ in },
@@ -161,6 +174,7 @@ struct PaneTerminalView: View {
                     cursorBlink: cursorBlink,
                     copyOnSelect: preferences.copyOnSelect,
                     isActive: isActive,
+                    glassCard: glassCard,
                     onSend: { data in Task { @MainActor in sendInput(data) } },
                     onResize: { cols, rows in Task { @MainActor in resizePTY(cols: cols, rows: rows) } },
                     onTitleChange: { _ in },
@@ -280,7 +294,15 @@ struct PaneTerminalView: View {
     }
 
     private var plateColor: NSColor {
-        PaneChrome.terminalFill(isActive: isActive, scheme: colorScheme)
+        PaneChrome.terminalFill(isActive: isActive, scheme: colorScheme, glass: glassCard)
+    }
+
+    /// Toolbar-button glass, on macOS 26 and later, unless the setting is off.
+    private var glassCard: Bool {
+        PaneChrome.glassCardEnabled(
+            preference: preferences.terminalGlassCard,
+            systemSupportsGlass: PaneChrome.systemSupportsGlassCards
+        )
     }
 
     /// Shadow is a separate shape behind the plate. Shadowing the terminal
@@ -318,14 +340,31 @@ struct PaneTerminalView: View {
 }
 
 /// The plate each card paints. The page behind it is the window's liquid
-/// glass, so a card has to stay opaque or it disappears into that glass.
+/// glass. A solid plate is the fallback. On macOS 26 and later the card can
+/// instead be the same glass as a toolbar button, and then the grid has to
+/// be clear or the plate covers that glass.
 enum PaneChrome {
     /// Working plate. Opaque white.
     static let activePlate = NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
     /// Idle plate. Still paper, one step off white.
     static let idlePlate = NSColor(srgbRed: 0.988, green: 0.984, blue: 0.973, alpha: 1)
 
-    static func terminalFill(isActive: Bool, scheme: TerminalColorScheme) -> NSColor {
+    static var systemSupportsGlassCards: Bool {
+        if #available(macOS 26.0, *) {
+            return true
+        }
+        return false
+    }
+
+    /// Nil preference means on. Older systems have no button glass, so the
+    /// setting cannot turn the card into a material they do not have.
+    static func glassCardEnabled(preference: Bool?, systemSupportsGlass: Bool) -> Bool {
+        guard systemSupportsGlass else { return false }
+        return preference ?? true
+    }
+
+    static func terminalFill(isActive: Bool, scheme: TerminalColorScheme, glass: Bool) -> NSColor {
+        if glass { return .clear }
         guard adoptsCardBackground(scheme) else { return opaque(scheme.background) }
         return isActive ? activePlate : idlePlate
     }
@@ -347,5 +386,26 @@ enum PaneChrome {
         let green = 0.7152 * rgb.greenComponent
         let blue = 0.0722 * rgb.blueComponent
         return red + green + blue
+    }
+}
+
+/// A toolbar-button glass plate. `NSGlassEffectView` does not exist before
+/// macOS 26, and this view is not installed there.
+struct GlassCardPlate: NSViewRepresentable {
+    var cornerRadius: CGFloat
+
+    func makeNSView(context: Context) -> NSView {
+        guard #available(macOS 26.0, *) else { return NSView() }
+        let glass = NSGlassEffectView()
+        glass.style = .regular
+        glass.cornerRadius = cornerRadius
+        glass.contentView = NSView()
+        return glass
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        guard #available(macOS 26.0, *), let glass = nsView as? NSGlassEffectView else { return }
+        glass.cornerRadius = cornerRadius
+        glass.style = .regular
     }
 }

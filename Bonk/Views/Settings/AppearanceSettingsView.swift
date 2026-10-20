@@ -13,6 +13,13 @@ struct AppearanceSettingsView: View {
     @StateObject private var themeManager = TerminalThemeManager.shared
     @AppStorage("logColorizerEnabled") private var logColorizerEnabled = true
 
+    private var glassCardBinding: Binding<Bool> {
+        Binding(
+            get: { preferences.terminalGlassCard ?? true },
+            set: { preferences.terminalGlassCard = $0 }
+        )
+    }
+
     var body: some View {
         Form {
             // Theme selection — one choice controls everything
@@ -74,6 +81,15 @@ struct AppearanceSettingsView: View {
 
             Section(i18n.t(.logColorization)) {
                 Toggle(i18n.t(.logColorizationDesc), isOn: $logColorizerEnabled)
+            }
+
+            if #available(macOS 26.0, *) {
+                Section {
+                    Toggle(i18n.t(.terminalGlassCard), isOn: glassCardBinding)
+                    Text(i18n.t(.terminalGlassCardDesc))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .formStyle(.grouped)

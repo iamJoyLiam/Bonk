@@ -34,6 +34,8 @@ import SwiftUI
         let cursorBlink: Bool
         let copyOnSelect: Bool
         let isActive: Bool
+        /// Toolbar-button glass. The grid stays clear so the plate shows through.
+        let glassCard: Bool
         let onSend: @Sendable (ArraySlice<UInt8>) -> Void
         let onResize: (@Sendable (Int, Int) -> Void)?
         let onTitleChange: (@Sendable (String) -> Void)?
@@ -190,10 +192,10 @@ import SwiftUI
             SwiftUI.Color(nsColor: displayedBackground)
         }
 
-        /// A light theme paints the paper plate. A dark theme keeps its own
-        /// color, opaque, so the page around the card stays visible.
+        /// Glass cards leave the grid clear. Otherwise a light theme paints
+        /// the paper plate, and a dark theme keeps its own opaque color.
         private var displayedBackground: NSColor {
-            PaneChrome.terminalFill(isActive: isActive, scheme: colorScheme)
+            PaneChrome.terminalFill(isActive: isActive, scheme: colorScheme, glass: glassCard)
         }
 
         @Environment(I18n.self) var i18n
@@ -271,7 +273,8 @@ import SwiftUI
             nsView.roundsTopCorners = roundsTopCorners
             let signpostStart = perfSignposter.beginInterval("PaneRebind")
             defer { perfSignposter.endInterval("PaneRebind", signpostStart) }
-            guard context.coordinator.lastPaneID != paneID else {
+            guard context.coordinator.lastPaneID != paneID
+                || context.coordinator.lastTabID != tabID else {
                 if let cached = TerminalViewCache.shared.retrieveForPane(paneID: paneID, tabID: tabID) {
                     updateSettings(for: cached, coordinator: context.coordinator)
                     registerViewportAuthority(for: paneID)
@@ -280,9 +283,18 @@ import SwiftUI
             }
 
             let oldPaneID = context.coordinator.lastPaneID
+            let oldTabID = context.coordinator.lastTabID
             context.coordinator.lastPaneID = paneID
+            context.coordinator.lastTabID = tabID
 
-            if let oldID = oldPaneID, let oldCached = TerminalViewCache.shared.retrieveForPane(paneID: oldID, tabID: tabID) {
+            if let previous = PaneMount.previous(
+                paneID: oldPaneID,
+                tabID: oldTabID,
+                fallbackTabID: tabID
+            ), let oldCached = TerminalViewCache.shared.retrieveForPane(
+                paneID: previous.paneID,
+                tabID: previous.tabID
+            ) {
                 // Same as the single-pane bridge: clear stale selection on switch-away so old text can't be re-copied by later clicks.
                 oldCached.view.selectNone()
                 oldCached.view.removeFromSuperview()
@@ -292,8 +304,8 @@ import SwiftUI
                 if let oldCoord = oldCached.coordinator as? ContainerTerminalCoordinator {
                     oldCoord.removeViewportFocusObserver()
                     TerminalViewportRegistry.shared.unregister(
-                        .pane(oldID),
-                        in: TerminalViewportRegistry.PTYKey(tabID: tabID, paneID: oldID)
+                        .pane(previous.paneID),
+                        in: TerminalViewportRegistry.PTYKey(tabID: previous.tabID, paneID: previous.paneID)
                     )
                     oldCoord.viewportOwner = nil
                     oldCoord.viewportPTYKey = nil
@@ -319,7 +331,15 @@ import SwiftUI
             }
 
             cached.view.translatesAutoresizingMaskIntoConstraints = false
+            if cached.view.superview !== nsView {
+                cached.view.removeFromSuperview()
+            }
             nsView.addSubview(cached.view)
+            // A glass grid is clear. An earlier tab's view left in this host
+            // would show through it, so only the pane being mounted stays.
+            for subview in nsView.subviews where subview !== cached.view {
+                subview.removeFromSuperview()
+            }
 
             NSLayoutConstraint.deactivate(cached.constraints)
             cached.constraints = [
@@ -357,7 +377,10 @@ import SwiftUI
             // Leaving a mounted-looking claim behind would keep this pane's
             // view as its PTY's size authority after the view is gone.
             guard let paneID = coordinator.lastPaneID,
-                  let cached = TerminalViewCache.shared.retrieveForPane(paneID: paneID, tabID: coordinator.tabID),
+                  let cached = TerminalViewCache.shared.retrieveForPane(
+                      paneID: paneID,
+                      tabID: coordinator.lastTabID ?? coordinator.tabID
+                  ),
                   let coord = cached.coordinator as? ContainerTerminalCoordinator,
                   let owner = coord.viewportOwner,
                   let ptyKey = coord.viewportPTYKey
@@ -504,6 +527,7 @@ import SwiftUI
             ]
             NSLayoutConstraint.activate(cached.constraints)
             context.coordinator.lastPaneID = paneID
+            context.coordinator.lastTabID = tabID
             updateSettings(for: cached, coordinator: context.coordinator)
 
             // Force re-render after re-adding cached view to view hierarchy
@@ -530,15 +554,16 @@ import SwiftUI
             }
             terminal.setCursorStyle(mapCursorStyle(cursorStyle, blink: cursorBlink))
             terminal.applyScrollbackLines(scrollbackLines)
-            // Update color scheme only when it actually changed.
+            let mounted = cached.coordinator as? ContainerTerminalCoordinator
+            mounted?.plateBackground = hostFill
+            // The scheme install paints its own background. A glass card has
+            // to put the clear plate back afterwards, or the theme change
+            // covers the glass.
             if coordinator.lastColorSchemeID != colorScheme.id {
                 applyColorScheme(to: terminal, scheme: colorScheme)
                 coordinator.lastColorSchemeID = colorScheme.id
+                coordinator.lastAppliedBackground = nil
             }
-            // A light card takes the paper plate. Focus moves without the
-            // theme changing, and the install above would otherwise pin every
-            // pane to the theme color. Skip a repeat assignment: the setter
-            // repaints the whole grid.
             if coordinator.lastAppliedBackground != hostFill {
                 terminal.nativeBackgroundColor = hostFill
                 coordinator.lastAppliedBackground = hostFill
@@ -551,6 +576,9 @@ import SwiftUI
         /// has to release without reaching back into the representable.
         let tabID: UUID
         var lastPaneID: UUID?
+        /// Tab that owned `lastPaneID`. A tab switch changes both ids, and
+        /// the view has to be detached under the old tab or it stays mounted.
+        var lastTabID: UUID?
         var lastColorSchemeID: String?
         /// Last background actually pushed to the terminal, so a SwiftUI
         /// refresh does not repaint the grid with the same color.
@@ -562,5 +590,20 @@ import SwiftUI
         /// Pending delayed focus. Cancelled on rebind so rapid tab switches do
         /// not stack up competing makeFirstResponder calls.
         var focusTask: Task<Void, Never>?
+    }
+
+    /// Which cached terminal a tab switch has to detach.
+    ///
+    /// The host view is reused across tabs. The pane that is leaving belongs
+    /// to the previous tab, not the one being shown.
+    enum PaneMount {
+        static func previous(
+            paneID: UUID?,
+            tabID: UUID?,
+            fallbackTabID: UUID
+        ) -> (paneID: UUID, tabID: UUID)? {
+            guard let paneID else { return nil }
+            return (paneID, tabID ?? fallbackTabID)
+        }
     }
 #endif

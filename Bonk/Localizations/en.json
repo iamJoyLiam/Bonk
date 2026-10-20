@@ -403,6 +403,8 @@
   "ai_no_response": "AI returned an empty response. Please try again.",
   "log_colorization": "Log Colorization",
   "log_colorization_desc": "Automatically highlight log levels and keywords",
+  "terminal_glass_card": "Liquid Glass Cards",
+  "terminal_glass_card_desc": "Terminal cards use the same material as the toolbar buttons.",
   "import_ssh_config": "Import SSH Config",
   "import_tabby": "Import Tabby",
   "import_sessions": "Import Sessions",

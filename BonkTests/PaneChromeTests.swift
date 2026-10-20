@@ -2,8 +2,9 @@
 //  PaneChromeTests.swift
 //  BonkTests
 //
-//  The page is the desktop, so the card is a solid plate and the gutter is
-//  only a few points. A translucent plate would be the desktop again.
+//  The page is the window's liquid glass. A card is either a solid plate or,
+//  on macOS 26 and later, the same glass as a toolbar button. Older systems
+//  have no such material, so the setting cannot enable it there.
 //
 
 import AppKit
@@ -14,22 +15,47 @@ final class PaneChromeTests: XCTestCase {
     func testLightPlateStaysOpaque() {
         let scheme = scheme(RGBAColor(1, 1, 1, 0.2))
         for active in [true, false] {
-            assertOpaque(PaneChrome.terminalFill(isActive: active, scheme: scheme))
+            assertOpaque(PaneChrome.terminalFill(isActive: active, scheme: scheme, glass: false))
         }
     }
 
     func testDarkPlateKeepsItsOwnOpaqueColor() {
         let nord = scheme(RGBAColor(0.180, 0.204, 0.251, 0.4))
-        let plate = PaneChrome.terminalFill(isActive: true, scheme: nord)
+        let plate = PaneChrome.terminalFill(isActive: true, scheme: nord, glass: false)
         assertOpaque(plate)
         XCTAssertLessThan(PaneChrome.luminance(plate), 0.5)
         let red = plate.usingColorSpace(.sRGB)?.redComponent ?? 1
         XCTAssertEqual(red, 0.180, accuracy: 0.01)
     }
 
+    func testGlassCardClearsTheGrid() {
+        let scheme = scheme(RGBAColor(1, 1, 1))
+        let plate = PaneChrome.terminalFill(isActive: true, scheme: scheme, glass: true)
+        let alpha = plate.usingColorSpace(.sRGB)?.alphaComponent ?? 1
+        XCTAssertEqual(alpha, 0, accuracy: 0.001)
+    }
+
+    func testGlassCardDefaultsOnOnlyWhereTheSystemHasIt() {
+        XCTAssertFalse(PaneChrome.glassCardEnabled(preference: nil, systemSupportsGlass: false))
+        XCTAssertFalse(PaneChrome.glassCardEnabled(preference: true, systemSupportsGlass: false))
+        XCTAssertTrue(PaneChrome.glassCardEnabled(preference: nil, systemSupportsGlass: true))
+        XCTAssertTrue(PaneChrome.glassCardEnabled(preference: true, systemSupportsGlass: true))
+        XCTAssertFalse(PaneChrome.glassCardEnabled(preference: false, systemSupportsGlass: true))
+    }
+
     func testGutterIsSixPointsOnEverySide() {
         XCTAssertEqual(AppStyle.cardGutter, 6)
         XCTAssertEqual(AppStyle.cardGutter, AppStyle.spacingS)
+    }
+
+    func testTabSwitchDetachesThePaneUnderItsOwnTab() {
+        let firstTab = UUID()
+        let secondTab = UUID()
+        let firstPane = UUID()
+        let mounted = PaneMount.previous(paneID: firstPane, tabID: firstTab, fallbackTabID: secondTab)
+        XCTAssertEqual(mounted?.paneID, firstPane)
+        XCTAssertEqual(mounted?.tabID, firstTab)
+        XCTAssertNil(PaneMount.previous(paneID: nil, tabID: firstTab, fallbackTabID: secondTab))
     }
 
     private func assertOpaque(_ color: NSColor) {

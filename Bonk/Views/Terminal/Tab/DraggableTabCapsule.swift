@@ -13,6 +13,7 @@ import SwiftUI
 struct DraggableTabCapsule: View {
     let tab: TerminalTab
     let isActive: Bool
+    var usesGlass = false
     let showsLeadingSeparator: Bool
     let sessionManager: SessionManager
     let isDragEnabled: Bool
@@ -97,12 +98,16 @@ struct DraggableTabCapsule: View {
     @ViewBuilder
     private var surface: some View {
         if isActive {
-            Capsule(style: .continuous)
-                .fill(Color(nsColor: .controlColor))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(Color(nsColor: .separatorColor), lineWidth: AppStyle.tabHairline)
-                )
+            if usesGlass {
+                GlassCardPlate(cornerRadius: AppStyle.tabHeight / 2)
+            } else {
+                Capsule(style: .continuous)
+                    .fill(Color(nsColor: .controlColor))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(Color(nsColor: .separatorColor), lineWidth: AppStyle.tabHairline)
+                    )
+            }
         } else if isHoverCapsule, controlActiveState != .inactive {
             Capsule(style: .continuous)
                 .fill(Color(nsColor: .tertiarySystemFill))

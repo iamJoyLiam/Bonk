@@ -394,6 +394,10 @@ import SwiftUI
         nonisolated(unsafe) weak var terminalView: SwiftTerm.TerminalView?
         private var _feedTask: Task<Void, Never>?
         var themeObserver: NSObjectProtocol?
+        /// Background the card wants behind the glyphs. Theme changes install
+        /// the scheme color first; this is put back so a glass card is not
+        /// painted over with an opaque fill.
+        var plateBackground: NSColor?
         private nonisolated(unsafe) var mouseUpMonitor: Any?
         private nonisolated(unsafe) var completionKeyMonitor: Any?
         var fontObserver: NSObjectProtocol?

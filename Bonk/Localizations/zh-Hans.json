@@ -403,6 +403,8 @@
   "ai_no_response": "AI 返回了空响应，请重试。",
   "log_colorization": "日志着色",
   "log_colorization_desc": "自动高亮日志级别和关键字",
+  "terminal_glass_card": "液态玻璃卡片",
+  "terminal_glass_card_desc": "终端卡片使用与顶部系统按钮相同的材质。",
   "import_ssh_config": "导入 SSH Config",
   "import_tabby": "导入 Tabby",
   "import_sessions": "导入会话",

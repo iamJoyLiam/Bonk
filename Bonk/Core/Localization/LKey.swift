@@ -440,6 +440,8 @@ enum LKey: String, CaseIterable {
     // Log colorization
     case logColorization = "log_colorization"
     case logColorizationDesc = "log_colorization_desc"
+    case terminalGlassCard = "terminal_glass_card"
+    case terminalGlassCardDesc = "terminal_glass_card_desc"
 
     // SSH Config Import
     case importSSHConfig = "import_ssh_config"

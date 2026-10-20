@@ -57,6 +57,9 @@ final class UserPreferences {
     var showEngineBadge: Bool?
     /// Sidebar: show custom tag badge (optional, default true)
     var showCustomTag: Bool?
+    /// Terminal cards use the toolbar-button liquid glass. Nil means on.
+    /// macOS 26 and later only; older systems ignore it.
+    var terminalGlassCard: Bool?
 
     init(
         fontSize: Double = 14,
@@ -86,7 +89,8 @@ final class UserPreferences {
         teamMaxGuests: Int? = nil,
         isZmodemEnabled: Bool? = nil,
         showEngineBadge: Bool? = nil,
-        showCustomTag: Bool? = nil
+        showCustomTag: Bool? = nil,
+        terminalGlassCard: Bool? = nil
     ) {
         self.fontSize = fontSize
         self.fontFamily = fontFamily
@@ -116,5 +120,6 @@ final class UserPreferences {
         self.isZmodemEnabled = isZmodemEnabled
         self.showEngineBadge = showEngineBadge
         self.showCustomTag = showCustomTag
+        self.terminalGlassCard = terminalGlassCard
     }
 }

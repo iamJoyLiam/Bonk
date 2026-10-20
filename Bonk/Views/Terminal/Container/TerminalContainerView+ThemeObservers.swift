@@ -47,9 +47,9 @@ import SwiftTerm
                 MainActor.assumeIsolated {
                 guard let self, let terminal = self.terminalView,
                       let scheme else { return }
-                terminal.nativeBackgroundColor = scheme.background.nsColor
                 terminal.nativeForegroundColor = scheme.foreground.nsColor
                 terminal.installColors(scheme.swiftTermColors)
+                terminal.nativeBackgroundColor = self.plateBackground ?? scheme.background.nsColor
                 }
             }
 

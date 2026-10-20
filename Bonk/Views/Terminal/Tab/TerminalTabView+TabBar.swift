@@ -53,12 +53,16 @@ extension TerminalTabView {
         .frame(maxWidth: .infinity)
         .frame(height: AppStyle.tabTrackHeight)
         .background {
-            Capsule(style: .continuous)
-                .fill(Color(nsColor: .unemphasizedSelectedContentBackgroundColor))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(Color(nsColor: .quinaryLabel), lineWidth: AppStyle.tabHairline)
-                )
+            if glassTabs {
+                GlassCardPlate(cornerRadius: AppStyle.tabTrackHeight / 2)
+            } else {
+                Capsule(style: .continuous)
+                    .fill(Color(nsColor: .unemphasizedSelectedContentBackgroundColor))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(Color(nsColor: .quinaryLabel), lineWidth: AppStyle.tabHairline)
+                    )
+            }
         }
         .clipShape(Capsule(style: .continuous))
         .animation(AppStyle.animationTab, value: sessionManager.tabs.count)
@@ -77,10 +81,18 @@ extension TerminalTabView {
     }
 
     private var plusButton: some View {
-        EditorNewTabButton(isHovering: isHoverPlus) {
+        EditorNewTabButton(isHovering: isHoverPlus, usesGlass: glassTabs) {
             showQuickConnect = true
         }
         .onHover { isHoverPlus = $0 }
+    }
+
+    /// Same switch as the terminal cards. Older systems have no button glass.
+    private var glassTabs: Bool {
+        PaneChrome.glassCardEnabled(
+            preference: preferences.terminalGlassCard,
+            systemSupportsGlass: PaneChrome.systemSupportsGlassCards
+        )
     }
 
     @ViewBuilder
@@ -90,6 +102,7 @@ extension TerminalTabView {
         DraggableTabCapsule(
             tab: tab,
             isActive: isActive,
+            usesGlass: glassTabs,
             showsLeadingSeparator: showsLeadingSeparator,
             sessionManager: sessionManager,
             isDragEnabled: sessionManager.tabs.count > 1,
@@ -150,6 +163,7 @@ extension TerminalTabView {
 /// system tab bar uses; in dark the fill alone is the edge.
 private struct EditorNewTabButton: View {
     let isHovering: Bool
+    var usesGlass = false
     let action: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -164,13 +178,17 @@ private struct EditorNewTabButton: View {
         }
         .buttonStyle(.plain)
         .background {
-            Circle()
-                .fill(Color(nsColor: .controlColor))
-                .shadow(
-                    color: Color(nsColor: .shadowColor).opacity(colorScheme == .light ? AppStyle.opacityBackgroundStrong : 0),
-                    radius: colorScheme == .light ? AppStyle.sizeHairline : 0,
-                    y: colorScheme == .light ? AppStyle.tabHairline : 0
-                )
+            if usesGlass {
+                GlassCardPlate(cornerRadius: AppStyle.tabNewButtonSize / 2)
+            } else {
+                Circle()
+                    .fill(Color(nsColor: .controlColor))
+                    .shadow(
+                        color: Color(nsColor: .shadowColor).opacity(colorScheme == .light ? AppStyle.opacityBackgroundStrong : 0),
+                        radius: colorScheme == .light ? AppStyle.sizeHairline : 0,
+                        y: colorScheme == .light ? AppStyle.tabHairline : 0
+                    )
+            }
         }
         .help("New Tab")
     }
