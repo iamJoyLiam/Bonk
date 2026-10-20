@@ -98,7 +98,10 @@ struct PaneTerminalView: View {
         }
         .background {
             if glassCard {
-                GlassCardPlate(cornerRadius: AppStyle.cornerRadiusLarge)
+                GlassCardPlate(
+                    cornerRadius: AppStyle.cornerRadiusLarge,
+                    tint: PaneChrome.glassTint(colorScheme)
+                )
             } else {
                 cardShape.fill(SwiftUI.Color(nsColor: plateColor))
             }
@@ -340,9 +343,10 @@ struct PaneTerminalView: View {
 }
 
 /// The plate each card paints. The page behind it is the window's liquid
-/// glass. A solid plate is the fallback. On macOS 26 and later the card can
-/// instead be the same glass as a toolbar button, and then the grid has to
-/// be clear or the plate covers that glass.
+/// glass. On macOS 26 and later the card can be the same glass as a toolbar
+/// button, and then the grid has to be clear or the plate covers that glass.
+/// A dark card tints that glass toward its own field, so the glyphs are not
+/// sitting on a milky gray.
 enum PaneChrome {
     /// Working plate. Opaque white.
     static let activePlate = NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
@@ -361,6 +365,23 @@ enum PaneChrome {
     static func glassCardEnabled(preference: Bool?, systemSupportsGlass: Bool) -> Bool {
         guard systemSupportsGlass else { return false }
         return preference ?? true
+    }
+
+    /// How far a dark card pulls its glass toward the theme field.
+    /// Enough that body text stays readable, light enough that the plate
+    /// still reads as glass rather than a black fill.
+    static let darkGlassTintAlpha: CGFloat = 0.48
+
+    /// Nil on a light card. A dark card biases the glass toward its field
+    /// without painting an opaque plate over it.
+    static func glassTint(_ scheme: TerminalColorScheme) -> NSColor? {
+        guard !adoptsCardBackground(scheme) else { return nil }
+        return NSColor(
+            srgbRed: CGFloat(scheme.background.r),
+            green: CGFloat(scheme.background.g),
+            blue: CGFloat(scheme.background.b),
+            alpha: darkGlassTintAlpha
+        )
     }
 
     static func terminalFill(isActive: Bool, scheme: TerminalColorScheme, glass: Bool) -> NSColor {
@@ -393,12 +414,14 @@ enum PaneChrome {
 /// macOS 26, and this view is not installed there.
 struct GlassCardPlate: NSViewRepresentable {
     var cornerRadius: CGFloat
+    var tint: NSColor? = nil
 
     func makeNSView(context: Context) -> NSView {
         guard #available(macOS 26.0, *) else { return NSView() }
         let glass = NSGlassEffectView()
         glass.style = .regular
         glass.cornerRadius = cornerRadius
+        glass.tintColor = tint
         glass.contentView = NSView()
         return glass
     }
@@ -407,5 +430,6 @@ struct GlassCardPlate: NSViewRepresentable {
         guard #available(macOS 26.0, *), let glass = nsView as? NSGlassEffectView else { return }
         glass.cornerRadius = cornerRadius
         glass.style = .regular
+        glass.tintColor = tint
     }
 }

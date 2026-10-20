@@ -3,8 +3,9 @@
 //  BonkTests
 //
 //  The page is the window's liquid glass. A card is either a solid plate or,
-//  on macOS 26 and later, the same glass as a toolbar button. Older systems
-//  have no such material, so the setting cannot enable it there.
+//  on macOS 26 and later, the same glass as a toolbar button. A dark glass
+//  card stays clear and tints toward its own field. Older systems have no
+//  such material, so the setting cannot enable it there.
 //
 
 import AppKit
@@ -33,6 +34,19 @@ final class PaneChromeTests: XCTestCase {
         let plate = PaneChrome.terminalFill(isActive: true, scheme: scheme, glass: true)
         let alpha = plate.usingColorSpace(.sRGB)?.alphaComponent ?? 1
         XCTAssertEqual(alpha, 0, accuracy: 0.001)
+    }
+
+    func testDarkGlassStaysClearAndTintsTowardItsField() {
+        let dark = scheme(RGBAColor(0.118, 0.118, 0.118, 0.4))
+        let plate = PaneChrome.terminalFill(isActive: true, scheme: dark, glass: true)
+        let alpha = plate.usingColorSpace(.sRGB)?.alphaComponent ?? 1
+        XCTAssertEqual(alpha, 0, accuracy: 0.001)
+
+        let tint = PaneChrome.glassTint(dark)
+        let rgb = tint?.usingColorSpace(.sRGB)
+        XCTAssertEqual(rgb?.redComponent ?? 0, 0.118, accuracy: 0.01)
+        XCTAssertEqual(rgb?.alphaComponent ?? 0, PaneChrome.darkGlassTintAlpha, accuracy: 0.001)
+        XCTAssertNil(PaneChrome.glassTint(scheme(RGBAColor(1, 1, 1))))
     }
 
     func testGlassCardDefaultsOnOnlyWhereTheSystemHasIt() {
