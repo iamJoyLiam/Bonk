@@ -45,6 +45,11 @@ struct TerminalTabView: View {
     @State private var copyMessage: String?
     @State var isHoverPlus = false
     @State var hoveredTabID: UUID?
+    @State var draggingTabID: UUID?
+    @State var dragStartIndex: Int?
+    @State var dragTranslation: CGFloat = 0
+    @State var dragIntent: TabDragIntent = .pending
+    @State var tabSplitDrag = TabSplitDragLauncher()
     @Namespace var tabNamespace
 
     var body: some View {

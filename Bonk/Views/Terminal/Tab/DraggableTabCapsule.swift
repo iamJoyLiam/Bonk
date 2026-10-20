@@ -15,14 +15,11 @@ struct DraggableTabCapsule: View {
     let isActive: Bool
     var usesGlass = false
     let showsLeadingSeparator: Bool
-    let sessionManager: SessionManager
-    let isDragEnabled: Bool
     let onSelect: () -> Void
     let onClose: () -> Void
     var onHoverChange: (Bool) -> Void = { _ in }
 
     @Environment(\.controlActiveState) private var controlActiveState
-    @State private var isDragOver = false
     @State private var isHoverClose = false
     @State private var isHoverCapsule = false
 
@@ -38,35 +35,6 @@ struct DraggableTabCapsule: View {
                 onHoverChange(hovering)
             }
             .animation(.easeInOut(duration: 0.12), value: isHoverCapsule)
-            .draggable(isDragEnabled ? tab.id.uuidString : "") {
-                Text(tab.title)
-                    .font(.system(size: AppStyle.fontSmall))
-                    .lineLimit(1)
-                    .padding(.horizontal, AppStyle.spacingL)
-                    .padding(.vertical, AppStyle.spacingS)
-                    .background(Capsule().fill(Color(nsColor: .controlColor)))
-            }
-            .dropDestination(for: String.self) { items, _ in
-                guard isDragEnabled,
-                      let draggedIDString = items.first,
-                      let draggedID = UUID(uuidString: draggedIDString),
-                      draggedID != tab.id
-                else {
-                    return false
-                }
-                sessionManager.moveTab(draggedID, relativeTo: tab.id)
-                return true
-            } isTargeted: { targeting in
-                isDragOver = isDragEnabled && targeting
-            }
-            .overlay(alignment: .leading) {
-                if isDragOver {
-                    Capsule()
-                        .fill(Color.accentColor)
-                        .frame(width: AppStyle.spacingXXS)
-                        .padding(.vertical, AppStyle.spacingXS)
-                }
-            }
     }
 
     /// Spacers at both ends keep the title optically centered. The close

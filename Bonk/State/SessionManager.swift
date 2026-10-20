@@ -203,20 +203,16 @@ final class SessionManager {
         }
     }
 
-    /// Move a tab relative to another tab — Ghostty-style insert.
-    /// Dragging left→right inserts *after* target, right→left inserts *before*.
-    func moveTab(_ tabID: UUID, relativeTo targetID: UUID) {
-        guard let sourceIndex = tabs.firstIndex(where: { $0.id == tabID }),
-              let targetIndex = tabs.firstIndex(where: { $0.id == targetID }),
-              sourceIndex != targetIndex else { return }
-
-        let tab = tabs.remove(at: sourceIndex)
-        guard let newTargetIndex = tabs.firstIndex(where: { $0.id == targetID }) else {
-            tabs.append(tab)
-            return
-        }
-        let insertIndex = sourceIndex < targetIndex ? newTargetIndex + 1 : newTargetIndex
-        tabs.insert(tab, at: insertIndex)
+    /// Move a tab to `destination`, sliding the tabs in between over by one.
+    ///
+    /// `destination` is an index in the list before the move. Removing an
+    /// earlier tab does not change where this index lands.
+    func moveTab(from source: Int, to destination: Int) {
+        guard tabs.indices.contains(source),
+              destination >= 0, destination < tabs.count,
+              source != destination else { return }
+        let tab = tabs.remove(at: source)
+        tabs.insert(tab, at: destination)
     }
 
     func closeTab(_ id: UUID) async {
