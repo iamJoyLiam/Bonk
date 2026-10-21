@@ -482,7 +482,7 @@ Pi 的 durable 有 task graph。
 | P2-1 | 无 todo / 任务跟踪工具 | 全仓 `todo\|tasklist\|TaskTool` 零命中 |
 | P2-2 | 无工具结果缓存 | `Services/Agent/` 内 `cache` 零命中；同一命令每次重跑 |
 | P2-3 | 无 reasoning 展示 | `AgentEvent.thinking`（`Runtime/AgentEvent.swift:43`）存在，**没有任何代码发出它** |
-| P2-4 | 两套并行安全流水线 | tool loop 用 `DefaultAgentPermissionPolicy`；legacy plan 用 `CommandSafety.classify` + `isAutoExecutable`（`AgentPlanExecutor.swift:231-266`）。同一命令两套规则 |
+| P2-4 | 两套并行安全流水线 | tool loop 用 `DefaultAgentPermissionPolicy`；legacy plan 用 `CommandSafety.classify` + `isAutoExecutable`（`AgentPlanExecutor.swift:231-266`）。同一命令两套规则 | ✅ **已修复**（任务 ⑥）：计划流改走同一个 `DefaultAgentPermissionPolicy`，三档访问模式两条路径都生效 |
 | P2-5 | 死代码 | `runToolIteration` / `executeToolCalls`（`AgentToolExecutor.swift:166-272`，无调用者）；`AgentTools.definitions`（单工具 legacy schema）；`AgentToolRegistry.register`（无调用者）；`AgentModelGateway.stream`（无调用者）；`AgentEngine.buildAgentMessages`（仅 legacy 一处） |
 | P2-6 | 压缩对象为空 | `maybeCompact`（`AgentRuntime.swift:465-556`）逻辑完整（stale 输出收缩 + 中段摘要 + 压缩次数上限 5），但因 P0-1 它压缩的是单轮历史 |
 | P2-7 | 无 Unicode 净化 | Claude Code `utils/sanitization.ts:25` 对零宽 / bidi override / 私用区做 NFKC 归一化迭代，**并应用于 MCP 输出**（`services/mcp/client.ts:96`）。Bonk 的 `ToolOutputEnvelope` 做的是 marker 剥离，不是字符净化 |
