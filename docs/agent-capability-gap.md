@@ -23,10 +23,22 @@ Bonk 的 Agent **是一个结构良好的单轮工具循环器（tool loop），
 | 旗舰 provider | **已修复** (任务 ②) | Claude 是默认 provider，但 `toolCall` 抛 `not enabled yet` → 已实现 Anthropic `tool_use` |
 | agent 信任边界 | **已修复** (任务 ④) | 远端派生上下文被拼进 system prompt → 已按来源拆成 trusted / remote |
 | 输出 token 预算 | **已修复** (任务 ⑤) | 每轮硬截断 2000 → 已统一到一个解析点（最差的两条原本只有 500） |
+| provider 解析 | **已修复** (任务 ③) | 判定看 active、执行看 routed → 一次解析；工具循环原本对一部分用户不可达 |
 | 扩展生态 | **P0 缺失** | MCP / Skills / 插件 三者全无，全仓零命中 |
 | 并发与委派 | **P1 缺失** | 工具严格顺序执行；无子 agent |
 | 持久化与恢复 | **P1 缺失** | transcript 只在内存；持久化会话不是合法 tool-calling history |
 | 可扩展授权 | **P1 缺失** | 无 allowlist、无 "always allow"，同类命令每次重新弹窗 |
+
+### 顺手查出来的、报告里原本没有的问题
+
+这几条不是"能力差距"，是**做上面那些事时撞见的缺陷**，记在这里免得丢：
+
+| # | 问题 | 证据 | 状态 |
+|---|---|---|---|
+| N-1 | 路由器会**静默改掉用户当前选中的 provider** | `AgentEngine.swift:140` `activeProvider = provider` | 已记录，未修（改它会影响路由行为） |
+| N-2 | agent 跑的命令**不再镜像到终端** | `AITerminalMirror.post` 只被死代码调用 | 已记录，未修 |
+| N-3 | `FoldRuntimeTests` **单独跑会挂死** | 在 `31eb73d7`（本任务 stash 掉）上同样挂死 | 已证明是既有问题，未修 |
+| N-4 | `CommandNormalizerTests/sameOperationSameKey` 既有失败 | 原始 baseline 就在失败列表里 | 未动 |
 
 **关键判断**：Bonk 当前缺的不是"再写一个工具"，而是**状态机**——没有跨轮次的消息历史、没有可回放
 的会话、没有可声明的工具装载、没有可持久化的授权决策。这四样东西缺一，agent 就只能是 loop。
@@ -484,13 +496,15 @@ Pi 的 durable 有 task graph。
 
 顺序不能颠倒——每一项都依赖前一项。
 
-| # | 事项 | 触及文件 | 完成判据 |
-|---|---|---|---|
-| 1 | **消息历史存储**：引入 `AgentConversationStore` 协议，`AgentRuntime` 从它初始化 `messages` | 新建 `Runtime/AgentConversationStore.swift`；改 `AgentRuntime.swift:156` | 第二轮能引用第一轮的变量名；跨重启仍在 |
-| 2 | **Anthropic tool_use 实现** | `AIProvider.swift` 协议；新 `Providers/AnthropicToolUseLLMProvider.swift` | Claude provider 下 agent 循环可用 |
-| 3 | **合并 provider 解析** | `AgentPlanExecutor.swift:45-50`、`AgentToolExecutor.swift:41` | 判定与执行用同一 provider；不可用时回退 plan 模式 |
-| 4 | **agent 路径信任边界** | `AgentContextProvider.swift:41-71`、`AgentRuntime.swift:149-153` | 远端字节不进入 system role；有 mutation 测试 |
-| 5 | **输出 token 按模型取值** | `OpenAICompatibleLLMProvider.swift:122`、`AgentModelGateway.swift:28` | 推理模型不被 2000 截断 |
+**状态：5 项全部完成。**
+
+| # | 事项 | 触及文件 | 完成判据 | 结果 |
+|---|---|---|---|---|
+| 1 | **消息历史存储**：引入 `AgentConversationStore` 协议，`AgentRuntime` 从它初始化 `messages` | 新建 `Runtime/AgentConversationStore.swift`；改 `AgentRuntime.swift:156` | 第二轮能引用第一轮的变量名；跨重启仍在 | ✅ 任务 ①-A（会话级，内存；持久化留给阶段二第 7 项） |
+| 2 | **Anthropic tool_use 实现** | `AIProvider.swift` 协议；新 `Providers/AnthropicToolUseLLMProvider.swift` | Claude provider 下 agent 循环可用 | ✅ 任务 ②（`AnthropicToolWire.swift` + `ClaudeLLMProvider.toolCall`） |
+| 3 | **合并 provider 解析** | `AgentPlanExecutor.swift:45-50`、`AgentToolExecutor.swift:41` | 判定与执行用同一 provider；不可用时回退 plan 模式 | ✅ 任务 ③（一次解析；顺带删掉带自己安全流水线的死代码） |
+| 4 | **agent 路径信任边界** | `AgentContextProvider.swift:41-71`、`AgentRuntime.swift:149-153` | 远端字节不进入 system role；有 mutation 测试 | ✅ 任务 ④（按来源拆成 trusted / remote） |
+| 5 | **输出 token 按模型取值** | `OpenAICompatibleLLMProvider.swift:122`、`AgentModelGateway.swift:28` | 推理模型不被 2000 截断 | ✅ 任务 ⑤（实际更糟：最差的两条路径原本只有 500） |
 
 ### 阶段二：能力面
 
