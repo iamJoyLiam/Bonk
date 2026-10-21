@@ -119,7 +119,9 @@ final class OpenAIResponsesLLMProvider: LLMProvider, @unchecked Sendable {
         tools: [LLMToolDefinition],
         maxTokens: Int?
     ) async throws -> LLMResponse {
-        let resolvedMaxTokens = maxTokens ?? config.maxOutputTokens ?? 2000
+        let resolvedMaxTokens = OutputTokenBudget.resolve(
+            perCall: maxTokens, saved: config.maxOutputTokens, providerType: config.type
+        )
         let request = try makeRequest(
             messages: messages,
             tools: tools,
@@ -183,7 +185,9 @@ final class OpenAIResponsesLLMProvider: LLMProvider, @unchecked Sendable {
         var body: [String: Any] = [
             "model": config.model,
             "input": input,
-            "max_output_tokens": maxTokens ?? config.maxOutputTokens ?? 500,
+            "max_output_tokens": OutputTokenBudget.resolve(
+                perCall: maxTokens, saved: config.maxOutputTokens, providerType: config.type
+            ),
             "temperature": 0.0,
             "stream": stream,
         ]

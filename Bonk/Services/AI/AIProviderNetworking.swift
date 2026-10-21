@@ -118,7 +118,9 @@ enum AIProviderNetworking {
         )
         guard !endpoint.isEmpty else { throw AIError.invalidEndpoint }
 
-        let maxTokens = maxTokens ?? provider.maxOutputTokens ?? 500
+        let maxTokens = OutputTokenBudget.resolve(
+            perCall: maxTokens, saved: provider.maxOutputTokens, providerType: provider.type
+        )
         let capability = AIProviderCapabilityResolver.resolve(
             config: provider, workload: .chat
         ).capability

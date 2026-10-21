@@ -101,7 +101,9 @@ extension AIProviderNetworking {
             temperature: 0.0,
             stream: stream
         )
-        query.maxTokens = maxTokens ?? provider.maxOutputTokens ?? 4096
+        query.maxTokens = OutputTokenBudget.resolve(
+            perCall: maxTokens, saved: provider.maxOutputTokens, providerType: provider.type
+        )
         return query
     }
 
@@ -116,7 +118,9 @@ extension AIProviderNetworking {
         MessageParameter(
             model: .other(provider.model),
             messages: [.init(role: .user, content: .text(userPrompt))],
-            maxTokens: maxTokens ?? provider.maxOutputTokens ?? 500,
+            maxTokens: OutputTokenBudget.resolve(
+                perCall: maxTokens, saved: provider.maxOutputTokens, providerType: provider.type
+            ),
             system: .text(systemPrompt),
             stream: stream,
             temperature: 0.0

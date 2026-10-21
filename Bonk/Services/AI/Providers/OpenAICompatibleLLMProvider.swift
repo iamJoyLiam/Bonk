@@ -11,11 +11,15 @@ final class OpenAICompatibleLLMProvider: LLMProvider, @unchecked Sendable {
 
     private let config: AIProviderConfig
     private let apiKey: String
+    /// The session requests go through. Injectable so the request can be
+    /// exercised without a network; production uses the shared one.
+    private let session: URLSession
 
     init(
         config: AIProviderConfig,
         apiKey: String,
-        capability: LLMProviderCapability? = nil
+        capability: LLMProviderCapability? = nil,
+        session: URLSession = .shared
     ) {
         providerID = config.id
         providerName = config.displayName
@@ -24,6 +28,7 @@ final class OpenAICompatibleLLMProvider: LLMProvider, @unchecked Sendable {
         )
         self.config = config
         self.apiKey = apiKey
+        self.session = session
     }
 
     // MARK: - Chat
@@ -40,7 +45,7 @@ final class OpenAICompatibleLLMProvider: LLMProvider, @unchecked Sendable {
             maxTokens: maxTokens,
             disableReasoning: disableReasoning
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try Self.throwIfNeeded(response: response, data: data)
         let text = try AIProviderNetworking.extractResponse(from: data, type: config.type)
         return LLMResponse(text: text)
@@ -119,7 +124,9 @@ final class OpenAICompatibleLLMProvider: LLMProvider, @unchecked Sendable {
         tools: [LLMToolDefinition],
         maxTokens: Int?
     ) async throws -> LLMResponse {
-        let resolvedMaxTokens = maxTokens ?? config.maxOutputTokens ?? 2000
+        let resolvedMaxTokens = OutputTokenBudget.resolve(
+            perCall: maxTokens, saved: config.maxOutputTokens, providerType: config.type
+        )
         let request = try makeRequest(
             messages: messages,
             tools: tools,
@@ -127,7 +134,7 @@ final class OpenAICompatibleLLMProvider: LLMProvider, @unchecked Sendable {
             maxTokens: resolvedMaxTokens,
             disableReasoning: false
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try Self.throwIfNeeded(response: response, data: data)
         return try AIProviderNetworking.parseAgentTurn(from: data)
     }
@@ -172,7 +179,9 @@ final class OpenAICompatibleLLMProvider: LLMProvider, @unchecked Sendable {
 
         var body: [String: Any] = [
             "model": config.model,
-            "max_tokens": maxTokens ?? config.maxOutputTokens ?? 4096,
+            "max_tokens": OutputTokenBudget.resolve(
+                perCall: maxTokens, saved: config.maxOutputTokens, providerType: config.type
+            ),
             "temperature": 0.0,
             "messages": messages.map(\.chatCompletionsPayload),
             "stream": stream,

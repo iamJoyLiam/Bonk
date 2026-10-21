@@ -220,19 +220,19 @@ struct AnthropicToolWireTests {
 
     @Test("The provider posts a well-formed Anthropic request and parses the reply")
     func providerPostsAnAnthropicRequest() async throws {
-        AnthropicStubURLProtocol.reset()
-        defer { AnthropicStubURLProtocol.reset() }
-        AnthropicStubURLProtocol.setResponse("""
+        StubHTTPURLProtocol.reset(for: "example.invalid")
+        defer { StubHTTPURLProtocol.reset(for: "example.invalid") }
+        StubHTTPURLProtocol.setResponse("""
         {"content":[
           {"type":"text","text":"Checking."},
           {"type":"tool_use","id":"toolu_1","name":"run_command","input":{"command":"df -h"}}
         ],"stop_reason":"tool_use","usage":{"input_tokens":10,"output_tokens":5}}
-        """)
+        """, for: "example.invalid")
 
         let provider = ClaudeLLMProvider(
             config: Self.claudeConfig(),
             apiKey: "test-key",
-            session: AnthropicStubURLProtocol.makeSession()
+            session: StubHTTPURLProtocol.makeSession()
         )
 
         let turn = try await provider.toolCall(
@@ -256,7 +256,7 @@ struct AnthropicToolWireTests {
         #expect(turn.toolCalls[0].arguments["command"] as? String == "df -h")
 
         // The request was well-formed.
-        let request = try #require(AnthropicStubURLProtocol.lastRequest)
+        let request = try #require(StubHTTPURLProtocol.lastRequest(for: "example.invalid"))
         #expect(request.url.path == "/v1/messages")
         #expect(request.headers["x-api-key"] == "test-key")
         #expect(request.headers["anthropic-version"] == "2023-06-01")
@@ -296,96 +296,5 @@ struct AnthropicToolWireTests {
         )
         #expect(capability.supportsToolCalls,
                 "the default provider has to reach the agent's own feature")
-    }
-}
-
-// MARK: - Stub URL protocol
-
-/// Intercepts the provider's URLSession traffic and answers with a canned
-/// body, recording what was sent.
-final class AnthropicStubURLProtocol: URLProtocol, @unchecked Sendable {
-    struct CapturedRequest {
-        var url: URL
-        var method: String
-        var headers: [String: String]
-        var body: Data
-    }
-
-    private static let state = OSAllocatedUnfairLock<(
-        responseBody: String, lastRequest: CapturedRequest?
-    )>(uncheckedState: ("", nil))
-
-    static func reset() {
-        state.withLock { $0 = ("", nil) }
-    }
-
-    static func setResponse(_ body: String) {
-        state.withLock { $0.responseBody = body }
-    }
-
-    static var lastRequest: CapturedRequest? {
-        state.withLock { $0.lastRequest }
-    }
-
-    static func makeSession() -> URLSession {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [AnthropicStubURLProtocol.self]
-        return URLSession(configuration: configuration)
-    }
-
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-    override func startLoading() {
-        let outgoing = request
-        let target = client
-        var headers: [String: String] = [:]
-        for (key, value) in outgoing.allHTTPHeaderFields ?? [:] {
-            headers[key.lowercased()] = value
-        }
-        let captured = CapturedRequest(
-            url: outgoing.url ?? URL(string: "about:blank")!,
-            method: outgoing.httpMethod ?? "GET",
-            headers: headers,
-            body: Self.bodyData(of: outgoing)
-        )
-        let payload = Self.state.withLock { state -> Data in
-            state.lastRequest = captured
-            return Data(state.responseBody.utf8)
-        }
-        let response = HTTPURLResponse(
-            url: outgoing.url ?? URL(string: "about:blank")!,
-            statusCode: 200,
-            httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/json"]
-        )!
-        target?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        target?.urlProtocol(self, didLoad: payload)
-        target?.urlProtocolDidFinishLoading(self)
-    }
-
-    override func stopLoading() {}
-
-    /// The request body.
-    ///
-    /// A `URLProtocol` does not see `httpBody`: the loading system has
-    /// already moved it into `httpBodyStream`. Reading only `httpBody` here
-    /// records an empty body and every assertion about the request passes
-    /// vacuously.
-    private static func bodyData(of request: URLRequest) -> Data {
-        if let body = request.httpBody, !body.isEmpty { return body }
-        guard let stream = request.httpBodyStream else { return Data() }
-        stream.open()
-        defer { stream.close() }
-        var data = Data()
-        let capacity = 4096
-        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: capacity)
-        defer { buffer.deallocate() }
-        while stream.hasBytesAvailable {
-            let read = stream.read(buffer, maxLength: capacity)
-            if read <= 0 { break }
-            data.append(buffer, count: read)
-        }
-        return data
     }
 }

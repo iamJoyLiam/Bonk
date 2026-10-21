@@ -80,7 +80,9 @@ final class ClaudeLLMProvider: LLMProvider, @unchecked Sendable {
         tools: [LLMToolDefinition],
         maxTokens: Int?
     ) async throws -> LLMResponse {
-        let resolvedMaxTokens = maxTokens ?? config.maxOutputTokens ?? 4096
+        let resolvedMaxTokens = OutputTokenBudget.resolve(
+            perCall: maxTokens, saved: config.maxOutputTokens, providerType: config.type
+        )
         let request = try makeToolRequest(
             messages: messages,
             tools: tools,
