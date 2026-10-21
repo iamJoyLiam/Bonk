@@ -39,6 +39,7 @@ Bonk 的 Agent **是一个结构良好的单轮工具循环器（tool loop），
 | N-2 | agent 跑的命令**不再镜像到终端** | `AITerminalMirror.post` 只被死代码调用 | 已记录，未修 |
 | N-3 | `FoldRuntimeTests` **单独跑会挂死** | 在 `31eb73d7`（本任务 stash 掉）上同样挂死 | 已证明是既有问题，未修 |
 | N-4 | `CommandNormalizerTests/sameOperationSameKey` 既有失败 | 原始 baseline 就在失败列表里 | 未动 |
+| N-5 | Ask 路径没有项目指令 | 三个入口里两个（Quake 面板、错误诊断面板）不连主机 | 未修 |
 
 **关键判断**：Bonk 当前缺的不是"再写一个工具"，而是**状态机**——没有跨轮次的消息历史、没有可回放
 的会话、没有可声明的工具装载、没有可持久化的授权决策。这四样东西缺一，agent 就只能是 loop。
@@ -438,6 +439,11 @@ Claude Code：`permissions/PermissionRule.ts:25-40` 的规则格式 `"ToolName"`
 allowlist 应当按 `(host, command)` 二元组作用域化，且不应泄露到本地。
 
 ### P1-6 `CustomInstructions` 读错了文件系统
+
+> **状态：已修复**（任务 ⑦，见 `docs/agent-task-007-remote-project-instructions.md`）。
+> 改法：指令改从**远端主机**的工作目录读，作为 user 角色消息（Claude Code 的形状），
+> 不进 system prompt；远端工作目录严格转义，远端输出不能伪造框架。
+> **Ask 路径暂未接入**（三个入口里两个没有主机），见遗留清单 N-5。
 
 ```swift
 // Bonk/Services/Agent/CustomInstructions.swift:20
