@@ -60,7 +60,13 @@ final class AgentEngine {
     private let conversationStore: AIConversationStore
     let sanitizer = AIOutputSanitizer.self
     let executionManager: AgentExecutionManager
-    private let providerResolver: any LLMProviderResolving
+    /// The seam every provider is built through.
+    ///
+    /// Not private: the agent path lives in extensions on this type spread
+    /// across files, and the resolver's whole purpose is to be substitutable.
+    /// A direct `LLMProviderFactory.provider(...)` call in any of them
+    /// bypasses the seam and makes the agent path untestable.
+    let providerResolver: any LLMProviderResolving
 
     // Plan approval state
     var currentPlan: AgentPlan?

@@ -42,21 +42,34 @@ extension AgentEngine {
             return
         }
 
-        let useToolLoop = resolveProvider().map { resolved in
-            LLMProviderFactory.provider(
-                for: resolved.0, apiKey: resolved.1, workload: .agentToolLoop
+        // One resolution for the whole run.
+        //
+        // The decision — tool loop or plan flow — and the run itself have to
+        // be made against the same provider. Deciding on the active provider
+        // and running on the routed one is how the two drift apart, and it
+        // did: the router filters out providers that cannot tool-call, so
+        // with a non-tool-capable provider active the decision said "plan
+        // flow" even when the router had a tool-capable provider ready. The
+        // tool loop was unreachable for those users.
+        //
+        // The provider instance is built once and used for both the decision
+        // and the run, so the capability consulted is the capability of the
+        // provider that will actually answer.
+        let resolved = await resolveAgentProvider(task: .agentExecute, input: input)
+        let provider = resolved.map { config, apiKey in
+            providerResolver.provider(
+                for: config, apiKey: apiKey, workload: .agentToolLoop
             )
-                .capability.supportsToolCalls
-        } ?? false
-        if useToolLoop {
+        }
+        if let provider, provider.capability.supportsToolCalls {
             await runAgentToolLoop(
                 input: input, sshService: sshService, hybridSession: hybridSession, hostName: hostName,
-                conversation: conversation, context: context
+                conversation: conversation, context: context, provider: provider
             )
         } else {
             await runAgentLegacy(
                 input: input, sshService: sshService, hybridSession: hybridSession,
-                conversation: conversation, context: context
+                conversation: conversation, context: context, resolvedProvider: resolved
             )
         }
     }
@@ -71,7 +84,7 @@ extension AgentEngine {
             appendAgentMessage(.system, content: lastError ?? L.t(.aiNoResponse), conversation: conversation, context: context)
             return
         }
-        let llm = LLMProviderFactory.provider(for: provider, apiKey: apiKey, workload: .chat)
+        let llm = providerResolver.provider(for: provider, apiKey: apiKey, workload: .chat)
         let isGreeting = UserIntent.isGreetingOrConversational(input)
         let systemPrompt = isGreeting
             ? "You are Bonk's AI terminal assistant. The user has sent a greeting or pleasantry. Respond warmly, politely, and concisely in the user's language, introducing how you can help with server inspection, diagnostics, and running terminal commands."
@@ -100,11 +113,12 @@ extension AgentEngine {
         sshService: SSHNetworkService,
         hybridSession: TerminalSession? = nil,
         conversation: AIConversationRecord?,
-        context: ModelContext?
+        context: ModelContext?,
+        resolvedProvider: (AIProviderConfig, String)?
     ) async {
         // Phase 1: Generate plan
         guard let plan = await generatePlan(
-            conversation: conversation, context: context
+            conversation: conversation, context: context, resolvedProvider: resolvedProvider
         ) else { return }
 
         // If no steps (pure Q&A), just return
@@ -140,10 +154,11 @@ extension AgentEngine {
 
     private func generatePlan(
         conversation: AIConversationRecord?,
-        context: ModelContext?
+        context: ModelContext?,
+        resolvedProvider: (AIProviderConfig, String)?
     ) async -> AgentPlan? {
         let aiMessages = buildAgentMessages()
-        guard let (provider, apiKey) = resolveProvider() else {
+        guard let (provider, apiKey) = resolvedProvider else {
             appendAgentMessage(.system, content: lastError ?? L.t(.noProvidersConfigured),
                                conversation: conversation, context: context)
             return nil

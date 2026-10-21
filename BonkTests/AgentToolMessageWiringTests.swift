@@ -51,8 +51,44 @@ struct AgentToolMessageWiringTests {
     func remoteOutputUsesUntrusted() throws {
         let runtime = try source("Bonk/Services/Agent/Runtime/AgentRuntime.swift")
         #expect(runtime.contains("ToolMessage.untrusted(output: call.output"))
-        let legacy = try source("Bonk/Services/Agent/AgentToolExecutor.swift")
-        #expect(legacy.contains("ToolMessage.untrusted(output: outcome"))
+
+        // And the agent has exactly one place that turns a tool result into a
+        // message. A second implementation — even an unreachable one — is a
+        // hazard: it carries its own trust handling, and it is not the code
+        // the rest of this suite exercises. There was one: the legacy tool
+        // loop had no callers, so nothing tested it, and it still carried
+        // its own copy of the safety pipeline and its own trust decisions.
+        //
+        // This replaces a check that named one file and one string in it.
+        // That check could only ever pass or fail on code that never ran;
+        // this one holds for any file that grows a tool message later.
+        var offenders: [String] = []
+        for relative in agentSourceFiles() where relative != "Runtime/AgentRuntime.swift" {
+            let src = try source("Bonk/Services/Agent/\(relative)")
+            if src.contains("ToolMessage.") {
+                offenders.append(relative)
+            }
+        }
+        #expect(offenders.isEmpty,
+                "only the runtime may build tool messages; these files do too: \(offenders)")
+    }
+
+    /// Every Swift file under `Bonk/Services/Agent`, relative to that folder.
+    private func agentSourceFiles() -> [String] {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // BonkTests
+            .deletingLastPathComponent() // repo root
+            .appendingPathComponent("Bonk/Services/Agent")
+        guard let walker = FileManager.default.enumerator(
+            at: root,
+            includingPropertiesForKeys: nil
+        ) else { return [] }
+        var files: [String] = []
+        for case let url as URL in walker where url.pathExtension == "swift" {
+            let relative = url.path.replacingOccurrences(of: root.path + "/", with: "")
+            files.append(relative)
+        }
+        return files
     }
 
     @Test("Our own policy messages use the local factory, not the envelope")
