@@ -102,6 +102,12 @@ docs/*
 # audit. Tracked so an unfixed defect is recorded in the repository rather than
 # only in a conversation, which is how it gets lost.
 !docs/security-audit.md
+# AI agent capability gap: the measured distance between Bonk's agent and the
+# two reference implementations, plus the per-batch task records. Tracked for
+# the same reason as the audit ledger — the open findings are the backlog, and
+# a backlog that only exists in a conversation is a backlog that gets lost.
+!docs/agent-capability-gap.md
+!docs/agent-task-001-message-history.md
 
 # Web
 docs/FEATURE_ROADMAP.md
