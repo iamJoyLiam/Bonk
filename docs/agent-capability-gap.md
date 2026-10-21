@@ -24,6 +24,7 @@ Bonk 的 Agent **是一个结构良好的单轮工具循环器（tool loop），
 | agent 信任边界 | **已修复** (任务 ④) | 远端派生上下文被拼进 system prompt → 已按来源拆成 trusted / remote |
 | 输出 token 预算 | **已修复** (任务 ⑤) | 每轮硬截断 2000 → 已统一到一个解析点（最差的两条原本只有 500） |
 | agent 流式 | **已修复** (任务 ⑧) | `stream` 存在但没有生产调用者 → 已实现带工具的流式轮次 |
+| 进度可见 | **已修复** (任务 ⑨) | 模型看不到自己进行到第几步 → 已加任务清单工具 |
 | provider 解析 | **已修复** (任务 ③) | 判定看 active、执行看 routed → 一次解析；工具循环原本对一部分用户不可达 |
 | 扩展生态 | **P0 缺失** | MCP / Skills / 插件 三者全无，全仓零命中 |
 | 并发与委派 | **P1 缺失** | 工具严格顺序执行；无子 agent |
@@ -482,6 +483,10 @@ Pi 的 `AssistantMessageEvent` 协议每个事件都带 `partial`
 
 ### P1-8 无进度向模型可见
 
+> **状态：已修复**（任务 ⑨，见 `docs/agent-task-009-agent-task-list.md`）。
+> 给模型一个任务清单工具（`todo_write`）：模型自己写、自己更新，
+> 清单对它可见、对用户可见。顺带关掉 P2-1。
+
 `AgentState.progress` 有 `completedSteps` / `failedSteps` / `lastExitCode`，
 但**模型永远不知道自己进行到第几步**。Claude Code 有 `TodoWriteTool` + `TaskCreate/Get/Update/List`，
 Pi 的 durable 有 task graph。
@@ -492,7 +497,7 @@ Pi 的 durable 有 task graph。
 
 | # | 项 | 证据 |
 |---|---|---|
-| P2-1 | 无 todo / 任务跟踪工具 | 全仓 `todo\|tasklist\|TaskTool` 零命中 |
+| P2-1 | 无 todo / 任务跟踪工具 | 全仓 `todo\|tasklist\|TaskTool` 零命中 | ✅ **已修复**（任务 ⑨）：`todo_write` 工具 |
 | P2-2 | 无工具结果缓存 | `Services/Agent/` 内 `cache` 零命中；同一命令每次重跑 |
 | P2-3 | 无 reasoning 展示 | `AgentEvent.thinking`（`Runtime/AgentEvent.swift:43`）存在，**没有任何代码发出它** | ✅ **已修复**（任务 ⑧）：流式轮次里两种线协议的 reasoning 都会送到 |
 | P2-4 | 两套并行安全流水线 | tool loop 用 `DefaultAgentPermissionPolicy`；legacy plan 用 `CommandSafety.classify` + `isAutoExecutable`（`AgentPlanExecutor.swift:231-266`）。同一命令两套规则 | ✅ **已修复**（任务 ⑥）：计划流改走同一个 `DefaultAgentPermissionPolicy`，三档访问模式两条路径都生效 |

@@ -113,6 +113,7 @@ docs/*
 !docs/agent-task-006-permission-parity.md
 !docs/agent-task-007-remote-project-instructions.md
 !docs/agent-task-008-agent-streaming.md
+!docs/agent-task-009-agent-task-list.md
 !docs/agent-task-004-agent-context-trust-boundary.md
 !docs/agent-task-005-output-token-budget.md
 
