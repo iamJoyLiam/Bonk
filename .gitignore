@@ -128,6 +128,16 @@ docs/FEATURE_ROADMAP.md
 
 # Derived data
 /build2/
+# 散落的 DerivedData 副本（任意层级、任意名字）。
+# 规范目录是 build/，已在上面由 `build/` 覆盖；其余副本都是历史遗留，
+# 由 scripts/clean.sh 回收。
+*DerivedData/
+# 任务期临时构建输出（约定用 outputs/DerivedData/<任务名>，任务结束必须清理）
+outputs/
+# 测试结果包
+*.xcresult
+# Cargo / Rust 构建目录（任意层级）
+target/
 
 # Bonk Win / Core (Rust + Tauri + Node)
 bonk-win/node_modules/

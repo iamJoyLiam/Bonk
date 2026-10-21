@@ -331,6 +331,39 @@ Before running anything that opens a store, writes a file outside a
 temp directory, or reads a secret, ask which process will own the
 resource when it runs.
 
+## 构建产物清理 (Build Artifact Cleanup)
+
+**规范 DerivedData 目录是 `build/`** —— `scripts/release.sh` 里 xcodebuild
+实际用的就是它。`scripts/clean.sh` 会自己从 `scripts/*.sh` 解析
+`-derivedDataPath` 来确定这个目录，不要在两处各写一份路径。
+
+### 规则
+
+1. **任务收尾必须执行 `./scripts/clean.sh`。** 它删除所有散落的
+   DerivedData 副本和 24 小时前的 `*.xcresult` 测试报告，同时保留规范
+   目录 `build/` —— 增量构建不受影响。重复运行安全：第二次输出
+   `共回收: 0 MB`。
+2. **禁止在 `scripts/` 之外自行指定 `-derivedDataPath`。** 路径一旦有了
+   第二处来源，每份 800MB–1.3GB 的完整副本就会在磁盘上堆积。
+   `scripts/clean.sh` 在发现 `scripts/` 里存在多个不同的
+   `-derivedDataPath` 时会直接告警并列出冲突项。
+3. **确需临时路径时用 `outputs/DerivedData/<任务名>`，并在任务结束时清理。**
+   `outputs/` 已在 `.gitignore` 里；`./scripts/clean.sh` 的默认模式会把它
+   当作散落副本一并回收。
+
+### clean.sh 用法
+
+| 命令 | 行为 |
+| --- | --- |
+| `./scripts/clean.sh` | 删除散落的 DerivedData 副本 + 24 小时前的 `.xcresult`；**保留** `build/` |
+| `./scripts/clean.sh --dry-run` | 只报告将要删除什么，不动磁盘 |
+| `./scripts/clean.sh --deep` | 额外删除规范 `build/`、SwiftPM `.build`、Rust `target`/Cargo 缓存（下次全量重编） |
+| `./scripts/clean.sh --all` | 额外删除 `node_modules`（需重新 `npm install`） |
+
+**绝不删除**：源码、测试代码、资源文件、`Package.resolved` /
+`Podfile.lock` / `Cartfile.resolved`、规范目录（默认模式下）、
+用户未提交的改动。
+
 ## Git Rules
 - DMG files must NEVER be in git (use .gitignore)
 - Releases are uploaded to GitHub Releases only

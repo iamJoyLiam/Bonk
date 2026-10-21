@@ -223,6 +223,16 @@ struct AgentRuntimeContractTests {
         runtime.cancel()
 
         _ = await runTask.result
+        // The interrupt is dispatched from a detached task, so it can land
+        // after the run has already finished. Wait for it, bounded: the
+        // assertion below is about whether the handle was interrupted, not
+        // about how fast the interrupt arrived. Without the wait this test
+        // fails about half the time under load, which makes it a coin flip
+        // rather than a gate.
+        for _ in 0..<50 {
+            if mockHandle.wasInterrupted { break }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
         #expect(mockHandle.wasInterrupted)
     }
 

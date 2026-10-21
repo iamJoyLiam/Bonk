@@ -44,6 +44,7 @@ Bonk 的 Agent **是一个结构良好的单轮工具循环器（tool loop），
 | N-4 | `CommandNormalizerTests/sameOperationSameKey` 既有失败 | 原始 baseline 就在失败列表里 | 未动 |
 | N-5 | Ask 路径没有项目指令 | 三个入口里两个（Quake 面板、错误诊断面板）不连主机 | 未修 |
 | N-6 | trace 是 fire-and-forget，测试读事件变成竞态 | `ConfirmationFoldGate.trace` / `AgentRuntime.traceAgent` 都是 `Task { ... }` | 未修（已让多条测试时好时坏） |
+| N-7 | 取消测试在断言前**不等中断落地** | `AgentRuntime.cancel` 用游离 `Task { await executionManager.cancelActive() }` 派发中断，断言可能先跑到 | 已修（断言不变，改为有界等待；见任务 ⑪ 记录） |
 
 **关键判断**：Bonk 当前缺的不是"再写一个工具"，而是**状态机**——没有跨轮次的消息历史、没有可回放
 的会话、没有可声明的工具装载、没有可持久化的授权决策。这四样东西缺一，agent 就只能是 loop。
@@ -178,7 +179,7 @@ UI: AIChatSidebarView.submit() (AIChatSidebarView.swift:636)
 | Unicode 净化 | ● | ○ | ○ | — |
 | **扩展** ||||
 | MCP | ● 6 传输 | ● 2 传输+OAuth | **○** | 全仓零命中 |
-| Skills | ● 3 级渐进 | ● Agent Skills 规范 | **○** | — |
+| Skills | ● 3 级渐进 | ● Agent Skills 规范 | **◐** 2 级（清单 + 按需加载） | `RemoteSkills.swift`：清单在远端，正文是"指引"类信任 |
 | Hooks / 插件 | ● 27 事件 | ● ~30 事件 | **○** | — |
 | **多智能体** ||||
 | 子 agent | ● | ◐ 示例扩展 | **○** | — |
@@ -365,6 +366,15 @@ MCP server 在本地，agent 在远端，因此工具调用需要经 SSH 通道�
 
 ### P1-2 Skills / 插件 / Hooks —— 全部缺失
 
+> **状态（2026-10-21）：Skills 已实现**，见 `docs/agent-task-011-skills.md`。
+> Hooks 与插件仍未做。
+>
+> 实现要点与本节建议的出入：技能落在**远端主机的家目录**
+> `~/.bonk/skills/<name>/SKILL.md`（不是项目目录——exec 通道的工作目录不是
+> 用户 cd 到的目录）；列表在**循环之外**读（app 自己的读不是模型的命令）；
+> 列表的分段标记带**每次运行随机的 nonce**，所以技能文件无法伪造分段；
+> 技能的正文是**指引**（第三类信任 `guidance`），不是 raw 输出，也不是权威。
+
 Bonk 唯一的 "plugin" 是终端主题插件（`Bonk/Themes/ThemeRegistry.swift:24-27`），与 agent 无关。
 
 **渐进式披露**（Claude Code `src/tools/SkillTool/prompt.ts:21-29` 的三级预算）：
@@ -539,7 +549,7 @@ Pi 的 durable 有 task graph。
 | 6 | **并行工具执行** | `toolOrchestration.ts:91-177`；`agent-loop.ts:516` | 先做并行，再做子 agent |
 | 7 | **持久化会话 + 恢复** | Pi 的 JSONL 树（`docs/session-format.md`）；CC 的 `sessionStorage.ts` | 必须含 `tool_call_id`，否则不是合法 history |
 | 8 | **MCP 客户端** | `packages/mcp`（零依赖、传输无关） | **需先设计"本地 server + 远端 agent"的通道**——这是 Bonk 独有的，CC/PI 都没这个组合 |
-| 9 | **Skills** | `core/skills.ts` + `docs/skills.md` | 指令文件在远端；`read_file` 已具备基础能力 |
+| 9 | ~~**Skills**~~ ✅ | `core/skills.ts` + `docs/skills.md` | 2026-10-21 完成，见 `docs/agent-task-011-skills.md`；指令文件在远端 |
 | 10 | **allowlist（host+command 作用域）** | `PermissionRule.ts:25-40` | 按远端主机作用域化，不下沉到本地 |
 | 11 | **流式输出** | `query.ts:659-708`；`AssistantMessageEvent` | 顺带接上 `AgentEvent.thinking` |
 | 12 | **Todo / 任务跟踪工具** | `TodoWriteTool` | 成本最低、感知收益最高 |
