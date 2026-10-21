@@ -242,8 +242,26 @@ extension AgentEngine {
             appendAgentMessage(.system, content: "Step \(index + 1)/\(plan.steps.count): \(step.description)",
                                conversation: conversation, context: context)
 
-            // Safety check
-            if step.riskLevel == .blocked {
+            // Safety check.
+            //
+            // One policy, both paths. The tool loop has always decided with
+            // DefaultAgentPermissionPolicy; this path used to decide from the
+            // step's own risk level and nothing else, so the access mode —
+            // the user's own "read-only" setting — was never consulted here.
+            // A mutating step asked for confirmation instead of being
+            // refused, and in full access it asked for a confirmation the
+            // tool loop would not have asked for at all. The same command,
+            // two different rules, depending on which path ran it.
+            //
+            // The policy and the step's risk level come from the same
+            // classifier (`CommandSafety.classify`), so this changes no
+            // command's risk — only which of the user's three access modes
+            // gets applied to it.
+            let decision = permissionPolicyFactory().evaluate(
+                tool: "run_command",
+                arguments: ["command": step.command]
+            )
+            if case .blocked = decision {
                 appendAgentMessage(.system, content: String(format: L.t(.blockedStep), step.command),
                                    conversation: conversation, context: context)
                 results.append(StepResult(step: step, output: "Blocked", success: false, duration: 0))
@@ -255,7 +273,7 @@ extension AgentEngine {
             // tool loop. Folded steps skip the dialog; everything else
             // confirms exactly as before. Folded approvals never train
             // future eligibility — only explicit verdicts are recorded.
-            if !step.isAutoExecutable {
+            if case .confirmRequired = decision {
                 let riskLevel: PendingCommand.RiskLevel = step.riskLevel == .dangerous ? .dangerous : .moderate
                 let confirmed: Bool
                 if await tryFoldPlanStep(step: step, index: index, engine: foldEngine) {

@@ -33,7 +33,7 @@ extension AgentEngine {
         let contextProvider = DefaultAgentContextProvider(
             hostInfo: hostName
         )
-        let permissionPolicy = DefaultAgentPermissionPolicy(accessMode: AgentEngine.accessMode)
+        let permissionPolicy = permissionPolicyFactory()
         let runtime = AgentRuntime(
             contextProvider: contextProvider,
             modelGateway: modelGateway,

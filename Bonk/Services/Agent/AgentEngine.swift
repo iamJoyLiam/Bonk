@@ -15,7 +15,11 @@ final class AgentEngine {
     }
 
     /// Access mode for agent tool execution (Full Access, Supervised, Read-Only).
-    static var accessMode: AgentMessage.AccessMode {
+    ///
+    /// Not main-actor isolated: it reads a preference, and the permission
+    /// policy factory is called from a `Sendable` closure. Reading
+    /// `UserDefaults.standard` is thread-safe.
+    nonisolated static var accessMode: AgentMessage.AccessMode {
         let raw = UserDefaults.standard.string(forKey: "ai_agent_access_mode") ?? ""
         return AgentMessage.AccessMode(rawValue: raw) ?? .supervised
     }
@@ -67,6 +71,17 @@ final class AgentEngine {
     /// A direct `LLMProviderFactory.provider(...)` call in any of them
     /// bypasses the seam and makes the agent path untestable.
     let providerResolver: any LLMProviderResolving
+    /// Builds the permission policy for a run.
+    ///
+    /// A factory, not an instance: the access mode is a setting the user can
+    /// change while a chat is open, so it is read when a run starts rather
+    /// than when the engine is created.
+    ///
+    /// Both agent paths build their policy through this, so the same command
+    /// is judged by the same rule on either path. They used not to be: the
+    /// tool loop consulted the access mode and the plan path did not, so
+    /// "read-only" was not read-only on the plan path.
+    let permissionPolicyFactory: @Sendable () -> any AgentPermissionPolicy
 
     // Plan approval state
     var currentPlan: AgentPlan?
@@ -76,12 +91,16 @@ final class AgentEngine {
         providerStore: AIProviderStore = .shared,
         conversationStore: AIConversationStore = .shared,
         executionManager: AgentExecutionManager = .shared,
-        providerResolver: any LLMProviderResolving = DefaultLLMProviderResolver()
+        providerResolver: any LLMProviderResolving = DefaultLLMProviderResolver(),
+        permissionPolicyFactory: @escaping @Sendable () -> any AgentPermissionPolicy = {
+            DefaultAgentPermissionPolicy(accessMode: AgentEngine.accessMode)
+        }
     ) {
         self.providerStore = providerStore
         self.conversationStore = conversationStore
         self.executionManager = executionManager
         self.providerResolver = providerResolver
+        self.permissionPolicyFactory = permissionPolicyFactory
     }
 
     // MARK: - Provider Resolution
