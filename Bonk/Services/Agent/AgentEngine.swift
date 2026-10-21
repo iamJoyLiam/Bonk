@@ -34,6 +34,14 @@ final class AgentEngine {
     var activeRuntime: AgentRuntime?
     /// Cross-run per-command decision facts (Phase 1: record only).
     let decisionMemory = AgentDecisionMemory()
+    /// Model-facing conversation history for the agent loop.
+    ///
+    /// Distinct from `agentMessages`, which is the transcript the user reads.
+    /// This is what the model sees: the turns of the current conversation, in
+    /// the shape a provider accepts. The persisted SwiftData conversation
+    /// cannot serve this role — it carries no tool-call ids and maps command
+    /// output onto the `system` role.
+    let agentMessageHistory = ConversationMessageHistory()
     /// Last routed provider display name + routing source label, for the
     /// run status line. Set by resolveAgentProvider (both routed and
     /// fallback outcomes); never cleared so the last run stays visible.
@@ -372,6 +380,16 @@ final class AgentEngine {
     // MARK: - Agent Mode (Plan → Approve → Execute)
 
     // Implementation moved to AgentPlanExecutor.swift
+
+    /// Drop the model's memory of the current conversation.
+    ///
+    /// The transcript the user reads and the memory the model holds are two
+    /// different things, and both have to go for "new chat" to mean new
+    /// chat — otherwise the model keeps answering from turns the user can no
+    /// longer see.
+    func resetAgentMemory() {
+        agentMessageHistory.reset()
+    }
 
     /// Append an agent message to in-memory list and optionally persist to SwiftData.
     func appendAgentMessage(

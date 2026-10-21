@@ -607,6 +607,10 @@ struct AIChatSidebarView: View {
     func createNewConversation() {
         if selectedMode == .agent {
             engine.agentMessages = []
+            // The model's memory of this conversation goes with the
+            // transcript: "+" means a new chat, not a new first message on an
+            // old one.
+            engine.resetAgentMemory()
         } else {
             // Lazy start: drop abandoned empty drafts and reset to a fresh,
             // unpersisted state. The conversation is created on first submit,

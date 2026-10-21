@@ -32,6 +32,11 @@ final class AgentRuntime: @unchecked Sendable {
     /// Nil disables Tier 2: only the guard and Tier-1 observation run,
     /// which never break the loop on their own.
     let progressEngine: (any DecisionEngine)?
+    /// Model-facing conversation history. Nil keeps the loop stateless: every
+    /// run starts from `[system, user]` and the model cannot see its earlier
+    /// turns. Injected by the production agent path so a conversation
+    /// accumulates turns across runs.
+    let messageHistory: (any AgentMessageHistory)?
 
     private let pendingApprovals = OSAllocatedUnfairLock<[String: CheckedContinuation<Bool, Never>]>(uncheckedState: [:])
     private let activeTask = OSAllocatedUnfairLock<Task<Void, Never>?>(uncheckedState: nil)
@@ -50,7 +55,8 @@ final class AgentRuntime: @unchecked Sendable {
         maxIterations: Int = 25,
         decisionMemory: AgentDecisionMemory? = nil,
         foldEngine: (any DecisionEngine)? = nil,
-        progressEngine: (any DecisionEngine)? = nil
+        progressEngine: (any DecisionEngine)? = nil,
+        messageHistory: (any AgentMessageHistory)? = nil
     ) {
         self.contextProvider = contextProvider
         self.modelGateway = modelGateway
@@ -62,6 +68,7 @@ final class AgentRuntime: @unchecked Sendable {
         self.decisionMemory = decisionMemory
         self.foldEngine = foldEngine
         self.progressEngine = progressEngine
+        self.messageHistory = messageHistory
         self.budget = OSAllocatedUnfairLock(uncheckedState: AgentBudgetController(maxIterations: maxIterations))
     }
 
@@ -155,8 +162,18 @@ final class AgentRuntime: @unchecked Sendable {
 
         var messages: [LLMMessage] = [
             .system(systemPrompt),
-            .user(input),
         ]
+        // Prior turns of this conversation. The system prompt is rebuilt on
+        // every run — it carries the live host, the live working directory and
+        // the project instructions — so only the non-system history carries
+        // over. Without this the model sees one turn at a time and cannot
+        // refer to anything it said or ran before.
+        if let history = messageHistory {
+            messages.append(contentsOf: history.load())
+        }
+        let userTurn = LLMMessage.user(input)
+        messages.append(userTurn)
+        messageHistory?.record(userTurn)
 
         let terminationGuard = TerminationGuard()
         // Consecutive tool failures (thrown error or non-zero exit), regardless of output
@@ -223,6 +240,10 @@ final class AgentRuntime: @unchecked Sendable {
             // transcript fact only — events never enter LLM messages.
             if await maybeCompact(messages: &messages, lastUsage: response.usage) {
                 emit(.contextCompacted)
+                // Compaction rewrote the message array, so the stored history
+                // has to follow: otherwise the next run would seed itself from
+                // the uncompacted history and undo the compaction.
+                messageHistory?.replaceAll(messages.filter { $0.role != .system })
             }
 
             // Yield assistant text if present
@@ -232,16 +253,22 @@ final class AgentRuntime: @unchecked Sendable {
 
             // If model made no tool calls, it's done answering
             if response.toolCalls.isEmpty {
+                // The closing answer never enters the loop's message array —
+                // the loop ends here — but it is the conclusion of the
+                // conversation, so the next turn has to be able to see it.
+                messageHistory?.record(LLMMessage(role: .assistant, content: response.text))
                 emit(.completed)
                 return
             }
 
             // Append assistant turn to message history
-            messages.append(LLMMessage(
+            let assistantTurn = LLMMessage(
                 role: .assistant,
                 content: response.text,
                 toolCalls: response.toolCalls
-            ))
+            )
+            messages.append(assistantTurn)
+            messageHistory?.record(assistantTurn)
 
             // Execute each requested tool call
             for toolCall in response.toolCalls {
@@ -270,11 +297,17 @@ final class AgentRuntime: @unchecked Sendable {
 
         // Loop reached max iterations: ask for final synthesis
         emit(.assistantText(L.t(.agMaxRoundsReached)))
+        // Deliberately NOT recorded in the conversation history: this is an
+        // internal instruction to the model, not something the user said.
+        // The next turn must not read it as a user request.
         messages.append(.user("All terminal inspection commands have been completed. Please provide your final conclusion and answer the original request: '\(input)'. Do not call any tools."))
         if let finalTurn = try? await modelGateway.chat(messages: messages, tools: []) {
             let answer = finalTurn.text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !answer.isEmpty {
                 emit(.assistantText(answer))
+                // The conclusion itself is part of the conversation and the
+                // next turn needs it.
+                messageHistory?.record(LLMMessage(role: .assistant, content: answer))
             }
         }
         emit(.completed)
@@ -737,6 +770,17 @@ final class AgentRuntime: @unchecked Sendable {
 
     /// Applies the consecutive-failure hard stop and the repetition guard.
     /// Returns whether the loop should continue or break to final synthesis.
+    /// Append a message to the loop's message array and to the conversation
+    /// history in one place, so the two can never drift apart.
+    ///
+    /// A history that holds a different set of turns than the loop did is
+    /// worse than no history at all: the next run would seed itself from
+    /// turns the model never actually saw.
+    private func appendToHistory(_ message: LLMMessage, in messages: inout [LLMMessage]) {
+        messages.append(message)
+        messageHistory?.record(message)
+    }
+
     /// Phase 3: after a non-terminal guard outcome, the semantic progress
     /// evaluator may additionally break the loop on stalled progress. The
     /// guard stays authoritative for exact repeats and failures.
@@ -762,9 +806,9 @@ final class AgentRuntime: @unchecked Sendable {
                 let stopNote = "Tool execution failed \(failures) times in a row. "
                     + "Stopping to avoid an endless loop."
                 emit(.error(code: .generic, message: stopNote))
-                messages.append(ToolMessage.untrusted(
+                appendToHistory(ToolMessage.untrusted(
                     output: call.output, callID: call.callId, note: stopNote
-                ))
+                ), in: &messages)
                 return .breakLoop
             }
         }
@@ -775,19 +819,22 @@ final class AgentRuntime: @unchecked Sendable {
         )
         switch result {
         case .proceed:
-            messages.append(ToolMessage.untrusted(output: call.output, callID: call.callId))
+            appendToHistory(
+                ToolMessage.untrusted(output: call.output, callID: call.callId),
+                in: &messages
+            )
         case let .warnDuplicate(dupTool):
             emit(.thinking("Warning: duplicate invocation of \(dupTool)"))
-            messages.append(ToolMessage.untrusted(
+            appendToHistory(ToolMessage.untrusted(
                 output: call.output, callID: call.callId,
                 note: "Warning: Duplicate tool execution without new findings."
-            ))
+            ), in: &messages)
         case let .terminateLoop(reason):
             emit(.error(code: .generic, message: "Agent loop stopped: \(reason)"))
-            messages.append(ToolMessage.untrusted(
+            appendToHistory(ToolMessage.untrusted(
                 output: call.output, callID: call.callId,
                 note: "Warning: Repetitive tool calls detected. \(reason)"
-            ))
+            ), in: &messages)
             return .breakLoop
         }
         // Phase 3: non-terminal guard outcome — consult semantic progress.
@@ -841,10 +888,10 @@ final class AgentRuntime: @unchecked Sendable {
             }
             traceAgent(kind: .decisionResolved, engine: engine.engineName, task: "agentExecute", latencyMs: latencyMs, result: "progress-break")
             emit(.error(code: .progressStall, message: "Agent loop stopped: \(reason)"))
-            messages.append(ToolMessage.untrusted(
+            appendToHistory(ToolMessage.untrusted(
                 output: call.output, callID: call.callId,
                 note: "Warning: No meaningful progress detected. \(reason)"
-            ))
+            ), in: &messages)
             return true
         } catch {
             traceAgent(kind: .decisionFallback, engine: engine.engineName, task: "agentExecute", success: false, result: "score-error")

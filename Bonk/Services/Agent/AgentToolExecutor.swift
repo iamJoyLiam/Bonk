@@ -43,6 +43,11 @@ extension AgentEngine {
             for: provider, apiKey: apiKey, workload: .agentToolLoop
         )
 
+        // Bind the model's memory to this conversation before the run starts,
+        // so the loop begins from the conversation's prior turns instead of
+        // from a bare `[system, user]`.
+        agentMessageHistory.bind(to: conversation?.id)
+
         let modelGateway = LLMProviderModelGateway(provider: llmProvider)
         let contextProvider = DefaultAgentContextProvider(
             hostInfo: hostName
@@ -56,7 +61,8 @@ extension AgentEngine {
             maxIterations: AgentEngine.maxAgentIterations,
             decisionMemory: decisionMemory,
             foldEngine: DecisionEngineFactory.makeEffective(),
-            progressEngine: DecisionEngineFactory.makeEffective()
+            progressEngine: DecisionEngineFactory.makeEffective(),
+            messageHistory: agentMessageHistory
         )
 
         self.activeRuntime = runtime
