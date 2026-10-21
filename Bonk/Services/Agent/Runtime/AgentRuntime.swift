@@ -341,26 +341,54 @@ final class AgentRuntime: @unchecked Sendable {
             messageHistory?.record(assistantTurn)
 
             // Execute each requested tool call
-            for toolCall in response.toolCalls {
-                switch await runToolCall(
-                    toolCall,
-                    iteration: iteration,
-                    goal: input,
-                    messages: &messages,
-                    terminationGuard: terminationGuard,
-                    consecutiveFailures: &consecutiveToolFailures,
-                    executor: executor,
-                    continuation: continuation
-                ) {
-                case .next:
+            // The model can ask for several things at once. Calls that
+            // only read, and that never need a dialog, run together; the
+            // rest run alone, in the order the model asked for them.
+            for batch in ToolCallPlanner.batches(for: response.toolCalls) {
+                if batch.isParallel, batch.calls.count > 1 {
+                    switch await runParallelBatch(
+                        batch.calls,
+                        iteration: iteration,
+                        goal: input,
+                        terminationGuard: terminationGuard,
+                        consecutiveFailures: &consecutiveToolFailures,
+                        messages: &messages,
+                        executor: executor,
+                        continuation: continuation
+                    ) {
+                    case .next:
+                        continue
+                    case .breakLoop:
+                        break iterationLoop
+                    case .denied:
+                        emit(.completed)
+                        return
+                    case .halt:
+                        return
+                    }
                     continue
-                case .breakLoop:
-                    break iterationLoop
-                case .denied:
-                    emit(.completed)
-                    return
-                case .halt:
-                    return
+                }
+                for toolCall in batch.calls {
+                    switch await runToolCall(
+                        toolCall,
+                        iteration: iteration,
+                        goal: input,
+                        messages: &messages,
+                        terminationGuard: terminationGuard,
+                        consecutiveFailures: &consecutiveToolFailures,
+                        executor: executor,
+                        continuation: continuation
+                    ) {
+                    case .next:
+                        continue
+                    case .breakLoop:
+                        break iterationLoop
+                    case .denied:
+                        emit(.completed)
+                        return
+                    case .halt:
+                        return
+                    }
                 }
             }
         }
@@ -444,16 +472,33 @@ final class AgentRuntime: @unchecked Sendable {
     /// Hard stop after this many consecutive tool failures, even when outputs differ.
     private static let maxConsecutiveToolFailures = 5
 
-    private func runToolCall(
+    /// What one tool call did, before the loop evaluates it.
+    private enum PreparedCall {
+        /// The call ran and produced this.
+        case ran(ExecutedCall, exitCode: Int32)
+        /// The call did not run: the policy blocked it, or the user said
+        /// no. The message that says so is in the call's own messages.
+        case notRun(denied: Bool)
+        /// The run was cancelled.
+        case cancelled
+    }
+
+    /// Authorize a tool call and run it.
+    ///
+    /// The messages this call produces go into `messages` — which is why a
+    /// parallel caller passes a local array: two tasks writing to one
+    /// array would be a data race.
+    ///
+    /// Nothing here clears the execution manager: with calls running at
+    /// the same time, one call finishing must not clear another call's
+    /// live handle. The caller clears when the batch is done.
+    private func prepareToolCall(
         _ toolCall: LLMToolCall,
         iteration: Int,
-        goal: String,
         messages: inout [LLMMessage],
-        terminationGuard: TerminationGuard,
-        consecutiveFailures: inout Int,
-        executor: ToolExecutorFn,
+        executor: @escaping ToolExecutorFn,
         continuation: AsyncStream<AgentEvent>.Continuation
-    ) async -> ToolStepOutcome {
+    ) async -> PreparedCall {
         func emit(_ event: AgentEvent) {
             transcriptStore.append(event)
             continuation.yield(event)
@@ -461,7 +506,7 @@ final class AgentRuntime: @unchecked Sendable {
 
         if Task.isCancelled {
             emit(.executionInterrupted(reason: "Execution cancelled by user."))
-            return .halt
+            return .cancelled
         }
 
         let callId = toolCall.id
@@ -472,9 +517,9 @@ final class AgentRuntime: @unchecked Sendable {
         case let .authorized(toolCall):
             authorized = toolCall
         case .skipped:
-            return .next
+            return .notRun(denied: false)
         case .denied:
-            return .denied
+            return .notRun(denied: true)
         }
 
         // Execute tool
@@ -498,13 +543,10 @@ final class AgentRuntime: @unchecked Sendable {
         } catch {
             if Task.isCancelled {
                 emit(.executionInterrupted(reason: "Execution cancelled."))
-                return .halt
+                return .cancelled
             }
             output = "Execution failed: \(error.localizedDescription)"
             exitCode = 1
-        }
-        if !Task.isCancelled {
-            await executionManager.clearActive()
         }
 
         let duration = Date().timeIntervalSince(startTime)
@@ -541,16 +583,129 @@ final class AgentRuntime: @unchecked Sendable {
             callId: callId,
             normalizedKey: stepKey
         )
-        return await evaluateStep(
-            call,
-            exitCode: exitCode,
-            goal: goal,
+        return .ran(call, exitCode: exitCode)
+    }
+
+    /// One tool call, run and evaluated.
+    private func runToolCall(
+        _ toolCall: LLMToolCall,
+        iteration: Int,
+        goal: String,
+        messages: inout [LLMMessage],
+        terminationGuard: TerminationGuard,
+        consecutiveFailures: inout Int,
+        executor: @escaping ToolExecutorFn,
+        continuation: AsyncStream<AgentEvent>.Continuation
+    ) async -> ToolStepOutcome {
+        let prepared = await prepareToolCall(
+            toolCall,
             iteration: iteration,
-            failures: &consecutiveFailures,
-            terminationGuard: terminationGuard,
             messages: &messages,
+            executor: executor,
             continuation: continuation
         )
+        if !Task.isCancelled {
+            await executionManager.clearActive()
+        }
+        switch prepared {
+        case let .ran(call, exitCode):
+            return await evaluateStep(
+                call,
+                exitCode: exitCode,
+                goal: goal,
+                iteration: iteration,
+                failures: &consecutiveFailures,
+                terminationGuard: terminationGuard,
+                messages: &messages,
+                continuation: continuation
+            )
+        case let .notRun(denied):
+            return denied ? .denied : .next
+        case .cancelled:
+            return .halt
+        }
+    }
+
+    /// Run a batch of independent calls at the same time.
+    ///
+    /// Nothing here touches the shared message array while the calls run.
+    /// Each call collects its own messages, and they are appended — in the
+    /// order the model asked for them — once the batch is done. Two tasks
+    /// appending to one array would be a data race, and the order the
+    /// model sees must not depend on which command happened to finish
+    /// first.
+    private func runParallelBatch(
+        _ calls: [LLMToolCall],
+        iteration: Int,
+        goal: String,
+        terminationGuard: TerminationGuard,
+        consecutiveFailures: inout Int,
+        messages: inout [LLMMessage],
+        executor: @escaping ToolExecutorFn,
+        continuation: AsyncStream<AgentEvent>.Continuation
+    ) async -> ToolStepOutcome {
+        typealias Prepared = (index: Int, outcome: PreparedCall, messages: [LLMMessage])
+
+        let prepared: [Prepared] = await withTaskGroup(of: Prepared.self) { group in
+            for (index, call) in calls.enumerated() {
+                group.addTask { [self] in
+                    var localMessages: [LLMMessage] = []
+                    let outcome = await prepareToolCall(
+                        call,
+                        iteration: iteration,
+                        messages: &localMessages,
+                        executor: executor,
+                        continuation: continuation
+                    )
+                    return (index, outcome, localMessages)
+                }
+            }
+            var collected: [Prepared] = []
+            for await result in group {
+                collected.append(result)
+            }
+            // The model asked for these in an order; that order is the
+            // order the results go back in.
+            return collected.sorted { $0.index < $1.index }
+        }
+
+        if !Task.isCancelled {
+            await executionManager.clearActive()
+        }
+
+        for item in prepared {
+            for message in item.messages {
+                appendToHistory(message, in: &messages)
+            }
+            switch item.outcome {
+            case let .ran(call, exitCode):
+                let outcome = await evaluateStep(
+                    call,
+                    exitCode: exitCode,
+                    goal: goal,
+                    iteration: iteration,
+                    failures: &consecutiveFailures,
+                    terminationGuard: terminationGuard,
+                    messages: &messages,
+                    continuation: continuation
+                )
+                switch outcome {
+                case .next:
+                    continue
+                case .breakLoop:
+                    return .breakLoop
+                case .denied:
+                    return .denied
+                case .halt:
+                    return .halt
+                }
+            case let .notRun(denied):
+                if denied { return .denied }
+            case .cancelled:
+                return .halt
+            }
+        }
+        return .next
     }
 
     /// One tool argument as text.
@@ -795,9 +950,16 @@ final class AgentRuntime: @unchecked Sendable {
             ) {
                 break
             }
-            emit(.permissionRequested(id: callId, description: description, level: level, reason: reason))
+            // The channel the answer comes back on is ready **before** the
+            // question is asked.
+            //
+            // Asking first and storing second loses an answer that
+            // arrives in between: the caller answers a question the
+            // runtime is not yet listening for, and the runtime waits
+            // forever for an answer that already came and went.
             let approved = await withCheckedContinuation { cont in
                 pendingApprovals.withLock { $0[callId] = cont }
+                emit(.permissionRequested(id: callId, description: description, level: level, reason: reason))
             }
             emit(.permissionResolved(id: callId, approved: approved))
             if let memory = decisionMemory {

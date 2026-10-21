@@ -394,6 +394,14 @@ prompt 里只放 name+description+path，模型按需读 `SKILL.md`。
 
 ### P1-3 无子 agent、无并行工具执行
 
+> **状态（2026-10-22）：并行工具执行已实现**，见
+> `docs/agent-task-012-parallel-tools.md`。子 agent 仍未做。
+>
+> 实现要点与本节建议的出入：能同批的调用必须是**只读、且不会问用户**的
+> （所以屏幕上永远只有一个确认框）；并行阶段**不碰**共享的消息数组，结果按
+> **模型问的顺序**回去；执行管理器从"一个槽"改成"一组"，否则"停止"只会
+> 打断最后注册的那条命令。
+
 ```swift
 // Bonk/Services/Agent/Runtime/AgentRuntime.swift:247
 for toolCall in response.toolCalls {
@@ -546,7 +554,7 @@ Pi 的 durable 有 task graph。
 
 | # | 事项 | 参照 | 备注 |
 |---|---|---|---|
-| 6 | **并行工具执行** | `toolOrchestration.ts:91-177`；`agent-loop.ts:516` | 先做并行，再做子 agent |
+| 6 | ~~**并行工具执行**~~ ✅ | `toolOrchestration.ts:91-177`；`agent-loop.ts:516` | 2026-10-22 完成，见 `docs/agent-task-012-parallel-tools.md`；子 agent 仍未做 |
 | 7 | **持久化会话 + 恢复** | Pi 的 JSONL 树（`docs/session-format.md`）；CC 的 `sessionStorage.ts` | 必须含 `tool_call_id`，否则不是合法 history |
 | 8 | **MCP 客户端** | `packages/mcp`（零依赖、传输无关） | **需先设计"本地 server + 远端 agent"的通道**——这是 Bonk 独有的，CC/PI 都没这个组合 |
 | 9 | ~~**Skills**~~ ✅ | `core/skills.ts` + `docs/skills.md` | 2026-10-21 完成，见 `docs/agent-task-011-skills.md`；指令文件在远端 |

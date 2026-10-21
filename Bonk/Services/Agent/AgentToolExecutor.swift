@@ -75,6 +75,15 @@ extension AgentEngine {
 
         let eventStream = runtime.run(input: input, executor: executor)
 
+        // Which message belongs to which call.
+        //
+        // Calls can run at the same time, so one call's output does not
+        // necessarily arrive right after that call started, and it
+        // certainly does not arrive after the *last* call started. The
+        // call's own id is the only thing that says which message the
+        // output belongs to.
+        var messageIDByCallID: [String: UUID] = [:]
+
         for await event in eventStream {
             switch event {
             case .userMessage:
@@ -107,7 +116,7 @@ extension AgentEngine {
                     agentMessages[lastIndex].thinking = thought
                 }
 
-            case let .toolCallStarted(_, _, inputArgs):
+            case let .toolCallStarted(id, _, inputArgs):
                 let argsDict = (try? JSONSerialization.jsonObject(with: Data(inputArgs.utf8)) as? [String: Any]) ?? [:]
                 let cmd = (argsDict["command"] as? String) ?? inputArgs
                 let msg = AgentMessage(
@@ -117,6 +126,7 @@ extension AgentEngine {
                     status: .running
                 )
                 agentMessages.append(msg)
+                messageIDByCallID[id] = msg.id
 
             case let .permissionRequested(id, description, level, reason):
                 let riskLevel: PendingCommand.RiskLevel = (level == .confirmRequired ? .moderate : .dangerous)
@@ -139,15 +149,15 @@ extension AgentEngine {
                     conversation: conversation, context: context
                 )
 
-            case let .toolOutput(_, output):
-                if let lastIndex = agentMessages.indices.last, agentMessages[lastIndex].role == .commandOutput {
-                    agentMessages[lastIndex].content = output
+            case let .toolOutput(id, output):
+                if let index = Self.indexOfMessage(id, in: messageIDByCallID, messages: agentMessages) {
+                    agentMessages[index].content = output
                 }
 
-            case let .toolCompleted(_, exitCode, duration):
-                if let lastIndex = agentMessages.indices.last, agentMessages[lastIndex].role == .commandOutput {
-                    agentMessages[lastIndex].status = (exitCode == 0 ? .success : .failed)
-                    agentMessages[lastIndex].duration = duration
+            case let .toolCompleted(id, exitCode, duration):
+                if let index = Self.indexOfMessage(id, in: messageIDByCallID, messages: agentMessages) {
+                    agentMessages[index].status = (exitCode == 0 ? .success : .failed)
+                    agentMessages[index].duration = duration
                 }
 
             case let .executionInterrupted(reason):
@@ -169,5 +179,19 @@ extension AgentEngine {
                 break
             }
         }
+    }
+
+    /// The message a call's output belongs to.
+    ///
+    /// The call's id is the link: with calls running at the same time,
+    /// "the last message" is whichever call happened to start last, which
+    /// is not the call that produced this output.
+    nonisolated static func indexOfMessage(
+        _ callID: String,
+        in messageIDByCallID: [String: UUID],
+        messages: [AgentMessage]
+    ) -> Int? {
+        guard let messageID = messageIDByCallID[callID] else { return nil }
+        return messages.firstIndex { $0.id == messageID }
     }
 }

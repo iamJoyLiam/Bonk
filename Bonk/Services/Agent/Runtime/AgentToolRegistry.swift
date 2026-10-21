@@ -23,7 +23,8 @@ protocol AgentTool: Sendable {
 
 /// Standard shell command runner tool.
 struct BashRunTool: AgentTool {
-    let name = "run_command"
+    static let toolName = "run_command"
+    let name = toolName
     let description = "Run a shell command on the target system and return stdout/stderr and exit code."
 
     init() {}
@@ -65,7 +66,8 @@ struct BashRunTool: AgentTool {
 
 /// File reader tool with output guarding.
 struct ReadFileTool: AgentTool {
-    let name = "read_file"
+    static let toolName = "read_file"
+    let name = toolName
     let description = "Read content from a file at the specified path."
 
     init() {}
@@ -108,7 +110,8 @@ struct ReadFileTool: AgentTool {
 
 /// Command history search tool.
 struct SearchHistoryTool: AgentTool {
-    let name = "search_history"
+    static let toolName = "search_history"
+    let name = toolName
     let description = "Search command history for previous commands matching a query."
 
     init() {}
@@ -151,7 +154,8 @@ struct SearchHistoryTool: AgentTool {
 
 /// System state inspection tool.
 struct InspectSystemTool: AgentTool {
-    let name = "inspect_system"
+    static let toolName = "inspect_system"
+    let name = toolName
     let description = "Inspect remote system state including OS, uptime, memory, and disk usage."
 
     init() {}
@@ -185,7 +189,8 @@ struct InspectSystemTool: AgentTool {
 
 /// Directory listing tool with details.
 struct ListDirectoryTool: AgentTool {
-    let name = "list_dir"
+    static let toolName = "list_dir"
+    let name = toolName
     let description = "List files and subdirectories with details (permissions, owner, size, date)."
 
     init() {}

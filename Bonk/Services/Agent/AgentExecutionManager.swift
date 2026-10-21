@@ -118,65 +118,87 @@ public final class PTYSessionCommandHandle: CommandExecutionHandle, @unchecked S
 
 /// Actor managing active command execution handles for AI Agent tasks.
 /// Governs the escalation lifecycle: Interrupt (0x03) -> Grace Period -> Terminate -> Grace Period -> Close.
+///
+/// **A set, not a slot.** Commands can run in parallel, so more than one
+/// can be live at a time. A single slot meant the second command
+/// overwrote the first: cancelling then interrupted whichever registered
+/// last and left the other one running. That was invisible while commands
+/// ran one at a time, and wrong as soon as they do not.
 public actor AgentExecutionManager {
     public static let shared = AgentExecutionManager()
 
-    private(set) var activeHandle: (any CommandExecutionHandle)?
+    /// The live handles, in registration order.
+    private var activeHandles: [(any CommandExecutionHandle)] = []
     private var isCancelling = false
 
     public init() {}
 
     public func registerActive(_ handle: any CommandExecutionHandle) {
-        activeHandle = handle
+        activeHandles.append(handle)
         isCancelling = false
     }
 
     public func clearActive() {
-        activeHandle = nil
+        activeHandles.removeAll()
         isCancelling = false
     }
 
     public var hasActiveHandle: Bool {
-        activeHandle != nil
+        !activeHandles.isEmpty
     }
 
-    /// Cancel the active command with progressive escalation:
+    /// How many commands are live right now.
+    public var activeHandleCount: Int {
+        activeHandles.count
+    }
+
+    /// Cancel the live commands with progressive escalation:
     /// 1. Interrupt (0x03 / SIGINT)
     /// 2. 300ms grace period
     /// 3. Terminate (SIGTERM)
     /// 4. 200ms grace period
     /// 5. Force close channel / FD
+    ///
+    /// Every live command is escalated, not just one of them: the user
+    /// asked for all of them to stop.
     public func cancelActive() async {
-        guard let handle = activeHandle, !isCancelling else { return }
+        let handles = activeHandles
+        guard !handles.isEmpty, !isCancelling else { return }
         isCancelling = true
 
         Log.ai.info("[AgentExecutionManager] Initiating hard cancellation: sending interrupt (0x03)")
-        do {
-            try await handle.interrupt()
-        } catch {
-            Log.ai.warning("[AgentExecutionManager] Interrupt failed: \(error.localizedDescription)")
+        for handle in handles {
+            do {
+                try await handle.interrupt()
+            } catch {
+                Log.ai.warning("[AgentExecutionManager] Interrupt failed: \(error.localizedDescription)")
+            }
         }
 
         // Grace period (300ms)
         try? await Task.sleep(nanoseconds: 300_000_000)
 
-        guard isCancelling, activeHandle != nil else { return }
+        guard isCancelling, !activeHandles.isEmpty else { return }
 
         Log.ai.info("[AgentExecutionManager] Escalating cancellation: sending terminate (SIGTERM)")
-        do {
-            try await handle.terminate()
-        } catch {
-            Log.ai.warning("[AgentExecutionManager] Terminate failed: \(error.localizedDescription)")
+        for handle in handles {
+            do {
+                try await handle.terminate()
+            } catch {
+                Log.ai.warning("[AgentExecutionManager] Terminate failed: \(error.localizedDescription)")
+            }
         }
 
         // Grace period (200ms)
         try? await Task.sleep(nanoseconds: 200_000_000)
 
-        guard isCancelling, activeHandle != nil else { return }
+        guard isCancelling, !activeHandles.isEmpty else { return }
 
         Log.ai.info("[AgentExecutionManager] Escalating cancellation: closing channel / FD")
-        await handle.close()
-        activeHandle = nil
+        for handle in handles {
+            await handle.close()
+        }
+        activeHandles.removeAll()
         isCancelling = false
     }
 }

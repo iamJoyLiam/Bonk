@@ -236,6 +236,52 @@ struct AgentRuntimeContractTests {
         #expect(mockHandle.wasInterrupted)
     }
 
+    @Test("An answer that arrives at once is not lost")
+    func testAnswerGivenAtOnceIsNotLost() async {
+        // The question is asked and answered in the same moment. If the
+        // runtime puts the question on the wire before it can accept the
+        // answer, the answer falls on the floor and the run waits
+        // forever for an answer that already came and went.
+        let toolCall = LLMToolCall(
+            id: "call-needs-approval",
+            name: "run_command",
+            argumentsJSON: #"{"command":"touch /tmp/bonk-permission-contract"}"#
+        )
+        let gateway = MockModelGateway(responses: [
+            LLMResponse(text: "", toolCalls: [toolCall])
+        ])
+        let runtime = AgentRuntime(
+            modelGateway: gateway,
+            permissionPolicy: DefaultAgentPermissionPolicy(accessMode: .supervised)
+        )
+
+        let finished = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
+        let runTask = Task {
+            for await event in runtime.run(input: "touch it") { _, _ in ("ok", 0) } {
+                if case let .permissionRequested(id, _, _, _) = event {
+                    // The answer goes back the moment the question is
+                    // seen — the tightest timing there is.
+                    runtime.resolvePermission(id: id, approved: true)
+                }
+            }
+            finished.withLock { $0 = true }
+        }
+
+        // Bounded: a gate that hangs is worse than one that fails.
+        let deadline = Date().addingTimeInterval(10)
+        while !finished.withLock({ $0 }), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        #expect(
+            finished.withLock { $0 },
+            "the run must not wait forever for an answer that already arrived"
+        )
+        // Clean up: a run that is still waiting for an answer would
+        // otherwise keep the test host alive after this test is over.
+        runtime.cancel()
+        runTask.cancel()
+    }
+
     @Test("5. TranscriptStore records full audit history")
     func testTranscriptStoreRecordsEvents() {
         let store = AgentTranscriptStore()

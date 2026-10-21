@@ -118,6 +118,7 @@ docs/*
 !docs/agent-task-004-agent-context-trust-boundary.md
 !docs/agent-task-005-output-token-budget.md
 !docs/agent-task-011-skills.md
+!docs/agent-task-012-parallel-tools.md
 
 # Web
 docs/FEATURE_ROADMAP.md
