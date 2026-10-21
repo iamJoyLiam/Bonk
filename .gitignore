@@ -110,6 +110,7 @@ docs/*
 !docs/agent-task-001-message-history.md
 !docs/agent-task-002-anthropic-tool-use.md
 !docs/agent-task-004-agent-context-trust-boundary.md
+!docs/agent-task-005-output-token-budget.md
 
 # Web
 docs/FEATURE_ROADMAP.md

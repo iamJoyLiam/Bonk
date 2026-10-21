@@ -22,6 +22,7 @@ Bonk 的 Agent **是一个结构良好的单轮工具循环器（tool loop），
 | 对话记忆 | **已修复** (任务 ①-A) | 模型上下文每轮从 `[system, user]` 重建 → 已加会话级历史 |
 | 旗舰 provider | **已修复** (任务 ②) | Claude 是默认 provider，但 `toolCall` 抛 `not enabled yet` → 已实现 Anthropic `tool_use` |
 | agent 信任边界 | **已修复** (任务 ④) | 远端派生上下文被拼进 system prompt → 已按来源拆成 trusted / remote |
+| 输出 token 预算 | **已修复** (任务 ⑤) | 每轮硬截断 2000 → 已统一到一个解析点（最差的两条原本只有 500） |
 | 扩展生态 | **P0 缺失** | MCP / Skills / 插件 三者全无，全仓零命中 |
 | 并发与委派 | **P1 缺失** | 工具严格顺序执行；无子 agent |
 | 持久化与恢复 | **P1 缺失** | transcript 只在内存；持久化会话不是合法 tool-calling history |
@@ -296,6 +297,11 @@ if !envContext.isEmpty {
 ---
 
 ### P0-4 单轮输出被硬截断到 2000 token
+
+> **状态：已修复**（任务 ⑤，见 `docs/agent-task-005-output-token-budget.md`）。
+> 实际比报告记录的更糟：五个不同的默认值散落在代码里，同一个模型取决于走哪条路径
+> 预算就不同，最差的两条只有 **500 token**（约 350 词），长回答被从中间截断。
+> 以下保留原始分析，作为改动前的依据。
 
 **证据**：
 
