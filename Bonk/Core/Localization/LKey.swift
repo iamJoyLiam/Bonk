@@ -128,6 +128,10 @@ enum LKey: String, CaseIterable {
     case describeTask = "describe_task"
     case confirmCommand = "confirm_command"
     case execute, stop
+    case aiAllowedCommands = "ai_allowed_commands"
+    case aiAllowedCommandsDesc = "ai_allowed_commands_desc"
+    case aiNoAllowedCommands = "ai_no_allowed_commands"
+    case aiUnknownHost = "ai_unknown_host"
     case agentMode = "agent_mode"
     case agentModeDesc = "agent_mode_desc"
     case noSSHConnectionAgent = "no_ssh_connection_agent"

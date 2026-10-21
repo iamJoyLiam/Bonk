@@ -346,6 +346,27 @@ extension AIChatSidebarView {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
 
+                // A standing authorization, for this host only. The scope is
+                // the machine the command runs on: an approval here says
+                // nothing about any other host.
+                if engine.activeRunHostScope != nil {
+                    Button {
+                        if let scope = engine.activeRunHostScope {
+                            AgentAllowlist.shared.add(
+                                hostScope: scope,
+                                command: pending.command
+                            )
+                        }
+                        pending.continuation(true)
+                        engine.pendingConfirmation = nil
+                    } label: {
+                        Label(i18n.t(.alwaysAllow), systemImage: "checkmark.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help(i18n.t(.alwaysAllow))
+                }
+
                 Button {
                     pending.continuation(false)
                     engine.pendingConfirmation = nil

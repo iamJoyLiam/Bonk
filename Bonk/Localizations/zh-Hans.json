@@ -804,5 +804,9 @@
   "run_iterations": "轮次",
   "run_tokens_in": "输入 token",
   "run_tokens_out": "输出 token",
-  "run_decisions": "决策调用"
+  "run_decisions": "决策调用",
+  "ai_allowed_commands": "已授权命令",
+  "ai_allowed_commands_desc": "你说过不必再问的命令。每一条只对那台主机生效，对其他机器无效。",
+  "ai_no_allowed_commands": "没有免于确认的命令。",
+  "ai_unknown_host": "未知主机"
 }

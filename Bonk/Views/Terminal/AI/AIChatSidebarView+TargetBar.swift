@@ -52,7 +52,8 @@ extension AIChatSidebarView {
             submitAgentTask(
                 text: text, ssh: ssh, hybridSession: tab.session,
                 hostName: hostDisplayName(tab.hostItem),
-                cwd: tab.currentDirectory
+                cwd: tab.currentDirectory,
+                hostScope: tab.hostItem.id.uuidString
             )
         case .host(let hostID):
             guard let host = hosts.first(where: { $0.id == hostID }) else { return }
@@ -61,7 +62,11 @@ extension AIChatSidebarView {
                 Task {
                     do {
                         let ssh = try await connectionService.service(for: host)
-                        submitAgentTask(text: text, ssh: ssh, hybridSession: nil, hostName: hostDisplayName(host))
+                        submitAgentTask(
+                            text: text, ssh: ssh, hybridSession: nil,
+                            hostName: hostDisplayName(host),
+                            hostScope: host.id.uuidString
+                        )
                     } catch {
                         engine.agentMessages = [AgentMessage(
                             role: .system,
@@ -81,7 +86,8 @@ extension AIChatSidebarView {
         ssh: SSHNetworkService,
         hybridSession: TerminalSession? = nil,
         hostName: String,
-        cwd: String? = nil
+        cwd: String? = nil,
+        hostScope: String? = nil
     ) {
         let conversation = ensureConversation()
 
@@ -99,7 +105,8 @@ extension AIChatSidebarView {
         currentTask = Task {
             await engine.runAgent(
                 input: expanded, displayInput: text, sshService: ssh, hybridSession: hybridSession, hostName: hostName,
-                conversation: conversation, context: modelContext, cwd: cwd
+                conversation: conversation, context: modelContext, cwd: cwd,
+                hostScope: hostScope
             )
             engine.isProcessing = false
             NotificationCenter.default.post(name: .focusTerminal, object: nil)

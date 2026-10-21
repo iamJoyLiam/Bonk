@@ -18,6 +18,8 @@ struct AISettingsView: View {
     @AppStorage("ai_agent_max_iterations") private var agentMaxIterations = 25
     @AppStorage("ai_inline_provider_id") private var inlineProviderID = ""
 
+    @Query private var allHosts: [HostItem]
+
     @State private var store = AIProviderStore.shared
 
     @State private var editingProviderID: UUID?
@@ -48,6 +50,7 @@ struct AISettingsView: View {
 
                 // Agent
                 agentSection
+                allowRulesSection
 
                 // Context
                 contextSection
@@ -289,6 +292,73 @@ struct AISettingsView: View {
         let separator = i18n.lang.hasPrefix("zh") ? "；" : "; "
         return [i18n.t(.aiModeFullDesc), i18n.t(.aiModeSupervisedDesc), i18n.t(.aiModeReadonlyDesc)]
             .joined(separator: separator) + "\n" + i18n.t(.aiDirectConnectDesc)
+    }
+
+    // MARK: - Standing authorizations
+
+    /// The commands the user has said need not be asked about again.
+    ///
+    /// Scoped to the host they were granted on: an approval for one
+    /// machine says nothing about any other, and the list says so.
+    private var allowRulesSection: some View {
+        Section {
+            if AgentAllowlist.shared.rules.isEmpty {
+                Text(i18n.t(.aiNoAllowedCommands))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(allowRulesByHost, id: \.hostScope) { group in
+                    VStack(alignment: .leading, spacing: AppStyle.spacingXS) {
+                        Text(hostName(for: group.hostScope))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        ForEach(group.rules) { rule in
+                            HStack(spacing: AppStyle.spacingS) {
+                                Text(rule.displayText)
+                                    .font(.system(size: AppStyle.fontCaption, design: .monospaced))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer(minLength: 0)
+                                Button {
+                                    AgentAllowlist.shared.remove(id: rule.id)
+                                } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .buttonStyle(.borderless)
+                                .controlSize(.small)
+                            }
+                        }
+                    }
+                }
+            }
+        } header: {
+            Text(i18n.t(.aiAllowedCommands))
+        } footer: {
+            Text(i18n.t(.aiAllowedCommandsDesc))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// The rules, grouped by the host they belong to.
+    private var allowRulesByHost: [(hostScope: String, rules: [AgentAllowRule])] {
+        let rules = AgentAllowlist.shared.rules
+        let scopes = Set(rules.map(\.hostScope)).sorted()
+        return scopes.map { scope in
+            (scope, rules.filter { $0.hostScope == scope })
+        }
+    }
+
+    /// The name of the host a scope belongs to.
+    ///
+    /// The scope is the host's identifier, so the name has to be looked up —
+    /// and a scope with no host behind it (the host was deleted) says so
+    /// rather than showing a bare identifier.
+    private func hostName(for scope: String) -> String {
+        if let host = allHosts.first(where: { $0.id.uuidString == scope }) {
+            return host.name.isEmpty ? host.host : host.name
+        }
+        return i18n.t(.aiUnknownHost)
     }
 
     // MARK: - Context

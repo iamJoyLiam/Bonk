@@ -21,7 +21,8 @@ extension AgentEngine {
         conversation: AIConversationRecord?,
         context: ModelContext?,
         provider: any LLMProvider,
-        projectInstructions: String? = nil
+        projectInstructions: String? = nil,
+        hostScope: String? = nil
     ) async {
         let llmProvider = provider
 
@@ -34,7 +35,7 @@ extension AgentEngine {
         let contextProvider = DefaultAgentContextProvider(
             hostInfo: hostName
         )
-        let permissionPolicy = permissionPolicyFactory()
+        let permissionPolicy = permissionPolicyFactory(hostScope)
         let runtime = AgentRuntime(
             contextProvider: contextProvider,
             modelGateway: modelGateway,
@@ -45,16 +46,19 @@ extension AgentEngine {
             foldEngine: DecisionEngineFactory.makeEffective(),
             progressEngine: DecisionEngineFactory.makeEffective(),
             messageHistory: agentMessageHistory,
-            projectInstructions: projectInstructions
+            projectInstructions: projectInstructions,
+            hostScope: hostScope
         )
 
         self.activeRuntime = runtime
         self.activeRunAccessMode = AgentEngine.accessMode
+        self.activeRunHostScope = hostScope
         defer {
             if self.activeRuntime === runtime {
                 self.activeRuntime = nil
             }
             self.activeRunAccessMode = nil
+            self.activeRunHostScope = nil
         }
 
         let executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32) = { command, registerHandle in

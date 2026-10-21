@@ -34,6 +34,11 @@ final class AgentEngine {
 
     // Agent-specific state
     var agentMessages: [AgentMessage] = []
+    /// The host the current run is against, by stable identifier.
+    ///
+    /// Set for the duration of a run so the confirmation dialog can scope a
+    /// standing authorization to the right machine.
+    var activeRunHostScope: String?
     /// The task list the model last wrote, if it wrote one.
     ///
     /// The model owns this list; the app only shows it.
@@ -81,11 +86,15 @@ final class AgentEngine {
     /// change while a chat is open, so it is read when a run starts rather
     /// than when the engine is created.
     ///
+    /// It takes the host the run is against, because an authorization in
+    /// Bonk is an authorization *of that machine*: the standing rules the
+    /// user set up for one host must not decide anything on another.
+    ///
     /// Both agent paths build their policy through this, so the same command
     /// is judged by the same rule on either path. They used not to be: the
     /// tool loop consulted the access mode and the plan path did not, so
     /// "read-only" was not read-only on the plan path.
-    let permissionPolicyFactory: @Sendable () -> any AgentPermissionPolicy
+    let permissionPolicyFactory: @Sendable (String?) -> any AgentPermissionPolicy
 
     // Plan approval state
     var currentPlan: AgentPlan?
@@ -96,8 +105,11 @@ final class AgentEngine {
         conversationStore: AIConversationStore = .shared,
         executionManager: AgentExecutionManager = .shared,
         providerResolver: any LLMProviderResolving = DefaultLLMProviderResolver(),
-        permissionPolicyFactory: @escaping @Sendable () -> any AgentPermissionPolicy = {
-            DefaultAgentPermissionPolicy(accessMode: AgentEngine.accessMode)
+        permissionPolicyFactory: @escaping @Sendable (String?) -> any AgentPermissionPolicy = { hostScope in
+            DefaultAgentPermissionPolicy(
+                accessMode: AgentEngine.accessMode,
+                hostScope: hostScope
+            )
         }
     ) {
         self.providerStore = providerStore

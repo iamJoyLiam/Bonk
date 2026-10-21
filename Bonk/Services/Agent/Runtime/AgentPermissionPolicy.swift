@@ -26,9 +26,30 @@ protocol AgentPermissionPolicy: Sendable {
 /// - Full Access (Autonomous): L1 & L2 run automatically, L3 requires confirmation, L4 is blocked.
 struct DefaultAgentPermissionPolicy: AgentPermissionPolicy {
     let accessMode: AgentMessage.AccessMode
+    /// The host this run is authorized against.
+    ///
+    /// The host's stable identifier, never its display name. nil means the
+    /// run has no host, and then no standing authorization can apply — a
+    /// rule that is not scoped to a host covers nothing.
+    let hostScope: String?
+    /// The standing authorizations.
+    let allowlist: AgentAllowlist
 
-    init(accessMode: AgentMessage.AccessMode = .supervised) {
+    init(
+        accessMode: AgentMessage.AccessMode = .supervised,
+        hostScope: String? = nil,
+        allowlist: AgentAllowlist = .shared
+    ) {
         self.accessMode = accessMode
+        self.hostScope = hostScope
+        self.allowlist = allowlist
+    }
+
+    /// Does the user already have a standing authorization for this command
+    /// on this host?
+    private func isStandinglyAllowed(_ command: String) -> Bool {
+        guard let hostScope, !hostScope.isEmpty else { return false }
+        return allowlist.covers(command: command, hostScope: hostScope)
     }
 
     func evaluate(tool: String, arguments: [String: String]) -> PermissionDecision {
@@ -62,6 +83,12 @@ struct DefaultAgentPermissionPolicy: AgentPermissionPolicy {
             case .readOnly:
                 return .blocked(reason: "Read-only mode blocks command modifying state: \(cmd)")
             case .supervised:
+                // A standing authorization turns the question into an
+                // answer. It does not touch a refusal: read-only mode is
+                // still read-only.
+                if isStandinglyAllowed(cmd) {
+                    return .allowed
+                }
                 return .confirmRequired(level: .confirmRequired, description: "Mutating command requires approval: \(cmd)")
             case .fullAccess:
                 return .allowed
@@ -72,6 +99,9 @@ struct DefaultAgentPermissionPolicy: AgentPermissionPolicy {
             case .readOnly:
                 return .blocked(reason: "Read-only mode blocks high-risk command: \(cmd)")
             case .supervised, .fullAccess:
+                if isStandinglyAllowed(cmd) {
+                    return .allowed
+                }
                 return .confirmRequired(level: .confirmRequired, description: "High-risk command requires explicit confirmation: \(cmd)")
             }
 

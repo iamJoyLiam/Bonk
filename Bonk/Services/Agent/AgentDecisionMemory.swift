@@ -14,6 +14,24 @@ enum RecordedUserDecision: String, Sendable {
     case denied
 }
 
+/// The key a decision is remembered under.
+enum AgentMemoryKey {
+    /// Scope a key to the host it was decided on.
+    ///
+    /// An authorization is an authorization *of one machine*. Without the
+    /// scope, a verdict the user gave on one host — "yes, run
+    /// `mkdir /tmp/x` there" — would be read as a verdict for every other
+    /// host the app has ever connected to.
+    ///
+    /// The scope goes in front, behind a separator that cannot occur in a
+    /// normalized command, so two different (host, command) pairs can never
+    /// produce the same key.
+    static func scoped(_ key: String, hostScope: String?) -> String {
+        guard let hostScope, !hostScope.isEmpty else { return key }
+        return "\(hostScope)\u{1F}\(key)"
+    }
+}
+
 /// Aggregate facts for one normalized command key.
 struct CommandDecisionFacts: Sendable, Equatable {
     var occurrences = 0

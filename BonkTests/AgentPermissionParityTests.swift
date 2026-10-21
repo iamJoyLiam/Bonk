@@ -138,7 +138,7 @@ struct AgentPermissionParityTests {
         let engine = AgentEngine(
             providerStore: store,
             providerResolver: PlanProviderResolver(provider: provider),
-            permissionPolicyFactory: {
+            permissionPolicyFactory: { _ in
                 DefaultAgentPermissionPolicy(accessMode: accessMode)
             }
         )
@@ -307,7 +307,7 @@ struct AgentPermissionParityTests {
     @Test("The plan path decides through the shared policy")
     func planPathUsesTheSharedPolicy() throws {
         let plan = try source("Bonk/Services/Agent/AgentPlanExecutor.swift")
-        #expect(plan.contains("permissionPolicyFactory()"),
+        #expect(plan.contains("permissionPolicyFactory(hostScope)"),
                 "the plan path must decide through the shared policy")
         // The old decision: the step's own risk level, with no access mode
         // anywhere in sight.
@@ -320,7 +320,7 @@ struct AgentPermissionParityTests {
     @Test("The tool loop and the plan path build their policy the same way")
     func bothPathsBuildTheirPolicyTheSameWay() throws {
         let toolLoop = try source("Bonk/Services/Agent/AgentToolExecutor.swift")
-        #expect(toolLoop.contains("permissionPolicyFactory()"),
+        #expect(toolLoop.contains("permissionPolicyFactory(hostScope)"),
                 "the tool loop must build its policy through the same factory")
     }
 }

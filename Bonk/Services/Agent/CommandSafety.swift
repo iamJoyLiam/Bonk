@@ -602,7 +602,12 @@ enum CommandSafety {
 
     // MARK: - Chain Splitting
 
-    private static func splitByChainOperators(_ command: String) -> [String] {
+    /// Split a command into the segments a shell would run separately.
+    ///
+    /// Not private: the allowlist needs the same split, for the same
+    /// reason — a rule about the first segment of a chained command says
+    /// nothing about the rest of it.
+    static func splitByChainOperators(_ command: String) -> [String] {
         var segments: [String] = []
         var current = ""
         var inSingleQuote = false

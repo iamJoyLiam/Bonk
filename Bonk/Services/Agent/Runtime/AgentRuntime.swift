@@ -49,6 +49,13 @@ final class AgentRuntime: @unchecked Sendable {
     /// app's reminder tags.
     private let projectInstructions: String?
 
+    /// The host this run is against.
+    ///
+    /// The decision memory is keyed by command, and a command approved on
+    /// one machine says nothing about another. Without the scope, a verdict
+    /// the user gave on one host could carry over to the next.
+    private let hostScope: String?
+
     private let budget: OSAllocatedUnfairLock<AgentBudgetController>
     private let progressEvaluator = OSAllocatedUnfairLock(uncheckedState: ProgressEvaluator())
     private static let budgetLog = Logger(subsystem: "com.bonk", category: "AgentBudget")
@@ -65,7 +72,8 @@ final class AgentRuntime: @unchecked Sendable {
         foldEngine: (any DecisionEngine)? = nil,
         progressEngine: (any DecisionEngine)? = nil,
         messageHistory: (any AgentMessageHistory)? = nil,
-        projectInstructions: String? = nil
+        projectInstructions: String? = nil,
+        hostScope: String? = nil
     ) {
         self.contextProvider = contextProvider
         self.modelGateway = modelGateway
@@ -79,6 +87,7 @@ final class AgentRuntime: @unchecked Sendable {
         self.progressEngine = progressEngine
         self.messageHistory = messageHistory
         self.projectInstructions = projectInstructions
+        self.hostScope = hostScope
         self.budget = OSAllocatedUnfairLock(uncheckedState: AgentBudgetController(maxIterations: maxIterations))
     }
 
@@ -489,7 +498,11 @@ final class AgentRuntime: @unchecked Sendable {
         emit(.toolCompleted(id: callId, exitCode: exitCode, duration: duration))
 
         // Phase 1: populate owned state (never read back for decisions yet).
-        let stepKey = Self.stateKey(tool: toolCall.name, arguments: authorized.args)
+        let stepKey = Self.stateKey(
+            tool: toolCall.name,
+            arguments: authorized.args,
+            hostScope: hostScope
+        )
         let toolSnap = budget.withLock { lock -> (iterations: Int, toolCalls: Int, decisionCalls: Int, wallClockMs: Double, inputTokens: Int, outputTokens: Int) in
             lock.recordToolCall()
             return lock.snapshot
@@ -543,14 +556,21 @@ final class AgentRuntime: @unchecked Sendable {
     /// State key for one tool call: normalized command for run_command,
     /// tool + normalized arguments otherwise. Facts only, no raw secrets
     /// beyond what the caller already placed in arguments.
-    private static func stateKey(tool: String, arguments: [String: String]) -> String {
+    private static func stateKey(
+        tool: String,
+        arguments: [String: String],
+        hostScope: String?
+    ) -> String {
+        let base: String
         if tool == "run_command", let cmd = arguments["command"] {
-            return CommandNormalizer.normalizedKey(cmd)
+            base = CommandNormalizer.normalizedKey(cmd)
+        } else {
+            let argsKey = arguments.sorted(by: { $0.key < $1.key })
+                .map { "\($0.key)=\(CommandNormalizer.normalizedKey($0.value))" }
+                .joined(separator: " ")
+            base = argsKey.isEmpty ? tool : "\(tool) \(argsKey)"
         }
-        let argsKey = arguments.sorted(by: { $0.key < $1.key })
-            .map { "\($0.key)=\(CommandNormalizer.normalizedKey($0.value))" }
-            .joined(separator: " ")
-        return argsKey.isEmpty ? tool : "\(tool) \(argsKey)"
+        return AgentMemoryKey.scoped(base, hostScope: hostScope)
     }
 
     /// Fire-and-forget budget warning: trace + log, never enforcement.
@@ -728,7 +748,11 @@ final class AgentRuntime: @unchecked Sendable {
         let argsDict = toolCall.arguments.mapValues(Self.argumentText)
         // Phase 1: record that a confirm gate was evaluated (facts only).
         // Memory is nil in tests/legacy paths — recording is skipped then.
-        let memoryKey = Self.stateKey(tool: toolCall.name, arguments: argsDict)
+        let memoryKey = Self.stateKey(
+            tool: toolCall.name,
+            arguments: argsDict,
+            hostScope: hostScope
+        )
         switch permissionPolicy.evaluate(tool: toolCall.name, arguments: argsDict) {
         case .allowed:
             break

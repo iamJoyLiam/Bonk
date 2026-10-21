@@ -14,9 +14,10 @@ extension AgentEngine {
         hostName: String? = nil,
         conversation: AIConversationRecord? = nil,
         context: ModelContext? = nil,
-        cwd: String? = nil
+        cwd: String? = nil,
+        hostScope: String? = nil
     ) async {
-        await runAgent(input: input, displayInput: displayInput, sshService: sshService, hybridSession: nil, hostName: hostName, conversation: conversation, context: context, cwd: cwd)
+        await runAgent(input: input, displayInput: displayInput, sshService: sshService, hybridSession: nil, hostName: hostName, conversation: conversation, context: context, cwd: cwd, hostScope: hostScope)
     }
 
     /// v3.3 Hybrid overload — activeTab's TerminalSession provides multiplexed exec.
@@ -28,7 +29,8 @@ extension AgentEngine {
         hostName: String? = nil,
         conversation: AIConversationRecord? = nil,
         context: ModelContext? = nil,
-        cwd: String? = nil
+        cwd: String? = nil,
+        hostScope: String? = nil
     ) async {
         let intent = UserIntent.parse(rawInput: displayInput ?? input, defaultExecutionRequested: true)
         appendAgentMessage(.user, content: displayInput ?? input, conversation: conversation, context: context)
@@ -78,13 +80,13 @@ extension AgentEngine {
             await runAgentToolLoop(
                 input: input, sshService: sshService, hybridSession: hybridSession, hostName: hostName,
                 conversation: conversation, context: context, provider: provider,
-                projectInstructions: projectInstructions
+                projectInstructions: projectInstructions, hostScope: hostScope
             )
         } else {
             await runAgentLegacy(
                 input: input, sshService: sshService, hybridSession: hybridSession,
                 conversation: conversation, context: context, resolvedProvider: resolved,
-                projectInstructions: projectInstructions
+                projectInstructions: projectInstructions, hostScope: hostScope
             )
         }
     }
@@ -130,7 +132,8 @@ extension AgentEngine {
         conversation: AIConversationRecord?,
         context: ModelContext?,
         resolvedProvider: (AIProviderConfig, String)?,
-        projectInstructions: String? = nil
+        projectInstructions: String? = nil,
+        hostScope: String? = nil
     ) async {
         // Phase 1: Generate plan
         guard let plan = await generatePlan(
@@ -161,7 +164,7 @@ extension AgentEngine {
         // Phase 3: Execute steps (v3.3 hybrid)
         let report = await executePlan(
             plan: plan, sshService: sshService, hybridSession: hybridSession,
-            conversation: conversation, context: context
+            conversation: conversation, context: context, hostScope: hostScope
         )
 
         // Phase 4: Report
@@ -242,7 +245,8 @@ extension AgentEngine {
         hybridSession: TerminalSession? = nil,
         conversation: AIConversationRecord?,
         context: ModelContext?,
-        foldEngine: any DecisionEngine = DecisionEngineFactory.makeEffective()
+        foldEngine: any DecisionEngine = DecisionEngineFactory.makeEffective(),
+        hostScope: String? = nil
     ) async -> ExecutionReport {
         let hybridExec: (@Sendable (String, CommandHandleRegistration?) async throws -> String)? = if let session = hybridSession {
             { @Sendable command, registerHandle async throws -> String in
@@ -281,7 +285,7 @@ extension AgentEngine {
             // classifier (`CommandSafety.classify`), so this changes no
             // command's risk — only which of the user's three access modes
             // gets applied to it.
-            let decision = permissionPolicyFactory().evaluate(
+            let decision = permissionPolicyFactory(hostScope).evaluate(
                 tool: "run_command",
                 arguments: ["command": step.command]
             )
@@ -300,10 +304,15 @@ extension AgentEngine {
             if case .confirmRequired = decision {
                 let riskLevel: PendingCommand.RiskLevel = step.riskLevel == .dangerous ? .dangerous : .moderate
                 let confirmed: Bool
-                if await tryFoldPlanStep(step: step, index: index, engine: foldEngine) {
+                if await tryFoldPlanStep(
+                    step: step, index: index, engine: foldEngine, hostScope: hostScope
+                ) {
                     confirmed = true
                 } else {
-                    let stepKey = CommandNormalizer.normalizedKey(step.command)
+                    let stepKey = AgentMemoryKey.scoped(
+                        CommandNormalizer.normalizedKey(step.command),
+                        hostScope: hostScope
+                    )
                     let stepHistory = await decisionMemory.facts(for: stepKey)
                     let reason = ConfirmationReason.describe(
                         safetyLevel: "L\(step.riskLevel.level.rawValue)", history: stepHistory
@@ -391,11 +400,15 @@ extension AgentEngine {
     func tryFoldPlanStep(
         step: AgentPlan.Step,
         index: Int,
-        engine: any DecisionEngine = DecisionEngineFactory.makeEffective()
+        engine: any DecisionEngine = DecisionEngineFactory.makeEffective(),
+        hostScope: String? = nil
     ) async -> Bool {
         let level = step.riskLevel.level
         let profile = CommandEffectProfiler.profile(command: step.command)
-        let key = CommandNormalizer.normalizedKey(step.command)
+        let key = AgentMemoryKey.scoped(
+            CommandNormalizer.normalizedKey(step.command),
+            hostScope: hostScope
+        )
         await decisionMemory.recordEvaluation(key: key)
         let history = await decisionMemory.facts(for: key)
         let eligibility = ConfirmationFoldEvaluator.check(tool: "run_command", level: level, effect: profile, facts: history)
