@@ -43,6 +43,12 @@ public enum HostKeyTrustMigration {
     /// Never throws: a migration failure is logged and the app continues with the
     /// legacy table untouched.
     public static func runAtLaunch() {
+        // The canonical store is a file in Application Support — the real one,
+        // shared with any Bonk the user is running. A test host has no
+        // business writing it, and two processes writing the same trust file
+        // is a race the user never asked for.
+        guard !TestEnvironment.isRunningTests else { return }
+
         let alreadyRan = hasRun.withLockedValue { done -> Bool in
             defer { done = true }
             return done

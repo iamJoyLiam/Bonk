@@ -6,7 +6,14 @@
 
     extension OpenSSHBackend {
         /// Kill leftover `bonk-ssh` mux processes and stale control sockets at launch.
+        ///
+        /// The pattern is matched by socket path, not by ownership, so this
+        /// kills *every* mux on the machine — including the ones belonging to
+        /// a Bonk the developer is actively using. A test host is not that
+        /// Bonk, and its exit must not take the developer's live sessions
+        /// down with it.
         static func cleanupOrphanedMuxes() {
+            guard !TestEnvironment.isRunningTests else { return }
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/bin/sh")
             task.arguments = [

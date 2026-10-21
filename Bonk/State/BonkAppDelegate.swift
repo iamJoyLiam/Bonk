@@ -64,6 +64,13 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         self.coordinator = coordinator
         toolbarDelegate = BonkToolbarDelegate(coordinator: coordinator)
 
+        // A test run boots the real app, because the app hosts the test
+        // bundle. Opening the main window there would take over the
+        // developer's screen mid-work, and the Quake panel would come up on
+        // top of it. The services above are what tests actually use, so the
+        // window is the only thing withheld.
+        if TestEnvironment.isRunningTests { return }
+
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],

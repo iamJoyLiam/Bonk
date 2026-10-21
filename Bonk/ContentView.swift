@@ -463,6 +463,10 @@ struct ContentView: View {
 
 #if os(macOS)
     private func setupQuakeTerminal(with controller: QuakeController, sessionManager: SessionManager, i18n: I18n, modelContainer: ModelContainer) {
+        // The Quake panel floats above every other window, registers a system
+        // wide hotkey, and asks for accessibility permission. A test run must
+        // not do any of that to the machine it happens to be running on.
+        if TestEnvironment.isRunningTests { return }
         DispatchQueue.main.async {
             // Create a real terminal view for Quake with shared model container
             let quakeView = QuakeTerminalView(sessionManager: sessionManager)
