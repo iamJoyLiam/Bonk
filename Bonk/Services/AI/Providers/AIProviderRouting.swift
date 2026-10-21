@@ -355,8 +355,13 @@ enum AIProviderCapabilityResolver {
     ) -> ModelCapability {
         switch config.type {
         case .claude:
+            // The Anthropic Messages API has carried tool use since
+            // 2024-03, so every Claude model reaches the agent tool loop.
+            // The probe never runs for Claude (it reads OpenAI-style model
+            // metadata), so this default is the only thing that decides.
             return ModelCapability(
                 supportsStreaming: true,
+                supportsToolCalls: true,
                 reasoningSupport: .optional
             )
         case .gemini:

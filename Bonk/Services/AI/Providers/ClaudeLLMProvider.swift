@@ -9,19 +9,24 @@ final class ClaudeLLMProvider: LLMProvider, @unchecked Sendable {
 
     private let config: AIProviderConfig
     private let apiKey: String
+    /// The session the tool loop posts through. Injectable so the request
+    /// can be exercised without a network; production uses the shared one.
+    private let session: URLSession
 
     init(
         config: AIProviderConfig,
         apiKey: String,
-        capability: LLMProviderCapability? = nil
+        capability: LLMProviderCapability? = nil,
+        session: URLSession = .shared
     ) {
         providerID = config.id
         providerName = config.displayName
         self.capability = capability ?? LLMProviderCapability(
-            supportsStreaming: true, supportsToolCalls: false
+            supportsStreaming: true, supportsToolCalls: true
         )
         self.config = config
         self.apiKey = apiKey
+        self.session = session
     }
 
     func chat(
@@ -75,7 +80,66 @@ final class ClaudeLLMProvider: LLMProvider, @unchecked Sendable {
         tools: [LLMToolDefinition],
         maxTokens: Int?
     ) async throws -> LLMResponse {
-        throw AIError.unsupported("Claude tool loop is not enabled yet")
+        let resolvedMaxTokens = maxTokens ?? config.maxOutputTokens ?? 4096
+        let request = try makeToolRequest(
+            messages: messages,
+            tools: tools,
+            maxTokens: resolvedMaxTokens
+        )
+        let (data, response) = try await session.data(for: request)
+        try Self.throwIfNeeded(response: response, data: data)
+        return try AnthropicToolWire.parseResponse(data)
+    }
+
+    // MARK: - Request Building
+
+    /// The Anthropic Messages request for a tool-enabled turn.
+    ///
+    /// Built by hand rather than through SwiftAnthropic: the SDK's tool_use
+    /// input type is a typed enum, and tool arguments are arbitrary JSON.
+    /// The plain chat and streaming paths still use the SDK.
+    private func makeToolRequest(
+        messages: [LLMMessage],
+        tools: [LLMToolDefinition],
+        maxTokens: Int
+    ) throws -> URLRequest {
+        let endpoint = AIProviderNetworking.baseEndpoint(
+            config.endpoint.isEmpty ? config.type.defaultEndpoint : config.endpoint
+        )
+        guard !endpoint.isEmpty,
+              let url = URL(string: "\(endpoint)/v1/messages")
+        else { throw AIError.invalidEndpoint }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        // A tool loop turn is a full model turn, not a quick completion.
+        request.timeoutInterval = 120
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        request.setValue(
+            AIProviderNetworking.anthropicVersion,
+            forHTTPHeaderField: "anthropic-version"
+        )
+        for (key, value) in config.extraHeaders where !value.isEmpty {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+        request.httpBody = try JSONSerialization.data(
+            withJSONObject: AnthropicToolWire.requestBody(
+                messages: messages,
+                tools: tools,
+                model: config.model,
+                maxTokens: maxTokens
+            )
+        )
+        return request
+    }
+
+    private static func throwIfNeeded(response: URLResponse, data: Data) throws {
+        guard let http = response as? HTTPURLResponse else { throw AIError.invalidResponse }
+        guard http.statusCode == 200 else {
+            let preview = String(data: data.prefix(300), encoding: .utf8) ?? ""
+            throw AIError.apiError(statusCode: http.statusCode, message: preview)
+        }
     }
 
     func listModels() async throws -> [String] {

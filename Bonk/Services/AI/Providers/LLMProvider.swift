@@ -105,6 +105,19 @@ struct TokenUsage: Equatable, Sendable {
         )
         return parsed.isReported ? parsed : nil
     }
+
+    /// Anthropic Messages wire shape: {input_tokens, output_tokens}.
+    static func anthropic(from json: [String: Any]?) -> TokenUsage? {
+        guard let json else { return nil }
+        let input = json["input_tokens"] as? Int
+        let output = json["output_tokens"] as? Int
+        let parsed = TokenUsage(
+            inputTokens: input,
+            outputTokens: output,
+            totalTokens: (input ?? 0) + (output ?? 0)
+        )
+        return parsed.isReported ? parsed : nil
+    }
 }
 
 /// One model turn. `text` may be empty when the model only requested tools.
