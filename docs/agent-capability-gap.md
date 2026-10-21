@@ -25,6 +25,7 @@ Bonk 的 Agent **是一个结构良好的单轮工具循环器（tool loop），
 | 输出 token 预算 | **已修复** (任务 ⑤) | 每轮硬截断 2000 → 已统一到一个解析点（最差的两条原本只有 500） |
 | agent 流式 | **已修复** (任务 ⑧) | `stream` 存在但没有生产调用者 → 已实现带工具的流式轮次 |
 | 进度可见 | **已修复** (任务 ⑨) | 模型看不到自己进行到第几步 → 已加任务清单工具 |
+| 授权作用域 | **已修复** (任务 ⑩) | 授权没有主机作用域 → 已按主机 UUID 作用域化，并加持久化 allowlist |
 | provider 解析 | **已修复** (任务 ③) | 判定看 active、执行看 routed → 一次解析；工具循环原本对一部分用户不可达 |
 | 扩展生态 | **P0 缺失** | MCP / Skills / 插件 三者全无，全仓零命中 |
 | 并发与委派 | **P1 缺失** | 工具严格顺序执行；无子 agent |
@@ -42,6 +43,7 @@ Bonk 的 Agent **是一个结构良好的单轮工具循环器（tool loop），
 | N-3 | `FoldRuntimeTests` **单独跑会挂死** | 在 `31eb73d7`（本任务 stash 掉）上同样挂死 | 已证明是既有问题，未修 |
 | N-4 | `CommandNormalizerTests/sameOperationSameKey` 既有失败 | 原始 baseline 就在失败列表里 | 未动 |
 | N-5 | Ask 路径没有项目指令 | 三个入口里两个（Quake 面板、错误诊断面板）不连主机 | 未修 |
+| N-6 | trace 是 fire-and-forget，测试读事件变成竞态 | `ConfirmationFoldGate.trace` / `AgentRuntime.traceAgent` 都是 `Task { ... }` | 未修（已让多条测试时好时坏） |
 
 **关键判断**：Bonk 当前缺的不是"再写一个工具"，而是**状态机**——没有跨轮次的消息历史、没有可回放
 的会话、没有可声明的工具装载、没有可持久化的授权决策。这四样东西缺一，agent 就只能是 loop。
@@ -428,6 +430,12 @@ for toolCall in response.toolCalls {
   compaction 是一条 **entry** 而非一次突变
 
 ### P1-5 无持久化 allowlist / "always allow"
+
+> **状态：已修复**（任务 ⑩，见 `docs/agent-task-010-host-scoped-allowlist.md`）。
+> 实际查出**两个**问题：授权**从来没有按主机分作用域**（决策记忆的键只有命令，
+> 于是一台主机上的批准会跟着折叠门跑到另一台主机去），以及没有持久化规则。
+> 两条都修了：作用域是主机 UUID，规则只回答"要不要问"、不越过拒绝，
+> 规则形状照抄参考实现（只有 `动词 + 子命令` 才给前缀）。
 
 `DefaultAgentPermissionPolicy` 每次都从零判定。同样一条 `docker ps`，
 用户今天批准了，明天还要重新批准。
