@@ -52,6 +52,10 @@ struct RemoteTerminalState: Equatable, Sendable {
     var recentOutput: String?
     /// Current selection in the terminal.
     var selection: String?
+    /// Output of `git status` on the remote host. Remote-controlled: a
+    /// repository can carry a branch name, a commit subject, or a path that
+    /// reads like an instruction.
+    var gitStatus: String?
 
     var isEmpty: Bool {
         (currentDirectory?.isEmpty ?? true)
@@ -76,19 +80,24 @@ struct RemoteTerminalState: Equatable, Sendable {
         shell: String? = nil,
         recentCommands: [String] = [],
         recentOutput: String? = nil,
-        selection: String? = nil
+        selection: String? = nil,
+        gitStatus: String? = nil
     ) {
         self.currentDirectory = currentDirectory
         self.shell = shell
         self.recentCommands = Array(recentCommands.suffix(Self.commandLimit))
         self.recentOutput = recentOutput
         self.selection = selection
+        self.gitStatus = gitStatus
     }
 
     /// How much scrollback to carry. Enough to answer "what just happened",
     /// small enough that the model is not reading a log.
     static let outputLimit = 600
     static let commandLimit = 5
+    /// How much `git status` to carry. Branch names and subjects are short;
+    /// a hostile one is trying to be short too.
+    static let gitStatusLimit = 600
 
     /// Render as an explicitly untrusted block for a user-role message.
     ///
@@ -108,6 +117,18 @@ struct RemoteTerminalState: Equatable, Sendable {
         if !recentCommands.isEmpty {
             let cmds = recentCommands.compactMap { sanitizedScalar($0) }.joined(separator: ", ")
             if !cmds.isEmpty { fields.append("Recent commands: \(cmds)") }
+        }
+        if let git = gitStatus?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !git.isEmpty
+        {
+            // Marked as data for the same reason the scrollback is: a branch
+            // name or a commit subject is text the remote host chose.
+            let cleaned = ToolOutputEnvelope.stripMarkers(
+                String(git.prefix(Self.gitStatusLimit))
+            )
+            if !cleaned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                fields.append("Git status:\n\(cleaned)")
+            }
         }
         if let output = recentOutput?.trimmingCharacters(in: .whitespacesAndNewlines),
            !output.isEmpty {

@@ -153,10 +153,16 @@ final class AgentRuntime: @unchecked Sendable {
         }
 
         // 1. Context Assembly
-        let envContext = await contextProvider.assembleContext(input: input)
-        var basePrompt = AgentPrompts.toolSystemPrompt
-        if !envContext.isEmpty {
-            basePrompt += "\n\n## Environment Context\n\(envContext)"
+        //
+        // The system prompt is the authority role. Remote-derived state
+        // (scrollback, working directory, command history, git status) must
+        // not enter it, or a hostile host speaks in the product's voice. The
+        // trusted half goes in; the remote half rides as its own user-role
+        // message, marked as data.
+        let context = await contextProvider.assembleContext(input: input)
+        var basePrompt = AgentPrompts.toolSystemPrompt + "\n\n" + RemoteTerminalState.trustPolicy
+        if !context.trusted.isEmpty {
+            basePrompt += "\n\n## Environment Context\n\(context.trusted)"
         }
         let systemPrompt = CustomInstructions.buildSystemPrompt(base: basePrompt)
 
@@ -170,6 +176,13 @@ final class AgentRuntime: @unchecked Sendable {
         // refer to anything it said or ran before.
         if let history = messageHistory {
             messages.append(contentsOf: history.load())
+        }
+        // The remote state, as data. It is deliberately not recorded in the
+        // conversation history: it is the state of this moment, not a turn
+        // of the conversation, and a later run must not read a stale copy of
+        // it as something that was said.
+        if let untrusted = context.remote?.untrustedBlock() {
+            messages.append(.user(untrusted))
         }
         let userTurn = LLMMessage.user(input)
         messages.append(userTurn)

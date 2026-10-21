@@ -7,20 +7,44 @@
 
 import Foundation
 
+/// The environment the agent runs in, split by provenance.
+///
+/// The split is structural, not a convention. `system` is the role that
+/// carries authority, so a remote byte placed there speaks in the product's
+/// voice — that is the vulnerability, not a formatting detail. Handing
+/// callers one finished string and asking them not to append remote bytes
+/// to it is exactly the arrangement that produced the defect: the Ask path
+/// had to learn this the hard way, and the agent path was left with the
+/// same shape.
+///
+/// So the two halves are separate fields. Putting remote state in the
+/// authority role now takes rebuilding the string by hand, which is visible
+/// in a diff.
+struct AgentContext: Sendable {
+    /// App-authored facts. Safe in the authority role: the connected host's
+    /// display name is the user's own label for the machine.
+    let trusted: String
+    /// Remote-derived facts. Renders as an untrusted block for a user-role
+    /// message — never as part of the system prompt.
+    let remote: RemoteTerminalState?
+}
+
 /// Protocol for collecting environmental state into the Agent's prompt context.
 protocol AgentContextProvider: Sendable {
-    func assembleContext(input: String) async -> String
+    func assembleContext(input: String) async -> AgentContext
 }
 
 /// Default implementation collecting terminal screen, working directory, host info,
 /// command history, selected text, and git repository state.
+///
+/// The host's display name is the user's own label, so it is trusted. Every
+/// other field here came from the remote host — the scrollback, the working
+/// directory, the command history, the selection, the git status — and is
+/// carried as `RemoteTerminalState` so that it can only be rendered as
+/// untrusted data.
 struct DefaultAgentContextProvider: AgentContextProvider {
-    let terminalScreen: String?
-    let workingDirectory: String?
     let hostInfo: String?
-    let commandHistory: [String]
-    let selectedText: String?
-    let gitStatus: String?
+    private let remote: RemoteTerminalState
 
     init(
         terminalScreen: String? = nil,
@@ -30,43 +54,26 @@ struct DefaultAgentContextProvider: AgentContextProvider {
         selectedText: String? = nil,
         gitStatus: String? = nil
     ) {
-        self.terminalScreen = terminalScreen
-        self.workingDirectory = workingDirectory
         self.hostInfo = hostInfo
-        self.commandHistory = commandHistory
-        self.selectedText = selectedText
-        self.gitStatus = gitStatus
+        self.remote = RemoteTerminalState(
+            currentDirectory: workingDirectory,
+            recentCommands: commandHistory,
+            recentOutput: terminalScreen,
+            selection: selectedText,
+            gitStatus: gitStatus
+        )
     }
 
-    func assembleContext(input: String) async -> String {
-        var sections: [String] = []
-
+    func assembleContext(input: String) async -> AgentContext {
+        var trusted: [String] = []
         if let hostInfo, !hostInfo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            sections.append("### Connected Host\n\(hostInfo.trimmingCharacters(in: .whitespacesAndNewlines))")
+            trusted.append(
+                "### Connected Host\n\(hostInfo.trimmingCharacters(in: .whitespacesAndNewlines))"
+            )
         }
-
-        if let workingDirectory, !workingDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            sections.append("### Current Working Directory\n\(workingDirectory.trimmingCharacters(in: .whitespacesAndNewlines))")
-        }
-
-        if let gitStatus, !gitStatus.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            sections.append("### Git Repository Status\n\(gitStatus.trimmingCharacters(in: .whitespacesAndNewlines))")
-        }
-
-        if let selectedText, !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            sections.append("### Selected Text\n```\n\(selectedText)\n```")
-        }
-
-        if !commandHistory.isEmpty {
-            let recent = commandHistory.suffix(10).joined(separator: "\n")
-            sections.append("### Recent Terminal History\n```bash\n\(recent)\n```")
-        }
-
-        if let terminalScreen, !terminalScreen.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let guarded = OutputGuard.guardOutput(terminalScreen).content
-            sections.append("### Active Terminal Screen\n```\n\(guarded)\n```")
-        }
-
-        return sections.joined(separator: "\n\n")
+        return AgentContext(
+            trusted: trusted.joined(separator: "\n\n"),
+            remote: remote.isEmpty ? nil : remote
+        )
     }
 }
