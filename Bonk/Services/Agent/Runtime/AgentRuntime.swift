@@ -466,6 +466,11 @@ final class AgentRuntime: @unchecked Sendable {
             )
             output = execResult.output
             exitCode = execResult.exitCode
+            // The model wrote its task list: publish it, so the user can
+            // see the plan the agent is working through.
+            if authorized.tool.name == TodoWriteTool.toolName, exitCode == 0 {
+                emit(.todoListUpdated(await toolRegistry.todoStore.items))
+            }
         } catch {
             if Task.isCancelled {
                 emit(.executionInterrupted(reason: "Execution cancelled."))
@@ -518,6 +523,21 @@ final class AgentRuntime: @unchecked Sendable {
             messages: &messages,
             continuation: continuation
         )
+    }
+
+    /// One tool argument as text.
+    ///
+    /// A string argument is itself. An array or an object keeps its JSON
+    /// form, so a tool whose arguments are structured receives them intact
+    /// rather than a Swift description of them — which is not JSON and
+    /// cannot be parsed back.
+    private static func argumentText(_ value: Any) -> String {
+        if let string = value as? String { return string }
+        guard JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(withJSONObject: value),
+              let json = String(data: data, encoding: .utf8)
+        else { return "\(value)" }
+        return json
     }
 
     /// State key for one tool call: normalized command for run_command,
@@ -705,7 +725,7 @@ final class AgentRuntime: @unchecked Sendable {
         }
 
         let callId = toolCall.id
-        let argsDict = toolCall.arguments.compactMapValues { "\($0)" }
+        let argsDict = toolCall.arguments.mapValues(Self.argumentText)
         // Phase 1: record that a confirm gate was evaluated (facts only).
         // Memory is nil in tests/legacy paths — recording is skipped then.
         let memoryKey = Self.stateKey(tool: toolCall.name, arguments: argsDict)

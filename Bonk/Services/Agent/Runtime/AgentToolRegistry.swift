@@ -225,18 +225,153 @@ struct ListDirectoryTool: AgentTool {
 }
 
 /// Thread-safe registry containing declared tools available to the Agent.
+
+/// The task list tool.
+///
+/// The model writes its own checklist: what it is about to do, what it has
+/// done, and what it is doing right now. The list is the state the model
+/// can read — without it the model has to infer its position from the
+/// transcript.
+///
+/// The tool needs no permission and runs nothing. It writes to the run's
+/// store and returns the list, which is the model reading back its own
+/// plan. The content is the model's own words, so it comes back as an
+/// ordinary tool result: the same trust class as any other tool output.
+struct TodoWriteTool: AgentTool {
+    static let toolName = "todo_write"
+
+    let name = toolName
+    let description = """
+    Record the task list for the current job. Use it for work that takes     three or more distinct steps, and keep it current: write the whole list     again with one item marked in_progress, and again with it marked     completed. Exactly one item should be in_progress at a time. Skip it     for a single straightforward task.
+    """
+
+    /// Where the list is kept.
+    let store: AgentTodoStore
+
+    init(store: AgentTodoStore) {
+        self.store = store
+    }
+
+    var definition: LLMToolDefinition {
+        LLMToolDefinition(
+            name: name,
+            description: description,
+            parametersJSON: """
+            {
+              "type": "object",
+              "properties": {
+                "todos": {
+                  "type": "array",
+                  "description": "The complete task list, replacing the previous one.",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "content": {
+                        "type": "string",
+                        "description": "The task, stated as a short imperative."
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": ["pending", "in_progress", "completed"],
+                        "description": "Where the task stands."
+                      },
+                      "activeForm": {
+                        "type": "string",
+                        "description": "The task in present continuous form, e.g. 'Checking disk usage'."
+                      }
+                    },
+                    "required": ["content", "status"]
+                  }
+                }
+              },
+              "required": ["todos"]
+            }
+            """
+        )
+    }
+
+    func execute(
+        id: String,
+        arguments: [String: String],
+        executionManager: AgentExecutionManager,
+        executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
+    ) async throws -> (output: String, exitCode: Int32) {
+        guard let raw = arguments["todos"],
+              !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return ("Error: Missing 'todos' argument", 1)
+        }
+        guard let items = Self.parse(raw) else {
+            return (
+                "Error: 'todos' must be a JSON array of items, each with a 'content' string and a 'status' of pending, in_progress or completed.",
+                1
+            )
+        }
+        await store.replace(with: items)
+        return (Self.render(items), 0)
+    }
+
+    /// Parse the list the model wrote.
+    ///
+    /// Pure, because the model writes this: it can be anything, and a
+    /// malformed list has to be reported rather than crash the run.
+    static func parse(_ raw: String) -> [AgentTodoItem]? {
+        guard let data = raw.data(using: .utf8),
+              let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
+        else { return nil }
+        var items: [AgentTodoItem] = []
+        for entry in array {
+            guard let content = entry["content"] as? String,
+                  !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  let statusText = entry["status"] as? String
+            else { return nil }
+            let activeForm = (entry["activeForm"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            items.append(AgentTodoItem(
+                content: content.trimmingCharacters(in: .whitespacesAndNewlines),
+                status: AgentTodoItem.Status(modelText: statusText),
+                activeForm: (activeForm?.isEmpty == false) ? activeForm : nil
+            ))
+        }
+        return items
+    }
+
+    /// Render the list the model reads back.
+    static func render(_ items: [AgentTodoItem]) -> String {
+        guard !items.isEmpty else { return "Task list cleared." }
+        let lines = items.enumerated().map { index, item in
+            let mark = switch item.status {
+            case .completed: "x"
+            case .inProgress: "~"
+            case .pending: " "
+            }
+            return "\(index + 1). [\(mark)] \(item.content)"
+        }
+        return "Task list updated (\(items.count) items):\n" + lines.joined(separator: "\n")
+    }
+}
+
 final class AgentToolRegistry: @unchecked Sendable {
     private var tools: [String: any AgentTool] = [:]
     private let lock = NSLock()
 
-    init(tools: [any AgentTool] = [
-        BashRunTool(),
-        ReadFileTool(),
-        SearchHistoryTool(),
-        InspectSystemTool(),
-        ListDirectoryTool()
-    ]) {
-        for tool in tools {
+    /// Where the model's task list is kept.
+    ///
+    /// The registry owns it because the tool and the runtime both need it,
+    /// and the runtime has no other handle on the tools it holds.
+    let todoStore: AgentTodoStore
+
+    init(tools: [any AgentTool]? = nil, todoStore: AgentTodoStore = AgentTodoStore()) {
+        self.todoStore = todoStore
+        let registered = tools ?? [
+            BashRunTool(),
+            ReadFileTool(),
+            SearchHistoryTool(),
+            InspectSystemTool(),
+            ListDirectoryTool(),
+            TodoWriteTool(store: todoStore)
+        ]
+        for tool in registered {
             self.tools[tool.name] = tool
         }
     }

@@ -34,6 +34,10 @@ final class AgentEngine {
 
     // Agent-specific state
     var agentMessages: [AgentMessage] = []
+    /// The task list the model last wrote, if it wrote one.
+    ///
+    /// The model owns this list; the app only shows it.
+    var currentTodos: [AgentTodoItem]?
     var pendingConfirmation: PendingCommand?
     var activeRuntime: AgentRuntime?
     /// Cross-run per-command decision facts (Phase 1: record only).

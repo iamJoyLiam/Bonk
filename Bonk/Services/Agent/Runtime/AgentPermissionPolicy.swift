@@ -36,6 +36,12 @@ struct DefaultAgentPermissionPolicy: AgentPermissionPolicy {
         if tool == "read_file" || tool == "search_history" || tool == "inspect_system" || tool == "list_dir" {
             return .allowed
         }
+        // The task list runs nothing. It writes the model's own checklist to
+        // this run's memory and returns it; it never touches the target
+        // system, so there is nothing to confirm.
+        if tool == TodoWriteTool.toolName {
+            return .allowed
+        }
 
         guard tool == "run_command" || tool == "bash_run" else {
             // Unknown or generic tools default to confirm

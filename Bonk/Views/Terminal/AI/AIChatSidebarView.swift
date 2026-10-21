@@ -213,6 +213,10 @@ struct AIChatSidebarView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    // The plan the model is working through, if it wrote one.
+                    if let todos = engine.currentTodos, !todos.isEmpty {
+                        AgentTodoListCard(todos: todos)
+                    }
                     if engine.agentMessages.isEmpty, !engine.isProcessing {
                         agentEmptyState
                     }

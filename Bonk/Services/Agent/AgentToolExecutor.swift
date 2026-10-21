@@ -81,6 +81,11 @@ extension AgentEngine {
                     appendAgentMessage(.assistant, content: text, conversation: conversation, context: context)
                 }
 
+            case let .todoListUpdated(items):
+                // The model wrote its task list. The app shows it; it does
+                // not interpret it.
+                currentTodos = items
+
             case let .assistantTextDelta(delta):
                 // A piece of the answer as it arrives. Appended, not
                 // replaced: the pieces are the answer, and the user should

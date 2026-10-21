@@ -51,6 +51,12 @@ enum AgentEvent: Sendable, Equatable {
     case toolCallStarted(id: String, tool: String, input: String)
     case toolOutput(id: String, output: String)
     case toolCompleted(id: String, exitCode: Int32, duration: TimeInterval)
+    /// The model's task list, as it last wrote it.
+    ///
+    /// The model writes it; the user reads it. The items are the model's
+    /// own words, so they are shown as the model's plan and not as the
+    /// app's verdict.
+    case todoListUpdated([AgentTodoItem])
     case permissionRequested(id: String, description: String, level: PermissionLevel, reason: String)
     case permissionResolved(id: String, approved: Bool)
     /// A .confirmRequired dialog folded by the fold gate. `level` is the
