@@ -19,8 +19,8 @@ Bonk 的 Agent **是一个结构良好的单轮工具循环器（tool loop），
 
 | 维度 | 状态 | 一句话 |
 |---|---|---|
-| 对话记忆 | **P0 缺失** | 模型上下文每轮从 `[system, user]` 重建，历史只用于显示，从不回灌模型 |
-| 旗舰 provider | **P0 缺失** | Claude 是默认 provider，但 `ClaudeLLMProvider.toolCall` 直接抛 `not enabled yet` |
+| 对话记忆 | **已修复** (任务 ①-A) | 模型上下文每轮从 `[system, user]` 重建 → 已加会话级历史 |
+| 旗舰 provider | **已修复** (任务 ②) | Claude 是默认 provider，但 `toolCall` 抛 `not enabled yet` → 已实现 Anthropic `tool_use` |
 | 扩展生态 | **P0 缺失** | MCP / Skills / 插件 三者全无，全仓零命中 |
 | 并发与委派 | **P1 缺失** | 工具严格顺序执行；无子 agent |
 | 持久化与恢复 | **P1 缺失** | transcript 只在内存；持久化会话不是合法 tool-calling history |
@@ -177,6 +177,9 @@ UI: AIChatSidebarView.submit() (AIChatSidebarView.swift:636)
 
 ### P0-1 模型上下文里没有对话历史 —— 最大单一缺口
 
+> **状态：已修复**（任务 ①-A，见 `docs/agent-task-001-message-history.md`）。
+> 以下保留原始分析，作为改动前的依据。
+
 **证据**：
 
 ```swift
@@ -213,6 +216,10 @@ var messages: [LLMMessage] = [
 ---
 
 ### P0-2 Claude / Gemini / Ollama 无法使用 Agent 工具循环
+
+> **状态：Claude 已修复**（任务 ②，见 `docs/agent-task-002-anthropic-tool-use.md`）。
+> Gemini 与 Ollama 仍然抛 `not enabled yet`（原生协议未实现）。
+> 以下保留原始分析，作为改动前的依据。
 
 **证据**：
 

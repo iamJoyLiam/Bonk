@@ -108,6 +108,7 @@ docs/*
 # a backlog that only exists in a conversation is a backlog that gets lost.
 !docs/agent-capability-gap.md
 !docs/agent-task-001-message-history.md
+!docs/agent-task-002-anthropic-tool-use.md
 
 # Web
 docs/FEATURE_ROADMAP.md
