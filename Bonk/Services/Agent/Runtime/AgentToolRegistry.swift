@@ -226,6 +226,64 @@ struct ListDirectoryTool: AgentTool {
 
 /// Thread-safe registry containing declared tools available to the Agent.
 
+
+/// Load a procedure the user keeps on the connected host.
+///
+/// The name comes from the model, so it is untrusted input on its way to
+/// a path: `RemoteSkills.path(forSkill:)` accepts only names that cannot
+/// walk out of the skills directory.
+struct SkillTool: AgentTool {
+    static let toolName = "skill"
+    let name = toolName
+    let description = """
+    Load a procedure the user keeps on this host. Use it when a task calls     for one of the skills listed in the context. Pass the skill's name.
+    """
+
+    init() {}
+
+    var definition: LLMToolDefinition {
+        LLMToolDefinition(
+            name: name,
+            description: description,
+            parametersJSON: """
+            {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "The skill's name, exactly as it was listed."
+                }
+              },
+              "required": ["name"]
+            }
+            """
+        )
+    }
+
+    func execute(
+        id: String,
+        arguments: [String: String],
+        executionManager: AgentExecutionManager,
+        executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
+    ) async throws -> (output: String, exitCode: Int32) {
+        guard let skillName = arguments["name"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !skillName.isEmpty
+        else {
+            return ("Error: Missing 'name' argument", 1)
+        }
+        guard let command = RemoteSkills.readCommand(forSkill: skillName) else {
+            return ("Error: '\(skillName)' is not a valid skill name", 1)
+        }
+        let result = try await executor(command) { handle in
+            await executionManager.registerActive(handle)
+        }
+        guard result.exitCode == 0, !result.output.isEmpty else {
+            return ("Error: no skill named '\(skillName)' on this host", 1)
+        }
+        return (result.output, 0)
+    }
+}
+
 /// The task list tool.
 ///
 /// The model writes its own checklist: what it is about to do, what it has
@@ -369,7 +427,8 @@ final class AgentToolRegistry: @unchecked Sendable {
             SearchHistoryTool(),
             InspectSystemTool(),
             ListDirectoryTool(),
-            TodoWriteTool(store: todoStore)
+            TodoWriteTool(store: todoStore),
+            SkillTool()
         ]
         for tool in registered {
             self.tools[tool.name] = tool

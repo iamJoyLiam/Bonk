@@ -76,11 +76,22 @@ extension AgentEngine {
             hybridSession: hybridSession,
             cwd: cwd
         )
+        // The skills the host offers. A listing of names and descriptions,
+        // not their bodies: the model pulls a skill in when the task calls
+        // for it.
+        //
+        // Read here, where the host is known, and outside the run: this is
+        // the app's own read, not a command the model asked for.
+        let skillListing = await loadSkillListing(
+            sshService: sshService,
+            hybridSession: hybridSession
+        )
         if let provider, provider.capability.supportsToolCalls {
             await runAgentToolLoop(
                 input: input, sshService: sshService, hybridSession: hybridSession, hostName: hostName,
                 conversation: conversation, context: context, provider: provider,
-                projectInstructions: projectInstructions, hostScope: hostScope
+                projectInstructions: projectInstructions, skillListing: skillListing,
+                hostScope: hostScope
             )
         } else {
             await runAgentLegacy(

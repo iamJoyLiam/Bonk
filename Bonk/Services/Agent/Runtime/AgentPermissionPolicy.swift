@@ -63,6 +63,14 @@ struct DefaultAgentPermissionPolicy: AgentPermissionPolicy {
         if tool == TodoWriteTool.toolName {
             return .allowed
         }
+        // The skill tool reads one file from a fixed location on the host:
+        // the user's own skills directory, under a name the tool validates
+        // before it reaches a path. It is a read of the same kind as
+        // `read_file` — narrower, in fact, because the path is not the
+        // model's to choose.
+        if tool == SkillTool.toolName {
+            return .allowed
+        }
 
         guard tool == "run_command" || tool == "bash_run" else {
             // Unknown or generic tools default to confirm

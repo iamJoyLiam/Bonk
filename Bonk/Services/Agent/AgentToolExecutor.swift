@@ -22,6 +22,7 @@ extension AgentEngine {
         context: ModelContext?,
         provider: any LLMProvider,
         projectInstructions: String? = nil,
+        skillListing: String? = nil,
         hostScope: String? = nil
     ) async {
         let llmProvider = provider
@@ -47,6 +48,7 @@ extension AgentEngine {
             progressEngine: DecisionEngineFactory.makeEffective(),
             messageHistory: agentMessageHistory,
             projectInstructions: projectInstructions,
+            skillListing: skillListing,
             hostScope: hostScope
         )
 

@@ -117,6 +117,7 @@ docs/*
 !docs/agent-task-010-host-scoped-allowlist.md
 !docs/agent-task-004-agent-context-trust-boundary.md
 !docs/agent-task-005-output-token-budget.md
+!docs/agent-task-011-skills.md
 
 # Web
 docs/FEATURE_ROADMAP.md

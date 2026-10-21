@@ -359,6 +359,28 @@ final class AgentEngine {
         return result
     }
 
+    /// Read the skills the connected host offers.
+    ///
+    /// Read once, here, where the host is known, and handed to whichever
+    /// path runs — the same shape as the project's instruction files.
+    ///
+    /// A host with no skills is the normal case and must not be an error:
+    /// skills are an enhancement, never a precondition for running.
+    func loadSkillListing(
+        sshService: SSHNetworkService,
+        hybridSession: TerminalSession?
+    ) async -> String? {
+        let summaries = await RemoteSkills.load(
+            executor: { command in
+                if let session = hybridSession {
+                    return try await session.executeHybrid(command, registerHandle: nil)
+                }
+                return try await sshService.executeCommand(command)
+            }
+        )
+        return RemoteSkills.listingMessage(for: summaries)
+    }
+
     // MARK: - Non-Streaming Execution (Agent)
 
     /// This overload intentionally carries no untrusted context.

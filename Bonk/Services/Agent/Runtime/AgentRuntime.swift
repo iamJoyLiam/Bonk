@@ -49,6 +49,13 @@ final class AgentRuntime: @unchecked Sendable {
     /// app's reminder tags.
     private let projectInstructions: String?
 
+    /// The skills the host offers, as context the app injected.
+    ///
+    /// Read outside the run, like the project's instructions: the app's
+    /// own read of the host is not the model's command, and running it
+    /// inside the loop would spend a command slot and a turn on it.
+    private let skillListing: String?
+
     /// The host this run is against.
     ///
     /// The decision memory is keyed by command, and a command approved on
@@ -73,6 +80,7 @@ final class AgentRuntime: @unchecked Sendable {
         progressEngine: (any DecisionEngine)? = nil,
         messageHistory: (any AgentMessageHistory)? = nil,
         projectInstructions: String? = nil,
+        skillListing: String? = nil,
         hostScope: String? = nil
     ) {
         self.contextProvider = contextProvider
@@ -87,6 +95,7 @@ final class AgentRuntime: @unchecked Sendable {
         self.progressEngine = progressEngine
         self.messageHistory = messageHistory
         self.projectInstructions = projectInstructions
+        self.skillListing = skillListing
         self.hostScope = hostScope
         self.budget = OSAllocatedUnfairLock(uncheckedState: AgentBudgetController(maxIterations: maxIterations))
     }
@@ -207,6 +216,12 @@ final class AgentRuntime: @unchecked Sendable {
         // the whole run, and the request is the last thing read.
         if let projectInstructions {
             messages.append(.user(projectInstructions))
+        }
+        // The skills this host offers. A listing, not their bodies: the
+        // model pulls a skill in when the task calls for it, so the context
+        // window is not spent on procedures this task never needs.
+        if let skillListing {
+            messages.append(.user(skillListing))
         }
         // The remote state, as data. It is deliberately not recorded in the
         // conversation history: it is the state of this moment, not a turn
@@ -951,10 +966,20 @@ final class AgentRuntime: @unchecked Sendable {
         )
         switch result {
         case .proceed:
-            appendToHistory(
-                ToolMessage.untrusted(output: call.output, callID: call.callId),
-                in: &messages
-            )
+            // A skill's body is guidance the model is meant to follow, so it
+            // gets its own trust class. Everything else a tool returns is
+            // remote output, and stays untrusted.
+            if call.name == SkillTool.toolName {
+                appendToHistory(
+                    ToolMessage.guidance(call.output, callID: call.callId),
+                    in: &messages
+                )
+            } else {
+                appendToHistory(
+                    ToolMessage.untrusted(output: call.output, callID: call.callId),
+                    in: &messages
+                )
+            }
         case let .warnDuplicate(dupTool):
             emit(.thinking("Warning: duplicate invocation of \(dupTool)"))
             appendToHistory(ToolMessage.untrusted(
