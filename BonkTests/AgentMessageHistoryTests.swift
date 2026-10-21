@@ -156,7 +156,7 @@ struct AgentMessageHistoryTests {
         )
         await run(runtime, input: "look around")
 
-        let stored = history.load()
+        let stored = await history.load()
         #expect(stored.contains { $0.role == .assistant && $0.content == "the answer" },
                 "the conclusion must survive for the next turn")
         #expect(!stored.contains { $0.role == .user && $0.content.contains("All terminal inspection commands") },
@@ -239,7 +239,7 @@ struct AgentMessageHistoryTests {
         )
         await run(runtime, input: "first")
 
-        #expect(history.load().isEmpty,
+        #expect(await history.load().isEmpty,
                 "a run with no conversation must not accumulate history to leak")
     }
 
@@ -255,16 +255,16 @@ struct AgentMessageHistoryTests {
             messageHistory: history
         )
         await run(first, input: "remember banana")
-        #expect(!history.load().isEmpty)
+        #expect(await !history.load().isEmpty)
 
         history.reset()
-        #expect(history.load().isEmpty, "reset must clear the remembered turns")
+        #expect(await history.load().isEmpty, "reset must clear the remembered turns")
     }
 
     // MARK: - 2. Pure: the projection rules
 
     @Test("Recording a tool call before its result does not lose the turn")
-    func halfWrittenTurnSurvivesTheWrite() {
+    func halfWrittenTurnSurvivesTheWrite() async {
         // A turn is written in pieces: the assistant asks for a tool call, and
         // the result only arrives afterwards. If the store projected on every
         // write, the assistant half would read as an unanswered call and be
@@ -273,23 +273,23 @@ struct AgentMessageHistoryTests {
         let history = ConversationMessageHistory()
         history.bind(to: UUID())
 
-        history.record(.user("check it"))
-        history.record(LLMMessage(
+        await history.record(.user("check it"))
+        await history.record(LLMMessage(
             role: .assistant, content: "",
             toolCalls: [Self.toolCall(id: "call-1", command: "uptime")]
         ))
 
         // Read while the turn is still open: an unanswered tool call must not
         // be handed to a provider, which would reject the whole request.
-        let openTurn = history.load()
+        let openTurn = await history.load()
         #expect(!openTurn.contains {
             $0.role == .assistant && ($0.toolCalls?.contains { $0.id == "call-1" } ?? false)
         }, "an unanswered tool call must not reach the provider")
 
         // The result arrives and pairs with the assistant half.
-        history.record(LLMMessage(role: .tool, content: "up 3 days", toolCallID: "call-1"))
+        await history.record(LLMMessage(role: .tool, content: "up 3 days", toolCallID: "call-1"))
 
-        let closedTurn = history.load()
+        let closedTurn = await history.load()
         #expect(closedTurn.contains {
             $0.role == .assistant && ($0.toolCalls?.contains { $0.id == "call-1" } ?? false)
         }, "the assistant half must still be there once the result arrives")
@@ -419,8 +419,12 @@ struct AgentMessageHistoryTests {
         let executor = try source("Bonk/Services/Agent/AgentToolExecutor.swift")
         #expect(executor.contains("agentMessageHistory.bind(to: conversation?.id)"),
                 "the agent path must bind the model's memory to the conversation before the run")
-        #expect(executor.contains("messageHistory: agentMessageHistory"),
+        #expect(executor.contains("messageHistory: messageHistory"),
                 "the agent path must inject the conversation history into the runtime")
+        // The history the run gets is the one that survives a restart:
+        // the store's, when there is a store to write to.
+        #expect(executor.contains("PersistentAgentMessageHistory("),
+                "the agent path must use the stored history, or a restart starts from nothing")
     }
 
     @Test("The runtime reads the history it was given")

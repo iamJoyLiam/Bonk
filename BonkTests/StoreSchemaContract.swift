@@ -30,6 +30,7 @@ enum StoreSchemaContract {
         "AIConversationRecord",
         "AIMessageRecord",
         "AIProviderRecord",
+        "AgentTurnRecord",
         "Snippet",
         "PortForward",
         "JumpHost",

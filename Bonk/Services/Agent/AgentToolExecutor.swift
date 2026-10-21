@@ -27,10 +27,25 @@ extension AgentEngine {
     ) async {
         let llmProvider = provider
 
-        // Bind the model's memory to this conversation before the run starts,
-        // so the loop begins from the conversation's prior turns instead of
-        // from a bare `[system, user]`.
-        agentMessageHistory.bind(to: conversation?.id)
+        // The model's memory of this conversation, so the loop begins from
+        // the conversation's prior turns instead of from a bare
+        // `[system, user]`.
+        //
+        // When the conversation and the store are both there, the memory
+        // is the **stored** one: a run that starts from a conversation the
+        // app has forgotten is not a continuation, it is a first turn that
+        // happens to look like a second one. Without a store to write to,
+        // the in-memory history is the best there is.
+        let messageHistory: (any AgentMessageHistory)?
+        if let conversation, let context {
+            messageHistory = PersistentAgentMessageHistory(
+                context: context,
+                conversation: conversation
+            )
+        } else {
+            agentMessageHistory.bind(to: conversation?.id)
+            messageHistory = agentMessageHistory
+        }
 
         let modelGateway = LLMProviderModelGateway(provider: llmProvider)
         let contextProvider = DefaultAgentContextProvider(
@@ -46,7 +61,7 @@ extension AgentEngine {
             decisionMemory: decisionMemory,
             foldEngine: DecisionEngineFactory.makeEffective(),
             progressEngine: DecisionEngineFactory.makeEffective(),
-            messageHistory: agentMessageHistory,
+            messageHistory: messageHistory,
             projectInstructions: projectInstructions,
             skillListing: skillListing,
             hostScope: hostScope

@@ -429,13 +429,23 @@ for toolCall in response.toolCalls {
 
 ### P1-4 无会话持久化 / 恢复
 
+> **状态（2026-10-22）：已实现**，见 `docs/agent-task-013-session-persistence.md`。
+>
+> 关键点：模型的视图和**显示记录分开存**（新表 `AgentTurnRecord` ✗）——
+> 显示用的气泡列表**不是**合法的 tool-calling history ✗，provider 会拒绝
+> "结果对不上调用"的历史 ✗，所以一份气泡记录根本发不回模型 ✗。分开存还让
+> 压缩只重写模型的那份 ✗，一个气泡都不碰 ✓。
+>
+> 还没做：会话**树**（Pi 的 `parentId` / `context_edit` ✗）、决策记忆持久化 ✗、
+> 操作日志持久化 ✗、非 agent 路径 ✗。
+
 | 层 | 存储 | 可恢复 |
 |---|---|---|
 | `AgentTranscriptStore` | 内存 `[AgentEvent]` | 否 |
 | `AgentState` | 内存（每次运行） | 否 |
 | `AgentDecisionMemory` | 内存 actor（跨运行） | 否——重启即失 |
 | `OperationLog` | 内存最近 50 条 | 否 |
-| UI 会话 | SwiftData | **仅显示** |
+| **模型视图（新增）** | **SwiftData `AgentTurnRecord`** | **是** |
 
 且持久化的 agent 消息存为 `commandOutput` / `system` role，**没有 `tool_call_id` 关联**
 （`AgentToolExecutor.swift:132-141`），因此即使读回来也**不构成合法的 tool-calling history**。
@@ -555,7 +565,7 @@ Pi 的 durable 有 task graph。
 | # | 事项 | 参照 | 备注 |
 |---|---|---|---|
 | 6 | ~~**并行工具执行**~~ ✅ | `toolOrchestration.ts:91-177`；`agent-loop.ts:516` | 2026-10-22 完成，见 `docs/agent-task-012-parallel-tools.md`；子 agent 仍未做 |
-| 7 | **持久化会话 + 恢复** | Pi 的 JSONL 树（`docs/session-format.md`）；CC 的 `sessionStorage.ts` | 必须含 `tool_call_id`，否则不是合法 history |
+| 7 | ~~**持久化会话 + 恢复**~~ ✅ | Pi 的 JSONL 树（`docs/session-format.md`）；CC 的 `sessionStorage.ts` | 2026-10-22 完成，见 `docs/agent-task-013-session-persistence.md`；**含 `tool_call_id`** ✓ |
 | 8 | **MCP 客户端** | `packages/mcp`（零依赖、传输无关） | **需先设计"本地 server + 远端 agent"的通道**——这是 Bonk 独有的，CC/PI 都没这个组合 |
 | 9 | ~~**Skills**~~ ✅ | `core/skills.ts` + `docs/skills.md` | 2026-10-21 完成，见 `docs/agent-task-011-skills.md`；指令文件在远端 |
 | 10 | **allowlist（host+command 作用域）** | `PermissionRule.ts:25-40` | 按远端主机作用域化，不下沉到本地 |

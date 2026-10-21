@@ -15,9 +15,14 @@ import Testing
 struct StoreFactoryTests {
     @Test("Schema entity list matches the schema literal")
     func schemaListIsConsistent() {
-        // Both must describe the same 15 entities. A divergence here is how an
+        // Both must describe the same 16 entities. A divergence here is how an
         // entity silently loses its table on the next migration.
-        #expect(BonkStore.Schema.entityNames.count == 15)
+        //
+        // The count is on purpose: adding an entity means touching this
+        // number, which is one more place a half-finished migration shows
+        // up. `AgentTurnRecord` (the model's view of a conversation) was
+        // the sixteenth.
+        #expect(BonkStore.Schema.entityNames.count == 16)
         #expect(Set(BonkStore.Schema.entityNames).count == BonkStore.Schema.entityNames.count,
                 "duplicate entity in the schema contract")
     }

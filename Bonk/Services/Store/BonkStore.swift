@@ -41,6 +41,7 @@ enum BonkStore {
             SwiftData.Schema([
                 HostItem.self, UserPreferences.self, Credential.self, HostGroup.self,
                 AIConversationRecord.self, AIMessageRecord.self, AIProviderRecord.self,
+                AgentTurnRecord.self,
                 Snippet.self, PortForward.self, JumpHost.self, InlineSuggestionRecord.self,
                 SSHBackendProfile.self, TriggerRule.self,
                 LogProfile.self, LogPatternRow.self,
@@ -53,6 +54,7 @@ enum BonkStore {
             [
                 "HostItem", "UserPreferences", "Credential", "HostGroup",
                 "AIConversationRecord", "AIMessageRecord", "AIProviderRecord",
+                "AgentTurnRecord",
                 "Snippet", "PortForward", "JumpHost", "InlineSuggestionRecord",
                 "SSHBackendProfile", "TriggerRule", "LogProfile", "LogPatternRow",
             ]

@@ -119,6 +119,7 @@ docs/*
 !docs/agent-task-005-output-token-budget.md
 !docs/agent-task-011-skills.md
 !docs/agent-task-012-parallel-tools.md
+!docs/agent-task-013-session-persistence.md
 
 # Web
 docs/FEATURE_ROADMAP.md

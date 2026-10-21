@@ -29,12 +29,16 @@ import os
 /// into today's prompt.
 protocol AgentMessageHistory: AnyObject, Sendable {
     /// Prior turns, oldest first. Never contains a system message.
-    func load() -> [LLMMessage]
+    ///
+    /// Async because the history may live in the store: a run has to
+    /// wait for the stored turns before it starts, or it would begin
+    /// from a half-read conversation.
+    func load() async -> [LLMMessage]
     /// Append one turn. System messages are ignored.
-    func record(_ message: LLMMessage)
+    func record(_ message: LLMMessage) async
     /// Replace the whole history — used after compaction, so the next run
     /// does not resurrect the context that compaction just removed.
-    func replaceAll(_ messages: [LLMMessage])
+    func replaceAll(_ messages: [LLMMessage]) async
 }
 
 /// In-memory history, keyed by conversation.
@@ -89,7 +93,7 @@ final class ConversationMessageHistory: AgentMessageHistory, @unchecked Sendable
         }
     }
 
-    func load() -> [LLMMessage] {
+    func load() async -> [LLMMessage] {
         state.withLock { state in
             guard let id = state.currentID else { return [] }
             let stored = state.byConversation[id] ?? []
@@ -99,7 +103,7 @@ final class ConversationMessageHistory: AgentMessageHistory, @unchecked Sendable
         }
     }
 
-    func record(_ message: LLMMessage) {
+    func record(_ message: LLMMessage) async {
         guard message.role != .system else { return }
         state.withLock { state in
             guard let id = state.currentID else { return }
@@ -118,7 +122,7 @@ final class ConversationMessageHistory: AgentMessageHistory, @unchecked Sendable
         }
     }
 
-    func replaceAll(_ messages: [LLMMessage]) {
+    func replaceAll(_ messages: [LLMMessage]) async {
         state.withLock { state in
             guard let id = state.currentID else { return }
             // Not projected: the caller owns this sequence (compaction built
