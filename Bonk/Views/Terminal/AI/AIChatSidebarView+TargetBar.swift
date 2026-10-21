@@ -49,7 +49,11 @@ extension AIChatSidebarView {
                 return
             }
             // v3.3 hybrid: pass TerminalSession so exec reuses multiplexed channel (Native 1000× channel vs 1000× Process)
-            submitAgentTask(text: text, ssh: ssh, hybridSession: tab.session, hostName: hostDisplayName(tab.hostItem))
+            submitAgentTask(
+                text: text, ssh: ssh, hybridSession: tab.session,
+                hostName: hostDisplayName(tab.hostItem),
+                cwd: tab.currentDirectory
+            )
         case .host(let hostID):
             guard let host = hosts.first(where: { $0.id == hostID }) else { return }
             if connectionService.connectedHostID == hostID {
@@ -72,7 +76,13 @@ extension AIChatSidebarView {
         }
     }
 
-    private func submitAgentTask(text: String, ssh: SSHNetworkService, hybridSession: TerminalSession? = nil, hostName: String) {
+    private func submitAgentTask(
+        text: String,
+        ssh: SSHNetworkService,
+        hybridSession: TerminalSession? = nil,
+        hostName: String,
+        cwd: String? = nil
+    ) {
         let conversation = ensureConversation()
 
         let expanded = ContextMentionResolver.expandMentions(
@@ -89,7 +99,7 @@ extension AIChatSidebarView {
         currentTask = Task {
             await engine.runAgent(
                 input: expanded, displayInput: text, sshService: ssh, hybridSession: hybridSession, hostName: hostName,
-                conversation: conversation, context: modelContext
+                conversation: conversation, context: modelContext, cwd: cwd
             )
             engine.isProcessing = false
             NotificationCenter.default.post(name: .focusTerminal, object: nil)

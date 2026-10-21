@@ -41,6 +41,14 @@ final class AgentRuntime: @unchecked Sendable {
     private let pendingApprovals = OSAllocatedUnfairLock<[String: CheckedContinuation<Bool, Never>]>(uncheckedState: [:])
     private let activeTask = OSAllocatedUnfairLock<Task<Void, Never>?>(uncheckedState: nil)
     private let ownedState = OSAllocatedUnfairLock(uncheckedState: AgentState())
+    /// The project's own instructions, read from the connected host.
+    ///
+    /// Not part of the system prompt: that role carries authority, and these
+    /// are the project's guidance, not the app's voice and not the user's
+    /// request. They ride as their own user-role message, wrapped in the
+    /// app's reminder tags.
+    private let projectInstructions: String?
+
     private let budget: OSAllocatedUnfairLock<AgentBudgetController>
     private let progressEvaluator = OSAllocatedUnfairLock(uncheckedState: ProgressEvaluator())
     private static let budgetLog = Logger(subsystem: "com.bonk", category: "AgentBudget")
@@ -56,7 +64,8 @@ final class AgentRuntime: @unchecked Sendable {
         decisionMemory: AgentDecisionMemory? = nil,
         foldEngine: (any DecisionEngine)? = nil,
         progressEngine: (any DecisionEngine)? = nil,
-        messageHistory: (any AgentMessageHistory)? = nil
+        messageHistory: (any AgentMessageHistory)? = nil,
+        projectInstructions: String? = nil
     ) {
         self.contextProvider = contextProvider
         self.modelGateway = modelGateway
@@ -69,6 +78,7 @@ final class AgentRuntime: @unchecked Sendable {
         self.foldEngine = foldEngine
         self.progressEngine = progressEngine
         self.messageHistory = messageHistory
+        self.projectInstructions = projectInstructions
         self.budget = OSAllocatedUnfairLock(uncheckedState: AgentBudgetController(maxIterations: maxIterations))
     }
 
@@ -164,7 +174,13 @@ final class AgentRuntime: @unchecked Sendable {
         if !context.trusted.isEmpty {
             basePrompt += "\n\n## Environment Context\n\(context.trusted)"
         }
-        let systemPrompt = CustomInstructions.buildSystemPrompt(base: basePrompt)
+        // The system prompt is entirely app-authored. The project's own
+        // instructions are not: they are guidance for how to work here, and
+        // they cannot authorize anything — so they ride as their own
+        // user-role message, wrapped in the app's reminder tags. The old
+        // implementation interpolated them into the system prompt, which
+        // contradicted the trust policy right above it.
+        let systemPrompt = basePrompt
 
         var messages: [LLMMessage] = [
             .system(systemPrompt),
@@ -176,6 +192,12 @@ final class AgentRuntime: @unchecked Sendable {
         // refer to anything it said or ran before.
         if let history = messageHistory {
             messages.append(contentsOf: history.load())
+        }
+        // The project's instructions, as context the app injected. Before the
+        // remote state and before the request: they are standing context for
+        // the whole run, and the request is the last thing read.
+        if let projectInstructions {
+            messages.append(.user(projectInstructions))
         }
         // The remote state, as data. It is deliberately not recorded in the
         // conversation history: it is the state of this moment, not a turn

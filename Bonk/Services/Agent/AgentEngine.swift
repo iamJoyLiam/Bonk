@@ -308,14 +308,16 @@ final class AgentEngine {
         provider: any LLMProvider,
         systemPrompt: String,
         userPrompt: String,
-        untrustedContext: String? = nil
+        untrustedContext: String? = nil,
+        projectInstructions: String? = nil
     ) async throws -> String {
         var lastUIUpdate = Date.distantPast
         var result = ""
         let messages = Self.chatMessages(
             systemPrompt: systemPrompt,
             userPrompt: userPrompt,
-            untrustedContext: untrustedContext
+            untrustedContext: untrustedContext,
+            projectInstructions: projectInstructions
         )
         for try await event in provider.stream(
             messages: messages,
@@ -353,28 +355,56 @@ final class AgentEngine {
         provider: AIProviderConfig,
         apiKey: String,
         systemPrompt: String,
-        userPrompt: String
+        userPrompt: String,
+        projectInstructions: String? = nil
     ) async throws -> String {
         try await executeNonStreaming(
             provider: providerResolver.provider(
                 for: provider, apiKey: apiKey, workload: .chat
             ),
             systemPrompt: systemPrompt,
-            userPrompt: userPrompt
+            userPrompt: userPrompt,
+            projectInstructions: projectInstructions
         )
+    }
+
+    /// Read the project's instruction files from the connected host.
+    ///
+    /// The host's working directory is remote-controlled — it arrives in the
+    /// OSC window title — so it is quoted and escaped by the loader, never
+    /// interpolated raw. A missing instruction file is the normal case and
+    /// must not be an error: instructions are an enhancement, never a
+    /// precondition for running.
+    func loadProjectInstructions(
+        sshService: SSHNetworkService,
+        hybridSession: TerminalSession?,
+        cwd: String?
+    ) async -> String? {
+        let entries = await RemoteProjectInstructions.load(
+            executor: { command in
+                if let session = hybridSession {
+                    return try await session.executeHybrid(command, registerHandle: nil)
+                }
+                return try await sshService.executeCommand(command)
+            },
+            cwd: cwd
+        )
+        return RemoteProjectInstructions.message(entries: entries)
     }
 
     private func executeNonStreaming(
         provider: any LLMProvider,
         systemPrompt: String,
         userPrompt: String,
-        untrustedContext: String? = nil
+        untrustedContext: String? = nil,
+        projectInstructions: String? = nil
     ) async throws -> String {
         let response = try await provider.chat(
             messages: Self.chatMessages(
                 systemPrompt: systemPrompt,
                 userPrompt: userPrompt,
-                untrustedContext: untrustedContext
+                untrustedContext: untrustedContext,
+                projectInstructions: projectInstructions
             ),
             maxTokens: nil,
             disableReasoning: false
@@ -392,9 +422,16 @@ final class AgentEngine {
     nonisolated static func chatMessages(
         systemPrompt: String,
         userPrompt: String,
-        untrustedContext: String?
+        untrustedContext: String?,
+        projectInstructions: String? = nil
     ) -> [LLMMessage] {
         var messages: [LLMMessage] = [.system(systemPrompt)]
+        // The project's instructions come first: they are standing context
+        // for the whole turn. Then the remote state, then the request — the
+        // request is the last thing read.
+        if let projectInstructions, !projectInstructions.isEmpty {
+            messages.append(.user(projectInstructions))
+        }
         if let untrustedContext, !untrustedContext.isEmpty {
             messages.append(.user(untrustedContext))
         }
@@ -591,9 +628,14 @@ enum SystemPromptComposer {
         context: TerminalContext
     ) -> ComposedAgentRequest {
         ComposedAgentRequest(
-            systemPrompt: CustomInstructions.buildSystemPrompt(
-                base: (override ?? mode.systemPrompt) + "\n\n" + RemoteTerminalState.trustPolicy
-            ),
+            // The system prompt is entirely app-authored. The project's own
+            // instructions are not part of it: they are the project's
+            // guidance, and they must not be able to authorize anything.
+            //
+            // The Ask path has no route to the host — two of its three entry
+            // points are not attached to a terminal — so it carries no project
+            // instructions. The agent path reads them from the host.
+            systemPrompt: (override ?? mode.systemPrompt) + "\n\n" + RemoteTerminalState.trustPolicy,
             untrustedContext: RemoteTerminalState(context: context).untrustedBlock()
         )
     }

@@ -20,7 +20,8 @@ extension AgentEngine {
         hostName: String?,
         conversation: AIConversationRecord?,
         context: ModelContext?,
-        provider: any LLMProvider
+        provider: any LLMProvider,
+        projectInstructions: String? = nil
     ) async {
         let llmProvider = provider
 
@@ -43,7 +44,8 @@ extension AgentEngine {
             decisionMemory: decisionMemory,
             foldEngine: DecisionEngineFactory.makeEffective(),
             progressEngine: DecisionEngineFactory.makeEffective(),
-            messageHistory: agentMessageHistory
+            messageHistory: agentMessageHistory,
+            projectInstructions: projectInstructions
         )
 
         self.activeRuntime = runtime

@@ -13,9 +13,10 @@ extension AgentEngine {
         sshService: SSHNetworkService,
         hostName: String? = nil,
         conversation: AIConversationRecord? = nil,
-        context: ModelContext? = nil
+        context: ModelContext? = nil,
+        cwd: String? = nil
     ) async {
-        await runAgent(input: input, displayInput: displayInput, sshService: sshService, hybridSession: nil, hostName: hostName, conversation: conversation, context: context)
+        await runAgent(input: input, displayInput: displayInput, sshService: sshService, hybridSession: nil, hostName: hostName, conversation: conversation, context: context, cwd: cwd)
     }
 
     /// v3.3 Hybrid overload — activeTab's TerminalSession provides multiplexed exec.
@@ -26,7 +27,8 @@ extension AgentEngine {
         hybridSession: TerminalSession?,
         hostName: String? = nil,
         conversation: AIConversationRecord? = nil,
-        context: ModelContext? = nil
+        context: ModelContext? = nil,
+        cwd: String? = nil
     ) async {
         let intent = UserIntent.parse(rawInput: displayInput ?? input, defaultExecutionRequested: true)
         appendAgentMessage(.user, content: displayInput ?? input, conversation: conversation, context: context)
@@ -61,15 +63,28 @@ extension AgentEngine {
                 for: config, apiKey: apiKey, workload: .agentToolLoop
             )
         }
+        // The project's own instruction files, read from the connected host.
+        //
+        // Read once, here, where the host and the working directory are both
+        // known, and handed to whichever path runs. The old implementation
+        // read the *local* process working directory, which for a bundled
+        // .app is `/` — so project instructions never loaded at all.
+        let projectInstructions = await loadProjectInstructions(
+            sshService: sshService,
+            hybridSession: hybridSession,
+            cwd: cwd
+        )
         if let provider, provider.capability.supportsToolCalls {
             await runAgentToolLoop(
                 input: input, sshService: sshService, hybridSession: hybridSession, hostName: hostName,
-                conversation: conversation, context: context, provider: provider
+                conversation: conversation, context: context, provider: provider,
+                projectInstructions: projectInstructions
             )
         } else {
             await runAgentLegacy(
                 input: input, sshService: sshService, hybridSession: hybridSession,
-                conversation: conversation, context: context, resolvedProvider: resolved
+                conversation: conversation, context: context, resolvedProvider: resolved,
+                projectInstructions: projectInstructions
             )
         }
     }
@@ -114,11 +129,14 @@ extension AgentEngine {
         hybridSession: TerminalSession? = nil,
         conversation: AIConversationRecord?,
         context: ModelContext?,
-        resolvedProvider: (AIProviderConfig, String)?
+        resolvedProvider: (AIProviderConfig, String)?,
+        projectInstructions: String? = nil
     ) async {
         // Phase 1: Generate plan
         guard let plan = await generatePlan(
-            conversation: conversation, context: context, resolvedProvider: resolvedProvider
+            conversation: conversation, context: context,
+            resolvedProvider: resolvedProvider,
+            projectInstructions: projectInstructions
         ) else { return }
 
         // If no steps (pure Q&A), just return
@@ -155,7 +173,8 @@ extension AgentEngine {
     private func generatePlan(
         conversation: AIConversationRecord?,
         context: ModelContext?,
-        resolvedProvider: (AIProviderConfig, String)?
+        resolvedProvider: (AIProviderConfig, String)?,
+        projectInstructions: String? = nil
     ) async -> AgentPlan? {
         let aiMessages = buildAgentMessages()
         guard let (provider, apiKey) = resolvedProvider else {
@@ -166,13 +185,18 @@ extension AgentEngine {
 
         let prompt = aiMessages.map { "\($0["role"] ?? "user"): \($0["content"] ?? "")" }
             .joined(separator: "\n\n")
-        let systemPrompt = CustomInstructions.buildSystemPrompt(base: AgentPrompts.planPrompt)
+        // The system prompt is entirely app-authored. The project's own
+        // instructions ride as their own user-role message: they are the
+        // project's guidance, not the app's voice, and they cannot
+        // authorize anything.
+        let systemPrompt = AgentPrompts.planPrompt
 
         let response: String
         do {
             response = try await executeNonStreaming(
                 provider: provider, apiKey: apiKey,
-                systemPrompt: systemPrompt, userPrompt: prompt
+                systemPrompt: systemPrompt, userPrompt: prompt,
+                projectInstructions: projectInstructions
             )
         } catch {
             appendAgentMessage(.system, content: "AI error: \(error.localizedDescription)",

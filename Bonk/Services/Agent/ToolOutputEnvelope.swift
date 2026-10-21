@@ -109,11 +109,24 @@ enum ToolOutputEnvelope {
         for marker in [beginMarker, endMarker] {
             text = text.replacingOccurrences(of: marker, with: "[removed-marker]")
         }
+        // The app's own meta framing must not be forgeable from a host.
+        //
+        // Project instructions ride in a user-role message wrapped in
+        // `<system-reminder>` tags, because that framing tells the model this
+        // is context the app injected. A payload that emits the same tag
+        // would be read the same way — as the app speaking. So the tag, and
+        // any spelling of it a model might still take as the real thing, is
+        // stripped from untrusted content.
+        for marker in [RemoteProjectInstructions.reminderOpen,
+                       RemoteProjectInstructions.reminderClose] {
+            text = text.replacingOccurrences(of: marker, with: "[removed-marker]")
+        }
         // A payload can also try to close the envelope with a shortened or
         // decorated form. Strip any line that contains the distinctive
         // keyword pair, whatever decoration surrounds it.
         text = text.components(separatedBy: .newlines).map { line -> String in
             if carriesMarkerKeyword(line) { return "[removed-marker]" }
+            if carriesReminderKeyword(line) { return "[removed-marker]" }
             return line
         }.joined(separator: "\n")
 
@@ -128,6 +141,13 @@ enum ToolOutputEnvelope {
             return removeSplitMarkers(text)
         }
         return text
+    }
+
+    /// True when the text contains a spelling of the app's meta framing.
+    private static func carriesReminderKeyword(_ text: String) -> Bool {
+        let upper = text.uppercased()
+        return upper.contains("SYSTEM-REMINDER")
+            || upper.contains("SYSTEM_REMINDER")
     }
 
     /// True when the text contains either envelope keyword pair.
