@@ -40,6 +40,13 @@ enum AgentErrorCode: String, Sendable, Equatable {
 enum AgentEvent: Sendable, Equatable {
     case userMessage(String)
     case assistantText(String)
+    /// A piece of the assistant's answer, as it arrives.
+    ///
+    /// Presentation only: the transcript coalesces the pieces back into one
+    /// assistant turn, and the complete text is what the model history
+    /// records. A consumer that appends the pieces sees the answer being
+    /// written.
+    case assistantTextDelta(String)
     case thinking(String)
     case toolCallStarted(id: String, tool: String, input: String)
     case toolOutput(id: String, output: String)

@@ -335,7 +335,7 @@ final class AgentEngine {
                     streamingResponse = result
                     lastUIUpdate = now
                 }
-            case .reasoning, .toolCall, .completed:
+            case .reasoning, .toolCall, .usage, .completed:
                 break
             }
         }

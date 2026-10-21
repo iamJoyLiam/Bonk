@@ -294,8 +294,13 @@ struct RemoteProjectInstructionsTests {
             return LLMResponse(text: "ok")
         }
 
-        func stream(messages: [LLMMessage]) -> AsyncThrowingStream<LLMStreamEvent, Error> {
-            AsyncThrowingStream { continuation in continuation.finish() }
+        /// The double does not stream: the runtime falls back to a
+        /// non-streaming turn, which is what these tests are about.
+        func streamTurn(
+            messages: [LLMMessage],
+            tools: [LLMToolDefinition]
+        ) -> AsyncThrowingStream<LLMStreamEvent, Error>? {
+            nil
         }
     }
 

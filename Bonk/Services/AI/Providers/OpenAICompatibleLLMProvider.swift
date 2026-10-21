@@ -9,11 +9,11 @@ final class OpenAICompatibleLLMProvider: LLMProvider, @unchecked Sendable {
     let providerName: String
     let capability: LLMProviderCapability
 
-    private let config: AIProviderConfig
-    private let apiKey: String
+    let config: AIProviderConfig
+    let apiKey: String
     /// The session requests go through. Injectable so the request can be
     /// exercised without a network; production uses the shared one.
-    private let session: URLSession
+    let session: URLSession
 
     init(
         config: AIProviderConfig,
@@ -163,7 +163,7 @@ final class OpenAICompatibleLLMProvider: LLMProvider, @unchecked Sendable {
 
     // MARK: - Request Building
 
-    private func makeRequest(
+    func makeRequest(
         messages: [LLMMessage],
         tools: [LLMToolDefinition],
         stream: Bool,

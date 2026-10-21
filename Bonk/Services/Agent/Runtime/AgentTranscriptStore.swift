@@ -32,7 +32,26 @@ final class AgentTranscriptStore: @unchecked Sendable {
         let currentEvents = events
         var lines: [String] = []
 
+        // The streamed answer arrives in pieces. The transcript is a record
+        // of what was said, not of how it was transmitted, so consecutive
+        // pieces are joined back into one line.
+        var pendingText = ""
+        func flushPendingText() {
+            guard !pendingText.isEmpty else { return }
+            lines.append("[Assistant]: \(pendingText)")
+            pendingText = ""
+        }
+
         for event in currentEvents {
+            // The streamed answer arrives in pieces. The transcript is a
+            // record of what was said, not of how it was transmitted, so the
+            // pieces are joined back into one line — and any other event
+            // ends the assistant turn they belong to.
+            if case let .assistantTextDelta(delta) = event {
+                pendingText += delta
+                continue
+            }
+            flushPendingText()
             switch event {
             case let .userMessage(msg):
                 lines.append("[User]: \(msg)")
@@ -60,8 +79,12 @@ final class AgentTranscriptStore: @unchecked Sendable {
                 lines.append("[Compaction]: history compacted, task state preserved")
             case .completed:
                 lines.append("[Completed]")
+            case .assistantTextDelta:
+                // Handled above.
+                break
             }
         }
+        flushPendingText()
 
         return lines.joined(separator: "\n")
     }

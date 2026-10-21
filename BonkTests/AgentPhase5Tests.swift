@@ -28,8 +28,13 @@ final class RecordingGateway: AgentModelGateway, @unchecked Sendable {
         return lock.withLock { responses.isEmpty ? LLMResponse(text: "default") : responses.removeFirst() }
     }
 
-    func stream(messages: [LLMMessage]) -> AsyncThrowingStream<LLMStreamEvent, Error> {
-        AsyncThrowingStream { $0.finish() }
+    /// The double does not stream: the runtime falls back to a
+    /// non-streaming turn, which is what these tests are about.
+    func streamTurn(
+        messages: [LLMMessage],
+        tools: [LLMToolDefinition]
+    ) -> AsyncThrowingStream<LLMStreamEvent, Error>? {
+        nil
     }
 }
 

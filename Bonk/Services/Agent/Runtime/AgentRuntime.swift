@@ -242,8 +242,15 @@ final class AgentRuntime: @unchecked Sendable {
             }
 
             let response: LLMResponse
+            let streamed: Bool
             do {
-                response = try await modelGateway.chat(messages: messages, tools: toolRegistry.definitions)
+                let turn = try await runModelTurn(
+                    messages: messages,
+                    tools: toolRegistry.definitions,
+                    continuation: continuation
+                )
+                response = turn.response
+                streamed = turn.streamed
             } catch {
                 if Task.isCancelled {
                     emit(.executionInterrupted(reason: "Execution cancelled by user."))
@@ -281,8 +288,12 @@ final class AgentRuntime: @unchecked Sendable {
                 messageHistory?.replaceAll(messages.filter { $0.role != .system })
             }
 
-            // Yield assistant text if present
-            if !response.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // Yield assistant text if present.
+            //
+            // A streamed turn already delivered the text in pieces, and the
+            // pieces are what the transcript holds. Emitting the whole text
+            // again would double it.
+            if !streamed, !response.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 emit(.assistantText(response.text))
             }
 
@@ -354,6 +365,48 @@ final class AgentRuntime: @unchecked Sendable {
         case breakLoop
         case denied
         case halt
+    }
+
+    /// One model turn: streamed when the provider can carry one, otherwise
+    /// not.
+    ///
+    /// A streamed turn is not a different turn. It is the same turn, with
+    /// the text arriving in pieces instead of all at once, and the pieces
+    /// are emitted as they land — the whole point is that the user sees the
+    /// answer being written rather than after the fact.
+    ///
+    /// A provider whose wire format cannot stream tool calls answers nil
+    /// and the turn falls back to `chat`. The run behaves the same; it just
+    /// does not stream.
+    private func runModelTurn(
+        messages: [LLMMessage],
+        tools: [LLMToolDefinition],
+        continuation: AsyncStream<AgentEvent>.Continuation
+    ) async throws -> (response: LLMResponse, streamed: Bool) {
+        guard let stream = modelGateway.streamTurn(messages: messages, tools: tools) else {
+            return (try await modelGateway.chat(messages: messages, tools: tools), false)
+        }
+        var text = ""
+        var toolCalls: [LLMToolCall] = []
+        var usage: TokenUsage?
+        for try await event in stream {
+            switch event {
+            case let .textDelta(delta):
+                text += delta
+                transcriptStore.append(.assistantTextDelta(delta))
+                continuation.yield(.assistantTextDelta(delta))
+            case let .reasoning(chunk):
+                transcriptStore.append(.thinking(chunk))
+                continuation.yield(.thinking(chunk))
+            case let .toolCall(call):
+                toolCalls.append(call)
+            case let .usage(reported):
+                usage = reported
+            case .completed:
+                break
+            }
+        }
+        return (LLMResponse(text: text, toolCalls: toolCalls, usage: usage), true)
     }
 
     /// Executes one tool call: permission gate, execution, output guard, and termination

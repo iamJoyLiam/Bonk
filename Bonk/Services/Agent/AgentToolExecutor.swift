@@ -81,6 +81,16 @@ extension AgentEngine {
                     appendAgentMessage(.assistant, content: text, conversation: conversation, context: context)
                 }
 
+            case let .assistantTextDelta(delta):
+                // A piece of the answer as it arrives. Appended, not
+                // replaced: the pieces are the answer, and the user should
+                // watch it being written.
+                if let lastIndex = agentMessages.indices.last, agentMessages[lastIndex].role == .assistant {
+                    agentMessages[lastIndex].content += delta
+                } else {
+                    appendAgentMessage(.assistant, content: delta, conversation: conversation, context: context)
+                }
+
             case let .thinking(thought):
                 if let lastIndex = agentMessages.indices.last, agentMessages[lastIndex].role == .assistant {
                     agentMessages[lastIndex].thinking = thought

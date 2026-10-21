@@ -146,6 +146,12 @@ enum LLMStreamEvent: Equatable, Sendable {
     case textDelta(String)
     case reasoning(String)
     case toolCall(LLMToolCall)
+    /// Token counts the provider reported for the turn.
+    ///
+    /// Absent when the provider does not report them. A stream that never
+    /// reports usage leaves the budget's counts unknown — which is the
+    /// honest state, and distinct from zero.
+    case usage(TokenUsage)
     case completed
 }
 
@@ -175,6 +181,23 @@ typealias LLMProviderCapability = ModelCapability
 
 /// Standard LLM provider abstraction. Business code talks to this protocol;
 /// each adapter owns SDK/HTTP/SSE specifics.
+/// A provider that can stream a turn that *includes tool calls*.
+///
+/// Separate from `LLMProvider` on purpose. Streaming a tool call is not
+/// something every wire format does, and a provider that cannot do it must
+/// not be asked to. The agent runtime asks the gateway, the gateway asks the
+/// provider, and a provider that cannot answers nil — the run falls back to
+/// a non-streaming turn and nothing is lost but the deltas.
+protocol LLMStreamingToolProvider: Sendable {
+    /// Stream one turn: text, reasoning, tool calls, and the usage the
+    /// provider reports.
+    func streamTurn(
+        messages: [LLMMessage],
+        tools: [LLMToolDefinition],
+        maxTokens: Int?
+    ) -> AsyncThrowingStream<LLMStreamEvent, Error>
+}
+
 protocol LLMProvider: Sendable {
     var providerID: UUID { get }
     var providerName: String { get }

@@ -403,6 +403,27 @@ extension AIProviderNetworking {
         return nil
     }
 
+    /// Read an SSE byte stream and hand each `data:` payload to `consume`.
+    ///
+    /// The payloads, not the text: a streaming turn also carries tool calls
+    /// and usage, and a parser that only saw text would throw them away.
+    static func readSSEPayloads(
+        bytes: URLSession.AsyncBytes,
+        consume: (String) -> Void
+    ) async throws {
+        var buffer = Data()
+        for try await byte in bytes {
+            buffer.append(byte)
+            // Decode whole lines at once so multi-byte UTF-8 (Chinese, emoji)
+            // survives.
+            guard byte == 0x0A, let line = String(data: buffer, encoding: .utf8) else { continue }
+            buffer = Data()
+
+            guard line.hasPrefix("data: ") else { continue }
+            consume(String(line.dropFirst(6)))
+        }
+    }
+
     /// Parse an SSE stream and return the accumulated response text.
     /// Calls `onDelta` for each incremental chunk (caller controls UI cadence).
     static func parseStream(
