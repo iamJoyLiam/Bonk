@@ -23,6 +23,7 @@ Bonk 的 Agent **是一个结构良好的单轮工具循环器（tool loop），
 | 旗舰 provider | **已修复** (任务 ②) | Claude 是默认 provider，但 `toolCall` 抛 `not enabled yet` → 已实现 Anthropic `tool_use` |
 | agent 信任边界 | **已修复** (任务 ④) | 远端派生上下文被拼进 system prompt → 已按来源拆成 trusted / remote |
 | 输出 token 预算 | **已修复** (任务 ⑤) | 每轮硬截断 2000 → 已统一到一个解析点（最差的两条原本只有 500） |
+| agent 流式 | **已修复** (任务 ⑧) | `stream` 存在但没有生产调用者 → 已实现带工具的流式轮次 |
 | provider 解析 | **已修复** (任务 ③) | 判定看 active、执行看 routed → 一次解析；工具循环原本对一部分用户不可达 |
 | 扩展生态 | **P0 缺失** | MCP / Skills / 插件 三者全无，全仓零命中 |
 | 并发与委派 | **P1 缺失** | 工具严格顺序执行；无子 agent |
@@ -462,6 +463,12 @@ AGENTS.md 放索引，内容按需读）。
 
 ### P1-7 Agent 循环不流式
 
+> **状态：已修复**（任务 ⑧，见 `docs/agent-task-008-agent-streaming.md`）。
+> 不只是"打开一个开关"：流式的一轮必须**同时带工具调用**，
+> 所以新增了能流式带工具的线协议解析（OpenAI 系 + Anthropic），
+> 以及一个不能就返回 nil 的 provider 缝（行为不变，只是不流式）。
+> 顺带关掉 P2-3（reasoning 现在有发射者了）。
+
 `AgentModelGateway.stream`（`AgentModelGateway.swift:36-42`）存在但**无生产调用者**。
 agent 循环用 `modelGateway.chat`（非流式）——用户在整轮结束前看不到任何东西。
 
@@ -487,7 +494,7 @@ Pi 的 durable 有 task graph。
 |---|---|---|
 | P2-1 | 无 todo / 任务跟踪工具 | 全仓 `todo\|tasklist\|TaskTool` 零命中 |
 | P2-2 | 无工具结果缓存 | `Services/Agent/` 内 `cache` 零命中；同一命令每次重跑 |
-| P2-3 | 无 reasoning 展示 | `AgentEvent.thinking`（`Runtime/AgentEvent.swift:43`）存在，**没有任何代码发出它** |
+| P2-3 | 无 reasoning 展示 | `AgentEvent.thinking`（`Runtime/AgentEvent.swift:43`）存在，**没有任何代码发出它** | ✅ **已修复**（任务 ⑧）：流式轮次里两种线协议的 reasoning 都会送到 |
 | P2-4 | 两套并行安全流水线 | tool loop 用 `DefaultAgentPermissionPolicy`；legacy plan 用 `CommandSafety.classify` + `isAutoExecutable`（`AgentPlanExecutor.swift:231-266`）。同一命令两套规则 | ✅ **已修复**（任务 ⑥）：计划流改走同一个 `DefaultAgentPermissionPolicy`，三档访问模式两条路径都生效 |
 | P2-5 | 死代码 | `runToolIteration` / `executeToolCalls`（`AgentToolExecutor.swift:166-272`，无调用者）；`AgentTools.definitions`（单工具 legacy schema）；`AgentToolRegistry.register`（无调用者）；`AgentModelGateway.stream`（无调用者）；`AgentEngine.buildAgentMessages`（仅 legacy 一处） |
 | P2-6 | 压缩对象为空 | `maybeCompact`（`AgentRuntime.swift:465-556`）逻辑完整（stale 输出收缩 + 中段摘要 + 压缩次数上限 5），但因 P0-1 它压缩的是单轮历史 |
