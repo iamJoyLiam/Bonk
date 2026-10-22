@@ -76,9 +76,21 @@ enum ToolOutputEnvelope {
             return String(wrapped.prefix(limit))
         }
         let body = String(wrapped[bodyStart.upperBound ..< bodyEnd.lowerBound])
-        let fullOverhead = header.count + endMarker.count + 2
-        if fullOverhead + body.count <= limit {
-            return String(wrapped.prefix(limit))
+        // Whether the whole message fits is measured on the message itself.
+        //
+        // It used to be measured on a constant that added the header and the
+        // closing marker but forgot the opening one — 60 characters of it. So
+        // the message was declared to fit while it was still up to 60
+        // characters too long, and the prefix that followed cut the closing
+        // marker off. The untrusted region stayed open, and everything after
+        // the cut read as trusted continuation.
+        //
+        // The compaction summariser reads messages shortened this way, with a
+        // budget of 500, and any tool output of 8 to 66 characters landed in
+        // that window: the tail of a short command's output was handed to the
+        // summariser as if the app had written it.
+        if wrapped.count <= limit {
+            return wrapped
         }
         // Compact form: same trust boundary, small enough to always close.
         let budget = max(0, limit - minimumEnvelopeSize)
