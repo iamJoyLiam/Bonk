@@ -553,7 +553,7 @@ Pi 的 durable 有 task graph。
 | P2-4 | 两套并行安全流水线 | tool loop 用 `DefaultAgentPermissionPolicy`；legacy plan 用 `CommandSafety.classify` + `isAutoExecutable`（`AgentPlanExecutor.swift:231-266`）。同一命令两套规则 | ✅ **已修复**（任务 ⑥）：计划流改走同一个 `DefaultAgentPermissionPolicy`，三档访问模式两条路径都生效 |
 | P2-5 | 死代码 | `runToolIteration` / `executeToolCalls`（`AgentToolExecutor.swift:166-272`，无调用者）；`AgentTools.definitions`（单工具 legacy schema）；`AgentToolRegistry.register`（无调用者）；`AgentModelGateway.stream`（无调用者）；`AgentEngine.buildAgentMessages`（仅 legacy 一处） |
 | P2-6 | 压缩对象为空 | `maybeCompact`（`AgentRuntime.swift:465-556`）逻辑完整（stale 输出收缩 + 中段摘要 + 压缩次数上限 5），但因 P0-1 它压缩的是单轮历史 |
-| P2-7 | 无 Unicode 净化 | Claude Code `utils/sanitization.ts:25` 对零宽 / bidi override / 私用区做 NFKC 归一化迭代，**并应用于 MCP 输出**（`services/mcp/client.ts:96`）。Bonk 的 `ToolOutputEnvelope` 做的是 marker 剥离，不是字符净化 |
+| P2-7 | 无 Unicode 净化 | Claude Code `utils/sanitization.ts:25` 对零宽 / bidi override / 私用区做 NFKC 归一化迭代，**并应用于 MCP 输出**（`services/mcp/client.ts:96`）。Bonk 的 `ToolOutputEnvelope` 做的是 marker 剥离，不是字符净化 | ✅ **已修复**（任务 ⑮）：`UntrustedTextSanitizer` —— NFKC + 剔除 `Cf`/`Co`/`Cn`，落在**每一个**远端文本边界上（工具输出 / 技能正文 / 项目指令 / 技能清单）；顺带修掉了 `ToolOutputEnvelope.truncate` 会切掉闭合标记的洞 |
 | P2-8 | Windows 端 mock 回落违反本仓安全不变量 | `bonk-core/src/ai/mod.rs:49-53`：`api_key` 为空时返回 `[mock <model>] <prompt>` **作为成功**。`bonk-win/src-tauri/src/main.rs:521-534` 把 `unwrap_or_default()` 的空 key 喂进去，注释自认"真连 + mock 回落"。**macOS 应用不走这条路径**（`bonk-mac-ffi/Sources/BonkCoreFFI` 只有 SSH 桥，无 AI 导出），故为 Windows-only。违反 AGENTS.md "Production paths MUST NOT convert real infrastructure failures into successful mock results" |
 
 ---
