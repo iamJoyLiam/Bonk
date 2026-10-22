@@ -23,7 +23,8 @@ extension AgentEngine {
         provider: any LLMProvider,
         projectInstructions: String? = nil,
         skillListing: String? = nil,
-        hostScope: String? = nil
+        hostScope: String? = nil,
+        mcpServers: MCPServerRegistry = .shared
     ) async {
         let llmProvider = provider
 
@@ -52,9 +53,24 @@ extension AgentEngine {
             hostInfo: hostName
         )
         let permissionPolicy = permissionPolicyFactory(hostScope)
+
+        // The MCP servers the user configured, and the tools they offer.
+        //
+        // The servers are started once and stay up: an MCP server is a
+        // program that wants a pipe, and starting one per run would pay
+        // for the handshake every time. The list of tools is read from
+        // the user's own configuration, never from anything the model
+        // said.
+        await mcpServers.start()
+        let toolRegistry = AgentToolRegistry()
+        for tool in mcpServers.agentTools {
+            toolRegistry.register(tool)
+        }
+
         let runtime = AgentRuntime(
             contextProvider: contextProvider,
             modelGateway: modelGateway,
+            toolRegistry: toolRegistry,
             permissionPolicy: permissionPolicy,
             executionManager: executionManager,
             maxIterations: AgentEngine.maxAgentIterations,

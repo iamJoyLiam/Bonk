@@ -169,7 +169,10 @@ struct DecisionMemoryTests {
 struct AgentTraceEventTests {
     @Test("Agent ring records, counts, and resets independently")
     func ring() async {
-        let recorder = DecisionTraceRecorder.shared
+        // Its own recorder, not the shared one: the shared ring is
+        // written by every test that resolves a provider, and those run
+        // at the same time, so the counts below would be other tests'.
+        let recorder = DecisionTraceRecorder()
         await recorder.resetAgentEvents()
         await recorder.recordAgentEvent(AgentTraceEvent(kind: .routerSelected, engine: "router", task: "agentExecute", result: "deterministicSingle"))
         await recorder.recordAgentEvent(AgentTraceEvent(kind: .budgetWarning, engine: "budget", task: "agentExecute", result: "iterations-20/25"))

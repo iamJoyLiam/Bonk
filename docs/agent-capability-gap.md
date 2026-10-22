@@ -345,6 +345,20 @@ let resolvedMaxTokens = maxTokens ?? config.maxOutputTokens ?? 2000
 
 ### P1-1 MCP —— 完全缺失
 
+> **状态（2026-10-22）：已实现**，见 `docs/agent-task-014-mcp-client.md`。
+>
+> 实现要点与本节建议的出入：agent 循环**跑在本地** ✓（模型调用在本地 ✓，
+> 工具执行才走 SSH ✓），所以本地 MCP server **直接可达** ✓，
+> **不需要**"反向通道" ✓——那只是报告基于"agent 在远端"的误判 ✗。
+>
+> 照 Pi 的分层做 ✓：传输无关的 client core + stdio 传输 + 内存传输 ✓。
+> 工具命名 `mcp__<server>__<tool>` ✓。信任线：server 的**清单/schema** 是
+> 用户自己的配置 ✓；server 的**运行时输出** 是数据 ✓（走 envelope ✓）。
+> 配置在 `~/.bonk/mcp.json` ✓（格式与 CC 一致 ✓）。
+>
+> 没做：OAuth ✗、HTTP 传输 ✗、resources/prompts ✗、**远端** MCP server ✗
+> （那才是需要通道的那种 ✗）、设置界面 ✗。
+
 全仓检索 `mcp` / `model context protocol`（`*.swift` / `*.rs` / `*.md` / `*.toml` / `*.json`，
 排除 `build/` `bonk-win/` `website/`）→ **零命中**（唯二 repo 级命中是
 `bonk-win/package-lock.json` 里的 sha512 子串）。

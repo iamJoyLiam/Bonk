@@ -359,6 +359,10 @@ final class BonkAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         #if os(macOS)
             OpenSSHBackend.cleanupOrphanedMuxes()
         #endif
+        // The MCP servers are child processes too: they hold a pipe, and
+        // one left running after the app is gone is one nobody is left
+        // to talk to.
+        MCPServerRegistry.shared.shutdown()
         // Snapshot open tabs for post-update restore (consumed only when
         // the Sparkle delegate flagged this terminate as an update relaunch).
         if let sm = sessionManager {
