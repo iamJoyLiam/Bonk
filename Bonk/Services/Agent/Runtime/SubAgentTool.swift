@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os
 
 /// The tools a sub-agent may use.
 ///
@@ -55,6 +56,33 @@ enum SubAgentToolSet {
     }
 }
 
+/// How many sub-agents one run may spawn.
+///
+/// A cap, and not the only bound: the run's own iteration budget and the
+/// sub-agent's own iteration cap bound the rest. But those bounds are about
+/// *work*; this one is about *fan-out*, and a model that decides to spawn
+/// four sub-agents to answer one question should be told no.
+final class SubAgentSpawnBudget: @unchecked Sendable {
+    private let limit: Int
+    private let used = OSAllocatedUnfairLock<Int>(uncheckedState: 0)
+
+    init(limit: Int = SubAgentTool.defaultSpawnLimit) {
+        self.limit = limit
+    }
+
+    /// Take one slot. False when the run is out.
+    func take() -> Bool {
+        used.withLock { current in
+            guard current < limit else { return false }
+            current += 1
+            return true
+        }
+    }
+
+    /// How many have been spawned.
+    var count: Int { used.withLock { $0 } }
+}
+
 /// A policy that cannot ask.
 ///
 /// A sub-agent runs inside the main agent's turn, and there is nobody to
@@ -92,9 +120,6 @@ struct SubAgentPermissionPolicy: AgentPermissionPolicy {
 /// host. What comes back is its report — model-written text derived from
 /// whatever it read, so it is data like any other tool output and travels
 /// to the parent in the untrusted envelope.
-///
-/// The sub-agent spends from its own budget: the parent run's cap is not
-/// yet shared. That sharing is added in a later change.
 struct SubAgentTool: AgentTool {
     static let toolName = "task"
 
@@ -114,8 +139,21 @@ struct SubAgentTool: AgentTool {
     /// The policy the sub-agent's calls are judged by.
     let permissionPolicy: any AgentPermissionPolicy
 
+    /// The budget the sub-agent spends from.
+    ///
+    /// The parent's, not one of its own: the sub-agent spends the user's
+    /// money on the same model, and a cap that cannot see the spending
+    /// cannot stop it.
+    let budget: AgentBudget
+
+    /// How many sub-agents this run may still spawn.
+    let spawnBudget: SubAgentSpawnBudget
+
     /// How many rounds a sub-agent gets.
     static let defaultMaxIterations = 8
+
+    /// How many sub-agents one run may spawn.
+    static let defaultSpawnLimit = 4
 
     /// How much of a report comes back.
     ///
@@ -195,8 +233,10 @@ struct SubAgentTool: AgentTool {
             permissionPolicy: SubAgentPermissionPolicy(base: permissionPolicy),
             executionManager: executionManager,
             maxIterations: Self.defaultMaxIterations,
+            budget: budget,
             procedure: RemoteSubAgents.procedureMessage(body),
-            systemPrompt: AgentPrompts.subAgentSystemPrompt + "\n\n" + RemoteTerminalState.trustPolicy
+            systemPrompt: AgentPrompts.subAgentSystemPrompt + "\n\n" + RemoteTerminalState.trustPolicy,
+            mayRequestApproval: false
         )
 
         let report = await run(

@@ -70,13 +70,20 @@ final class AgentRuntime: @unchecked Sendable {
     /// agent has none; a sub-agent has exactly one.
     private let procedure: String?
 
+    /// Whether this run may ask the user for approval.
+    ///
+    /// The main agent's run may: the confirmation dialog is on screen. A
+    /// nested run's may not — the dialog belongs to the outer run, and
+    /// nobody is listening to the nested run's stream for one. A nested run
+    /// that asks anyway would wait for an answer that never comes.
+    private let mayRequestApproval: Bool
+
     /// The system prompt, when this run is not the main agent's.
     ///
     /// A sub-agent is not an autonomous terminal agent that answers the
     /// user; it is a worker that reports back to one. Its prompt says so.
     /// Nil means the main agent's prompt.
     private let overriddenSystemPrompt: String?
-
 
     /// The host this run is against.
     ///
@@ -85,7 +92,7 @@ final class AgentRuntime: @unchecked Sendable {
     /// the user gave on one host could carry over to the next.
     private let hostScope: String?
 
-    private let budget: OSAllocatedUnfairLock<AgentBudgetController>
+    private let budget: AgentBudget
     private let progressEvaluator = OSAllocatedUnfairLock(uncheckedState: ProgressEvaluator())
     private static let budgetLog = Logger(subsystem: "com.bonk", category: "AgentBudget")
 
@@ -97,6 +104,12 @@ final class AgentRuntime: @unchecked Sendable {
         executionManager: AgentExecutionManager = .shared,
         transcriptStore: AgentTranscriptStore = AgentTranscriptStore(),
         maxIterations: Int = 25,
+        /// The budget this run spends from.
+        ///
+        /// Injected when the run is a sub-agent's: a sub-agent spends the
+        /// parent's budget, so the cap that stops a runaway sees the
+        /// runaway. Nil means this run has a budget of its own.
+        budget: AgentBudget? = nil,
         decisionMemory: AgentDecisionMemory? = nil,
         foldEngine: (any DecisionEngine)? = nil,
         progressEngine: (any DecisionEngine)? = nil,
@@ -106,6 +119,7 @@ final class AgentRuntime: @unchecked Sendable {
         subAgentListing: String? = nil,
         procedure: String? = nil,
         systemPrompt: String? = nil,
+        mayRequestApproval: Bool = true,
         hostScope: String? = nil
     ) {
         self.contextProvider = contextProvider
@@ -124,8 +138,9 @@ final class AgentRuntime: @unchecked Sendable {
         self.subAgentListing = subAgentListing
         self.procedure = procedure
         self.overriddenSystemPrompt = systemPrompt
+        self.mayRequestApproval = mayRequestApproval
         self.hostScope = hostScope
-        self.budget = OSAllocatedUnfairLock(uncheckedState: AgentBudgetController(maxIterations: maxIterations))
+        self.budget = budget ?? AgentBudget(maxIterations: maxIterations)
     }
 
     /// Snapshot of the owned per-run state. Read-only for future consumers
@@ -136,7 +151,7 @@ final class AgentRuntime: @unchecked Sendable {
 
     /// Budget caps for UI display. Read-only snapshot, same lock discipline.
     var budgetLimits: (maxIterations: Int, maxInputTokens: Int?, maxOutputTokens: Int?) {
-        budget.withLock { ($0.maxIterations, $0.maxInputTokens, $0.maxOutputTokens) }
+        budget.limits
     }
 
     /// Resolves a pending user approval for a tool call.
@@ -287,10 +302,8 @@ final class AgentRuntime: @unchecked Sendable {
             // Phase 1: budget counting + warnings (trace only, never enforced).
             // Counters mirror into the owned state so any exit path leaves
             // fresh numbers behind.
-            let (iterationWarnings, budgetSnap) = budget.withLock { lock -> ([BudgetWarning], (iterations: Int, toolCalls: Int, decisionCalls: Int, wallClockMs: Double, inputTokens: Int, outputTokens: Int)) in
-                let warnings = lock.recordIteration()
-                return (warnings, lock.snapshot)
-            }
+            let iterationWarnings = budget.recordIteration()
+            let budgetSnap = budget.snapshot
             ownedState.withLock {
                 $0.budget.iterationsUsed = budgetSnap.iterations
                 $0.budget.wallClockMs = budgetSnap.wallClockMs
@@ -325,8 +338,8 @@ final class AgentRuntime: @unchecked Sendable {
             // Phase 5: accumulate REPORTED usage (nil stays unknown, never
             // zero-filled), mirror into state, then enforce before spending
             // more. A single response can itself blow the budget.
-            let usageWarnings = budget.withLock { $0.recordUsage(response.usage) }
-            let usageSnap = budget.withLock { $0.snapshot }
+            let usageWarnings = budget.recordUsage(response.usage)
+            let usageSnap = budget.snapshot
             ownedState.withLock {
                 $0.budget.inputTokens = usageSnap.inputTokens
                 $0.budget.outputTokens = usageSnap.outputTokens
@@ -598,10 +611,8 @@ final class AgentRuntime: @unchecked Sendable {
             arguments: authorized.args,
             hostScope: hostScope
         )
-        let toolSnap = budget.withLock { lock -> (iterations: Int, toolCalls: Int, decisionCalls: Int, wallClockMs: Double, inputTokens: Int, outputTokens: Int) in
-            lock.recordToolCall()
-            return lock.snapshot
-        }
+        budget.recordToolCall()
+        let toolSnap = budget.snapshot
         ownedState.withLock {
             $0.appendStep(AgentStepState(
                 tool: toolCall.name,
@@ -805,7 +816,7 @@ final class AgentRuntime: @unchecked Sendable {
             transcriptStore.append(event)
             continuation.yield(event)
         }
-        guard let reason = budget.withLock({ $0.exceededReason() }) else { return false }
+        guard let reason = budget.exceededReason() else { return false }
         emit(.error(code: .budgetExceeded, message: "Agent budget exceeded (\(reason.rawValue)). Stopping to bound cost and latency."))
         traceAgent(kind: .budgetExceeded, engine: "budget", task: "agentExecute", result: reason.rawValue)
         return true
@@ -904,7 +915,7 @@ final class AgentRuntime: @unchecked Sendable {
         guard let summary = try? await modelGateway.chat(messages: summaryRequest, tools: []) else { return compacted }
         let text = summary.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return compacted }
-        let summaryWarnings = budget.withLock { $0.recordUsage(summary.usage) }
+        let summaryWarnings = budget.recordUsage(summary.usage)
         for warning in summaryWarnings {
             traceBudgetWarning(warning)
         }
@@ -965,6 +976,27 @@ final class AgentRuntime: @unchecked Sendable {
         case .allowed:
             break
         case let .confirmRequired(level, description):
+            // A run that may not ask must never reach for the answer.
+            //
+            // The confirmation dialog belongs to the outer run. A nested
+            // run's question has nobody to answer it — the nested run's
+            // events go to the nested run's own stream, and nobody is
+            // listening there for a dialog — so the wait would never end,
+            // and the turn would hang open.
+            //
+            // The policy normally never gets this far in a nested run: the
+            // sub-agent's policy turns a question into a refusal. This is
+            // the backstop for the case where one arrives anyway.
+            guard mayRequestApproval else {
+                let reason = """
+                \(description) — this run cannot ask the user for approval. \
+                Report it back, so the run that can ask will run it itself, \
+                where the user will be asked.
+                """
+                emit(.error(code: .generic, message: "Action blocked: \(reason)"))
+                messages.append(ToolMessage.local("Blocked by safety policy: \(reason)", callID: callId))
+                return .skipped
+            }
             // Reason facts are read once and shared by the dialog and the
             // fold attempt below. Recording happens once per evaluation.
             let safetyLabel: String
@@ -1075,7 +1107,7 @@ final class AgentRuntime: @unchecked Sendable {
             threshold: DecisionEngineConfig.load().decisionThreshold,
             task: "agentExecute"
         )
-        let decisionWarnings = budget.withLock { $0.recordDecisionCall() }
+        let decisionWarnings = budget.recordDecisionCall()
         for warning in decisionWarnings {
             traceBudgetWarning(warning)
         }
@@ -1234,7 +1266,7 @@ final class AgentRuntime: @unchecked Sendable {
             let start = Date()
             let judged = try await engine.score(option: option, context: context)
             let latencyMs = Date().timeIntervalSince(start) * 1000
-            let decisionWarnings = budget.withLock { $0.recordDecisionCall() }
+            let decisionWarnings = budget.recordDecisionCall()
             for warning in decisionWarnings {
                 traceBudgetWarning(warning)
             }

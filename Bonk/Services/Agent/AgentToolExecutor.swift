@@ -68,6 +68,21 @@ extension AgentEngine {
             toolRegistry.register(tool)
         }
 
+        // The budget this run spends from, and the tool that spends it.
+        //
+        // One budget for the run *and* the sub-agents it spawns: a
+        // sub-agent spends the user's money on the same model, and a cap
+        // that cannot see the spending cannot stop it. So the budget is
+        // made here, and handed to both the runtime and the tool.
+        let budget = AgentBudget(maxIterations: AgentEngine.maxAgentIterations)
+        let spawnBudget = SubAgentSpawnBudget()
+        toolRegistry.register(SubAgentTool(
+            gateway: modelGateway,
+            permissionPolicy: permissionPolicy,
+            budget: budget,
+            spawnBudget: spawnBudget
+        ))
+
         let runtime = AgentRuntime(
             contextProvider: contextProvider,
             modelGateway: modelGateway,
@@ -75,6 +90,7 @@ extension AgentEngine {
             permissionPolicy: permissionPolicy,
             executionManager: executionManager,
             maxIterations: AgentEngine.maxAgentIterations,
+            budget: budget,
             decisionMemory: decisionMemory,
             foldEngine: DecisionEngineFactory.makeEffective(),
             progressEngine: DecisionEngineFactory.makeEffective(),
