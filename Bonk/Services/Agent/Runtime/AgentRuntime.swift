@@ -92,6 +92,12 @@ final class AgentRuntime: @unchecked Sendable {
     /// the user gave on one host could carry over to the next.
     private let hostScope: String?
 
+    /// Cache for idempotent, read-only tool results.
+    ///
+    /// Shared across runs: a read-only command's result on one run can be
+    /// reused by a later run on the same host, saving an SSH round-trip.
+    private let toolCache: AgentToolCache
+
     private let budget: AgentBudget
     private let progressEvaluator = OSAllocatedUnfairLock(uncheckedState: ProgressEvaluator())
     private static let budgetLog = Logger(subsystem: "com.bonk", category: "AgentBudget")
@@ -120,7 +126,10 @@ final class AgentRuntime: @unchecked Sendable {
         procedure: String? = nil,
         systemPrompt: String? = nil,
         mayRequestApproval: Bool = true,
-        hostScope: String? = nil
+        hostScope: String? = nil,
+        /// Cache for idempotent, read-only tool results. Defaults to a new
+        /// cache; inject a shared one to reuse results across runs.
+        toolCache: AgentToolCache? = nil
     ) {
         self.contextProvider = contextProvider
         self.modelGateway = modelGateway
@@ -140,6 +149,7 @@ final class AgentRuntime: @unchecked Sendable {
         self.overriddenSystemPrompt = systemPrompt
         self.mayRequestApproval = mayRequestApproval
         self.hostScope = hostScope
+        self.toolCache = toolCache ?? AgentToolCache()
         self.budget = budget ?? AgentBudget(maxIterations: maxIterations)
     }
 
@@ -573,17 +583,23 @@ final class AgentRuntime: @unchecked Sendable {
             return .notRun(denied: true)
         }
 
-        // Execute tool
+        // Execute tool, using the cache for read-only tools when possible.
+        // A cache hit skips the SSH round-trip entirely.
         let startTime = Date()
         let output: String
         let exitCode: Int32
         do {
-            let execResult = try await authorized.tool.execute(
-                id: callId,
-                arguments: authorized.args,
-                executionManager: executionManager,
-                executor: executor
-            )
+            let execResult = try await toolCache.lookupOrStore(
+                toolName: authorized.tool.name,
+                arguments: authorized.args
+            ) {
+                try await authorized.tool.execute(
+                    id: callId,
+                    arguments: authorized.args,
+                    executionManager: executionManager,
+                    executor: executor
+                )
+            }
             output = execResult.output
             exitCode = execResult.exitCode
             // The model wrote its task list: publish it, so the user can
