@@ -1,8 +1,9 @@
 //  AgentBudgetController.swift
 //  Bonk
 //
-//  Sole budget source for AgentRuntime. Value type owned by AgentRuntime;
-//  mutate only from the driving task.
+//  Sole budget source for AgentRuntime. The controller is a value type;
+//  `AgentBudget` is the reference the runtime holds, so that a run and the
+//  sub-agents it spawns spend one budget between them.
 //
 //  Phase 5 adds enforcement and token accounting. Token accounting uses
 //  REPORTED usage only — nil usage never invents numbers. Token caps are
@@ -10,6 +11,54 @@
 
 import Foundation
 import os
+
+/// One run's budget, shared by the run and the sub-agents it spawns.
+///
+/// A reference rather than a value, and that is the whole point: a
+/// sub-agent runs *inside* the parent's run and spends the user's money on
+/// the same model. If it had a budget of its own, the cap that exists to
+/// stop a runaway run would not see the runaway.
+///
+/// The counters live in a lock, because the parent's loop and a sub-agent's
+/// loop both touch them, from different tasks.
+final class AgentBudget: @unchecked Sendable {
+    private let controller = OSAllocatedUnfairLock<AgentBudgetController>(
+        uncheckedState: AgentBudgetController()
+    )
+
+    init(maxIterations: Int = 25) {
+        controller.withLock { $0.maxIterations = maxIterations }
+    }
+
+    /// The caps, for display.
+    var limits: (maxIterations: Int, maxInputTokens: Int?, maxOutputTokens: Int?) {
+        controller.withLock { ($0.maxIterations, $0.maxInputTokens, $0.maxOutputTokens) }
+    }
+
+    var snapshot: (iterations: Int, toolCalls: Int, decisionCalls: Int, wallClockMs: Double, inputTokens: Int, outputTokens: Int) {
+        controller.withLock { $0.snapshot }
+    }
+
+    func recordIteration() -> [BudgetWarning] {
+        controller.withLock { $0.recordIteration() }
+    }
+
+    func recordToolCall() {
+        controller.withLock { $0.recordToolCall() }
+    }
+
+    func recordDecisionCall() -> [BudgetWarning] {
+        controller.withLock { $0.recordDecisionCall() }
+    }
+
+    func recordUsage(_ usage: TokenUsage?) -> [BudgetWarning] {
+        controller.withLock { $0.recordUsage(usage) }
+    }
+
+    func exceededReason() -> BudgetExceededReason? {
+        controller.withLock { $0.exceededReason() }
+    }
+}
 
 /// Budget warning. Advisory: observed via trace, never enforced.
 enum BudgetWarning: Sendable, Equatable {

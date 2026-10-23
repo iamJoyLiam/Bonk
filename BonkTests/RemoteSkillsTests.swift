@@ -162,7 +162,7 @@ struct RemoteSkillsTests {
         ---
         # Body
         """
-        let fields = RemoteSkills.frontmatterFields(text)
+        let fields = MarkdownFrontmatter.fields(text)
         #expect(fields["name"] == "deploy")
         #expect(fields["description"] == "Deploy the service")
         #expect(fields["allowed-tools"] == "Bash")
@@ -170,7 +170,7 @@ struct RemoteSkillsTests {
 
     @Test("A file with no frontmatter has no fields")
     func noFrontmatterNoFields() {
-        #expect(RemoteSkills.frontmatterFields("# Just a heading").isEmpty)
+        #expect(MarkdownFrontmatter.fields("# Just a heading").isEmpty)
     }
 
     @Test("The listing command reads only the frontmatter of each file")

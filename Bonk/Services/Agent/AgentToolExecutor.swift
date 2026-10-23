@@ -23,6 +23,7 @@ extension AgentEngine {
         provider: any LLMProvider,
         projectInstructions: String? = nil,
         skillListing: String? = nil,
+        subAgentListing: String? = nil,
         hostScope: String? = nil,
         mcpServers: MCPServerRegistry = .shared
     ) async {
@@ -80,6 +81,7 @@ extension AgentEngine {
             messageHistory: messageHistory,
             projectInstructions: projectInstructions,
             skillListing: skillListing,
+            subAgentListing: subAgentListing,
             hostScope: hostScope
         )
 

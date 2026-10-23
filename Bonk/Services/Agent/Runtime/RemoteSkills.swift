@@ -175,68 +175,16 @@ enum RemoteSkills {
     /// *body*, so a file that has frontmatter but no description does not
     /// fall back to a frontmatter line.
     static func description(from text: String) -> String {
-        let fields = frontmatterFields(text)
+        let fields = MarkdownFrontmatter.fields(text)
         if let described = fields["description"]?.trimmingCharacters(in: .whitespacesAndNewlines),
            !described.isEmpty {
             return described
         }
-        for line in body(of: text).components(separatedBy: "\n") {
+        for line in MarkdownFrontmatter.body(of: text).components(separatedBy: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard !trimmed.isEmpty else { continue }
             return trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
                 .trimmingCharacters(in: .whitespaces)
-        }
-        return ""
-    }
-
-    /// The `key: value` fields in a frontmatter block.
-    ///
-    /// A deliberately small subset of YAML: the top-level `key: value`
-    /// lines between the `---` markers. A full YAML parser is not needed
-    /// for two fields, and a small parser cannot be talked into
-    /// constructing objects.
-    static func frontmatterFields(_ text: String) -> [String: String] {
-        var fields: [String: String] = [:]
-        for line in frontmatterLines(of: text) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard let colon = trimmed.firstIndex(of: ":") else { continue }
-            let key = String(trimmed[trimmed.startIndex..<colon])
-                .trimmingCharacters(in: .whitespaces)
-            let value = String(trimmed[trimmed.index(after: colon)...])
-                .trimmingCharacters(in: .whitespaces)
-            guard !key.isEmpty, !value.isEmpty else { continue }
-            // A nested key (`  something: x`) is not a top-level field.
-            guard !line.hasPrefix(" "), !line.hasPrefix("\t") else { continue }
-            fields[key.lowercased()] = value
-        }
-        return fields
-    }
-
-    /// The lines of a file's frontmatter, without the `---` markers.
-    static func frontmatterLines(of text: String) -> [String] {
-        var lines = text.components(separatedBy: "\n")
-        guard let first = lines.first,
-              first.trimmingCharacters(in: .whitespaces) == "---" else { return [] }
-        lines.removeFirst()
-        var result: [String] = []
-        for line in lines {
-            if line.trimmingCharacters(in: .whitespaces) == "---" { break }
-            result.append(line)
-        }
-        return result
-    }
-
-    /// The text after a file's frontmatter.
-    static func body(of text: String) -> String {
-        let lines = text.components(separatedBy: "\n")
-        guard let first = lines.first,
-              first.trimmingCharacters(in: .whitespaces) == "---" else { return text }
-        var index = 1
-        while index < lines.count {
-            if lines[index].trimmingCharacters(in: .whitespaces) == "---" {
-                return lines[(index + 1)...].joined(separator: "\n")
-            }
-            index += 1
         }
         return ""
     }

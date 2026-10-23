@@ -71,6 +71,14 @@ struct DefaultAgentPermissionPolicy: AgentPermissionPolicy {
         if tool == SkillTool.toolName {
             return .allowed
         }
+        // The sub-agent tool starts a nested run. It runs nothing on the
+        // host itself: the commands the sub-agent issues are judged by this
+        // same policy one level down, where a sub-agent cannot ask the user
+        // and a command needing approval is refused. So the tool call
+        // itself is allowed, and what it leads to is not.
+        if tool == SubAgentTool.toolName {
+            return .allowed
+        }
 
         guard tool == "run_command" || tool == "bash_run" else {
             // Unknown or generic tools default to confirm

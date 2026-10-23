@@ -122,6 +122,7 @@ docs/*
 !docs/agent-task-013-session-persistence.md
 !docs/agent-task-014-mcp-client.md
 !docs/agent-task-015-unicode-sanitization.md
+!docs/agent-task-016-sub-agent.md
 
 # Web
 docs/FEATURE_ROADMAP.md

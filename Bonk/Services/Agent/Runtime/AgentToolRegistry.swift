@@ -13,11 +13,19 @@ protocol AgentTool: Sendable {
     var description: String { get }
     var definition: LLMToolDefinition { get }
 
+    /// Run the tool.
+    ///
+    /// The executor runs a command on the target.
+    ///
+    /// `@escaping`: a tool may outlive its own call — the sub-agent tool
+    /// starts a nested run that keeps using the executor after the tool
+    /// returns. A tool that only runs one command never needs that, but the
+    /// signature has to allow it.
     func execute(
         id: String,
         arguments: [String: String],
         executionManager: AgentExecutionManager,
-        executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
+        executor: @escaping @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
     ) async throws -> (output: String, exitCode: Int32)
 }
 
@@ -52,7 +60,7 @@ struct BashRunTool: AgentTool {
         id: String,
         arguments: [String: String],
         executionManager: AgentExecutionManager,
-        executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
+        executor: @escaping @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
     ) async throws -> (output: String, exitCode: Int32) {
         guard let command = arguments["command"]?.trimmingCharacters(in: .whitespacesAndNewlines), !command.isEmpty else {
             return ("Error: Missing 'command' argument", 1)
@@ -95,7 +103,7 @@ struct ReadFileTool: AgentTool {
         id: String,
         arguments: [String: String],
         executionManager: AgentExecutionManager,
-        executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
+        executor: @escaping @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
     ) async throws -> (output: String, exitCode: Int32) {
         guard let path = arguments["path"]?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty else {
             return ("Error: Missing 'path' argument", 1)
@@ -139,7 +147,7 @@ struct SearchHistoryTool: AgentTool {
         id: String,
         arguments: [String: String],
         executionManager: AgentExecutionManager,
-        executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
+        executor: @escaping @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
     ) async throws -> (output: String, exitCode: Int32) {
         guard let query = arguments["query"]?.trimmingCharacters(in: .whitespacesAndNewlines), !query.isEmpty else {
             return ("Error: Missing 'query' argument", 1)
@@ -178,7 +186,7 @@ struct InspectSystemTool: AgentTool {
         id: String,
         arguments: [String: String],
         executionManager: AgentExecutionManager,
-        executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
+        executor: @escaping @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
     ) async throws -> (output: String, exitCode: Int32) {
         let cmd = "echo '--- OS ---'; uname -a; echo '--- UPTIME ---'; uptime; echo '--- MEMORY ---'; free -h 2>/dev/null || vm_stat; echo '--- DISK ---'; df -h /"
         return try await executor(cmd) { handle in
@@ -218,7 +226,7 @@ struct ListDirectoryTool: AgentTool {
         id: String,
         arguments: [String: String],
         executionManager: AgentExecutionManager,
-        executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
+        executor: @escaping @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
     ) async throws -> (output: String, exitCode: Int32) {
         let target = arguments["path"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "."
         let safeTarget = (target.isEmpty ? "." : target).replacingOccurrences(of: "'", with: "'\\''")
@@ -269,7 +277,7 @@ struct SkillTool: AgentTool {
         id: String,
         arguments: [String: String],
         executionManager: AgentExecutionManager,
-        executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
+        executor: @escaping @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
     ) async throws -> (output: String, exitCode: Int32) {
         guard let skillName = arguments["name"]?.trimmingCharacters(in: .whitespacesAndNewlines),
               !skillName.isEmpty
@@ -357,7 +365,7 @@ struct TodoWriteTool: AgentTool {
         id: String,
         arguments: [String: String],
         executionManager: AgentExecutionManager,
-        executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
+        executor: @escaping @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
     ) async throws -> (output: String, exitCode: Int32) {
         guard let raw = arguments["todos"],
               !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

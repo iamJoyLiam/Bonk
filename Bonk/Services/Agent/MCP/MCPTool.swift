@@ -76,7 +76,7 @@ struct MCPTool: AgentTool {
         id: String,
         arguments: [String: String],
         executionManager: AgentExecutionManager,
-        executor: @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
+        executor: @escaping @Sendable (String, CommandHandleRegistration?) async throws -> (output: String, exitCode: Int32)
     ) async throws -> (output: String, exitCode: Int32) {
         let typed = Self.typedArguments(arguments, schema: descriptor.inputSchema)
         do {

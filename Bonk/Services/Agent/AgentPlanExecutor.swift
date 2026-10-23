@@ -86,11 +86,18 @@ extension AgentEngine {
             sshService: sshService,
             hybridSession: hybridSession
         )
+        // The sub-agents the host offers. Same shape as the skills: a
+        // listing of names and descriptions, read outside the run.
+        let subAgentListing = await loadSubAgentListing(
+            sshService: sshService,
+            hybridSession: hybridSession
+        )
         if let provider, provider.capability.supportsToolCalls {
             await runAgentToolLoop(
                 input: input, sshService: sshService, hybridSession: hybridSession, hostName: hostName,
                 conversation: conversation, context: context, provider: provider,
                 projectInstructions: projectInstructions, skillListing: skillListing,
+                subAgentListing: subAgentListing,
                 hostScope: hostScope
             )
         } else {

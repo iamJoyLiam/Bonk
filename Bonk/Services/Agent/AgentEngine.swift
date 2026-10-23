@@ -381,6 +381,30 @@ final class AgentEngine {
         return RemoteSkills.listingMessage(for: summaries)
     }
 
+    /// Read the sub-agents the connected host offers.
+    ///
+    /// Read once, here, where the host is known, and handed to whichever
+    /// path runs — the same shape as the project's instruction files and the
+    /// skills.
+    ///
+    /// A host with no sub-agents is the normal case and must not be an
+    /// error: sub-agents are an enhancement, never a precondition for
+    /// running.
+    func loadSubAgentListing(
+        sshService: SSHNetworkService,
+        hybridSession: TerminalSession?
+    ) async -> String? {
+        let summaries = await RemoteSubAgents.load(
+            executor: { command in
+                if let session = hybridSession {
+                    return try await session.executeHybrid(command, registerHandle: nil)
+                }
+                return try await sshService.executeCommand(command)
+            }
+        )
+        return RemoteSubAgents.listingMessage(for: summaries)
+    }
+
     // MARK: - Non-Streaming Execution (Agent)
 
     /// This overload intentionally carries no untrusted context.

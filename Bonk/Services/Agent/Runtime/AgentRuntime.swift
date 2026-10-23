@@ -56,6 +56,28 @@ final class AgentRuntime: @unchecked Sendable {
     /// inside the loop would spend a command slot and a turn on it.
     private let skillListing: String?
 
+    /// The sub-agents this host offers, as context the app injected.
+    ///
+    /// A listing of names and descriptions, not their bodies: the model
+    /// pulls one in when the task calls for it.
+    private let subAgentListing: String?
+
+    /// A sub-agent's own procedure: the definition the host keeps for this
+    /// kind of work.
+    ///
+    /// Standing context for the whole run, like the project's instructions:
+    /// the app injected it, and it rides as a user-role message. The main
+    /// agent has none; a sub-agent has exactly one.
+    private let procedure: String?
+
+    /// The system prompt, when this run is not the main agent's.
+    ///
+    /// A sub-agent is not an autonomous terminal agent that answers the
+    /// user; it is a worker that reports back to one. Its prompt says so.
+    /// Nil means the main agent's prompt.
+    private let overriddenSystemPrompt: String?
+
+
     /// The host this run is against.
     ///
     /// The decision memory is keyed by command, and a command approved on
@@ -81,6 +103,9 @@ final class AgentRuntime: @unchecked Sendable {
         messageHistory: (any AgentMessageHistory)? = nil,
         projectInstructions: String? = nil,
         skillListing: String? = nil,
+        subAgentListing: String? = nil,
+        procedure: String? = nil,
+        systemPrompt: String? = nil,
         hostScope: String? = nil
     ) {
         self.contextProvider = contextProvider
@@ -96,6 +121,9 @@ final class AgentRuntime: @unchecked Sendable {
         self.messageHistory = messageHistory
         self.projectInstructions = projectInstructions
         self.skillListing = skillListing
+        self.subAgentListing = subAgentListing
+        self.procedure = procedure
+        self.overriddenSystemPrompt = systemPrompt
         self.hostScope = hostScope
         self.budget = OSAllocatedUnfairLock(uncheckedState: AgentBudgetController(maxIterations: maxIterations))
     }
@@ -188,7 +216,8 @@ final class AgentRuntime: @unchecked Sendable {
         // trusted half goes in; the remote half rides as its own user-role
         // message, marked as data.
         let context = await contextProvider.assembleContext(input: input)
-        var basePrompt = AgentPrompts.toolSystemPrompt + "\n\n" + RemoteTerminalState.trustPolicy
+        var basePrompt = overriddenSystemPrompt
+            ?? (AgentPrompts.toolSystemPrompt + "\n\n" + RemoteTerminalState.trustPolicy)
         if !context.trusted.isEmpty {
             basePrompt += "\n\n## Environment Context\n\(context.trusted)"
         }
@@ -222,6 +251,15 @@ final class AgentRuntime: @unchecked Sendable {
         // window is not spent on procedures this task never needs.
         if let skillListing {
             messages.append(.user(skillListing))
+        }
+        if let subAgentListing {
+            messages.append(.user(subAgentListing))
+        }
+        // A sub-agent's own procedure: the definition the host keeps for
+        // this kind of work. It is remote content like any other, so it
+        // rides as a user-role message and cannot authorize anything.
+        if let procedure {
+            messages.append(.user(procedure))
         }
         // The remote state, as data. It is deliberately not recorded in the
         // conversation history: it is the state of this moment, not a turn
