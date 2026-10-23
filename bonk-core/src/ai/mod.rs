@@ -47,9 +47,8 @@ pub struct OpenAiCompatProvider {
 impl AiProvider for OpenAiCompatProvider {
     async fn complete(&self, req: AiCompletionRequest) -> CoreResult<AiCompletionResponse> {
         if self.api_key.is_empty() {
-            // no key -> mock echo for offline dev
-            let last = req.messages.last().map(|m| m.content.clone()).unwrap_or_default();
-            return Ok(AiCompletionResponse { content: format!("[mock {}] {}", self.model, last), finish_reason: Some("stop".into()) });
+            // no key -> hard failure, never mock success for a missing credential
+            return Err(CoreError::Ai("no API key configured for OpenAI-compatible provider".into()));
         }
         let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(30)).build().map_err(|e| CoreError::Ai(e.to_string()))?;
         // Build OpenAI chat completions payload
@@ -94,8 +93,7 @@ pub struct ClaudeProvider {
 impl AiProvider for ClaudeProvider {
     async fn complete(&self, req: AiCompletionRequest) -> CoreResult<AiCompletionResponse> {
         if self.api_key.is_empty() {
-            let last = req.messages.last().map(|m| m.content.clone()).unwrap_or_default();
-            return Ok(AiCompletionResponse { content: format!("[claude mock] {}", last), finish_reason: Some("end_turn".into()) });
+            return Err(CoreError::Ai("no API key configured for Claude provider".into()));
         }
         let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(30)).build().map_err(|e| CoreError::Ai(e.to_string()))?;
         // Anthropic expects system as separate field
@@ -130,8 +128,7 @@ pub struct GeminiProvider {
 impl AiProvider for GeminiProvider {
     async fn complete(&self, req: AiCompletionRequest) -> CoreResult<AiCompletionResponse> {
         if self.api_key.is_empty() {
-            let last = req.messages.last().map(|m| m.content.clone()).unwrap_or_default();
-            return Ok(AiCompletionResponse { content: format!("[gemini mock] {}", last), finish_reason: Some("STOP".into()) });
+            return Err(CoreError::Ai("no API key configured for Gemini provider".into()));
         }
         let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(30)).build().map_err(|e| CoreError::Ai(e.to_string()))?;
         let model = if req.model.is_empty() { &self.model } else { &req.model };
@@ -175,10 +172,8 @@ impl AiProvider for OllamaProvider {
                 Err(CoreError::Ai(format!("ollama {}: {}", txt.chars().take(200).collect::<String>(), txt.len())))
             },
             Err(e) => {
-                // offline fallback mock
-                let last = req.messages.last().map(|m| m.content.clone()).unwrap_or_default();
-                if last.is_empty() { return Err(CoreError::Ai(e.to_string())); }
-                Ok(AiCompletionResponse { content: format!("[ollama offline mock] {}", last), finish_reason: Some("stop".into()) })
+                // connection failure: report error, never mock success
+                Err(CoreError::Ai(e.to_string()))
             }
         }
     }
@@ -195,5 +190,77 @@ pub fn provider_for(kind: AiProviderKind, model: &str, api_key: &str, base_url: 
         AiProviderKind::Claude => Box::new(ClaudeProvider { api_key: api_key.into(), model: model.into() }),
         AiProviderKind::Gemini => Box::new(GeminiProvider { api_key: api_key.into(), model: model.into() }),
         AiProviderKind::Ollama => Box::new(OllamaProvider { base_url: base_url.into(), model: model.into() }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_request() -> AiCompletionRequest {
+        AiCompletionRequest {
+            model: "test-model".into(),
+            messages: vec![AiMessage { role: "user".into(), content: "hello".into() }],
+            max_tokens: Some(100),
+            temperature: Some(0.7),
+        }
+    }
+
+    /// P2-8: empty API key must produce a hard error, never mock success.
+    #[tokio::test]
+    async fn openai_compat_empty_key_is_hard_error() {
+        let provider = OpenAiCompatProvider {
+            base_url: "https://api.openai.com".into(),
+            api_key: "".into(),
+            model: "gpt-4o-mini".into(),
+        };
+        let result = provider.complete(make_request()).await;
+        assert!(result.is_err(), "empty API key must not return mock success");
+        match result.err().unwrap() {
+            CoreError::Ai(msg) => assert!(msg.contains("no API key configured")),
+            other => panic!("expected CoreError::Ai, got {:?}", other),
+        }
+    }
+
+    /// P2-8: empty API key must produce a hard error, never mock success.
+    #[tokio::test]
+    async fn claude_empty_key_is_hard_error() {
+        let provider = ClaudeProvider {
+            api_key: "".into(),
+            model: "claude-3-sonnet".into(),
+        };
+        let result = provider.complete(make_request()).await;
+        assert!(result.is_err(), "empty API key must not return mock success");
+        match result.err().unwrap() {
+            CoreError::Ai(msg) => assert!(msg.contains("no API key configured")),
+            other => panic!("expected CoreError::Ai, got {:?}", other),
+        }
+    }
+
+    /// P2-8: empty API key must produce a hard error, never mock success.
+    #[tokio::test]
+    async fn gemini_empty_key_is_hard_error() {
+        let provider = GeminiProvider {
+            api_key: "".into(),
+            model: "gemini-pro".into(),
+        };
+        let result = provider.complete(make_request()).await;
+        assert!(result.is_err(), "empty API key must not return mock success");
+        match result.err().unwrap() {
+            CoreError::Ai(msg) => assert!(msg.contains("no API key configured")),
+            other => panic!("expected CoreError::Ai, got {:?}", other),
+        }
+    }
+
+    /// P2-8: Ollama connection failure must produce a hard error, never mock success.
+    #[tokio::test]
+    async fn ollama_connection_failure_is_hard_error() {
+        // 127.0.0.1:1 is refused immediately on localhost, so this returns fast.
+        let provider = OllamaProvider {
+            base_url: "http://127.0.0.1:1".into(),
+            model: "llama3".into(),
+        };
+        let result = provider.complete(make_request()).await;
+        assert!(result.is_err(), "ollama connection failure must not return mock success");
     }
 }

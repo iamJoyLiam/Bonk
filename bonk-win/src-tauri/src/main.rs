@@ -546,11 +546,7 @@ async fn ai_complete(prompt: String, model: Option<String>) -> Result<String, St
     };
     match provider.complete(req).await {
         Ok(resp) => Ok(resp.content),
-        Err(e) => {
-            // fallback mock to keep UI responsive offline
-            tracing::warn!("ai_complete fallback mock: {}", e);
-            Ok(format!("[AI mock fallback: {}] {}", e, prompt))
-        }
+        Err(e) => Err(e.to_string()),
     }
 }
 
