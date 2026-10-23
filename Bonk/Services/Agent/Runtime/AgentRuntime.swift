@@ -98,6 +98,13 @@ final class AgentRuntime: @unchecked Sendable {
     /// reused by a later run on the same host, saving an SSH round-trip.
     private let toolCache: AgentToolCache
 
+    /// Hooks plugins can register to observe and influence tool execution.
+    ///
+    /// Hooks run in registration order, before and after each tool call.
+    /// A hook can transform arguments, transform output, or block a call
+    /// entirely by returning nil from willCallTool.
+    private let hookRegistry: AgentHookRegistry
+
     private let budget: AgentBudget
     private let progressEvaluator = OSAllocatedUnfairLock(uncheckedState: ProgressEvaluator())
     private static let budgetLog = Logger(subsystem: "com.bonk", category: "AgentBudget")
@@ -129,7 +136,10 @@ final class AgentRuntime: @unchecked Sendable {
         hostScope: String? = nil,
         /// Cache for idempotent, read-only tool results. Defaults to a new
         /// cache; inject a shared one to reuse results across runs.
-        toolCache: AgentToolCache? = nil
+        toolCache: AgentToolCache? = nil,
+        /// Hooks plugins can register to observe and influence tool
+        /// execution. Defaults to an empty registry.
+        hookRegistry: AgentHookRegistry? = nil,
     ) {
         self.contextProvider = contextProvider
         self.modelGateway = modelGateway
@@ -150,6 +160,7 @@ final class AgentRuntime: @unchecked Sendable {
         self.mayRequestApproval = mayRequestApproval
         self.hostScope = hostScope
         self.toolCache = toolCache ?? AgentToolCache()
+        self.hookRegistry = hookRegistry ?? AgentHookRegistry()
         self.budget = budget ?? AgentBudget(maxIterations: maxIterations)
     }
 
@@ -583,6 +594,15 @@ final class AgentRuntime: @unchecked Sendable {
             return .notRun(denied: true)
         }
 
+        // Hooks can transform arguments or block the call entirely.
+        let hookedArgs = await hookRegistry.willCallTool(
+            toolName: authorized.tool.name,
+            arguments: authorized.args
+        )
+        guard let hookedArgs else {
+            return .notRun(denied: false)
+        }
+
         // Execute tool, using the cache for read-only tools when possible.
         // A cache hit skips the SSH round-trip entirely.
         let startTime = Date()
@@ -591,11 +611,11 @@ final class AgentRuntime: @unchecked Sendable {
         do {
             let execResult = try await toolCache.lookupOrStore(
                 toolName: authorized.tool.name,
-                arguments: authorized.args
+                arguments: hookedArgs
             ) {
                 try await authorized.tool.execute(
                     id: callId,
-                    arguments: authorized.args,
+                    arguments: hookedArgs,
                     executionManager: executionManager,
                     executor: executor
                 )
@@ -618,7 +638,14 @@ final class AgentRuntime: @unchecked Sendable {
 
         let duration = Date().timeIntervalSince(startTime)
         let guardedOutput = OutputGuard.guardOutput(output).content
-        emit(.toolOutput(id: callId, output: guardedOutput))
+        // Hooks can transform output before it reaches the model.
+        let hookedOutput = await hookRegistry.didCallTool(
+            toolName: authorized.tool.name,
+            arguments: hookedArgs,
+            output: guardedOutput,
+            exitCode: exitCode
+        )
+        emit(.toolOutput(id: callId, output: hookedOutput))
         emit(.toolCompleted(id: callId, exitCode: exitCode, duration: duration))
 
         // Phase 1: populate owned state (never read back for decisions yet).

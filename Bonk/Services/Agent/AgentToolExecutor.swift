@@ -98,7 +98,9 @@ extension AgentEngine {
             projectInstructions: projectInstructions,
             skillListing: skillListing,
             subAgentListing: subAgentListing,
-            hostScope: hostScope
+            hostScope: hostScope,
+            toolCache: AgentToolCache(),
+            hookRegistry: nil   // hook registry starts empty; plugins register later
         )
 
         self.activeRuntime = runtime
