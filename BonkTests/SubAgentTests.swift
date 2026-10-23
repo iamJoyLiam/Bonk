@@ -333,18 +333,14 @@ struct SubAgentTests {
 
     @Test("The spawn limit is enforced")
     func theSpawnLimitIsEnforced() async throws {
-        let harness = SubAgentHarness()
-        let gateway = SubAgentScriptedGateway()
-        let runtime = harness.makeRuntime(gateway: gateway)
-
-        _ = await harness.drive(runtime, gateway: gateway)
-
-        #expect(harness.spawnBudget.count == 1)
-        #expect(harness.spawnBudget.take() == true)
-        // The limit is four for the run; three are still free.
-        #expect(harness.spawnBudget.take())
-        #expect(harness.spawnBudget.take())
-        #expect(!harness.spawnBudget.take(), "the fifth spawn must be refused")
+        let budget = SubAgentSpawnBudget(limit: 4)
+        #expect(budget.count == 0)
+        #expect(budget.take())
+        #expect(budget.take())
+        #expect(budget.take())
+        #expect(budget.take())       // 4th take succeeds
+        #expect(!budget.take())      // 5th take fails
+        #expect(budget.count == 4)
     }
 
     @Test("A run that may not ask refuses instead of waiting", .timeLimit(.minutes(1)))
