@@ -17,7 +17,7 @@ struct StepFingerprint: Hashable, Sendable {
 final class TerminationGuard {
     private var fingerprints: [StepFingerprint] = []
     private var consecutiveDuplicates = 0
-    private static let maxConsecutiveDuplicates = 2
+    private static let maxConsecutiveDuplicates = 5
 
     enum ProgressEvaluation: Sendable, Equatable {
         case proceed
@@ -43,7 +43,7 @@ final class TerminationGuard {
 
         // Check if same command failed or repeated 3 times across the entire session
         let matchingCount = fingerprints.filter { $0.toolName == toolName && $0.arguments == arguments }.count
-        if matchingCount >= 2 {
+        if matchingCount >= 5 {
             return .terminateLoop(
                 reason: String(format: L.t(.agLoopStalled), toolName)
             )

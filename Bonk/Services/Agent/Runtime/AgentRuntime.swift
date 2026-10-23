@@ -901,7 +901,7 @@ final class AgentRuntime: @unchecked Sendable {
             $0 > 1 && (messages[$0].role == .assistant || messages[$0].role == .user)
         }
         guard let cut = boundaryIndices.max(),
-              cut < messages.count - 1
+              cut < messages.count
         else { return compacted }
 
         // Truncating a wrapped message with `prefix` would cut into the
