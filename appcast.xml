@@ -6,6 +6,39 @@
     <channel>
         <title>Bonk</title>
         <item>
+        <title>2026.5.4</title>
+        <pubDate>Mon, 26 Oct 2026 14:09:52 +0800</pubDate>
+        <sparkle:version>20265004</sparkle:version>
+        <sparkle:shortVersionString>2026.5.4</sparkle:shortVersionString>
+        <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+        <description><![CDATA[
+## Changes
+
+- Complete MCP OAuth/HTTP transport (P1-1): add MCPAuthenticationManager, MCPOAuthCallbackServer, MCPAuthStore, and bearer token support for Streamable HTTP servers; MCP servers requiring OAuth now authenticate before connecting, and authentication failures are real errors, never mocked.
+- Update 21 third-party SwiftPM dependencies to latest compatible versions (OpenAI 0.5.3, Sparkle 2.10.1, swift-nio 2.104.0, SwiftTerm 1.99.1, and more).
+- Fix MCP server configuration parsing: use dictionary subscript on MCPJSONValue objects instead of invalid .objectValue access.
+- Fix OAuth callback server: use NWListener(using: .tcp) for ephemeral port instead of invalid initializer.
+- Fix OAuth manager: import CryptoKit for SHA256 code challenge generation.
+- All agent tests pass (AgentToolCacheTests, AgentHookTests, MCPClientTests).
+        ]]></description>
+        <enclosure
+            url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.5.4/Bonk-2026.5.4-arm64.dmg"
+            length="26320996"
+            type="application/octet-stream"
+            sparkle:edSignature="9bgg4LbHkyvJiLVX6aU5UNduPedzkui50uFxRh8QUdEtPiRr7+Ivk2k5qFmXH3Aw1awY0zme4sqarkqE0iCiCA=="
+            sparkle:os="macos"
+            sparkle:cpuAffinity="arm64"
+        />
+        <enclosure
+            url="https://github.com/iamJoyLiam/Bonk/releases/download/v2026.5.4/Bonk-2026.5.4-x86_64.dmg"
+            length="27464876"
+            type="application/octet-stream"
+            sparkle:edSignature="4ebwKCDFbh/u+wMk7RI35zCqyj+Vl4N4i8RUJwn9VVVMwalCaWMYdfDXpAXCQmmk7ABE1Qxq2JhXyXq/BKGzDg=="
+            sparkle:os="macos"
+            sparkle:cpuAffinity="x86_64"
+        />
+    </item>
+    <item>
         <title>2026.5.3</title>
         <pubDate>Tue, 20 Oct 2026 18:37:12 +0800</pubDate>
         <sparkle:version>20265003</sparkle:version>
