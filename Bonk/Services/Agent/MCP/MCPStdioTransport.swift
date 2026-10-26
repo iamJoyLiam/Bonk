@@ -35,17 +35,22 @@ final class MCPStdioTransport: MCPTransport, @unchecked Sendable {
         /// Extra environment entries. The server also inherits the app's.
         let environment: [String: String]
         let workingDirectory: String?
+        /// OAuth bearer token, if the server requires OAuth.
+        /// Passed as `BONK_MCP_BEARER_TOKEN` in the environment.
+        let bearerToken: String?
 
         init(
             command: String,
             arguments: [String] = [],
             environment: [String: String] = [:],
-            workingDirectory: String? = nil
+            workingDirectory: String? = nil,
+            bearerToken: String? = nil
         ) {
             self.command = command
             self.arguments = arguments
             self.environment = environment
             self.workingDirectory = workingDirectory
+            self.bearerToken = bearerToken
         }
     }
 
@@ -107,6 +112,19 @@ final class MCPStdioTransport: MCPTransport, @unchecked Sendable {
         process.standardInput = input
         process.standardOutput = output
         process.standardError = error
+
+        // Build the environment: start with the process environment,
+        // overlay the configured environment, then add the bearer token
+        // if one was provided. The bearer token is passed as
+        // BONK_MCP_BEARER_TOKEN so the server can read it.
+        var processEnvironment = ProcessInfo.processInfo.environment
+        for (key, value) in configuration.environment {
+            processEnvironment[key] = value
+        }
+        if let bearerToken = configuration.bearerToken {
+            processEnvironment["BONK_MCP_BEARER_TOKEN"] = bearerToken
+        }
+        process.environment = processEnvironment
 
         do {
             try process.run()

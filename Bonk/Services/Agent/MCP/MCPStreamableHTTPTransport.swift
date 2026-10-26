@@ -28,6 +28,7 @@
 //  event stream delivers those as they come, so they are never confused
 //  with an answer to a pending call.
 //
+//
 
 import Foundation
 import os
@@ -41,15 +42,20 @@ extension MCPStreamableHTTPTransport {
         let headers: [String: String]
         /// How long a single request/response round-trip may take.
         let timeout: TimeInterval
+        /// OAuth bearer token, if the server requires OAuth.
+        /// Sent as `Authorization: Bearer <token>` on every request.
+        let bearerToken: String?
 
         init(
             endpointURL: URL,
-            headers: [String: String] = [:],
-            timeout: TimeInterval = 30
+            headers: [String: String] = [String: String](),
+            timeout: TimeInterval = 30,
+            bearerToken: String? = nil
         ) {
             self.endpointURL = endpointURL
             self.headers = headers
             self.timeout = timeout
+            self.bearerToken = bearerToken
         }
     }
 }
@@ -107,6 +113,9 @@ final class MCPStreamableHTTPTransport: MCPTransport, @unchecked Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let bearerToken = configuration.bearerToken {
+            request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+        }
         for (key, value) in configuration.headers {
             request.setValue(value, forHTTPHeaderField: key)
         }
@@ -149,6 +158,9 @@ final class MCPStreamableHTTPTransport: MCPTransport, @unchecked Sendable {
         request.httpMethod = "GET"
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue("text/event-stream", forHTTPHeaderField: "Content-Type")
+        if let bearerToken = configuration.bearerToken {
+            request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+        }
         for (key, value) in configuration.headers {
             request.setValue(value, forHTTPHeaderField: key)
         }
