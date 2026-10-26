@@ -21,7 +21,6 @@ xcuserdata/
 .build/
 .swiftpm/
 Packages/
-Package.resolved
 
 # macOS
 .DS_Store
